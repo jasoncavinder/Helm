@@ -23,6 +23,8 @@ use helm_core::sqlite::SqliteStore;
 
 const TEST_CAPABILITIES: &[Capability] = &[Capability::Refresh, Capability::Search];
 const MUTATION_CAPABILITIES: &[Capability] = &[Capability::Install, Capability::Uninstall];
+const SNAPSHOT_UNINSTALL_CAPABILITIES: &[Capability] =
+    &[Capability::ListInstalled, Capability::Uninstall];
 
 fn test_db_path(test_name: &str) -> PathBuf {
     let nanos = SystemTime::now()
@@ -310,6 +312,145 @@ impl SearchCacheStore for BlockingSearchCacheStore {
         limit: usize,
     ) -> PersistenceResult<Vec<helm_core::models::CachedSearchResult>> {
         self.inner.query_local(query, limit)
+    }
+}
+
+#[derive(Default)]
+struct BlockingInstalledSnapshotState {
+    released: bool,
+}
+
+struct BlockingInstalledSnapshotStore {
+    inner: Arc<SqliteStore>,
+    snapshot_entered: AtomicBool,
+    uninstall_entered: AtomicBool,
+    state: Mutex<BlockingInstalledSnapshotState>,
+    condvar: Condvar,
+}
+
+impl BlockingInstalledSnapshotStore {
+    fn new(inner: Arc<SqliteStore>) -> Self {
+        Self {
+            inner,
+            snapshot_entered: AtomicBool::new(false),
+            uninstall_entered: AtomicBool::new(false),
+            state: Mutex::new(BlockingInstalledSnapshotState::default()),
+            condvar: Condvar::new(),
+        }
+    }
+
+    fn snapshot_has_entered(&self) -> bool {
+        self.snapshot_entered.load(Ordering::SeqCst)
+    }
+
+    fn uninstall_has_entered(&self) -> bool {
+        self.uninstall_entered.load(Ordering::SeqCst)
+    }
+
+    fn release_snapshot(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("blocking installed snapshot state mutex poisoned");
+        state.released = true;
+        self.condvar.notify_all();
+    }
+}
+
+impl PackageStore for BlockingInstalledSnapshotStore {
+    fn upsert_installed(
+        &self,
+        packages: &[helm_core::models::InstalledPackage],
+    ) -> PersistenceResult<()> {
+        self.inner.upsert_installed(packages)
+    }
+
+    fn replace_installed_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[helm_core::models::InstalledPackage],
+    ) -> PersistenceResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "blocking installed snapshot state mutex poisoned".to_string(),
+        })?;
+        self.snapshot_entered.store(true, Ordering::SeqCst);
+        self.condvar.notify_all();
+        while !state.released {
+            state = self.condvar.wait(state).map_err(|_| CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Internal,
+                message: "blocking installed snapshot state wait poisoned".to_string(),
+            })?;
+        }
+        drop(state);
+        self.inner.replace_installed_snapshot(manager, packages)
+    }
+
+    fn upsert_outdated(&self, packages: &[OutdatedPackage]) -> PersistenceResult<()> {
+        self.inner.upsert_outdated(packages)
+    }
+
+    fn replace_outdated_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[OutdatedPackage],
+    ) -> PersistenceResult<()> {
+        self.inner.replace_outdated_snapshot(manager, packages)
+    }
+
+    fn list_installed(&self) -> PersistenceResult<Vec<helm_core::models::InstalledPackage>> {
+        self.inner.list_installed()
+    }
+
+    fn list_outdated(&self) -> PersistenceResult<Vec<OutdatedPackage>> {
+        self.inner.list_outdated()
+    }
+
+    fn set_snapshot_pinned(
+        &self,
+        package: &PackageRef,
+        version: Option<&str>,
+        pinned: bool,
+    ) -> PersistenceResult<()> {
+        self.inner.set_snapshot_pinned(package, version, pinned)
+    }
+
+    fn apply_install_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        installed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.inner
+            .apply_install_result(package, package_identifier, installed_version)
+    }
+
+    fn apply_uninstall_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        removed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.uninstall_entered.store(true, Ordering::SeqCst);
+        self.inner
+            .apply_uninstall_result(package, package_identifier, removed_version)
+    }
+
+    fn apply_upgrade_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        before_version: Option<&str>,
+        after_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.inner
+            .apply_upgrade_result(package, package_identifier, before_version, after_version)
     }
 }
 
@@ -817,6 +958,140 @@ async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence
         persisted_completed,
         "catalog sync task should be marked completed before search-cache persistence finishes"
     );
+}
+
+#[tokio::test]
+async fn stale_installed_snapshot_cannot_overtake_later_uninstall_persistence() {
+    let path = test_db_path("orchestration-runtime-snapshot-uninstall-order");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    let package_store = Arc::new(BlockingInstalledSnapshotStore::new(store.clone()));
+    let package = PackageRef {
+        manager: ManagerId::Npm,
+        name: "eslint".to_string(),
+    };
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
+        ManagerId::Npm,
+        SNAPSHOT_UNINSTALL_CAPABILITIES,
+        vec![
+            Ok(AdapterResponse::InstalledPackages(vec![
+                helm_core::models::InstalledPackage {
+                    package: package.clone(),
+                    package_identifier: None,
+                    installed_version: Some("9.25.0".to_string()),
+                    pinned: false,
+                    runtime_state: Default::default(),
+                },
+            ])),
+            Ok(AdapterResponse::Mutation(MutationResult {
+                package: package.clone(),
+                package_identifier: None,
+                action: ManagerAction::Uninstall,
+                before_version: Some("9.25.0".to_string()),
+                after_version: None,
+            })),
+        ],
+        Arc::new(AtomicUsize::new(0)),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        package_store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let snapshot_task = runtime
+        .submit(
+            ManagerId::Npm,
+            AdapterRequest::ListInstalled(ListInstalledRequest),
+        )
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(snapshot_task, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    for _ in 0..100 {
+        if package_store.snapshot_has_entered() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        package_store.snapshot_has_entered(),
+        "expected installed snapshot persistence to block"
+    );
+
+    let uninstall_task = runtime
+        .submit(
+            ManagerId::Npm,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: package.clone(),
+                target_name: None,
+                version: None,
+            }),
+        )
+        .await
+        .unwrap();
+    let uninstall = runtime
+        .wait_for_terminal(uninstall_task, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(uninstall.runtime.status, TaskStatus::Completed);
+
+    for _ in 0..100 {
+        if store
+            .list_recent_tasks(10)
+            .unwrap()
+            .iter()
+            .any(|record| record.id == uninstall_task && record.status == TaskStatus::Completed)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        store
+            .list_recent_tasks(10)
+            .unwrap()
+            .iter()
+            .any(|record| record.id == uninstall_task && record.status == TaskStatus::Completed),
+        "uninstall should be visible as completed while the older snapshot is blocked"
+    );
+    assert!(
+        !package_store.uninstall_has_entered(),
+        "later uninstall persistence must wait for the older snapshot"
+    );
+
+    package_store.release_snapshot();
+
+    for _ in 0..100 {
+        if package_store.uninstall_has_entered() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        package_store.uninstall_has_entered(),
+        "uninstall persistence should continue after the older snapshot completes"
+    );
+
+    for _ in 0..100 {
+        if store.list_installed().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        store.list_installed().unwrap().is_empty(),
+        "later uninstall must win over the older installed snapshot"
+    );
+
+    let _ = std::fs::remove_file(path);
 }
 
 #[tokio::test]

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
+use tokio::sync::{Mutex, watch};
 use tracing::instrument;
 
 use crate::adapters::{
@@ -19,7 +20,7 @@ use crate::models::{
 };
 use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
-    OrchestrationResult,
+    OrchestrationResult, manager_execution_domain,
 };
 use crate::persistence::{
     DetectionStore, ManagerPreference, PackageStore, SearchCacheStore, TaskStore,
@@ -48,6 +49,64 @@ pub struct AdapterRuntime {
     package_store: Option<Arc<dyn PackageStore>>,
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     detection_store: Option<Arc<dyn DetectionStore>>,
+    persistence_ordering: Arc<ResponsePersistenceOrdering>,
+}
+
+#[derive(Default)]
+struct ResponsePersistenceOrdering {
+    tails: Mutex<HashMap<ManagerId, watch::Receiver<bool>>>,
+}
+
+struct ResponsePersistenceTurn {
+    predecessor: Option<watch::Receiver<bool>>,
+    completion: watch::Sender<bool>,
+    completed: bool,
+}
+
+impl ResponsePersistenceOrdering {
+    async fn reserve(&self, manager: ManagerId) -> ResponsePersistenceTurn {
+        let (completion, receiver) = watch::channel(false);
+        let predecessor = self
+            .tails
+            .lock()
+            .await
+            .insert(manager_execution_domain(manager), receiver);
+        ResponsePersistenceTurn {
+            predecessor,
+            completion,
+            completed: false,
+        }
+    }
+}
+
+impl ResponsePersistenceTurn {
+    async fn wait_for_predecessor(&mut self) {
+        let Some(predecessor) = self.predecessor.as_mut() else {
+            return;
+        };
+
+        loop {
+            if *predecessor.borrow_and_update() {
+                return;
+            }
+            if predecessor.changed().await.is_err() {
+                return;
+            }
+        }
+    }
+
+    fn complete(&mut self) {
+        if !self.completed {
+            self.completion.send_replace(true);
+            self.completed = true;
+        }
+    }
+}
+
+impl Drop for ResponsePersistenceTurn {
+    fn drop(&mut self) {
+        self.complete();
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -222,6 +281,7 @@ impl AdapterRuntime {
             package_store,
             search_cache_store,
             detection_store,
+            persistence_ordering: Arc::new(ResponsePersistenceOrdering::default()),
         })
     }
 
@@ -732,6 +792,10 @@ impl AdapterRuntime {
         let task_id = self.execution.submit(adapter, request).await?;
 
         if let Some(task_store) = &self.task_store {
+            // Reserve the domain-persistence turn before queued-task persistence can yield.
+            // Task execution remains independent, while response snapshots are committed in
+            // submission order for each shared execution domain.
+            let persistence_turn = self.persistence_ordering.reserve(manager).await;
             let record = TaskRecord {
                 id: task_id,
                 manager,
@@ -784,6 +848,7 @@ impl AdapterRuntime {
                 package_store: self.package_store.clone(),
                 search_cache_store: self.search_cache_store.clone(),
                 detection_store: self.detection_store.clone(),
+                persistence_turn,
                 task_id,
                 manager,
                 task_type,
@@ -859,6 +924,7 @@ struct PersistenceWatcherContext {
     package_store: Option<Arc<dyn PackageStore>>,
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     detection_store: Option<Arc<dyn DetectionStore>>,
+    persistence_turn: ResponsePersistenceTurn,
     task_id: TaskId,
     manager: ManagerId,
     task_type: TaskType,
@@ -872,6 +938,7 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
         package_store,
         search_cache_store,
         detection_store,
+        mut persistence_turn,
         task_id,
         manager,
         task_type,
@@ -981,6 +1048,11 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             );
         }
 
+        // Terminal task state is persisted above before waiting for earlier domain writes. This
+        // keeps completed tasks visible promptly while preventing an older response snapshot
+        // from overwriting a later mutation for the same execution domain.
+        persistence_turn.wait_for_predecessor().await;
+
         // Persist task result (domain data) after the task is marked terminal so
         // long-running snapshot/cache writes do not leave completed work looking stuck.
         if let Some(package_store) = package_store
@@ -1059,6 +1131,10 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                 "failed to persist detection data"
             );
         }
+
+        // Later domain responses may proceed once this task's package/cache/detection writes
+        // have completed. Supplemental task logs do not affect response ordering.
+        persistence_turn.complete();
 
         let failure_diagnostics = build_failure_diagnostic_entries(&snapshot, terminal_error);
         for diagnostic in failure_diagnostics {
