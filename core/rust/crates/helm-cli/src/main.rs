@@ -89,6 +89,8 @@ use provenance::{
 };
 
 const TASK_FETCH_LIMIT: usize = 400;
+const DOCTOR_FAILURE_MATCH_LIMIT: usize = 16;
+const DOCTOR_FAILURE_MAX_AGE_SECS: u64 = 60 * 60;
 const TASK_FOLLOW_MAX_WAIT_MS: u64 = 30_000;
 const JSON_SCHEMA_VERSION: u32 = 1;
 const CLI_ONBOARDING_REQUIRED_EXIT_CODE: u8 = 5;
@@ -7911,11 +7913,14 @@ fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), St
             .push(instance);
     }
     let executable_states = build_manager_executable_doctor_states(&detection_map, &preference_map);
+    let recent_failure_diagnostics = collect_recent_doctor_failure_diagnostics(store);
     let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
         &executable_states,
+        recent_failure_diagnostics.as_slice(),
+        SystemTime::now(),
     );
 
     if options.json {
@@ -12954,6 +12959,24 @@ fn build_manager_executable_doctor_states(
         );
     }
     states
+}
+
+fn collect_recent_doctor_failure_diagnostics(
+    store: &SqliteStore,
+) -> Vec<helm_core::doctor::RecentTaskFailureDiagnostic> {
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(DOCTOR_FAILURE_MAX_AGE_SECS))
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    store
+        .list_recent_failure_diagnostic_logs(
+            cutoff,
+            helm_core::doctor::HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY,
+            DOCTOR_FAILURE_MATCH_LIMIT,
+        )
+        .unwrap_or_default()
+        .iter()
+        .filter_map(helm_core::doctor::parse_recent_task_failure_diagnostic)
+        .collect()
 }
 
 fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {

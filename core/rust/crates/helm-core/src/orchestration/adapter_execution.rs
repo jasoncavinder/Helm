@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::{Mutex as StdMutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use tokio::sync::Mutex;
@@ -32,6 +33,7 @@ pub struct AdapterTaskSnapshot {
 }
 
 type OutcomeSlot = Arc<Mutex<Option<AdapterTaskTerminalState>>>;
+static HOMEBREW_ADAPTER_EXECUTION_LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
 
 #[derive(Clone, Default)]
 pub struct AdapterExecutionRuntime {
@@ -77,7 +79,24 @@ impl AdapterExecutionRuntime {
                         return Err(cancelled);
                     }
 
+                    let blocking_token = token.clone();
                     let execute_result = tokio::task::spawn_blocking(move || {
+                        let _homebrew_guard = if matches!(
+                            manager,
+                            ManagerId::HomebrewFormula | ManagerId::HomebrewCask
+                        ) {
+                            Some(
+                                HOMEBREW_ADAPTER_EXECUTION_LOCK
+                                    .get_or_init(|| StdMutex::new(()))
+                                    .lock()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                            )
+                        } else {
+                            None
+                        };
+                        if blocking_token.is_cancelled() {
+                            return Err(cancelled_error(manager, task_type, action));
+                        }
                         crate::task_context::with_task_id(task_id, || {
                             execute_with_capability_check(adapter.as_ref(), request)
                         })
@@ -92,6 +111,13 @@ impl AdapterExecutionRuntime {
                     })?;
 
                     match execute_result {
+                        Ok(_) if token.is_forced_cancelled() => {
+                            let cancelled = cancelled_error(manager, task_type, action);
+                            let mut slot = operation_slot.lock().await;
+                            *slot =
+                                Some(AdapterTaskTerminalState::Cancelled(Some(cancelled.clone())));
+                            Err(cancelled)
+                        }
                         Ok(response) => {
                             let mut slot = operation_slot.lock().await;
                             *slot = Some(AdapterTaskTerminalState::Succeeded(response));
@@ -116,7 +142,7 @@ impl AdapterExecutionRuntime {
 
         let task_id = self
             .queue
-            .spawn(
+            .spawn_preserving_execution_lease(
                 TaskSubmission {
                     manager,
                     task_type,
@@ -177,6 +203,9 @@ impl AdapterExecutionRuntime {
 
         if let Some(slot) = outcome_slot {
             let terminal = slot.lock().await.clone();
+            if status == TaskStatus::Cancelled {
+                return Ok(Some(authoritative_cancelled_terminal_state(terminal)));
+            }
             if terminal.is_some() {
                 return Ok(terminal);
             }
@@ -197,6 +226,17 @@ impl AdapterExecutionRuntime {
         }
 
         Ok(None)
+    }
+}
+
+fn authoritative_cancelled_terminal_state(
+    terminal: Option<AdapterTaskTerminalState>,
+) -> AdapterTaskTerminalState {
+    match terminal {
+        Some(AdapterTaskTerminalState::Cancelled(error)) => {
+            AdapterTaskTerminalState::Cancelled(error)
+        }
+        _ => AdapterTaskTerminalState::Cancelled(None),
     }
 }
 
@@ -281,8 +321,11 @@ fn default_action_for_task_type(task_type: TaskType) -> ManagerAction {
 
 #[cfg(test)]
 mod tests {
-    use super::{task_type_for_action, task_type_for_request};
-    use crate::adapters::{AdapterRequest, SearchRequest};
+    use super::{
+        AdapterTaskTerminalState, authoritative_cancelled_terminal_state, task_type_for_action,
+        task_type_for_request,
+    };
+    use crate::adapters::{AdapterRequest, AdapterResponse, SearchRequest};
     use crate::models::SearchQuery;
     use crate::models::{ManagerAction, TaskType};
     use std::time::SystemTime;
@@ -308,5 +351,15 @@ mod tests {
             },
         });
         assert_eq!(task_type_for_request(&request), TaskType::CatalogSync);
+    }
+
+    #[test]
+    fn cancelled_runtime_status_rejects_stale_success_payload() {
+        assert_eq!(
+            authoritative_cancelled_terminal_state(Some(AdapterTaskTerminalState::Succeeded(
+                AdapterResponse::Refreshed,
+            ))),
+            AdapterTaskTerminalState::Cancelled(None)
+        );
     }
 }

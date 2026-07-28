@@ -689,6 +689,32 @@ Adopt a repository-local Codex operating model with:
 - Preserves Helm safety posture while increasing day-to-day operator efficiency.
 
 ---
+## Decision 037 — Shared Execution Domains for Common Backends
+
+**Decision:**
+Managers that mutate the same backend may share one core execution domain instead of relying only on per-manager serialization.
+
+Initial implemented scope:
+
+- `homebrew_formula`
+- `homebrew_cask`
+
+**Policy details:**
+
+- Formula and cask tasks map to the same process-wide Homebrew execution lock across adapter runtimes.
+- The exclusion lease remains held for the actual adapter execution lifetime, including when orchestration cancellation detaches the awaiting task.
+- Existing authority-phase ordering remains unchanged; execution-domain locking constrains concurrency without reordering managers.
+- Homebrew lock-conflict failures are classified into structured diagnostics with bounded recent visibility.
+- Helm does not delete Homebrew-owned lockfiles automatically; recovery guidance is wait/retry and operator diagnosis.
+- Coordination across separate Helm processes continues to route through the shared coordinator where available.
+
+**Rationale:**
+
+- Formula and cask adapters invoke the same Homebrew installation and can otherwise collide despite having different manager IDs.
+- Holding exclusion through real adapter completion prevents cancellation from admitting overlapping Homebrew work.
+- Avoiding native lockfile deletion preserves Homebrew's ownership and locking guarantees.
+
+---
 ## Summary
 
 Helm prioritizes:

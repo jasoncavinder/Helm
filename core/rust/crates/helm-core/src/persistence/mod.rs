@@ -131,6 +131,15 @@ pub trait TaskStore: Send + Sync {
         Ok(Vec::new())
     }
 
+    fn list_recent_failure_diagnostic_logs(
+        &self,
+        _cutoff: std::time::SystemTime,
+        _issue_key: &str,
+        _limit: usize,
+    ) -> PersistenceResult<Vec<TaskLogRecord>> {
+        Ok(Vec::new())
+    }
+
     fn prune_task_logs(&self, _max_age_secs: i64) -> PersistenceResult<usize> {
         Ok(0)
     }

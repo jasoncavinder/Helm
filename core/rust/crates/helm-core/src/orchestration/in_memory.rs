@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use crate::models::{CoreError, CoreErrorKind, ManagerId, TaskId, TaskRecord, TaskStatus};
 use crate::orchestration::{
     CancellationMode, OrchestrationResult, TaskCoordinator, TaskSubmission,
+    manager_execution_domain,
 };
 
 #[derive(Default)]
@@ -66,7 +67,8 @@ impl TaskCoordinator for InMemoryTaskCoordinator {
             ));
         }
 
-        if state.running_by_manager.contains_key(&manager) {
+        let execution_domain = manager_execution_domain(manager);
+        if state.running_by_manager.contains_key(&execution_domain) {
             return Err(CoreError {
                 manager: Some(manager),
                 task: Some(task_type),
@@ -79,7 +81,7 @@ impl TaskCoordinator for InMemoryTaskCoordinator {
         if let Some(task) = state.tasks.get_mut(&task_id) {
             task.status = TaskStatus::Running;
         }
-        state.running_by_manager.insert(manager, task_id);
+        state.running_by_manager.insert(execution_domain, task_id);
 
         Ok(())
     }
@@ -104,7 +106,10 @@ impl TaskCoordinator for InMemoryTaskCoordinator {
                 if let Some(task) = state.tasks.get_mut(&task_id) {
                     task.status = TaskStatus::Cancelled;
                 }
-                state.running_by_manager.remove(&manager);
+                let execution_domain = manager_execution_domain(manager);
+                if state.running_by_manager.get(&execution_domain) == Some(&task_id) {
+                    state.running_by_manager.remove(&execution_domain);
+                }
                 Ok(())
             }
             _ => Err(invalid_task_transition(
@@ -140,7 +145,10 @@ impl InMemoryTaskCoordinator {
         if let Some(task) = state.tasks.get_mut(&task_id) {
             task.status = terminal;
         }
-        state.running_by_manager.remove(&manager);
+        let execution_domain = manager_execution_domain(manager);
+        if state.running_by_manager.get(&execution_domain) == Some(&task_id) {
+            state.running_by_manager.remove(&execution_domain);
+        }
 
         Ok(())
     }

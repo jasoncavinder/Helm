@@ -1719,6 +1719,68 @@ fn append_and_list_task_logs_roundtrip() {
 }
 
 #[test]
+fn recent_failure_diagnostic_limit_applies_after_issue_filter() {
+    let path = test_db_path("recent-failure-diagnostic-issue-filter");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+
+    let homebrew_task = TaskRecord {
+        id: TaskId(900),
+        manager: ManagerId::HomebrewFormula,
+        task_type: TaskType::Upgrade,
+        status: TaskStatus::Failed,
+        created_at: UNIX_EPOCH + Duration::from_secs(900),
+    };
+    store.create_task(&homebrew_task).unwrap();
+    store
+        .append_task_log(&NewTaskLogRecord {
+            task_id: homebrew_task.id,
+            manager: homebrew_task.manager,
+            task_type: homebrew_task.task_type,
+            status: Some(TaskStatus::Failed),
+            level: TaskLogLevel::Error,
+            message: r#"[diagnostic.v1] {"issueKey":"homebrew.cellar_lock_conflict"}"#.to_string(),
+            created_at: UNIX_EPOCH + Duration::from_secs(901),
+        })
+        .unwrap();
+
+    for offset in 0..17_u64 {
+        let task = TaskRecord {
+            id: TaskId(901 + offset),
+            manager: ManagerId::Npm,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Failed,
+            created_at: UNIX_EPOCH + Duration::from_secs(902 + offset),
+        };
+        store.create_task(&task).unwrap();
+        store
+            .append_task_log(&NewTaskLogRecord {
+                task_id: task.id,
+                manager: task.manager,
+                task_type: task.task_type,
+                status: Some(TaskStatus::Failed),
+                level: TaskLogLevel::Error,
+                message: r#"[diagnostic.v1] {"issueKey":"unclassified_process_failure"}"#
+                    .to_string(),
+                created_at: task.created_at,
+            })
+            .unwrap();
+    }
+
+    let diagnostics = store
+        .list_recent_failure_diagnostic_logs(
+            UNIX_EPOCH,
+            helm_core::doctor::HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY,
+            16,
+        )
+        .unwrap();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].task_id, homebrew_task.id);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn prune_completed_tasks_removes_associated_task_logs() {
     let path = test_db_path("task-logs-prune-with-task");
     let store = SqliteStore::new(&path);

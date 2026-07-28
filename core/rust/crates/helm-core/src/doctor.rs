@@ -1,10 +1,12 @@
 use crate::manager_lifecycle;
-use crate::models::{InstallProvenance, InstalledPackage, ManagerId, ManagerInstallInstance};
+use crate::models::{
+    InstallProvenance, InstalledPackage, ManagerId, ManagerInstallInstance, TaskLogRecord,
+};
 use crate::post_install_setup::evaluate_manager_post_install_setup;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const ISSUE_CODE_METADATA_ONLY_INSTALL: &str = "metadata_only_install";
 pub const FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL: &str = "homebrew_metadata_only_install";
@@ -12,6 +14,12 @@ pub const ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED: &str = "post_install_setup_req
 pub const FINDING_CODE_POST_INSTALL_SETUP_REQUIRED: &str = "post_install_setup_required";
 pub const ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE: &str = "selected_executable_path_stale";
 pub const FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE: &str = "selected_executable_path_stale";
+pub const ISSUE_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT: &str = "homebrew_cellar_lock_conflict";
+pub const FINDING_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT: &str = "homebrew_cellar_lock_conflict";
+const TASK_FAILURE_DIAGNOSTIC_PREFIX: &str = "[diagnostic.v1] ";
+const TASK_FAILURE_DIAGNOSTIC_SCHEMA: &str = "helm.task.failure_diagnostic";
+pub const HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY: &str = "homebrew.cellar_lock_conflict";
+const RECENT_TASK_FAILURE_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 const FINGERPRINT_VERSION: u8 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -90,6 +98,29 @@ pub struct ManagerExecutableDoctorState {
     pub default_executable_path: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecentTaskFailureDiagnostic {
+    pub fingerprint: String,
+    pub manager: ManagerId,
+    pub issue_key: String,
+    pub command: Option<String>,
+    pub issue_summary: Option<String>,
+    pub error_excerpt: Option<String>,
+    pub created_at: SystemTime,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskFailureDiagnosticEnvelope {
+    schema: String,
+    fingerprint: String,
+    manager_id: String,
+    issue_key: String,
+    issue_summary: String,
+    command: Option<String>,
+    error_excerpt: String,
+}
+
 pub struct ManagerPackageStateScanInput<'a> {
     pub manager: ManagerId,
     pub manager_install_instances: Option<&'a [ManagerInstallInstance]>,
@@ -143,6 +174,100 @@ pub fn fingerprint_for_selected_executable_path_stale(
         ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE,
         normalized_path
     )
+}
+
+pub fn parse_recent_task_failure_diagnostic(
+    entry: &TaskLogRecord,
+) -> Option<RecentTaskFailureDiagnostic> {
+    let payload = entry
+        .message
+        .strip_prefix(TASK_FAILURE_DIAGNOSTIC_PREFIX)?
+        .trim();
+    let envelope: TaskFailureDiagnosticEnvelope = serde_json::from_str(payload).ok()?;
+    if envelope.schema != TASK_FAILURE_DIAGNOSTIC_SCHEMA {
+        return None;
+    }
+    let manager = envelope.manager_id.parse::<ManagerId>().ok()?;
+    Some(RecentTaskFailureDiagnostic {
+        fingerprint: envelope.fingerprint,
+        manager,
+        issue_key: envelope.issue_key,
+        command: normalize_nonempty_owned(envelope.command),
+        issue_summary: normalize_nonempty_owned(Some(envelope.issue_summary)),
+        error_excerpt: normalize_nonempty_owned(Some(envelope.error_excerpt)),
+        created_at: entry.created_at,
+    })
+}
+
+pub fn scan_recent_task_failure_issues(
+    diagnostics: &[RecentTaskFailureDiagnostic],
+    observed_at: SystemTime,
+) -> Vec<DoctorFinding> {
+    let mut findings = Vec::new();
+    let mut seen = HashSet::new();
+
+    for diagnostic in diagnostics {
+        let age = observed_at
+            .duration_since(diagnostic.created_at)
+            .unwrap_or(Duration::ZERO);
+        if age > RECENT_TASK_FAILURE_MAX_AGE {
+            continue;
+        }
+        if !seen.insert(diagnostic.fingerprint.clone()) {
+            continue;
+        }
+        if diagnostic.issue_key != HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY {
+            continue;
+        }
+        let source_manager = match diagnostic.manager {
+            ManagerId::HomebrewFormula | ManagerId::HomebrewCask => diagnostic.manager,
+            _ => continue,
+        };
+        let package_name =
+            parse_homebrew_target_from_command(diagnostic.command.as_deref(), source_manager);
+        let summary = package_name
+            .as_deref()
+            .map(|package| {
+                format!(
+                    "Homebrew {} operations for '{}' are failing because a Homebrew lock is blocking the target.",
+                    if source_manager == ManagerId::HomebrewCask {
+                        "cask"
+                    } else {
+                        "formula"
+                    },
+                    package
+                )
+            })
+            .unwrap_or_else(|| {
+                "A Homebrew operation is failing because a Homebrew lock is blocking the target."
+                    .to_string()
+            });
+        let evidence_primary = diagnostic
+            .issue_summary
+            .clone()
+            .or_else(|| diagnostic.error_excerpt.clone());
+        let evidence_secondary = diagnostic
+            .command
+            .as_deref()
+            .map(str::trim)
+            .filter(|command| !command.is_empty())
+            .map(str::to_string);
+
+        findings.push(DoctorFinding {
+            finding_code: FINDING_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT.to_string(),
+            issue_code: ISSUE_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT.to_string(),
+            fingerprint: diagnostic.fingerprint.clone(),
+            manager_id: source_manager.as_str().to_string(),
+            source_manager_id: Some(source_manager.as_str().to_string()),
+            package_name,
+            severity: DoctorFindingSeverity::Warning,
+            summary,
+            evidence_primary,
+            evidence_secondary,
+        });
+    }
+
+    findings
 }
 
 pub fn manager_expected_homebrew_formula(manager: ManagerId) -> Option<&'static str> {
@@ -292,11 +417,58 @@ pub fn scan_manager_package_state_issues(
     findings
 }
 
+fn parse_homebrew_target_from_command(command: Option<&str>, manager: ManagerId) -> Option<String> {
+    let command = command?.trim();
+    if command.is_empty() {
+        return None;
+    }
+
+    let tokens = command.split_whitespace().collect::<Vec<_>>();
+    if tokens.is_empty() || !tokens[0].ends_with("brew") {
+        return None;
+    }
+
+    let action_index = tokens
+        .iter()
+        .position(|token| matches!(*token, "upgrade" | "install" | "uninstall" | "reinstall"))?;
+    let candidate = tokens[action_index + 1..]
+        .iter()
+        .rev()
+        .find(|token| !token.starts_with('-'))
+        .copied()?;
+
+    let candidate = candidate.rsplit('/').next().unwrap_or(candidate).trim();
+    if !is_valid_homebrew_lock_package_name(candidate) {
+        return None;
+    }
+
+    match manager {
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask => Some(candidate.to_string()),
+        _ => None,
+    }
+}
+
+fn is_valid_homebrew_lock_package_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '@' | '+' | '.' | '_' | '-')
+        })
+}
+
+fn normalize_nonempty_owned(value: Option<String>) -> Option<String> {
+    value.and_then(|raw| {
+        let trimmed = raw.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+}
+
 pub fn scan_package_state_report(
     managers: impl IntoIterator<Item = ManagerId>,
     manager_install_instances: &HashMap<ManagerId, Vec<ManagerInstallInstance>>,
     installed_packages: &[InstalledPackage],
     manager_executable_states: &HashMap<ManagerId, ManagerExecutableDoctorState>,
+    recent_failure_diagnostics: &[RecentTaskFailureDiagnostic],
+    observed_at: SystemTime,
 ) -> DoctorReport {
     let homebrew_installed_formulas: HashSet<String> = installed_packages
         .iter()
@@ -305,7 +477,7 @@ pub fn scan_package_state_report(
         .collect();
 
     let manager_ids = managers.into_iter().collect::<Vec<_>>();
-    let findings = manager_ids
+    let mut findings = manager_ids
         .iter()
         .flat_map(|manager| {
             let instances = manager_install_instances.get(manager).map(Vec::as_slice);
@@ -317,6 +489,10 @@ pub fn scan_package_state_report(
             })
         })
         .collect::<Vec<_>>();
+    findings.extend(scan_recent_task_failure_issues(
+        recent_failure_diagnostics,
+        observed_at,
+    ));
 
     build_report(manager_ids.len(), findings)
 }
@@ -383,7 +559,10 @@ impl std::fmt::Display for ManagerDisplayName {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{AutomationLevel, InstallInstanceIdentityKind, StrategyKind};
+    use crate::models::{
+        AutomationLevel, InstallInstanceIdentityKind, StrategyKind, TaskId, TaskLogLevel,
+        TaskStatus, TaskType,
+    };
     use std::path::PathBuf;
 
     fn sample_homebrew_instance(manager: ManagerId, path: &str) -> ManagerInstallInstance {
@@ -535,5 +714,82 @@ mod tests {
             finding.evidence_secondary.as_deref(),
             Some("current discovered default executable path: '/usr/local/bin/rustup'")
         );
+    }
+
+    #[test]
+    fn parses_recent_task_failure_diagnostic_from_task_log_record() {
+        let entry = TaskLogRecord {
+            id: 1,
+            task_id: TaskId(7),
+            manager: ManagerId::HomebrewFormula,
+            task_type: TaskType::Upgrade,
+            status: Some(TaskStatus::Failed),
+            level: TaskLogLevel::Info,
+            message: r#"[diagnostic.v1] {"schema":"helm.task.failure_diagnostic","schemaVersion":1,"fingerprint":"failure-v1-123","taskId":7,"managerId":"homebrew_formula","taskType":"upgrade","errorCode":"process_failure","issueKey":"homebrew.cellar_lock_conflict","issueOwner":"local_runtime","issueConfidence":"high","issueSummary":"Another Homebrew process already holds a Cellar lock for this upgrade target.","command":"brew upgrade --formula fd","errorExcerpt":"Error: A `brew upgrade fd` process has already locked /usr/local/Cellar/fd."}"#.to_string(),
+            created_at: UNIX_EPOCH,
+        };
+
+        let parsed =
+            parse_recent_task_failure_diagnostic(&entry).expect("expected diagnostic parse");
+        assert_eq!(parsed.manager, ManagerId::HomebrewFormula);
+        assert_eq!(parsed.issue_key, HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY);
+        assert_eq!(parsed.command.as_deref(), Some("brew upgrade --formula fd"));
+        assert_eq!(parsed.created_at, UNIX_EPOCH);
+    }
+
+    #[test]
+    fn recent_task_failure_scan_emits_homebrew_lock_conflict_finding() {
+        let findings = scan_recent_task_failure_issues(
+            &[RecentTaskFailureDiagnostic {
+                fingerprint: "failure-v1-123".to_string(),
+                manager: ManagerId::HomebrewFormula,
+                issue_key: HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY.to_string(),
+                command: Some("brew upgrade --formula fd".to_string()),
+                issue_summary: Some(
+                    "Another Homebrew process already holds a Cellar lock for this upgrade target."
+                        .to_string(),
+                ),
+                error_excerpt: Some(
+                    "Error: A `brew upgrade fd` process has already locked /usr/local/Cellar/fd."
+                        .to_string(),
+                ),
+                created_at: UNIX_EPOCH,
+            }],
+            UNIX_EPOCH + Duration::from_secs(60),
+        );
+
+        let finding = findings
+            .iter()
+            .find(|finding| finding.issue_code == ISSUE_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT)
+            .expect("expected homebrew lock conflict finding");
+        assert_eq!(
+            finding.finding_code,
+            FINDING_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT
+        );
+        assert_eq!(finding.manager_id, ManagerId::HomebrewFormula.as_str());
+        assert_eq!(finding.package_name.as_deref(), Some("fd"));
+        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
+        assert_eq!(
+            finding.evidence_secondary.as_deref(),
+            Some("brew upgrade --formula fd")
+        );
+    }
+
+    #[test]
+    fn recent_task_failure_scan_expires_old_lock_conflicts() {
+        let findings = scan_recent_task_failure_issues(
+            &[RecentTaskFailureDiagnostic {
+                fingerprint: "failure-v1-expired".to_string(),
+                manager: ManagerId::HomebrewFormula,
+                issue_key: HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY.to_string(),
+                command: Some("brew upgrade --formula fd".to_string()),
+                issue_summary: None,
+                error_excerpt: None,
+                created_at: UNIX_EPOCH,
+            }],
+            UNIX_EPOCH + RECENT_TASK_FAILURE_MAX_AGE + Duration::from_secs(1),
+        );
+
+        assert!(findings.is_empty());
     }
 }
