@@ -1,8 +1,8 @@
 import XCTest
 
 final class HelmCliShimCommandRunnerTests: XCTestCase {
-    func testDrainsStandardOutputAndError() {
-        let result = run(
+    func testDrainsStandardOutputAndError() throws {
+        let result = try run(
             executableURL: URL(fileURLWithPath: "/bin/sh"),
             arguments: ["-c", "yes x | head -c 131072; yes y | head -c 131072 >&2"],
             timeout: 5
@@ -15,9 +15,9 @@ final class HelmCliShimCommandRunnerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(result.stderr.count, 131_072)
     }
 
-    func testTimeoutTerminatesProcess() {
+    func testTimeoutTerminatesProcess() throws {
         let start = Date()
-        let result = run(
+        let result = try run(
             executableURL: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["30"],
             timeout: 0.1
@@ -32,7 +32,7 @@ final class HelmCliShimCommandRunnerTests: XCTestCase {
         executableURL: URL,
         arguments: [String],
         timeout: TimeInterval
-    ) -> HelmCliShimCommandResult {
+    ) throws -> HelmCliShimCommandResult {
         let expectation = expectation(description: "CLI command completes")
         var commandResult: HelmCliShimCommandResult?
 
@@ -46,6 +46,6 @@ final class HelmCliShimCommandRunnerTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: 10)
-        return try! XCTUnwrap(commandResult)
+        return try XCTUnwrap(commandResult)
     }
 }

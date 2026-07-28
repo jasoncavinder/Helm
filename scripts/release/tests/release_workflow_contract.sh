@@ -17,14 +17,14 @@ expect_pattern() {
   local pattern="$1"
   local file="$2"
   local description="$3"
-  rg -q -- "$pattern" "$file" || fail "$description"
+  grep -Eq -- "$pattern" "$file" || fail "$description"
 }
 
 reject_pattern() {
   local pattern="$1"
   local file="$2"
   local description="$3"
-  if rg -q -- "$pattern" "$file"; then
+  if grep -Eq -- "$pattern" "$file"; then
     fail "$description"
   fi
 }
