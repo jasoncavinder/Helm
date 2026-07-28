@@ -1003,6 +1003,55 @@ WHERE task_id = ?1
         })
     }
 
+    fn update_task_with_log(
+        &self,
+        task: &TaskRecord,
+        entry: &NewTaskLogRecord,
+    ) -> PersistenceResult<()> {
+        self.with_connection("update_task_with_log", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            let updated = transaction.execute(
+                "
+UPDATE task_records
+SET manager_id = ?2, task_type = ?3, status = ?4, created_at_unix = ?5
+WHERE task_id = ?1
+",
+                params![
+                    task_id_to_i64(task.id)?,
+                    task.manager.as_str(),
+                    task_type_to_str(task.task_type),
+                    task_status_to_str(task.status),
+                    to_unix_seconds(task.created_at)?,
+                ],
+            )?;
+
+            if updated == 0 {
+                return Err(storage_error_sqlite("task id was not found for update"));
+            }
+
+            transaction.execute(
+                "
+INSERT INTO task_log_records (
+    task_id, manager_id, task_type, status, level, message, created_at_unix
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+",
+                params![
+                    task_id_to_i64(entry.task_id)?,
+                    entry.manager.as_str(),
+                    task_type_to_str(entry.task_type),
+                    entry.status.map(task_status_to_str),
+                    task_log_level_to_str(entry.level),
+                    entry.message.as_str(),
+                    to_unix_seconds(entry.created_at)?,
+                ],
+            )?;
+
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
     fn list_recent_tasks(&self, limit: usize) -> PersistenceResult<Vec<TaskRecord>> {
         if limit == 0 {
             return Ok(Vec::new());
@@ -1211,6 +1260,69 @@ LIMIT ?2
                         created_at: from_unix_seconds(created_at_unix)?,
                     })
                 })?;
+
+            rows.collect()
+        })
+    }
+
+    fn list_recent_failure_diagnostic_logs(
+        &self,
+        cutoff: SystemTime,
+        issue_key: &str,
+        limit: usize,
+    ) -> PersistenceResult<Vec<TaskLogRecord>> {
+        if limit == 0 || issue_key.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        self.with_connection("list_recent_failure_diagnostic_logs", |connection| {
+            ensure_schema_ready(connection)?;
+            let issue_pattern = format!("%\"issueKey\":\"{}\"%", issue_key.trim());
+            let mut statement = connection.prepare(
+                "
+SELECT
+    logs.log_id,
+    logs.task_id,
+    logs.manager_id,
+    logs.task_type,
+    logs.status,
+    logs.level,
+    logs.message,
+    logs.created_at_unix
+FROM task_log_records AS logs
+INNER JOIN task_records AS tasks ON tasks.task_id = logs.task_id
+WHERE tasks.status = 'failed'
+  AND logs.created_at_unix >= ?1
+  AND logs.message LIKE '[diagnostic.v1] %'
+  AND logs.message LIKE ?2
+ORDER BY logs.created_at_unix DESC, logs.log_id DESC
+LIMIT ?3
+",
+            )?;
+            let rows = statement.query_map(
+                params![to_unix_seconds(cutoff)?, issue_pattern, to_i64(limit)?],
+                |row| {
+                    let log_id_raw: i64 = row.get(0)?;
+                    let task_id_raw: i64 = row.get(1)?;
+                    let manager_raw: String = row.get(2)?;
+                    let task_type_raw: String = row.get(3)?;
+                    let status_raw: Option<String> = row.get(4)?;
+                    let level_raw: String = row.get(5)?;
+                    let message: String = row.get(6)?;
+                    let created_at_unix: i64 = row.get(7)?;
+
+                    Ok(TaskLogRecord {
+                        id: i64_to_u64(log_id_raw)?,
+                        task_id: TaskId(i64_to_u64(task_id_raw)?),
+                        manager: parse_manager_id(&manager_raw)?,
+                        task_type: parse_task_type(&task_type_raw)?,
+                        status: status_raw.as_deref().map(parse_task_status).transpose()?,
+                        level: parse_task_log_level(&level_raw)?,
+                        message,
+                        created_at: from_unix_seconds(created_at_unix)?,
+                    })
+                },
+            )?;
 
             rows.collect()
         })
@@ -2282,6 +2394,72 @@ fn storage_error(operation: &str, error: rusqlite::Error) -> CoreError {
 
 fn storage_error_sqlite(message: &str) -> rusqlite::Error {
     rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(message.to_string())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SqliteStore;
+    use crate::models::{
+        ManagerId, NewTaskLogRecord, TaskId, TaskLogLevel, TaskRecord, TaskStatus, TaskType,
+    };
+    use crate::persistence::TaskStore;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_store(test_name: &str) -> SqliteStore {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("helm-sqlite-store-{test_name}-{nanos}.db"));
+        SqliteStore::new(path)
+    }
+
+    #[test]
+    fn update_task_with_log_is_atomic_when_task_row_is_missing() {
+        let store = temp_store("task-update-with-log-atomic");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        let task = TaskRecord {
+            id: TaskId(42),
+            manager: ManagerId::Rustup,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Cancelled,
+            created_at: SystemTime::now(),
+        };
+        let log = NewTaskLogRecord {
+            task_id: task.id,
+            manager: task.manager,
+            task_type: task.task_type,
+            status: Some(task.status),
+            level: TaskLogLevel::Warn,
+            message: "terminal transition".to_string(),
+            created_at: SystemTime::now(),
+        };
+
+        let result = store.update_task_with_log(&task, &log);
+        assert!(result.is_err(), "missing task row should fail atomically");
+
+        let logs = store
+            .list_task_logs(task.id, 10)
+            .expect("task log listing should succeed");
+        assert!(
+            logs.is_empty(),
+            "task log should not be written when the task update fails"
+        );
+
+        let tasks = store
+            .list_recent_tasks(10)
+            .expect("task listing should succeed");
+        assert!(
+            tasks.is_empty(),
+            "missing task update should not create a phantom task row"
+        );
+
+        let _ = fs::remove_file(store.database_path());
+    }
 }
 
 fn parse_manager_id(raw: &str) -> rusqlite::Result<ManagerId> {

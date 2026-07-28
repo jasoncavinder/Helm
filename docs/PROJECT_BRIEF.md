@@ -276,6 +276,7 @@ Settings include:
 - Background task queue with observable statuses.
 - Task types: detection, install, uninstall, refresh, search, upgrade.
 - Per-manager exclusivity locks; same manager tasks run serially.
+- Managers that share mutable backend state use a common execution lock; Homebrew formula and cask tasks never run concurrently within a Helm runtime process.
 - True process cancellation, not just UI dismissal.
 
 ---
@@ -311,7 +312,7 @@ Helm must support self-updating via a signed update mechanism.
 Requirements:
 - Code-signed updates
 - Version integrity verification
-- Delta updates preferred
+- Full signed DMG updates are the current direct-channel policy; delta payloads are deferred
 - No shell-based update mechanisms
 - Manual approval required (auto-update optional)
 

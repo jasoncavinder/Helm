@@ -36,7 +36,7 @@ import Foundation
     func setHomebrewKegAutoCleanup(enabled: Bool, withReply reply: @escaping (Bool) -> Void)
     func listPackageKegPolicies(withReply reply: @escaping (String?) -> Void)
     func setPackageKegPolicy(managerId: String, packageName: String, policyMode: Int32, withReply reply: @escaping (Bool) -> Void)
-    func installHelmCliShim(appBundlePath: String, appBundleIdentifier: String, withReply reply: @escaping (String?) -> Void)
+    func installHelmCliShim(withReply reply: @escaping (String?) -> Void)
     func listPackageManagerPreferences(withReply reply: @escaping (String?) -> Void)
     func setPackageManagerPreference(packageFamilyKey: String, managerId: String?, withReply reply: @escaping (Bool) -> Void)
     func previewUpgradePlan(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (String?) -> Void)

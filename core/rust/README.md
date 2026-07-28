@@ -8,31 +8,32 @@ This workspace holds the UI-agnostic core for Helm. It contains all business log
 |-------|------|
 | `helm-core` | Domain models, adapter trait, orchestration engine, SQLite persistence, all manager adapters |
 | `helm-ffi` | C ABI FFI boundary for bridging to Swift via XPC service |
+| `helm-cli` | CLI and TUI clients using the shared core/coordinator contracts |
 
-## Implemented Adapters (15)
+## Implemented Managers (28)
 
 | Category | Adapters |
 |----------|----------|
-| Toolchain / Runtime | mise, rustup |
-| System / OS / App Store | Homebrew, softwareupdate, mas |
-| Core Language | npm (global), pip (global), pipx, cargo, cargo-binstall |
-| Extended Language | pnpm (global), yarn (global), RubyGems, Poetry (self/plugins), Bundler |
+| Toolchain / Runtime | mise, asdf, rustup |
+| System / OS | Homebrew formulae and casks, MacPorts, softwareupdate, nix-darwin, Xcode Command Line Tools, Rosetta 2, firmware updates |
+| Language | npm, pnpm, yarn, pip, pipx, Poetry, RubyGems, Bundler, Cargo, cargo-binstall |
+| App / Platform | mas, Sparkle, Setapp, Docker Desktop, podman, colima, Parallels Desktop |
 
 ## Key Subsystems
 
 - **Adapter trait** — Capability-driven request/response contracts per manager
 - **Authority ordering** — Authoritative → Standard → Guarded phased execution
 - **Orchestration engine** — Task queue with per-manager serial execution, cross-manager parallelism, true process cancellation
-- **SQLite persistence** — Versioned schema (v1–v5), parameterized queries, transactional operations
-- **Post-upgrade validation** — After upgrade succeeds, re-checks `list_outdated` to verify the package was actually updated (11 adapters)
+- **SQLite persistence** — Versioned schema (v1–v16), parameterized queries, transactional operations
+- **Post-upgrade validation** — After upgrade succeeds, re-checks `list_outdated` where the manager supports validation
 - **Pinning** — Native pin support + virtual pin fallback, pin-aware upgrade-all
 - **Progressive search** — Local-first with debounced remote search and cache enrichment
 - **Structured tracing** — `#[instrument]` spans on adapter execution entry points
 
 ## Tests
 
-198+ unit and integration tests covering:
-- Adapter parsing fixtures for all 15 managers
+Unit and integration tests covering:
+- Adapter parsing fixtures across implemented managers
 - Orchestration, authority ordering, and cancellation flows
 - Post-upgrade validation scenarios
 - End-to-end integration tests

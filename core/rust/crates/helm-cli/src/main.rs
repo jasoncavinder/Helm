@@ -44,7 +44,11 @@ use helm_core::managed_automation_policy::{
     ManagedAutomationPolicyMode, apply_managed_automation_policy,
 };
 use helm_core::manager_dependencies::provenance_dependency_manager;
-use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
+use helm_core::manager_instances::{
+    install_instance_fingerprint, normalize_manager_install_instances,
+    preferred_system_manager_display_path, resolve_multi_instance_state,
+    trusted_system_manager_path,
+};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
@@ -85,6 +89,8 @@ use provenance::{
 };
 
 const TASK_FETCH_LIMIT: usize = 400;
+const DOCTOR_FAILURE_MATCH_LIMIT: usize = 16;
+const DOCTOR_FAILURE_MAX_AGE_SECS: u64 = 60 * 60;
 const TASK_FOLLOW_MAX_WAIT_MS: u64 = 30_000;
 const JSON_SCHEMA_VERSION: u32 = 1;
 const CLI_ONBOARDING_REQUIRED_EXIT_CODE: u8 = 5;
@@ -7907,11 +7913,14 @@ fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), St
             .push(instance);
     }
     let executable_states = build_manager_executable_doctor_states(&detection_map, &preference_map);
+    let recent_failure_diagnostics = collect_recent_doctor_failure_diagnostics(store);
     let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
         &executable_states,
+        recent_failure_diagnostics.as_slice(),
+        SystemTime::now(),
     );
 
     if options.json {
@@ -11988,7 +11997,7 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
         .map_err(|error| format!("failed to list manager install instances: {error}"))?;
 
     let detection_map: HashMap<ManagerId, helm_core::models::DetectionInfo> =
-        detections.into_iter().collect();
+        normalize_shared_detection_map(detections.into_iter().collect());
     let preference_map: HashMap<ManagerId, helm_core::persistence::ManagerPreference> = preferences
         .into_iter()
         .map(|preference| (preference.manager, preference))
@@ -12000,6 +12009,9 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             .entry(instance.manager)
             .or_default()
             .push(instance);
+    }
+    for instances in install_instance_map.values_mut() {
+        *instances = normalize_manager_install_instances(instances);
     }
     let mut multi_instance_ack_fingerprints: HashMap<ManagerId, Option<String>> = HashMap::new();
     for manager in ManagerId::ALL {
@@ -12049,6 +12061,11 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
         };
         let default_executable_path =
             default_manager_executable_path(descriptor.id, &executable_paths);
+        let executable_path = effective_manager_executable_path(
+            descriptor.id,
+            detection.and_then(|info| info.executable_path.as_deref()),
+            default_executable_path.as_deref(),
+        );
         let configured_enabled = preference
             .map(|preference| preference.enabled)
             .unwrap_or_else(|| default_enabled_for_manager(descriptor.id));
@@ -12086,9 +12103,7 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             .to_string(),
             detected: detection.map(|info| info.installed).unwrap_or(false),
             version: detection.and_then(|info| info.version.clone()),
-            executable_path: detection
-                .and_then(|info| info.executable_path.as_ref())
-                .map(|path| path.to_string_lossy().into_owned()),
+            executable_path,
             enabled,
             is_implemented: true,
             is_optional: matches!(
@@ -12174,6 +12189,51 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
         left.manager_id.cmp(&right.manager_id)
     });
     Ok(rows)
+}
+
+fn detection_version_present(info: &DetectionInfo) -> bool {
+    info.version
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+}
+
+fn normalize_shared_detection_map(
+    mut detection_map: HashMap<ManagerId, DetectionInfo>,
+) -> HashMap<ManagerId, DetectionInfo> {
+    let formula = detection_map.get(&ManagerId::HomebrewFormula).cloned();
+    let cask = detection_map.get(&ManagerId::HomebrewCask).cloned();
+    let shared_installed = formula
+        .as_ref()
+        .is_some_and(|info| info.installed || detection_version_present(info))
+        || cask
+            .as_ref()
+            .is_some_and(|info| info.installed || detection_version_present(info));
+
+    if !shared_installed {
+        return detection_map;
+    }
+
+    let executable_path = formula
+        .as_ref()
+        .and_then(|info| info.executable_path.clone())
+        .or_else(|| cask.as_ref().and_then(|info| info.executable_path.clone()));
+    let version = formula
+        .as_ref()
+        .and_then(|info| normalize_nonempty(info.version.clone()))
+        .or_else(|| {
+            cask.as_ref()
+                .and_then(|info| normalize_nonempty(info.version.clone()))
+        });
+    let normalized = DetectionInfo {
+        installed: true,
+        executable_path,
+        version,
+    };
+
+    detection_map.insert(ManagerId::HomebrewFormula, normalized.clone());
+    detection_map.insert(ManagerId::HomebrewCask, normalized);
+    detection_map
 }
 
 fn list_manager_install_instances(
@@ -12337,12 +12397,6 @@ fn manager_executable_status(
         .map(|preference| (preference.manager, preference))
         .collect();
 
-    let active_executable_path = detections.get(&manager).and_then(|detection| {
-        detection
-            .executable_path
-            .as_deref()
-            .and_then(normalize_path_string)
-    });
     let executable_paths = collect_manager_executable_paths(
         manager,
         detections
@@ -12350,6 +12404,13 @@ fn manager_executable_status(
             .and_then(|d| d.executable_path.as_deref()),
     );
     let default_executable_path = default_manager_executable_path(manager, &executable_paths);
+    let active_executable_path = effective_manager_executable_path(
+        manager,
+        detections
+            .get(&manager)
+            .and_then(|detection| detection.executable_path.as_deref()),
+        default_executable_path.as_deref(),
+    );
     let selected_executable_path =
         resolved_manager_selected_executable_path(manager, &detections, &preferences);
     let selected_executable_differs_from_default = selected_executable_differs_from_default(
@@ -12388,7 +12449,7 @@ fn resolved_manager_selected_executable_path(
     let preferred_executable_path = preferences
         .get(&manager)
         .and_then(|preference| normalize_nonempty(preference.selected_executable_path.clone()));
-    resolve_selected_executable_path(preferred_executable_path, default_executable_path)
+    resolve_selected_executable_path(manager, preferred_executable_path, default_executable_path)
 }
 
 fn manager_enablement_eligibility_for_store(
@@ -12512,7 +12573,10 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::DockerDesktop => &["docker"],
         ManagerId::Podman => &["podman"],
         ManagerId::Colima => &["colima"],
-        ManagerId::XcodeCommandLineTools => &["xcode-select"],
+        ManagerId::XcodeCommandLineTools => &[
+            "/Library/Developer/CommandLineTools/usr/bin/clang",
+            "/usr/bin/xcode-select",
+        ],
         ManagerId::SoftwareUpdate => &["/usr/sbin/softwareupdate"],
         _ => &[],
     }
@@ -12749,11 +12813,13 @@ fn collect_manager_executable_paths(
     if let Some(active_path) = active_path
         && let Some(rendered) = normalize_path_string(active_path)
     {
+        let rendered = canonicalize_manager_executable_display_path(id, rendered);
         seen.insert(rendered.clone());
         resolved.push(rendered);
     }
 
     for discovered in cached_discovered_executable_paths(id, manager_executable_candidates(id)) {
+        let discovered = canonicalize_manager_executable_display_path(id, discovered);
         if seen.insert(discovered.clone()) {
             resolved.push(discovered);
         }
@@ -12762,23 +12828,81 @@ fn collect_manager_executable_paths(
     resolved
 }
 
+fn canonicalize_manager_executable_display_path(manager: ManagerId, path: String) -> String {
+    if let Some(preferred) = preferred_system_manager_display_path(manager)
+        && trusted_system_manager_path(manager, Path::new(path.as_str()))
+    {
+        return preferred.to_string();
+    }
+    path
+}
+
 fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -> Option<String> {
+    if let Some(preferred) = preferred_system_manager_display_path(id)
+        && (executable_paths.iter().any(|path| path == preferred) || Path::new(preferred).is_file())
+    {
+        return Some(preferred.to_string());
+    }
     if let Some(first) = executable_paths.first() {
         return Some(first.clone());
     }
     cached_discovered_executable_paths(id, manager_executable_candidates(id))
         .into_iter()
+        .map(|path| canonicalize_manager_executable_display_path(id, path))
         .next()
 }
 
+fn effective_manager_executable_path(
+    manager: ManagerId,
+    detected_path: Option<&Path>,
+    default_path: Option<&str>,
+) -> Option<String> {
+    let detected_path = detected_path.and_then(normalize_path_string);
+    let Some(detected_path) = detected_path else {
+        return default_path.map(ToOwned::to_owned);
+    };
+    let Some(preferred) = preferred_system_manager_display_path(manager) else {
+        return Some(detected_path);
+    };
+    if detected_path == preferred {
+        return Some(detected_path);
+    }
+    if trusted_system_manager_path(manager, Path::new(detected_path.as_str())) {
+        return Some(preferred.to_string());
+    }
+    if matches!(
+        manager,
+        ManagerId::SoftwareUpdate
+            | ManagerId::XcodeCommandLineTools
+            | ManagerId::Rosetta2
+            | ManagerId::FirmwareUpdates
+    ) {
+        if let Some(path) = default_path
+            && trusted_system_manager_path(manager, Path::new(path))
+        {
+            return Some(preferred.to_string());
+        }
+        return default_path
+            .map(ToOwned::to_owned)
+            .or_else(|| Some(preferred.to_string()));
+    }
+    Some(detected_path)
+}
+
 fn resolve_selected_executable_path(
+    manager: ManagerId,
     preferred: Option<String>,
     default_path: Option<String>,
 ) -> Option<String> {
-    if let Some(preferred) = preferred
-        && std::path::Path::new(preferred.as_str()).is_file()
-    {
-        return Some(preferred);
+    if let Some(preferred) = preferred {
+        if let Some(canonical) = preferred_system_manager_display_path(manager)
+            && trusted_system_manager_path(manager, std::path::Path::new(preferred.as_str()))
+        {
+            return Some(canonical.to_string());
+        }
+        if std::path::Path::new(preferred.as_str()).is_file() {
+            return Some(preferred);
+        }
     }
     default_path
 }
@@ -12835,6 +12959,24 @@ fn build_manager_executable_doctor_states(
         );
     }
     states
+}
+
+fn collect_recent_doctor_failure_diagnostics(
+    store: &SqliteStore,
+) -> Vec<helm_core::doctor::RecentTaskFailureDiagnostic> {
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(DOCTOR_FAILURE_MAX_AGE_SECS))
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    store
+        .list_recent_failure_diagnostic_logs(
+            cutoff,
+            helm_core::doctor::HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY,
+            DOCTOR_FAILURE_MATCH_LIMIT,
+        )
+        .unwrap_or_default()
+        .iter()
+        .filter_map(helm_core::doctor::parse_recent_task_failure_diagnostic)
+        .collect()
 }
 
 fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<String> {
@@ -13885,7 +14027,7 @@ fn manager_uninstall_route_error_message(
         }
         helm_core::manager_lifecycle::ManagerUninstallRouteError::InvalidOptions => {
             format!(
-                "manager '{}' uninstall options are invalid for the selected strategy; review mise cleanup/config flags and retry.",
+                "manager '{}' uninstall options are invalid for the selected strategy; remove unrelated cleanup flags and retry.",
                 manager.as_str()
             )
         }
@@ -17316,6 +17458,150 @@ mod tests {
             rustup.multi_instance_fingerprint.as_deref(),
             Some(acknowledged_fingerprint.as_str())
         );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn list_managers_normalizes_system_helper_instances_and_paths() {
+        let db_path = temp_db_path("manager-system-helper-normalization");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::SoftwareUpdate,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/usr/bin/sw_vers")),
+                    version: Some("15.4".to_string()),
+                },
+            )
+            .expect("softwareupdate detection should persist");
+
+        let helper = ManagerInstallInstance {
+            manager: ManagerId::SoftwareUpdate,
+            instance_id: "softwareupdate-sw-vers".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/usr/bin/sw_vers".to_string(),
+            display_path: PathBuf::from("/usr/bin/sw_vers"),
+            canonical_path: Some(PathBuf::from("/usr/bin/sw_vers")),
+            alias_paths: vec![PathBuf::from("/usr/bin/sw_vers")],
+            is_active: true,
+            version: Some("15.4".to_string()),
+            provenance: InstallProvenance::System,
+            confidence: 0.95,
+            decision_margin: Some(0.60),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::InteractivePrompt,
+            update_strategy: StrategyKind::InteractivePrompt,
+            remediation_strategy: StrategyKind::ManualRemediation,
+            explanation_primary: Some(
+                "softwareupdate executable path is in an OS-managed system prefix".to_string(),
+            ),
+            explanation_secondary: None,
+            competing_provenance: None,
+            competing_confidence: None,
+        };
+        let primary = ManagerInstallInstance {
+            manager: ManagerId::SoftwareUpdate,
+            instance_id: "softwareupdate-system".to_string(),
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/usr/sbin/softwareupdate".to_string(),
+            display_path: PathBuf::from("/usr/sbin/softwareupdate"),
+            canonical_path: Some(PathBuf::from("/usr/sbin/softwareupdate")),
+            alias_paths: vec![PathBuf::from("/usr/sbin/softwareupdate")],
+            is_active: false,
+            version: Some("15.4".to_string()),
+            provenance: InstallProvenance::System,
+            confidence: 0.94,
+            decision_margin: Some(0.58),
+            automation_level: AutomationLevel::Automatic,
+            uninstall_strategy: StrategyKind::InteractivePrompt,
+            update_strategy: StrategyKind::InteractivePrompt,
+            remediation_strategy: StrategyKind::ManualRemediation,
+            explanation_primary: Some(
+                "softwareupdate executable path is in an OS-managed system prefix".to_string(),
+            ),
+            explanation_secondary: None,
+            competing_provenance: None,
+            competing_confidence: None,
+        };
+
+        store
+            .replace_install_instances(ManagerId::SoftwareUpdate, &[helper, primary])
+            .expect("softwareupdate instances should persist");
+        store
+            .set_manager_selected_executable_path(
+                ManagerId::SoftwareUpdate,
+                Some("/usr/bin/sw_vers"),
+            )
+            .expect("softwareupdate selected path should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let softwareupdate = managers
+            .into_iter()
+            .find(|manager| manager.manager_id == "softwareupdate")
+            .expect("softwareupdate manager row should exist");
+
+        assert_eq!(softwareupdate.install_instance_count, 1);
+        assert_eq!(softwareupdate.multi_instance_state, "none");
+        assert_eq!(
+            softwareupdate.executable_path.as_deref(),
+            Some("/usr/sbin/softwareupdate")
+        );
+        assert_eq!(
+            softwareupdate.selected_executable_path.as_deref(),
+            Some("/usr/sbin/softwareupdate")
+        );
+        assert_eq!(softwareupdate.active_provenance.as_deref(), Some("system"));
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn list_managers_normalizes_homebrew_formula_detection_for_cask() {
+        let db_path = temp_db_path("manager-homebrew-shared-detection");
+        let store = SqliteStore::new(&db_path);
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(PathBuf::from("/usr/local/bin/brew")),
+                    version: Some("5.0.16".to_string()),
+                },
+            )
+            .expect("homebrew formula detection should persist");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewCask,
+                &DetectionInfo {
+                    installed: false,
+                    executable_path: Some(PathBuf::from("/usr/local/bin/brew")),
+                    version: None,
+                },
+            )
+            .expect("homebrew cask detection should persist");
+
+        let managers = list_managers(&store).expect("manager list should load");
+        let formula = managers
+            .iter()
+            .find(|manager| manager.manager_id == "homebrew_formula")
+            .expect("formula manager row should exist");
+        let cask = managers
+            .iter()
+            .find(|manager| manager.manager_id == "homebrew_cask")
+            .expect("cask manager row should exist");
+
+        assert!(formula.detected);
+        assert!(cask.detected);
+        assert_eq!(cask.version.as_deref(), Some("5.0.16"));
+        assert_eq!(cask.executable_path.as_deref(), Some("/usr/local/bin/brew"));
 
         let _ = fs::remove_file(db_path);
     }

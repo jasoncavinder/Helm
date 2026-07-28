@@ -73,7 +73,7 @@ Within each phase, managers refresh in parallel. A failure in one manager does n
 
 ### What is Safe Mode?
 
-Safe Mode prevents guarded managers from executing upgrades during "Upgrade All" operations. When enabled, OS-level updates require explicit confirmation. You can toggle Safe Mode in Settings.
+Safe Mode blocks macOS Software Update upgrades during "Upgrade All" operations. Disable it and explicitly approve OS updates to include them. You can toggle Safe Mode in Settings.
 
 ### How does search work?
 

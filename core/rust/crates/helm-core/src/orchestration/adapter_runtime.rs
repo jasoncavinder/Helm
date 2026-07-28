@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
+use tokio::sync::{Mutex, watch};
 use tracing::instrument;
 
 use crate::adapters::{
@@ -19,7 +20,7 @@ use crate::models::{
 };
 use crate::orchestration::{
     AdapterExecutionRuntime, AdapterTaskSnapshot, AdapterTaskTerminalState, CancellationMode,
-    OrchestrationResult,
+    OrchestrationResult, manager_execution_domain,
 };
 use crate::persistence::{
     DetectionStore, ManagerPreference, PackageStore, SearchCacheStore, TaskStore,
@@ -48,6 +49,64 @@ pub struct AdapterRuntime {
     package_store: Option<Arc<dyn PackageStore>>,
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     detection_store: Option<Arc<dyn DetectionStore>>,
+    persistence_ordering: Arc<ResponsePersistenceOrdering>,
+}
+
+#[derive(Default)]
+struct ResponsePersistenceOrdering {
+    tails: Mutex<HashMap<ManagerId, watch::Receiver<bool>>>,
+}
+
+struct ResponsePersistenceTurn {
+    predecessor: Option<watch::Receiver<bool>>,
+    completion: watch::Sender<bool>,
+    completed: bool,
+}
+
+impl ResponsePersistenceOrdering {
+    async fn reserve(&self, manager: ManagerId) -> ResponsePersistenceTurn {
+        let (completion, receiver) = watch::channel(false);
+        let predecessor = self
+            .tails
+            .lock()
+            .await
+            .insert(manager_execution_domain(manager), receiver);
+        ResponsePersistenceTurn {
+            predecessor,
+            completion,
+            completed: false,
+        }
+    }
+}
+
+impl ResponsePersistenceTurn {
+    async fn wait_for_predecessor(&mut self) {
+        let Some(predecessor) = self.predecessor.as_mut() else {
+            return;
+        };
+
+        loop {
+            if *predecessor.borrow_and_update() {
+                return;
+            }
+            if predecessor.changed().await.is_err() {
+                return;
+            }
+        }
+    }
+
+    fn complete(&mut self) {
+        if !self.completed {
+            self.completion.send_replace(true);
+            self.completed = true;
+        }
+    }
+}
+
+impl Drop for ResponsePersistenceTurn {
+    fn drop(&mut self) {
+        self.complete();
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -129,6 +188,12 @@ const HOMEBREW_API_CACHE_PERMISSION_PROBES: [&str; 3] = [
     "brew doctor",
     "ls -ld ~/Library/Caches/Homebrew ~/Library/Caches/Homebrew/api",
     "brew update --debug",
+];
+const HOMEBREW_LOCK_CONFLICT_PROBES: [&str; 4] = [
+    "ps -Ao pid,ppid,stat,etime,command | rg \"brew( |$)\"",
+    "brew upgrade --formula --dry-run <package>",
+    "brew upgrade --cask --dry-run <package>",
+    "wait for the other Homebrew process to finish, then retry",
 ];
 
 impl AdapterRuntime {
@@ -216,6 +281,7 @@ impl AdapterRuntime {
             package_store,
             search_cache_store,
             detection_store,
+            persistence_ordering: Arc::new(ResponsePersistenceOrdering::default()),
         })
     }
 
@@ -611,6 +677,23 @@ impl AdapterRuntime {
                 }
                 Err(error) => {
                     let attributed = attribute_error(error, manager, task_type, action);
+                    if attributed.kind == CoreErrorKind::Timeout
+                        && let Err(cancel_error) = self
+                            .execution
+                            .cancel(task_id, CancellationMode::Immediate)
+                            .await
+                    {
+                        tracing::warn!(
+                            manager = ?manager,
+                            task_type = ?task_type,
+                            action = ?action,
+                            task_id = task_id.0,
+                            attempt,
+                            kind = ?cancel_error.kind,
+                            message = %cancel_error.message,
+                            "failed to cancel timed-out request-response task"
+                        );
+                    }
                     tracing::warn!(
                         manager = ?manager,
                         task_type = ?task_type,
@@ -709,6 +792,10 @@ impl AdapterRuntime {
         let task_id = self.execution.submit(adapter, request).await?;
 
         if let Some(task_store) = &self.task_store {
+            // Reserve the domain-persistence turn before queued-task persistence can yield.
+            // Task execution remains independent, while response snapshots are committed in
+            // submission order for each shared execution domain.
+            let persistence_turn = self.persistence_ordering.reserve(manager).await;
             let record = TaskRecord {
                 id: task_id,
                 manager,
@@ -761,6 +848,7 @@ impl AdapterRuntime {
                 package_store: self.package_store.clone(),
                 search_cache_store: self.search_cache_store.clone(),
                 detection_store: self.detection_store.clone(),
+                persistence_turn,
                 task_id,
                 manager,
                 task_type,
@@ -836,6 +924,7 @@ struct PersistenceWatcherContext {
     package_store: Option<Arc<dyn PackageStore>>,
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     detection_store: Option<Arc<dyn DetectionStore>>,
+    persistence_turn: ResponsePersistenceTurn,
     task_id: TaskId,
     manager: ManagerId,
     task_type: TaskType,
@@ -849,6 +938,7 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
         package_store,
         search_cache_store,
         detection_store,
+        mut persistence_turn,
         task_id,
         manager,
         task_type,
@@ -867,17 +957,9 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                         status: TaskStatus::Running,
                         created_at: SystemTime::now(),
                     };
-                    let _ = persist_update_task(
+                    let _ = persist_update_task_with_log(
                         task_store.clone(),
                         running_record,
-                        manager,
-                        task_type,
-                        action,
-                    )
-                    .await;
-
-                    let _ = persist_append_task_log(
-                        task_store.clone(),
                         NewTaskLogRecord {
                             task_id,
                             manager,
@@ -922,7 +1004,57 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             }
         };
 
-        // Persist task result (domain data)
+        let updated = TaskRecord {
+            id: snapshot.runtime.id,
+            manager: snapshot.runtime.manager,
+            task_type: snapshot.runtime.task_type,
+            status: snapshot.runtime.status,
+            // Use terminal timestamp so retention windows for completed/failed tasks
+            // are measured from completion/failure, not from original queue time.
+            created_at: SystemTime::now(),
+        };
+
+        let terminal_status = snapshot.runtime.status;
+        let terminal_error = terminal_error_details(&snapshot);
+        let terminal_level = task_log_level_for_status(terminal_status);
+        let terminal_message = task_log_message_for_status(terminal_status, terminal_error.clone());
+
+        if let Err(error) = persist_update_task_with_log(
+            task_store.clone(),
+            updated,
+            NewTaskLogRecord {
+                task_id: snapshot.runtime.id,
+                manager: snapshot.runtime.manager,
+                task_type: snapshot.runtime.task_type,
+                status: Some(terminal_status),
+                level: terminal_level,
+                message: terminal_message,
+                created_at: SystemTime::now(),
+            },
+            snapshot.runtime.manager,
+            snapshot.runtime.task_type,
+            action,
+        )
+        .await
+        {
+            tracing::error!(
+                manager = ?manager,
+                task_id = task_id.0,
+                task_type = ?task_type,
+                action = ?action,
+                kind = ?error.kind,
+                message = %error.message,
+                "failed to persist terminal task transition"
+            );
+        }
+
+        // Terminal task state is persisted above before waiting for earlier domain writes. This
+        // keeps completed tasks visible promptly while preventing an older response snapshot
+        // from overwriting a later mutation for the same execution domain.
+        persistence_turn.wait_for_predecessor().await;
+
+        // Persist task result (domain data) after the task is marked terminal so
+        // long-running snapshot/cache writes do not leave completed work looking stuck.
         if let Some(package_store) = package_store
             && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
             && let Err(error) =
@@ -939,7 +1071,9 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             );
         }
 
-        // Persist search results to cache
+        // Persist search results to cache after the task reaches terminal state. Catalog-sync
+        // payloads can be large enough that keeping the task marked running until cache writes
+        // finish looks like a hung task even though the subprocess has already exited.
         if let Some(search_cache_store) = search_cache_store
             && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
             && let Err(error) =
@@ -979,7 +1113,8 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             );
         }
 
-        // Persist detection results
+        // Persist detection results after the task is visible as terminal to keep manager tasks
+        // from appearing hung on store updates.
         if let Some(detection_store) = detection_store
             && let Some(AdapterTaskTerminalState::Succeeded(response)) = &snapshot.terminal_state
             && let Err(error) =
@@ -997,68 +1132,9 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             );
         }
 
-        let updated = TaskRecord {
-            id: snapshot.runtime.id,
-            manager: snapshot.runtime.manager,
-            task_type: snapshot.runtime.task_type,
-            status: snapshot.runtime.status,
-            // Use terminal timestamp so retention windows for completed/failed tasks
-            // are measured from completion/failure, not from original queue time.
-            created_at: SystemTime::now(),
-        };
-
-        if let Err(error) = persist_update_task(
-            task_store.clone(),
-            updated,
-            snapshot.runtime.manager,
-            snapshot.runtime.task_type,
-            action,
-        )
-        .await
-        {
-            tracing::error!(
-                manager = ?manager,
-                task_id = task_id.0,
-                task_type = ?task_type,
-                action = ?action,
-                kind = ?error.kind,
-                message = %error.message,
-                "failed to persist terminal task status"
-            );
-        }
-
-        let terminal_status = snapshot.runtime.status;
-        let terminal_error = terminal_error_details(&snapshot);
-        let terminal_level = task_log_level_for_status(terminal_status);
-        let terminal_message = task_log_message_for_status(terminal_status, terminal_error.clone());
-
-        if let Err(error) = persist_append_task_log(
-            task_store.clone(),
-            NewTaskLogRecord {
-                task_id: snapshot.runtime.id,
-                manager: snapshot.runtime.manager,
-                task_type: snapshot.runtime.task_type,
-                status: Some(terminal_status),
-                level: terminal_level,
-                message: terminal_message,
-                created_at: SystemTime::now(),
-            },
-            snapshot.runtime.manager,
-            snapshot.runtime.task_type,
-            action,
-        )
-        .await
-        {
-            tracing::warn!(
-                manager = ?manager,
-                task_id = task_id.0,
-                task_type = ?task_type,
-                action = ?action,
-                kind = ?error.kind,
-                message = %error.message,
-                "failed to persist terminal task log"
-            );
-        }
+        // Later domain responses may proceed once this task's package/cache/detection writes
+        // have completed. Supplemental task logs do not affect response ordering.
+        persistence_turn.complete();
 
         let failure_diagnostics = build_failure_diagnostic_entries(&snapshot, terminal_error);
         for diagnostic in failure_diagnostics {
@@ -1358,22 +1434,43 @@ async fn persist_create_task(
     .await
 }
 
-async fn persist_update_task(
+async fn persist_update_task_with_log(
     task_store: Arc<dyn TaskStore>,
     task_record: TaskRecord,
+    log_entry: NewTaskLogRecord,
     manager: ManagerId,
     task_type: TaskType,
     action: ManagerAction,
 ) -> OrchestrationResult<()> {
-    persist_task_record_with_retry(
-        task_store,
-        task_record,
-        manager,
-        task_type,
-        action,
-        TaskStoreOperation::Update,
-    )
-    .await
+    let mut remaining_attempts = TASK_PERSIST_RETRY_ATTEMPTS;
+    loop {
+        let store = task_store.clone();
+        let record = task_record.clone();
+        let entry = log_entry.clone();
+        let op_result =
+            tokio::task::spawn_blocking(move || store.update_task_with_log(&record, &entry))
+                .await
+                .map_err(|join_error| CoreError {
+                    manager: Some(manager),
+                    task: Some(task_type),
+                    action: Some(action),
+                    kind: CoreErrorKind::Internal,
+                    message: format!("task transition persistence join failure: {join_error}"),
+                })?;
+
+        match op_result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let attributed = attribute_error(error, manager, task_type, action);
+                remaining_attempts = remaining_attempts.saturating_sub(1);
+                if remaining_attempts == 0 || attributed.kind != CoreErrorKind::StorageFailure {
+                    return Err(attributed);
+                }
+
+                tokio::time::sleep(Duration::from_millis(TASK_PERSIST_RETRY_DELAY_MS)).await;
+            }
+        }
+    }
 }
 
 async fn persist_append_task_log(
@@ -1591,8 +1688,8 @@ fn build_failure_diagnostic_envelope(
 }
 
 fn classify_failure_issue(manager: ManagerId, combined_text: &str) -> FailureIssueClassification {
+    let normalized = normalize_failure_text(combined_text);
     if manager == ManagerId::HomebrewFormula {
-        let normalized = normalize_failure_text(combined_text);
         if normalized.contains("no available formula with the name \"formula.jws.json\"")
             || (normalized.contains("formulaunavailableerror")
                 && normalized.contains("formula.jws.json"))
@@ -1617,6 +1714,24 @@ fn classify_failure_issue(manager: ManagerId, combined_text: &str) -> FailureIss
                 recommended_probes: &HOMEBREW_API_CACHE_PERMISSION_PROBES,
             };
         }
+    }
+
+    if matches!(
+        manager,
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask
+    ) && normalized.contains("process has already locked /")
+        && normalized.contains("brew ")
+        && (normalized.contains("/cellar/")
+            || normalized.contains("/caskroom/")
+            || normalized.contains("/homebrew/locks/"))
+    {
+        return FailureIssueClassification {
+            key: "homebrew.cellar_lock_conflict",
+            owner: "local_runtime",
+            confidence: "high",
+            summary: "Another Homebrew process already holds a lock for this target.",
+            recommended_probes: &HOMEBREW_LOCK_CONFLICT_PROBES,
+        };
     }
 
     FailureIssueClassification {
@@ -1710,7 +1825,6 @@ fn truncate_for_diagnostic(value: &str, max_chars: usize) -> String {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TaskStoreOperation {
     Create,
-    Update,
 }
 
 async fn persist_task_record_with_retry(
@@ -1727,7 +1841,6 @@ async fn persist_task_record_with_retry(
         let record = task_record.clone();
         let op_result = tokio::task::spawn_blocking(move || match operation {
             TaskStoreOperation::Create => store.create_task(&record),
-            TaskStoreOperation::Update => store.update_task(&record),
         })
         .await
         .map_err(|join_error| CoreError {
@@ -2286,7 +2399,7 @@ mod tests {
     use crate::adapters::{AdapterRequest, AdapterResponse, MutationResult, SearchRequest};
     use crate::execution::{
         ManagerTimeoutProfile, TaskOutputRecord, clear_manager_timeout_profiles,
-        set_manager_timeout_profile,
+        manager_execution_preferences_test_guard, set_manager_timeout_profile,
     };
     use crate::models::{
         AutomationLevel, CoreError, CoreErrorKind, DetectionInfo, InstallInstanceIdentityKind,
@@ -2301,15 +2414,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, SystemTime};
-
-    fn timeout_profile_test_guard() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("timeout profile test lock should be available")
-    }
 
     fn temp_sqlite_store(test_name: &str) -> SqliteStore {
         let stamp = SystemTime::now()
@@ -2357,7 +2462,7 @@ mod tests {
 
     #[test]
     fn refresh_wait_timeout_uses_default_policy_when_no_override_is_set() {
-        let _guard = timeout_profile_test_guard();
+        let _guard = manager_execution_preferences_test_guard();
         clear_manager_timeout_profiles();
 
         assert_eq!(
@@ -2380,7 +2485,7 @@ mod tests {
 
     #[test]
     fn refresh_wait_timeout_clamps_policy_to_operation_cap() {
-        let _guard = timeout_profile_test_guard();
+        let _guard = manager_execution_preferences_test_guard();
         clear_manager_timeout_profiles();
         set_manager_timeout_profile(
             ManagerId::Npm,
@@ -2412,7 +2517,7 @@ mod tests {
 
     #[test]
     fn refresh_wait_timeout_respects_policy_when_below_cap() {
-        let _guard = timeout_profile_test_guard();
+        let _guard = manager_execution_preferences_test_guard();
         clear_manager_timeout_profiles();
         set_manager_timeout_profile(
             ManagerId::Npm,
@@ -2712,6 +2817,28 @@ mod tests {
         );
         assert_eq!(issue.key, "homebrew.api_manifest_treated_as_formula");
         assert_eq!(issue.owner, "homebrew");
+        assert_eq!(issue.confidence, "high");
+    }
+
+    #[test]
+    fn classify_failure_issue_detects_homebrew_lock_conflict_signature() {
+        let issue = classify_failure_issue(
+            ManagerId::HomebrewFormula,
+            "Error: A `brew upgrade fd` process has already locked /usr/local/Cellar/fd.\nPlease wait for it to finish or terminate it to continue.",
+        );
+        assert_eq!(issue.key, "homebrew.cellar_lock_conflict");
+        assert_eq!(issue.owner, "local_runtime");
+        assert_eq!(issue.confidence, "high");
+    }
+
+    #[test]
+    fn classify_failure_issue_detects_homebrew_cask_lock_conflict_signature() {
+        let issue = classify_failure_issue(
+            ManagerId::HomebrewCask,
+            "Error: A `brew upgrade --cask iterm2` process has already locked /opt/homebrew/Caskroom/iterm2.",
+        );
+        assert_eq!(issue.key, "homebrew.cellar_lock_conflict");
+        assert_eq!(issue.owner, "local_runtime");
         assert_eq!(issue.confidence, "high");
     }
 

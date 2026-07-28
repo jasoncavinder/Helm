@@ -8,9 +8,9 @@ on:
         required: true
         type: string
       upload_auxiliary_assets:
-        description: "Upload MAS/Setapp/Business artifacts to GitHub Release"
+        description: "Upload unsigned MAS/Setapp/Business artifacts to the existing GitHub Release"
         required: false
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -21,49 +21,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ensure-release:
+  verify-published-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     env:
       TAG_NAME: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Ensure release exists
+      - name: Verify release is already published
         run: |
           set -euo pipefail
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Release exists for $TAG_NAME."
-            exit 0
+          if ! IS_DRAFT="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')"; then
+            echo "::error::Release $TAG_NAME does not exist. Publish and verify the direct release before running this auxiliary workflow."
+            exit 1
           fi
 
-          echo "Release for $TAG_NAME not found; creating draft release."
-          gh release create "$TAG_NAME" \
-            --title "$TAG_NAME" \
-            --notes "Automated release scaffold for ${TAG_NAME}."
+          if [ "$IS_DRAFT" != "false" ]; then
+            echo "::error::Release $TAG_NAME is still a draft. Publish and verify the direct release before running this auxiliary workflow."
+            exit 1
+          fi
 
-  direct-gui:
-    needs: ensure-release
-    permissions:
-      contents: write
-      pull-requests: write
-    uses: ./.github/workflows/release-macos-dmg.yml
-    with:
-      tag: ${{ inputs.tag }}
-    secrets: inherit
-
-  direct-cli:
-    needs: ensure-release
-    permissions:
-      contents: write
-      pull-requests: write
-    uses: ./.github/workflows/release-cli-direct.yml
-    with:
-      tag: ${{ inputs.tag }}
-    secrets: inherit
+          echo "[preflight] Verified published release for $TAG_NAME."
 
   auxiliary-variants:
-    needs: ensure-release
+    needs: verify-published-release
     runs-on: macos-14
     permissions:
       contents: write
@@ -82,7 +62,6 @@ jobs:
             artifact_prefix: helm-business
     env:
       TAG_NAME: ${{ inputs.tag }}
-      UPLOAD_AUXILIARY: ${{ inputs.upload_auxiliary_assets }}
     steps:
       - name: Checkout tag
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

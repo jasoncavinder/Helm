@@ -1821,11 +1821,11 @@ private extension InspectorManagerDetailView {
                     .foregroundColor(HelmTheme.stateAttention)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(issue.summary ?? issue.issueCode)
+                    Text(genericPackageStateIssueSummary(issue))
                         .font(.callout.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let evidencePrimary = issue.evidencePrimary,
+                    if let evidencePrimary = genericPackageStateIssuePrimaryEvidence(issue),
                        !evidencePrimary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(evidencePrimary)
                             .font(.caption)
@@ -1833,7 +1833,7 @@ private extension InspectorManagerDetailView {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if let evidenceSecondary = issue.evidenceSecondary,
+                    if let evidenceSecondary = genericPackageStateIssueSecondaryEvidence(issue),
                        !evidenceSecondary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(evidenceSecondary)
                             .font(.caption2)
@@ -1869,6 +1869,40 @@ private extension InspectorManagerDetailView {
             RoundedRectangle(cornerRadius: 10)
                 .fill(HelmTheme.surfaceElevated)
         )
+    }
+
+    func genericPackageStateIssueSummary(_ issue: ManagerPackageStateIssue) -> String {
+        guard issue.issueCode == "homebrew_cellar_lock_conflict" else {
+            return issue.summary ?? issue.issueCode
+        }
+        return "app.inspector.package_state_issue.homebrew_lock.title".localized
+    }
+
+    func genericPackageStateIssuePrimaryEvidence(_ issue: ManagerPackageStateIssue) -> String? {
+        guard issue.issueCode == "homebrew_cellar_lock_conflict" else {
+            return issue.evidencePrimary
+        }
+        let packageName = issue.packageName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageName.isEmpty else {
+            return "app.inspector.package_state_issue.homebrew_lock.message_generic".localized
+        }
+        return "app.inspector.package_state_issue.homebrew_lock.message".localized(with: [
+            "manager": localizedManagerDisplayName(issue.sourceManagerId),
+            "package": packageName
+        ])
+    }
+
+    func genericPackageStateIssueSecondaryEvidence(_ issue: ManagerPackageStateIssue) -> String? {
+        guard issue.issueCode == "homebrew_cellar_lock_conflict" else {
+            return issue.evidenceSecondary
+        }
+        guard let command = issue.evidenceSecondary?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !command.isEmpty else {
+            return nil
+        }
+        return "app.inspector.package_state_issue.homebrew_lock.command".localized(with: [
+            "command": command
+        ])
     }
 }
 
@@ -2417,6 +2451,35 @@ private struct InspectorManagerDetailView: View {
         manager.id == "rustup" || manager.id == "mise" || manager.id == "asdf"
     }
 
+    private var managerCanInstall: Bool {
+        let supportsHelmInstall = Set([
+            "mise",
+            "asdf",
+            "mas",
+            "rustup",
+            "npm",
+            "pnpm",
+            "yarn",
+            "pipx",
+            "pip",
+            "poetry",
+            "rubygems",
+            "bundler",
+            "cargo",
+            "cargo_binstall",
+            "podman",
+            "colima"
+        ]).contains(manager.id)
+        guard supportsHelmInstall else { return false }
+        let allowedOptions = sortedHelmSupportedInstallMethodOptions.filter { option in
+            option.method != .notManageable && option.isAllowed(in: installMethodPolicyContext)
+        }
+        if !allowedOptions.isEmpty {
+            return true
+        }
+        return manager.canInstall
+    }
+
     private var supportsShellSetupTeardownOption: Bool {
         manager.id == "rustup" || manager.id == "mise" || manager.id == "asdf"
     }
@@ -2928,7 +2991,9 @@ private struct InspectorManagerDetailView: View {
             consumePendingInstallSheetRequestIfNeeded()
         }
     }
+}
 
+extension InspectorManagerDetailView {
     private func multiInstanceBanner<Actions: View>(
         icon: String,
         tint: Color,
@@ -3443,7 +3508,7 @@ private struct InspectorManagerDetailView: View {
     private func consumePendingInstallSheetRequestIfNeeded() {
         guard context.managerInstallSheetRequestManagerId == manager.id else { return }
         context.managerInstallSheetRequestManagerId = nil
-        guard manager.canInstall && !detected else { return }
+        guard managerCanInstall && !detected else { return }
         guard !managerIsUninstalling else { return }
         guard !installSubmissionInFlight else { return }
         prepareInstallMethodSelection()

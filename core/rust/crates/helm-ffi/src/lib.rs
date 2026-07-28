@@ -153,7 +153,11 @@ use helm_core::managed_automation_policy::{
     ManagedAutomationPolicyMode, apply_managed_automation_policy,
 };
 use helm_core::manager_dependencies::provenance_dependency_manager;
-use helm_core::manager_instances::{install_instance_fingerprint, resolve_multi_instance_state};
+use helm_core::manager_instances::{
+    install_instance_fingerprint, normalize_manager_install_instances,
+    preferred_system_manager_display_path, resolve_multi_instance_state,
+    trusted_system_manager_path,
+};
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
     Capability, DetectionInfo, HomebrewKegPolicy, ManagerAction, ManagerAuthority, ManagerId,
@@ -1170,7 +1174,10 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::DockerDesktop => &["docker"],
         ManagerId::Podman => &["podman"],
         ManagerId::Colima => &["colima"],
-        ManagerId::XcodeCommandLineTools => &["xcode-select"],
+        ManagerId::XcodeCommandLineTools => &[
+            "/Library/Developer/CommandLineTools/usr/bin/clang",
+            "/usr/bin/xcode-select",
+        ],
         ManagerId::SoftwareUpdate => &["/usr/sbin/softwareupdate"],
         _ => &[],
     }
@@ -1403,6 +1410,37 @@ fn build_manager_executable_doctor_states(
         .collect()
 }
 
+fn collect_recent_doctor_failure_diagnostics(
+    store: &dyn TaskStore,
+) -> Vec<helm_core::doctor::RecentTaskFailureDiagnostic> {
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(DOCTOR_FAILURE_MAX_AGE_SECS))
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    store
+        .list_recent_failure_diagnostic_logs(
+            cutoff,
+            helm_core::doctor::HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY,
+            DOCTOR_FAILURE_MATCH_LIMIT,
+        )
+        .unwrap_or_default()
+        .iter()
+        .filter_map(helm_core::doctor::parse_recent_task_failure_diagnostic)
+        .collect()
+}
+
+fn group_recent_doctor_failure_diagnostics_by_manager(
+    diagnostics: &[helm_core::doctor::RecentTaskFailureDiagnostic],
+) -> std::collections::HashMap<ManagerId, Vec<helm_core::doctor::RecentTaskFailureDiagnostic>> {
+    let mut grouped = std::collections::HashMap::new();
+    for diagnostic in diagnostics {
+        grouped
+            .entry(diagnostic.manager)
+            .or_insert_with(Vec::new)
+            .push(diagnostic.clone());
+    }
+    grouped
+}
+
 fn collect_manager_executable_paths(
     id: ManagerId,
     active_path: Option<&std::path::Path>,
@@ -1413,11 +1451,13 @@ fn collect_manager_executable_paths(
     if let Some(active_path) = active_path
         && let Some(rendered) = normalize_path_string(active_path)
     {
+        let rendered = canonicalize_manager_executable_display_path(id, rendered);
         seen.insert(rendered.clone());
         resolved.push(rendered);
     }
 
     for discovered in cached_discovered_executable_paths(id, manager_executable_candidates(id)) {
+        let discovered = canonicalize_manager_executable_display_path(id, discovered);
         if seen.insert(discovered.clone()) {
             resolved.push(discovered);
         }
@@ -1426,18 +1466,70 @@ fn collect_manager_executable_paths(
     resolved
 }
 
+fn canonicalize_manager_executable_display_path(manager: ManagerId, path: String) -> String {
+    if let Some(preferred) = preferred_system_manager_display_path(manager)
+        && trusted_system_manager_path(manager, Path::new(path.as_str()))
+    {
+        return preferred.to_string();
+    }
+    path
+}
+
 fn default_manager_executable_path(id: ManagerId, executable_paths: &[String]) -> Option<String> {
+    if let Some(preferred) = preferred_system_manager_display_path(id)
+        && (executable_paths.iter().any(|path| path == preferred)
+            || std::path::Path::new(preferred).is_file())
+    {
+        return Some(preferred.to_string());
+    }
     if let Some(first) = executable_paths.first() {
         return Some(first.clone());
     }
     if let Some(discovered) =
         cached_discovered_executable_paths(id, manager_executable_candidates(id))
             .into_iter()
+            .map(|path| canonicalize_manager_executable_display_path(id, path))
             .next()
     {
         return Some(discovered);
     }
     None
+}
+
+fn effective_manager_executable_path(
+    manager: ManagerId,
+    detected_path: Option<String>,
+    default_path: Option<&str>,
+) -> Option<String> {
+    let Some(detected_path) = detected_path else {
+        return default_path.map(ToOwned::to_owned);
+    };
+    let Some(preferred) = preferred_system_manager_display_path(manager) else {
+        return Some(detected_path);
+    };
+    if detected_path == preferred {
+        return Some(detected_path);
+    }
+    if trusted_system_manager_path(manager, Path::new(detected_path.as_str())) {
+        return Some(preferred.to_string());
+    }
+    if matches!(
+        manager,
+        ManagerId::SoftwareUpdate
+            | ManagerId::XcodeCommandLineTools
+            | ManagerId::Rosetta2
+            | ManagerId::FirmwareUpdates
+    ) {
+        if let Some(path) = default_path
+            && trusted_system_manager_path(manager, Path::new(path))
+        {
+            return Some(preferred.to_string());
+        }
+        return default_path
+            .map(ToOwned::to_owned)
+            .or_else(|| Some(preferred.to_string()));
+    }
+    Some(detected_path)
 }
 
 fn manager_supported_install_methods(id: ManagerId) -> Vec<&'static str> {
@@ -1453,12 +1545,18 @@ fn normalize_install_method(id: ManagerId, method: Option<String>) -> Option<Str
 }
 
 fn resolve_selected_executable_path(
+    manager: ManagerId,
     preferred: Option<String>,
     default_path: Option<String>,
 ) -> Option<String> {
     if let Some(preferred) = preferred
         && std::path::Path::new(preferred.as_str()).is_file()
     {
+        if let Some(canonical) = preferred_system_manager_display_path(manager)
+            && trusted_system_manager_path(manager, std::path::Path::new(preferred.as_str()))
+        {
+            return Some(canonical.to_string());
+        }
         return Some(preferred);
     }
     default_path
@@ -1499,7 +1597,7 @@ fn resolved_manager_selected_executable_path(
     let preferred_path = pref_map
         .get(&manager)
         .and_then(|pref| normalize_nonempty(pref.selected_executable_path.clone()));
-    resolve_selected_executable_path(preferred_path, default_path)
+    resolve_selected_executable_path(manager, preferred_path, default_path)
 }
 
 fn sync_manager_executable_overrides(
@@ -1542,6 +1640,23 @@ fn build_manager_statuses(
     detection_map: &std::collections::HashMap<ManagerId, DetectionInfo>,
     pref_map: &std::collections::HashMap<ManagerId, ManagerPreference>,
 ) -> Vec<FfiManagerStatus> {
+    let mut effective_detection_map: std::collections::HashMap<ManagerId, DetectionInfo> = store
+        .and_then(|store| store.list_detections().ok())
+        .map(|detections| detections.into_iter().collect())
+        .unwrap_or_default();
+    effective_detection_map.extend(detection_map.clone());
+    let detection_map = normalize_shared_detection_map(effective_detection_map);
+    let mut effective_pref_map: std::collections::HashMap<ManagerId, ManagerPreference> = store
+        .and_then(|store| store.list_manager_preferences().ok())
+        .map(|preferences| {
+            preferences
+                .into_iter()
+                .map(|pref| (pref.manager, pref))
+                .collect()
+        })
+        .unwrap_or_default();
+    effective_pref_map.extend(pref_map.clone());
+    let pref_map = effective_pref_map;
     if let Some(store) = store {
         invalidate_executable_cache_for_recent_manager_lifecycle_tasks(store);
     }
@@ -1563,6 +1678,7 @@ fn build_manager_statuses(
                 .push(instance);
         }
         for instances in install_instances_by_manager.values_mut() {
+            *instances = normalize_manager_install_instances(instances);
             instances.sort_by(|left, right| {
                 if left.is_active != right.is_active {
                     return right.is_active.cmp(&left.is_active);
@@ -1593,7 +1709,13 @@ fn build_manager_statuses(
         })
         .unwrap_or_default();
     let manager_executable_doctor_states =
-        build_manager_executable_doctor_states(detection_map, pref_map);
+        build_manager_executable_doctor_states(&detection_map, &pref_map);
+    let diagnostics_by_manager = store
+        .map(|store| {
+            let diagnostics = collect_recent_doctor_failure_diagnostics(store);
+            group_recent_doctor_failure_diagnostics_by_manager(diagnostics.as_slice())
+        })
+        .unwrap_or_default();
 
     ManagerId::ALL
         .iter()
@@ -1622,7 +1744,7 @@ fn build_manager_statuses(
             let is_optional = is_optional_manager(id);
             let is_detection_only = is_detection_only_manager(id);
             let detected = detection.map(|d| d.installed).unwrap_or(false);
-            let executable_path = detection.and_then(|d| {
+            let detected_executable_path = detection.and_then(|d| {
                 normalize_nonempty(
                     d.executable_path
                         .as_ref()
@@ -1638,8 +1760,13 @@ fn build_manager_statuses(
                 Vec::new()
             };
             let default_executable_path = default_manager_executable_path(id, &executable_paths);
+            let executable_path = effective_manager_executable_path(
+                id,
+                detected_executable_path,
+                default_executable_path.as_deref(),
+            );
             let selected_executable_path =
-                resolved_manager_selected_executable_path(id, detection_map, pref_map);
+                resolved_manager_selected_executable_path(id, &detection_map, &pref_map);
             let selected_executable_differs_from_default = selected_executable_differs_from_default(
                 default_executable_path.as_deref(),
                 selected_executable_path.as_deref(),
@@ -1698,6 +1825,7 @@ fn build_manager_statuses(
                 manager_install_instances,
                 &homebrew_installed_formulas,
                 manager_executable_doctor_states.get(&id),
+                diagnostics_by_manager.get(&id).map(Vec::as_slice),
             );
             let setup_required = package_state_issues.iter().any(|issue| {
                 issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED
@@ -1771,8 +1899,9 @@ fn manager_package_state_issues(
     manager_install_instances: Option<&Vec<ManagerInstallInstance>>,
     homebrew_installed_formulas: &std::collections::HashSet<String>,
     executable_state: Option<&helm_core::doctor::ManagerExecutableDoctorState>,
+    recent_failure_diagnostics: Option<&[helm_core::doctor::RecentTaskFailureDiagnostic]>,
 ) -> Vec<FfiManagerPackageStateIssue> {
-    let findings = helm_core::doctor::scan_manager_package_state_issues(
+    let mut findings = helm_core::doctor::scan_manager_package_state_issues(
         helm_core::doctor::ManagerPackageStateScanInput {
             manager,
             manager_install_instances: manager_install_instances.map(Vec::as_slice),
@@ -1780,6 +1909,12 @@ fn manager_package_state_issues(
             executable_state,
         },
     );
+    if let Some(diagnostics) = recent_failure_diagnostics {
+        findings.extend(helm_core::doctor::scan_recent_task_failure_issues(
+            diagnostics,
+            SystemTime::now(),
+        ));
+    }
 
     findings
         .into_iter()
@@ -1973,13 +2108,32 @@ fn update_local_task_status(
         status,
         created_at: std::time::SystemTime::now(),
     };
-    let _ = store.update_task(&record);
-    append_local_task_log(store, task_id, manager, task_type, status, level, message);
+    let log_entry = helm_core::models::NewTaskLogRecord {
+        task_id,
+        manager,
+        task_type,
+        status: Some(status),
+        level,
+        message: message.into(),
+        created_at: std::time::SystemTime::now(),
+    };
+    if let Err(error) = store.update_task_with_log(&record, &log_entry) {
+        eprintln!(
+            "failed to persist local task transition for task {} (manager={}, type={:?}, status={:?}): {}",
+            task_id.0,
+            manager.as_str(),
+            task_type,
+            status,
+            error
+        );
+    }
 }
 
 const TASK_PRUNE_MAX_AGE_SECS: i64 = 300;
 const TASK_RECENT_FETCH_LIMIT: usize = 1000;
 const TASK_TERMINAL_HISTORY_LIMIT: usize = 50;
+const DOCTOR_FAILURE_MATCH_LIMIT: usize = 16;
+const DOCTOR_FAILURE_MAX_AGE_SECS: u64 = 60 * 60;
 const TASK_INFLIGHT_DEDUP_MAX_AGE_SECS: u64 = 1800;
 const CATALOG_SYNC_STALE_AFTER_SECS: i64 = 6 * 60 * 60;
 const STALE_INFLIGHT_TASK_LOG_CONTEXT_STARTUP: &str = "startup_reconciliation";
@@ -2022,11 +2176,45 @@ fn runtime_task_is_inflight(
         .unwrap_or(false)
 }
 
+fn latest_persisted_terminal_status(store: &SqliteStore, task_id: TaskId) -> Option<TaskStatus> {
+    store
+        .list_task_logs(task_id, 20)
+        .ok()?
+        .into_iter()
+        .find_map(|entry| match entry.status {
+            Some(status @ (TaskStatus::Completed | TaskStatus::Cancelled | TaskStatus::Failed)) => {
+                Some(status)
+            }
+            _ => None,
+        })
+}
+
 fn mark_stale_inflight_task_terminal(
     store: &SqliteStore,
     task: &helm_core::models::TaskRecord,
     context: &str,
 ) {
+    if let Some(status) = latest_persisted_terminal_status(store, task.id) {
+        update_local_task_status(
+            store,
+            task.id,
+            task.manager,
+            task.task_type,
+            status,
+            match status {
+                TaskStatus::Completed => TaskLogLevel::Info,
+                TaskStatus::Cancelled => TaskLogLevel::Warn,
+                TaskStatus::Failed => TaskLogLevel::Error,
+                TaskStatus::Queued | TaskStatus::Running => TaskLogLevel::Warn,
+            },
+            format!(
+                "task reconciled from persisted terminal lifecycle log [{}]",
+                context
+            ),
+        );
+        return;
+    }
+
     update_local_task_status(
         store,
         task.id,
@@ -2346,6 +2534,9 @@ fn grouped_install_instances_by_manager(
                 .or_insert_with(Vec::new)
                 .push(instance);
         }
+        for instances in grouped.values_mut() {
+            *instances = normalize_manager_install_instances(instances);
+        }
     }
     grouped
 }
@@ -2375,6 +2566,7 @@ fn manager_has_setup_required_issue(
         manager,
         install_instances_by_manager.get(&manager),
         homebrew_installed_formulas,
+        None,
         None,
     )
     .iter()
@@ -2442,6 +2634,7 @@ fn active_install_instances_by_manager(
 
     let mut active = std::collections::HashMap::new();
     for (manager, mut instances) in grouped {
+        instances = normalize_manager_install_instances(&instances);
         instances.sort_by(|left, right| {
             if left.is_active != right.is_active {
                 return right.is_active.cmp(&left.is_active);
@@ -2546,11 +2739,13 @@ fn preseed_presence_detection(store: &SqliteStore, runtime: &AdapterRuntime, man
 }
 
 fn sync_manager_execution_preferences_from_store(store: &SqliteStore) {
-    let detection_map: std::collections::HashMap<_, _> = store
-        .list_detections()
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+    let detection_map: std::collections::HashMap<_, _> = normalize_shared_detection_map(
+        store
+            .list_detections()
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+    );
     let pref_map: std::collections::HashMap<_, _> = store
         .list_manager_preferences()
         .unwrap_or_default()
@@ -2684,12 +2879,61 @@ fn schedule_catalog_sync_for_managers(
 }
 
 fn detected_installed_map(store: &SqliteStore) -> std::collections::HashMap<ManagerId, bool> {
-    store
-        .list_detections()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(manager, info)| (manager, info.installed))
-        .collect()
+    normalize_shared_detection_map(
+        store
+            .list_detections()
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>(),
+    )
+    .into_iter()
+    .map(|(manager, info)| (manager, info.installed))
+    .collect()
+}
+
+fn detection_version_present(info: &DetectionInfo) -> bool {
+    info.version
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+}
+
+fn normalize_shared_detection_map(
+    mut detection_map: std::collections::HashMap<ManagerId, DetectionInfo>,
+) -> std::collections::HashMap<ManagerId, DetectionInfo> {
+    let formula = detection_map.get(&ManagerId::HomebrewFormula).cloned();
+    let cask = detection_map.get(&ManagerId::HomebrewCask).cloned();
+    let shared_installed = formula
+        .as_ref()
+        .is_some_and(|info| info.installed || detection_version_present(info))
+        || cask
+            .as_ref()
+            .is_some_and(|info| info.installed || detection_version_present(info));
+
+    if !shared_installed {
+        return detection_map;
+    }
+
+    let executable_path = formula
+        .as_ref()
+        .and_then(|info| info.executable_path.clone())
+        .or_else(|| cask.as_ref().and_then(|info| info.executable_path.clone()));
+    let version = formula
+        .as_ref()
+        .and_then(|info| normalize_nonempty(info.version.clone()))
+        .or_else(|| {
+            cask.as_ref()
+                .and_then(|info| normalize_nonempty(info.version.clone()))
+        });
+    let normalized = DetectionInfo {
+        installed: true,
+        executable_path,
+        version,
+    };
+
+    detection_map.insert(ManagerId::HomebrewFormula, normalized.clone());
+    detection_map.insert(ManagerId::HomebrewCask, normalized);
+    detection_map
 }
 
 fn queue_remote_search_task(
@@ -3413,6 +3657,7 @@ fn manager_install_instances_for(
     let mut instances = store
         .list_install_instances(Some(manager))
         .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    instances = normalize_manager_install_instances(&instances);
     instances.sort_by(|left, right| {
         right
             .is_active
@@ -3778,6 +4023,13 @@ fn manager_uninstall_label_for_route(
 
     if target_manager == ManagerId::MacPorts {
         let package_name = match request {
+            AdapterRequest::Uninstall(uninstall)
+                if helm_core::adapters::macports::is_macports_self_package_name(
+                    uninstall.package.name.as_str(),
+                ) =>
+            {
+                requested_manager.as_str().to_string()
+            }
             AdapterRequest::Uninstall(uninstall) => uninstall.package.name.clone(),
             _ => requested_manager.as_str().to_string(),
         };
@@ -4617,11 +4869,10 @@ fn manager_is_detected(store: &SqliteStore, manager: ManagerId) -> bool {
     store
         .list_detections()
         .ok()
-        .and_then(|detections| {
-            detections
-                .into_iter()
-                .find(|(candidate, _)| *candidate == manager)
-                .map(|(_, info)| info.installed)
+        .map(|detections| {
+            normalize_shared_detection_map(detections.into_iter().collect())
+                .get(&manager)
+                .is_some_and(|info| info.installed)
         })
         .unwrap_or(false)
 }
@@ -6382,6 +6633,16 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         detection_map.insert(ManagerId::Rustup, refreshed);
     }
 
+    let normalized_detection_map = normalize_shared_detection_map(detection_map.clone());
+    for manager in [ManagerId::HomebrewFormula, ManagerId::HomebrewCask] {
+        if normalized_detection_map.get(&manager) != detection_map.get(&manager)
+            && let Some(normalized) = normalized_detection_map.get(&manager)
+        {
+            let _ = state.store.upsert_detection(manager, normalized);
+        }
+    }
+    detection_map = normalized_detection_map;
+
     apply_manager_enablement_self_heal(
         state.store.as_ref(),
         state.runtime.as_ref(),
@@ -6415,6 +6676,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
 /// - package-state diagnostics for metadata-only Homebrew manager installs
 /// - post-install setup requirements for managed tool/runtime managers
 /// - stale selected executable path overrides
+/// - recent task failure diagnostics for known repairable local issues
 ///
 /// TODO(doctor-repair): wire additional detectors and remote fingerprint lookups.
 #[unsafe(no_mangle)]
@@ -6471,12 +6733,16 @@ pub extern "C" fn helm_doctor_scan() -> *mut c_char {
         }
     };
     let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
+    let recent_failure_diagnostics =
+        collect_recent_doctor_failure_diagnostics(state.store.as_ref());
 
     let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
         &executable_states,
+        recent_failure_diagnostics.as_slice(),
+        SystemTime::now(),
     );
     let json = match serde_json::to_string(&report) {
         Ok(json) => json,
@@ -10112,12 +10378,21 @@ pub unsafe extern "C" fn helm_update_manager(manager_id: *const c_char) -> i64 {
                     Some(request) => request,
                     None => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
                 };
-            let label_key = if update_plan.target_manager == ManagerId::HomebrewFormula {
-                "service.task.label.update.homebrew_self"
-            } else {
-                "service.task.label.update.rustup_self"
+            let (label_key, label_args) = match update_plan.target_manager {
+                ManagerId::HomebrewFormula => {
+                    ("service.task.label.update.homebrew_self", Vec::new())
+                }
+                ManagerId::Rustup => ("service.task.label.update.rustup_self", Vec::new()),
+                ManagerId::Asdf => (
+                    "service.task.label.upgrade.package",
+                    vec![
+                        ("package", "asdf".to_string()),
+                        ("manager", "asdf".to_string()),
+                    ],
+                ),
+                _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
             };
-            (update_plan.target_manager, request, label_key, Vec::new())
+            (update_plan.target_manager, request, label_key, label_args)
         }
         helm_core::manager_lifecycle::ManagerUpdateTarget::HomebrewFormula { formula_name } => {
             let (target_name, label_key) = homebrew_upgrade_target(formula_name.as_str());
@@ -10883,6 +11158,34 @@ mod tests {
     }
 
     #[test]
+    fn macports_self_uninstall_label_uses_manager_name() {
+        let request = AdapterRequest::Uninstall(UninstallRequest {
+            package: PackageRef {
+                manager: ManagerId::MacPorts,
+                name: "__self__".to_string(),
+            },
+            target_name: None,
+            version: None,
+        });
+
+        let (label_key, label_args) = manager_uninstall_label_for_route(
+            ManagerId::MacPorts,
+            ManagerId::MacPorts,
+            &request,
+            StrategyKind::MacportsSelf,
+        );
+
+        assert_eq!(label_key, "service.task.label.uninstall.package");
+        assert_eq!(
+            label_args,
+            vec![
+                ("package", "macports".to_string()),
+                ("manager", ManagerId::MacPorts.as_str().to_string()),
+            ]
+        );
+    }
+
+    #[test]
     fn manager_self_heal_does_not_cancel_tasks_for_not_installed_detection() {
         let store = temp_sqlite_store("self-heal-no-task-purge");
         store
@@ -11021,6 +11324,70 @@ mod tests {
             logs.iter()
                 .any(|entry| entry.message.contains("test_reconcile")),
             "reconciled task log should include reconciliation context"
+        );
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn stale_inflight_reconciliation_uses_persisted_terminal_log_status() {
+        let store = temp_sqlite_store("stale-inflight-reconcile-terminal-log");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        let stale_running = TaskRecord {
+            id: TaskId(401),
+            manager: ManagerId::Rustup,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Running,
+            created_at: SystemTime::now(),
+        };
+
+        store
+            .create_task(&stale_running)
+            .expect("running task insert should succeed");
+        store
+            .append_task_log(&helm_core::models::NewTaskLogRecord {
+                task_id: stale_running.id,
+                manager: stale_running.manager,
+                task_type: stale_running.task_type,
+                status: Some(TaskStatus::Completed),
+                level: helm_core::models::TaskLogLevel::Info,
+                message: "task completed".to_string(),
+                created_at: SystemTime::now(),
+            })
+            .expect("terminal lifecycle log insert should succeed");
+
+        let runtime = AdapterRuntime::new(Vec::<Arc<dyn ManagerAdapter>>::new())
+            .expect("empty adapter runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let reconciled = super::reconcile_stale_local_inflight_tasks(
+            &store,
+            &runtime,
+            tokio_runtime.handle(),
+            "test_terminal_log",
+        );
+        assert_eq!(reconciled, 1);
+
+        let refreshed = store
+            .list_recent_tasks(10)
+            .expect("task listing should succeed");
+        let task = refreshed
+            .into_iter()
+            .find(|task| task.id == stale_running.id)
+            .expect("task should exist");
+        assert_eq!(task.status, TaskStatus::Completed);
+
+        let logs = store
+            .list_task_logs(stale_running.id, 20)
+            .expect("task logs should load");
+        assert!(
+            logs.iter()
+                .any(|entry| entry.message.contains("persisted terminal lifecycle log")),
+            "reconciled task log should note terminal lifecycle recovery"
         );
 
         let _ = fs::remove_file(store.database_path());
@@ -11858,6 +12225,27 @@ mod tests {
     }
 
     #[test]
+    fn manager_status_normalizes_homebrew_formula_detection_for_cask() {
+        let detection_map = HashMap::from([(
+            ManagerId::HomebrewFormula,
+            DetectionInfo {
+                installed: true,
+                executable_path: Some(std::path::PathBuf::from("/usr/local/bin/brew")),
+                version: Some("5.0.16".to_string()),
+            },
+        )]);
+
+        let statuses = build_manager_statuses(None, None, &detection_map, &HashMap::new());
+        let formula = status_for(&statuses, ManagerId::HomebrewFormula);
+        let cask = status_for(&statuses, ManagerId::HomebrewCask);
+
+        assert!(formula.detected);
+        assert!(cask.detected);
+        assert_eq!(cask.version.as_deref(), Some("5.0.16"));
+        assert_eq!(cask.executable_path.as_deref(), Some("/usr/local/bin/brew"));
+    }
+
+    #[test]
     fn manager_status_skips_executable_path_discovery_for_missing_managers() {
         let statuses = build_manager_statuses(None, None, &HashMap::new(), &HashMap::new());
         assert!(
@@ -12158,6 +12546,82 @@ mod tests {
     }
 
     #[test]
+    fn manager_status_normalizes_system_helper_instances_and_paths() {
+        let store = temp_sqlite_store("manager-status-system-helper-normalization");
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::SoftwareUpdate,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(std::path::PathBuf::from("/usr/bin/sw_vers")),
+                    version: Some("15.4".to_string()),
+                },
+            )
+            .expect("softwareupdate detection should persist");
+
+        let mut helper = sample_manager_install_instance(
+            ManagerId::SoftwareUpdate,
+            StrategyKind::InteractivePrompt,
+            StrategyKind::InteractivePrompt,
+            InstallProvenance::System,
+            "/usr/bin/sw_vers",
+            "/usr/bin/sw_vers",
+        );
+        helper.instance_id = "softwareupdate-sw-vers".to_string();
+        helper.identity_value = helper.instance_id.clone();
+        helper.is_active = true;
+        helper.explanation_primary =
+            Some("softwareupdate executable path is in an OS-managed system prefix".to_string());
+
+        let mut primary = sample_manager_install_instance(
+            ManagerId::SoftwareUpdate,
+            StrategyKind::InteractivePrompt,
+            StrategyKind::InteractivePrompt,
+            InstallProvenance::System,
+            "/usr/sbin/softwareupdate",
+            "/usr/sbin/softwareupdate",
+        );
+        primary.instance_id = "softwareupdate-system".to_string();
+        primary.identity_value = primary.instance_id.clone();
+        primary.is_active = false;
+        primary.explanation_primary =
+            Some("softwareupdate executable path is in an OS-managed system prefix".to_string());
+
+        store
+            .replace_install_instances(ManagerId::SoftwareUpdate, &[helper, primary])
+            .expect("softwareupdate install instances should persist");
+        store
+            .set_manager_selected_executable_path(
+                ManagerId::SoftwareUpdate,
+                Some("/usr/bin/sw_vers"),
+            )
+            .expect("softwareupdate selected path should persist");
+
+        let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
+        let softwareupdate = status_for(&statuses, ManagerId::SoftwareUpdate);
+        assert_eq!(softwareupdate.install_instance_count, 1);
+        assert_eq!(softwareupdate.multi_instance_state, "none");
+        assert_eq!(
+            softwareupdate.executable_path.as_deref(),
+            Some("/usr/sbin/softwareupdate")
+        );
+        assert_eq!(
+            softwareupdate.default_executable_path.as_deref(),
+            Some("/usr/sbin/softwareupdate")
+        );
+        assert_eq!(
+            softwareupdate.selected_executable_path.as_deref(),
+            Some("/usr/sbin/softwareupdate")
+        );
+        assert_eq!(softwareupdate.active_provenance.as_deref(), Some("system"));
+
+        let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
     fn manager_status_flags_metadata_only_homebrew_formula_install_issues() {
         let store = temp_sqlite_store("manager-status-metadata-only-homebrew");
         store
@@ -12245,6 +12709,57 @@ mod tests {
             issue.repair_options[0].option_id,
             helm_core::repair::REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE
         );
+    }
+
+    #[test]
+    fn manager_status_flags_recent_homebrew_lock_conflict_issue() {
+        let store = temp_sqlite_store("manager-status-homebrew-lock-conflict");
+        store
+            .migrate_to_latest()
+            .expect("store migration should succeed");
+        store
+            .upsert_detection(
+                ManagerId::HomebrewFormula,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some(std::path::PathBuf::from("/opt/homebrew/bin/brew")),
+                    version: Some("5.0.0".to_string()),
+                },
+            )
+            .expect("homebrew detection should persist");
+        store
+            .create_task(&TaskRecord {
+                id: TaskId(41),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Upgrade,
+                status: TaskStatus::Failed,
+                created_at: UNIX_EPOCH,
+            })
+            .expect("task should persist");
+        store
+            .append_task_log(&helm_core::models::NewTaskLogRecord {
+                task_id: TaskId(41),
+                manager: ManagerId::HomebrewFormula,
+                task_type: TaskType::Upgrade,
+                status: Some(TaskStatus::Failed),
+                level: helm_core::models::TaskLogLevel::Info,
+                message: r#"[diagnostic.v1] {"schema":"helm.task.failure_diagnostic","schemaVersion":1,"fingerprint":"failure-v1-homebrew-lock","taskId":41,"managerId":"homebrew_formula","taskType":"upgrade","errorCode":"process_failure","issueKey":"homebrew.cellar_lock_conflict","issueOwner":"local_runtime","issueConfidence":"high","issueSummary":"Another Homebrew process already holds a Cellar lock for this upgrade target.","command":"brew upgrade --formula fd","errorExcerpt":"Error: A `brew upgrade fd` process has already locked /usr/local/Cellar/fd."}"#.to_string(),
+                created_at: SystemTime::now(),
+            })
+            .expect("task diagnostic should persist");
+
+        let statuses = build_manager_statuses(None, Some(&store), &HashMap::new(), &HashMap::new());
+        let homebrew = status_for(&statuses, ManagerId::HomebrewFormula);
+        let issue = homebrew
+            .package_state_issues
+            .iter()
+            .find(|issue| {
+                issue.issue_code == helm_core::doctor::ISSUE_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT
+            })
+            .expect("homebrew lock conflict issue should be present");
+        assert_eq!(issue.source_manager_id, "homebrew_formula");
+        assert_eq!(issue.package_name, "fd");
+        assert!(issue.repair_options.is_empty());
     }
 
     #[test]

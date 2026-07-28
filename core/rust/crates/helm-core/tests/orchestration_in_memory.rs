@@ -50,6 +50,54 @@ fn different_managers_can_run_in_parallel() {
 }
 
 #[test]
+fn homebrew_formula_and_cask_cannot_run_in_parallel() {
+    let coordinator = InMemoryTaskCoordinator::new();
+    let formula = coordinator
+        .enqueue(submission(ManagerId::HomebrewFormula, TaskType::Upgrade, 1))
+        .unwrap();
+    let cask = coordinator
+        .enqueue(submission(ManagerId::HomebrewCask, TaskType::Upgrade, 2))
+        .unwrap();
+
+    coordinator.start(formula.id).unwrap();
+    let error = coordinator.start(cask.id).unwrap_err();
+    assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+
+    coordinator.complete(formula.id).unwrap();
+    coordinator.start(cask.id).unwrap();
+    assert_eq!(coordinator.status(cask.id).unwrap(), TaskStatus::Running);
+}
+
+#[test]
+fn cancelling_queued_homebrew_task_preserves_running_domain_owner() {
+    let coordinator = InMemoryTaskCoordinator::new();
+    let formula = coordinator
+        .enqueue(submission(ManagerId::HomebrewFormula, TaskType::Upgrade, 1))
+        .unwrap();
+    let queued_cask = coordinator
+        .enqueue(submission(ManagerId::HomebrewCask, TaskType::Upgrade, 2))
+        .unwrap();
+    let next_formula = coordinator
+        .enqueue(submission(ManagerId::HomebrewFormula, TaskType::Refresh, 3))
+        .unwrap();
+
+    coordinator.start(formula.id).unwrap();
+    coordinator
+        .cancel(queued_cask.id, CancellationMode::Immediate)
+        .unwrap();
+
+    let error = coordinator.start(next_formula.id).unwrap_err();
+    assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+
+    coordinator.complete(formula.id).unwrap();
+    coordinator.start(next_formula.id).unwrap();
+    assert_eq!(
+        coordinator.status(next_formula.id).unwrap(),
+        TaskStatus::Running
+    );
+}
+
+#[test]
 fn cancellation_state_transitions_are_enforced() {
     let coordinator = InMemoryTaskCoordinator::new();
     let queued = coordinator

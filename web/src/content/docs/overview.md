@@ -42,7 +42,7 @@ Key features:
 - **Post-upgrade validation** — verify package state after upgrades complete
 - **Background tasks** — real-time task tracking with per-manager serial execution
 - **Onboarding walkthrough** — guided first-launch experience with spotlight highlights across popover and control center
-- **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, and `ja` with locale override in Settings
+- **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, `ja`, and `hu` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with scoped execution and failure-attribution visibility
 
 > **Current Track:** `v0.17.10` is the latest stable release on `main`; `0.18.x` planning is in progress. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).

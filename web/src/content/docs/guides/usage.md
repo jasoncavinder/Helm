@@ -57,7 +57,7 @@ Within each phase, managers refresh in parallel. If one manager fails, the other
 ## Pinning and Safe Mode
 
 - **Pinning** — pin individual packages to prevent them from being included in bulk upgrades. Pinned packages still appear in the updates list but are skipped during Upgrade All.
-- **Safe mode** — guarded managers (Homebrew, softwareupdate) require explicit confirmation before executing upgrades, and OS updates that require a restart show a dedicated warning.
+- **Safe mode** — blocks macOS Software Update upgrades during Upgrade All. Disable it and explicitly approve OS updates to include them; restart-required updates show a dedicated warning.
 
 ## Search
 

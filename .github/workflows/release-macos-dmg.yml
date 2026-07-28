@@ -606,10 +606,7 @@ jobs:
           git commit -m "chore(release): publish Sparkle appcast + release notes for ${TAG_NAME}"
 
           git checkout -B "$PUBLISH_BRANCH"
-          if ! git push -u origin "$PUBLISH_BRANCH" --force-with-lease; then
-            echo "::warning::force-with-lease push failed for ${PUBLISH_BRANCH}; retrying with --force."
-            git push -u origin "$PUBLISH_BRANCH" --force
-          fi
+          git push -u origin "$PUBLISH_BRANCH" --force-with-lease
 
           EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
           if [ -n "$EXISTING_PR" ]; then

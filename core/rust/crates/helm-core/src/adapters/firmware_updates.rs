@@ -25,6 +25,7 @@ const FIRMWARE_UPDATES_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
 
 const SOFTWAREUPDATE_COMMAND: &str = "/usr/sbin/softwareupdate";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(15);
+const LIST_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FirmwareUpdatesDetectOutput {
@@ -111,7 +112,7 @@ pub fn firmware_updates_list_request(task_id: Option<TaskId>) -> ProcessSpawnReq
         TaskType::Refresh,
         ManagerAction::ListOutdated,
         CommandSpec::new(SOFTWAREUPDATE_COMMAND).arg("-l"),
-        DETECT_TIMEOUT,
+        LIST_TIMEOUT,
     )
 }
 
@@ -280,6 +281,7 @@ fn flush_firmware_update_block(
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::time::Duration;
 
     use crate::adapters::firmware_updates::{
         FirmwareUpdatesAdapter, FirmwareUpdatesDetectOutput, FirmwareUpdatesSource,
@@ -325,6 +327,7 @@ mod tests {
             Some("/usr/sbin/softwareupdate")
         );
         assert_eq!(request.command.args, vec!["-l"]);
+        assert_eq!(request.timeout, Some(Duration::from_secs(120)));
     }
 
     #[test]

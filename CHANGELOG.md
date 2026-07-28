@@ -6,7 +6,24 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
-Post-`v0.17.10`, `dev` is now positioned for broader `0.18.x` work.
+Post-`v0.17.11`, `dev` is now positioned for broader `0.18.x` work.
+
+## [0.17.11] - 2026-07-28
+
+Patch `0.17.11` ships manager lifecycle, release-process, and execution-safety hardening.
+
+### Added
+- Manager install-instance provenance now records ownership confidence, competing evidence, and the active instance across core, CLI, service, and GUI surfaces.
+- Manager and package uninstall flows now provide provenance-aware blast-radius previews before mutating the system.
+
+### Changed
+- Manager install, update, and uninstall planning now shares deterministic lifecycle routing across the CLI, FFI, and GUI.
+- Release automation now validates existing releases before auxiliary builds, produces deterministic provenance manifests, and verifies publication metadata convergence.
+
+### Fixed
+- Cancellation now terminates registered processes after the grace period, including callers waiting on terminal state.
+- MacPorts self-uninstall cleanup rejects unsafe paths, and XPC access now accepts only the Helm application caller.
+- Dependency upgrades resolve known Rust and web-package vulnerabilities while retaining CI compatibility.
 
 ## [0.17.10] - 2026-03-11
 

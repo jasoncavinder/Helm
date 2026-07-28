@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Condvar, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, InstallRequest, ListInstalledRequest,
     ManagerAdapter, MutationResult, RefreshRequest, SearchRequest, UninstallRequest,
+};
+use helm_core::execution::{
+    ManagerTimeoutProfile, manager_execution_preferences_test_guard, set_manager_timeout_profile,
 };
 use helm_core::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
@@ -15,11 +18,15 @@ use helm_core::models::{
     SearchQuery, TaskId, TaskRecord, TaskStatus, TaskType,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
-use helm_core::persistence::{DetectionStore, PackageStore, PersistenceResult, TaskStore};
+use helm_core::persistence::{
+    DetectionStore, PackageStore, PersistenceResult, SearchCacheStore, TaskStore,
+};
 use helm_core::sqlite::SqliteStore;
 
 const TEST_CAPABILITIES: &[Capability] = &[Capability::Refresh, Capability::Search];
 const MUTATION_CAPABILITIES: &[Capability] = &[Capability::Install, Capability::Uninstall];
+const SNAPSHOT_UNINSTALL_CAPABILITIES: &[Capability] =
+    &[Capability::ListInstalled, Capability::Uninstall];
 
 fn test_db_path(test_name: &str) -> PathBuf {
     let nanos = SystemTime::now()
@@ -33,6 +40,10 @@ fn test_db_path(test_name: &str) -> PathBuf {
 enum AdapterBehavior {
     Succeeds(AdapterResponse),
     Fails(CoreError),
+    BlocksFirstCall {
+        call_count: Arc<AtomicUsize>,
+        release_first: Arc<AtomicBool>,
+    },
 }
 
 struct TestAdapter {
@@ -67,6 +78,7 @@ impl TestAdapter {
 struct RecordingTaskStore {
     records: Mutex<HashMap<TaskId, TaskRecord>>,
     remaining_create_failures: Mutex<usize>,
+    fail_plain_updates: bool,
 }
 
 impl RecordingTaskStore {
@@ -78,6 +90,15 @@ impl RecordingTaskStore {
         Self {
             records: Mutex::new(HashMap::new()),
             remaining_create_failures: Mutex::new(failures),
+            fail_plain_updates: false,
+        }
+    }
+
+    fn fail_plain_updates() -> Self {
+        Self {
+            records: Mutex::new(HashMap::new()),
+            remaining_create_failures: Mutex::new(0),
+            fail_plain_updates: true,
         }
     }
 
@@ -123,6 +144,40 @@ impl TaskStore for RecordingTaskStore {
     }
 
     fn update_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
+        if self.fail_plain_updates {
+            return Err(CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::StorageFailure,
+                message: "plain update_task forced failure".to_string(),
+            });
+        }
+        let mut records = self.records.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "recording store mutex poisoned".to_string(),
+        })?;
+        if !records.contains_key(&task.id) {
+            return Err(CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::StorageFailure,
+                message: "task record not found".to_string(),
+            });
+        }
+        records.insert(task.id, task.clone());
+        Ok(())
+    }
+
+    fn update_task_with_log(
+        &self,
+        task: &TaskRecord,
+        _entry: &helm_core::models::NewTaskLogRecord,
+    ) -> PersistenceResult<()> {
         let mut records = self.records.lock().map_err(|_| CoreError {
             manager: None,
             task: None,
@@ -188,6 +243,219 @@ impl TaskStore for RecordingTaskStore {
     }
 }
 
+#[derive(Default)]
+struct BlockingSearchState {
+    entered: bool,
+    released: bool,
+}
+
+struct BlockingSearchCacheStore {
+    inner: Arc<SqliteStore>,
+    entered: AtomicBool,
+    state: Mutex<BlockingSearchState>,
+    condvar: Condvar,
+}
+
+impl BlockingSearchCacheStore {
+    fn new(inner: Arc<SqliteStore>) -> Self {
+        Self {
+            inner,
+            entered: AtomicBool::new(false),
+            state: Mutex::new(BlockingSearchState::default()),
+            condvar: Condvar::new(),
+        }
+    }
+
+    fn has_entered(&self) -> bool {
+        self.entered.load(Ordering::SeqCst)
+    }
+
+    fn release(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("blocking search state mutex poisoned");
+        state.released = true;
+        self.condvar.notify_all();
+    }
+}
+
+impl SearchCacheStore for BlockingSearchCacheStore {
+    fn upsert_search_results(
+        &self,
+        results: &[helm_core::models::CachedSearchResult],
+    ) -> PersistenceResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "blocking search state mutex poisoned".to_string(),
+        })?;
+        self.entered.store(true, Ordering::SeqCst);
+        state.entered = true;
+        self.condvar.notify_all();
+        while !state.released {
+            state = self.condvar.wait(state).map_err(|_| CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Internal,
+                message: "blocking search state wait poisoned".to_string(),
+            })?;
+        }
+        drop(state);
+        self.inner.upsert_search_results(results)
+    }
+
+    fn query_local(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> PersistenceResult<Vec<helm_core::models::CachedSearchResult>> {
+        self.inner.query_local(query, limit)
+    }
+}
+
+#[derive(Default)]
+struct BlockingInstalledSnapshotState {
+    released: bool,
+}
+
+struct BlockingInstalledSnapshotStore {
+    inner: Arc<SqliteStore>,
+    snapshot_entered: AtomicBool,
+    uninstall_entered: AtomicBool,
+    state: Mutex<BlockingInstalledSnapshotState>,
+    condvar: Condvar,
+}
+
+impl BlockingInstalledSnapshotStore {
+    fn new(inner: Arc<SqliteStore>) -> Self {
+        Self {
+            inner,
+            snapshot_entered: AtomicBool::new(false),
+            uninstall_entered: AtomicBool::new(false),
+            state: Mutex::new(BlockingInstalledSnapshotState::default()),
+            condvar: Condvar::new(),
+        }
+    }
+
+    fn snapshot_has_entered(&self) -> bool {
+        self.snapshot_entered.load(Ordering::SeqCst)
+    }
+
+    fn uninstall_has_entered(&self) -> bool {
+        self.uninstall_entered.load(Ordering::SeqCst)
+    }
+
+    fn release_snapshot(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .expect("blocking installed snapshot state mutex poisoned");
+        state.released = true;
+        self.condvar.notify_all();
+    }
+}
+
+impl PackageStore for BlockingInstalledSnapshotStore {
+    fn upsert_installed(
+        &self,
+        packages: &[helm_core::models::InstalledPackage],
+    ) -> PersistenceResult<()> {
+        self.inner.upsert_installed(packages)
+    }
+
+    fn replace_installed_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[helm_core::models::InstalledPackage],
+    ) -> PersistenceResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::Internal,
+            message: "blocking installed snapshot state mutex poisoned".to_string(),
+        })?;
+        self.snapshot_entered.store(true, Ordering::SeqCst);
+        self.condvar.notify_all();
+        while !state.released {
+            state = self.condvar.wait(state).map_err(|_| CoreError {
+                manager: None,
+                task: None,
+                action: None,
+                kind: CoreErrorKind::Internal,
+                message: "blocking installed snapshot state wait poisoned".to_string(),
+            })?;
+        }
+        drop(state);
+        self.inner.replace_installed_snapshot(manager, packages)
+    }
+
+    fn upsert_outdated(&self, packages: &[OutdatedPackage]) -> PersistenceResult<()> {
+        self.inner.upsert_outdated(packages)
+    }
+
+    fn replace_outdated_snapshot(
+        &self,
+        manager: ManagerId,
+        packages: &[OutdatedPackage],
+    ) -> PersistenceResult<()> {
+        self.inner.replace_outdated_snapshot(manager, packages)
+    }
+
+    fn list_installed(&self) -> PersistenceResult<Vec<helm_core::models::InstalledPackage>> {
+        self.inner.list_installed()
+    }
+
+    fn list_outdated(&self) -> PersistenceResult<Vec<OutdatedPackage>> {
+        self.inner.list_outdated()
+    }
+
+    fn set_snapshot_pinned(
+        &self,
+        package: &PackageRef,
+        version: Option<&str>,
+        pinned: bool,
+    ) -> PersistenceResult<()> {
+        self.inner.set_snapshot_pinned(package, version, pinned)
+    }
+
+    fn apply_install_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        installed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.inner
+            .apply_install_result(package, package_identifier, installed_version)
+    }
+
+    fn apply_uninstall_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        removed_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.uninstall_entered.store(true, Ordering::SeqCst);
+        self.inner
+            .apply_uninstall_result(package, package_identifier, removed_version)
+    }
+
+    fn apply_upgrade_result(
+        &self,
+        package: &PackageRef,
+        package_identifier: Option<&str>,
+        before_version: Option<&str>,
+        after_version: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.inner
+            .apply_upgrade_result(package, package_identifier, before_version, after_version)
+    }
+}
+
 impl ManagerAdapter for TestAdapter {
     fn descriptor(&self) -> &ManagerDescriptor {
         &self.descriptor
@@ -201,6 +469,18 @@ impl ManagerAdapter for TestAdapter {
         match &self.behavior {
             AdapterBehavior::Succeeds(response) => Ok(response.clone()),
             AdapterBehavior::Fails(error) => Err(error.clone()),
+            AdapterBehavior::BlocksFirstCall {
+                call_count,
+                release_first,
+            } => {
+                let call = call_count.fetch_add(1, Ordering::SeqCst);
+                if call == 0 {
+                    while !release_first.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                }
+                Ok(AdapterResponse::Refreshed)
+            }
         }
     }
 }
@@ -563,6 +843,260 @@ async fn submit_retries_initial_task_persistence_and_succeeds_after_transient_fa
 }
 
 #[tokio::test]
+async fn submit_with_task_store_persists_terminal_status_via_atomic_transition() {
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Npm,
+        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+    ));
+    let task_store = Arc::new(RecordingTaskStore::fail_plain_updates());
+    let runtime = AdapterRuntime::with_task_store([adapter], task_store.clone()).unwrap();
+
+    let task_id = runtime
+        .submit(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    let mut persisted = None;
+    for _ in 0..20 {
+        if let Some(record) = task_store.get(task_id)
+            && record.status == TaskStatus::Completed
+        {
+            persisted = Some(record);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let record = persisted.expect("expected completed persisted task record through atomic path");
+    assert_eq!(record.id, task_id);
+    assert_eq!(record.status, TaskStatus::Completed);
+}
+
+#[tokio::test]
+async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence_finishes() {
+    let path = test_db_path("orchestration-runtime-catalog-sync-terminal-before-cache");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    let search_cache_store = Arc::new(BlockingSearchCacheStore::new(store.clone()));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::HomebrewCask,
+        AdapterBehavior::Succeeds(AdapterResponse::SearchResults(vec![
+            helm_core::models::CachedSearchResult {
+                result: helm_core::models::PackageCandidate {
+                    package: PackageRef {
+                        manager: ManagerId::HomebrewCask,
+                        name: "visual-studio-code".to_string(),
+                    },
+                    package_identifier: None,
+                    version: None,
+                    summary: Some("Code editor".to_string()),
+                },
+                source_manager: ManagerId::HomebrewCask,
+                originating_query: String::new(),
+                cached_at: SystemTime::now(),
+            },
+        ])),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        search_cache_store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let task_id = runtime
+        .submit(
+            ManagerId::HomebrewCask,
+            AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: String::new(),
+                    issued_at: SystemTime::now(),
+                },
+            }),
+        )
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(task_id, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    for _ in 0..100 {
+        if search_cache_store.has_entered() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        search_cache_store.has_entered(),
+        "expected search cache persistence to start"
+    );
+
+    let mut persisted_completed = false;
+    for _ in 0..20 {
+        let records = store.list_recent_tasks(10).unwrap();
+        if records
+            .iter()
+            .any(|record| record.id == task_id && record.status == TaskStatus::Completed)
+        {
+            persisted_completed = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    search_cache_store.release();
+
+    assert!(
+        persisted_completed,
+        "catalog sync task should be marked completed before search-cache persistence finishes"
+    );
+}
+
+#[tokio::test]
+async fn stale_installed_snapshot_cannot_overtake_later_uninstall_persistence() {
+    let path = test_db_path("orchestration-runtime-snapshot-uninstall-order");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    let package_store = Arc::new(BlockingInstalledSnapshotStore::new(store.clone()));
+    let package = PackageRef {
+        manager: ManagerId::Npm,
+        name: "eslint".to_string(),
+    };
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
+        ManagerId::Npm,
+        SNAPSHOT_UNINSTALL_CAPABILITIES,
+        vec![
+            Ok(AdapterResponse::InstalledPackages(vec![
+                helm_core::models::InstalledPackage {
+                    package: package.clone(),
+                    package_identifier: None,
+                    installed_version: Some("9.25.0".to_string()),
+                    pinned: false,
+                    runtime_state: Default::default(),
+                },
+            ])),
+            Ok(AdapterResponse::Mutation(MutationResult {
+                package: package.clone(),
+                package_identifier: None,
+                action: ManagerAction::Uninstall,
+                before_version: Some("9.25.0".to_string()),
+                after_version: None,
+            })),
+        ],
+        Arc::new(AtomicUsize::new(0)),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        package_store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+
+    let snapshot_task = runtime
+        .submit(
+            ManagerId::Npm,
+            AdapterRequest::ListInstalled(ListInstalledRequest),
+        )
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(snapshot_task, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
+
+    for _ in 0..100 {
+        if package_store.snapshot_has_entered() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        package_store.snapshot_has_entered(),
+        "expected installed snapshot persistence to block"
+    );
+
+    let uninstall_task = runtime
+        .submit(
+            ManagerId::Npm,
+            AdapterRequest::Uninstall(UninstallRequest {
+                package: package.clone(),
+                target_name: None,
+                version: None,
+            }),
+        )
+        .await
+        .unwrap();
+    let uninstall = runtime
+        .wait_for_terminal(uninstall_task, Some(Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert_eq!(uninstall.runtime.status, TaskStatus::Completed);
+
+    for _ in 0..100 {
+        if store
+            .list_recent_tasks(10)
+            .unwrap()
+            .iter()
+            .any(|record| record.id == uninstall_task && record.status == TaskStatus::Completed)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        store
+            .list_recent_tasks(10)
+            .unwrap()
+            .iter()
+            .any(|record| record.id == uninstall_task && record.status == TaskStatus::Completed),
+        "uninstall should be visible as completed while the older snapshot is blocked"
+    );
+    assert!(
+        !package_store.uninstall_has_entered(),
+        "later uninstall persistence must wait for the older snapshot"
+    );
+
+    package_store.release_snapshot();
+
+    for _ in 0..100 {
+        if package_store.uninstall_has_entered() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        package_store.uninstall_has_entered(),
+        "uninstall persistence should continue after the older snapshot completes"
+    );
+
+    for _ in 0..100 {
+        if store.list_installed().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        store.list_installed().unwrap().is_empty(),
+        "later uninstall must win over the older installed snapshot"
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
 async fn submit_refresh_request_response_returns_attributed_failure() {
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
         ManagerId::Npm,
@@ -613,6 +1147,48 @@ async fn submit_refresh_request_response_retries_once_on_timeout() {
 
     assert_eq!(response, AdapterResponse::Refreshed);
     assert_eq!(call_count.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn orchestration_timeout_cancels_queued_retry_before_return() {
+    let _guard = manager_execution_preferences_test_guard();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("test runtime should initialize")
+        .block_on(async {
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let release_first = Arc::new(AtomicBool::new(false));
+            let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+                ManagerId::Npm,
+                AdapterBehavior::BlocksFirstCall {
+                    call_count: call_count.clone(),
+                    release_first: release_first.clone(),
+                },
+            ));
+            set_manager_timeout_profile(
+                ManagerId::Npm,
+                ManagerTimeoutProfile {
+                    hard_timeout: Some(Duration::from_millis(30)),
+                    idle_timeout: None,
+                },
+            );
+            let runtime = AdapterRuntime::new([adapter]).unwrap();
+
+            let result = runtime
+                .submit_refresh_request_response(
+                    ManagerId::Npm,
+                    AdapterRequest::Refresh(RefreshRequest),
+                )
+                .await;
+            release_first.store(true, Ordering::SeqCst);
+            set_manager_timeout_profile(ManagerId::Npm, ManagerTimeoutProfile::default());
+            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            let error = result.expect_err("both orchestration attempts should time out");
+            assert_eq!(error.kind, CoreErrorKind::Timeout);
+            assert_eq!(call_count.load(Ordering::SeqCst), 1);
+        });
 }
 
 #[tokio::test]

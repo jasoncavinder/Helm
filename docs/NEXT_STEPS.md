@@ -11,21 +11,21 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x planning on `dev` (post-v0.17.10 stable release)
+0.18.x planning on `dev` (post-v0.17.11 stable release)
 ```
 
 Focus:
-- keep `main`/`dev`/`docs`/`web` release-state docs and version markers aligned now that `v0.17.10` is published
+- keep `main`/`dev`/`docs`/`web` release-state docs and version markers aligned now that `v0.17.11` is published
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - continue doctor/repair subsystem foundation in core + FFI + service surfaces without widening into online knowledge lookup yet
 - keep repair knowledge lookup local/embedded for now, with explicit TODO seams for future online fingerprint lookup
-- sequence `0.18.x` local security groundwork now that the `0.17.10` hardening slice has landed
+- sequence `0.18.x` local security groundwork now that the `0.17.11` hardening slice has landed
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
 - keep the repository-local Codex operating model current (lean `AGENTS`, `ops/codex/skills/`, `.codex/commands/`, notify logging, and `ops/codex/docs/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
-- `v0.17.10` is the current stable release on `main`; current-scope manager adapter completion, final stable-line hardening, and package workflow hardening are now published:
+- `v0.17.11` is the current stable release on `main`; current-scope manager adapter completion, final stable-line hardening, and package workflow hardening are now published:
   - all current manager adapters are considered complete for Helm's intended scope
   - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
@@ -35,6 +35,7 @@ Current checkpoint:
     - added repair-apply execution path through FFI + XPC (`helm_apply_manager_package_state_issue_repair`) and migrated GUI metadata-only repair actions to that subsystem
     - CLI doctor scaffolding now includes `helm doctor scan` and `helm doctor repair plan|apply` for local-first health/repair flows
     - manager post-install setup slice is now integrated for `rustup`/`mise`/`asdf`: doctor emits `post_install_setup_required`, repair exposes `apply_post_install_setup_defaults`, manager enablement is gated until setup checks pass, GUI inspector provides `Finish Setup` guidance + verify flow + optional install-time auto-setup, and CLI repair apply supports setup-default automation with follow-up detection.
+    - local task-failure diagnostics now include recent known `homebrew.cellar_lock_conflict` failures without deleting Homebrew lockfiles; formula and cask tasks share one process-wide core execution lock, cancellation retains that lease until active adapter work exits, timed-out request/response tasks are cancelled before retry/return, GUI lock-conflict guidance is localized, and transient doctor findings expire after one hour.
   - post-`0.17.3` `0.17.4` TUI planning slice delivered: detailed ratatui implementation plan documented at `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` (keyboard model, parity matrix, branding constraints, and ASCII splash-screen contract).
   - post-`0.17.3` `0.17.4` TUI implementation slice delivered: no-arg TTY now launches the ratatui TUI with branded ASCII splash (`logo` + `Helm` + `Take the helm.`), keyboard navigation, command palette/help/confirm overlays, read-only parity panes (updates/packages/tasks/managers/settings/diagnostics), and direct mutation hooks for common manager/package/task actions.
   - post-`0.17.3` `0.17.4` TUI parity-expansion slice delivered: managers pane now supports selected-manager detect/executable/method/priority controls via keyboard, updates pane now supports include-pinned + allow-OS-updates toggles for upgrade workflows, diagnostics pane supports one-key export snapshot writes, task-log detail follows selection movement immediately, and settings pane now exposes integrated self-update status/check/apply controls honoring provenance/channel policy semantics.
@@ -318,8 +319,8 @@ Current checkpoint:
     - `Docs Checks` and `Web Build` workflows now gate `docs` and `web` branches respectively
     - blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics so normal PR merges can complete
     - CodeQL now runs on `main` push + schedule/manual (non-PR gate) to reduce merge friction while retaining scanning coverage
-  - CLI kickoff delivered on `dev`:
-    - draft CLI spec published at `docs/architecture/HELM_CLI_SPEC.ms` with command surface, output contract, and shared-coordinator target architecture
+  - CLI delivery completed on `dev`:
+    - command surface, output contract, and shared-coordinator behavior are implemented in `core/rust/crates/helm-cli` and documented by `docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md`
     - new Rust CLI crate scaffolded at `core/rust/crates/helm-cli` (binary: `helm`) with read-only commands (`status`, `ls`/`packages`, `updates`, `tasks`, `managers`, `settings`) and `--json` output
     - runtime-backed command slice added for `refresh` and `managers detect` using Helm core orchestration with process-adapter bootstrap + manager executable override sync
     - `--wait` / `--detach` global flags are now parsed; shared CLI coordinator routing now supports true detach for coordinator-backed single-task mutations (`packages install|uninstall|upgrade`, `managers detect <id>`, `managers install|update|uninstall`)
@@ -352,7 +353,7 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.10`
+- latest stable release on `main`: `v0.17.11`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -373,7 +374,7 @@ Next release targets:
 - `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
-## v0.17.x Delivery Tracker (Stable `0.17.3` Complete)
+## Historical v0.17.x Delivery Tracker (0.17.3 Checkpoint)
 
 - [x] `feat/v0.17-log-foundation` — task log event model, SQLite persistence migration, FFI/XPC retrieval surface.
 - [x] `feat/v0.17-task-log-viewer` — per-task log viewer UI with filters and pagination.
@@ -1205,41 +1206,42 @@ Completed in `v0.13.0-beta.6`:
 
 ---
 
-## Post-0.14.x Priorities
+## Historical Post-0.14.x Priorities
 
-### Priority 6 — Self Update
+This archived planning snapshot records delivery sequencing through the 0.17.x line. Current priorities are defined at the top of this document.
 
-Implement:
+### Priority 6 — Self Update (Delivered)
+
+Delivered:
 
 - Signed updates
 - Integrity verification
 - Update recovery
 
-### Priority 7 — Diagnostics
+### Priority 7 — Diagnostics (Delivered)
 
-Implement:
+Delivered:
 
 - Task log viewer
 - Error export
 - Manager diagnostics panel
 
-### Priority 8 — Hardening (Remaining)
+### Priority 8 — Hardening (Continues in Current Priorities)
 
-Implement:
+Tracked:
 
 - Stress test orchestration
 - Cancellation reliability under load
 - Memory audit
 - FFI stability under extended runtime
 
-### Priority 9 — CLI Companion (New Goal)
+### Priority 9 — CLI Companion (Delivered)
 
-Implement:
+Delivered:
 
-- Approve and iterate CLI specification in `docs/architecture/HELM_CLI_SPEC.ms`
-- Keep GUI + CLI on one shared coordinator/runtime path (single task authority)
-- Scaffold `helm` binary with read-only command surface and stable `--json` output contracts
-- Add mutating command/task lifecycle coverage to match GUI capabilities incrementally
+- Shared GUI and CLI coordinator/runtime path (single task authority)
+- `helm` binary with read-only and mutating command surfaces plus stable `--json` output contracts
+- Task lifecycle coverage aligned with GUI capabilities for the current scope
 
 ---
 
@@ -1264,4 +1266,4 @@ Implement:
 - 0.14 stable release alignment for `v0.14.0` is complete (README/website + version artifacts).
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
-- 0.17.10 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, and `v0.17.10`.
+- 0.17.11 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, `v0.17.10`, and `v0.17.11`.

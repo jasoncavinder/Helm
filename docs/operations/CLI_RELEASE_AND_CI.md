@@ -409,8 +409,6 @@ gh workflow run release-publish-verify.yml -f tag=vX.Y.Z
 
 This workflow runs:
 
-- direct GUI DMG release flow
-- direct CLI release flow
 - MAS profile unsigned build artifact
 - Setapp profile unsigned build artifact
 - business profile unsigned `.app` zip + unsigned `.pkg` artifact
@@ -418,17 +416,18 @@ This workflow runs:
 Command:
 
 ```bash
-gh workflow run release-all-variants.yml -f tag=v0.17.3 -f upload_auxiliary_assets=true
+gh workflow run release-all-variants.yml -f tag=v0.17.3
 gh run list --workflow "Release All Variants" --limit 5
 gh run view <run-id> --log
 ```
 
 Notes:
 
-- `release-all-variants.yml` ensures a release exists for the tag (creates draft if missing).
-- direct channel jobs keep existing release workflows unchanged.
+- Publish and verify the direct GUI and CLI release before running this workflow. It requires an existing published GitHub release and never creates or publishes a release itself.
+- Direct channel release workflows are not invoked by this workflow, so their release-event builders cannot be duplicated.
 - MAS/Setapp/business orchestration shares one matrix-driven build path and one helper (`scripts/release/build_unsigned_variant.sh`) keyed by `docs/contracts/distribution-profiles.json`.
 - MAS/Setapp/business outputs are intentionally unsigned in the baseline orchestration workflow.
+- Unsigned auxiliary artifacts upload only to the workflow run by default. Pass `-f upload_auxiliary_assets=true` only after explicit review to attach them to the existing GitHub release.
 - signed store/vendor pipelines remain a separate follow-up.
 
 ### 5.8 Promote Recurring Release Friction Into Permanent Docs
