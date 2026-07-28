@@ -9,7 +9,7 @@
   <br>
   A macOS control center and CLI for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.17.10</strong>
+  <strong>Pre-1.0 &middot; v0.17.11</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development with stable `v0.17.10` on `main` and `0.18.x` planning on `dev`.
+> **Status:** Active pre-1.0 development with stable `v0.17.11` on `main` and `0.18.x` planning on `dev`.
 >
-> **Testing:** Please test `v0.17.10` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.17.11` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
