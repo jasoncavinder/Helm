@@ -95,6 +95,7 @@ Active milestone:
   - delivered: pre-`v0.17.7` release-gate closure follow-up (on `dev`): runtime queue terminal waits now avoid missed-notify timeout races and emit periodic heartbeat diagnostics while waiting; graceful cancellation now re-checks terminal state before forced abort; request/response orchestration now logs start timestamp, effective timeout (`min(policy_timeout, orchestration_cap)`), retry attempts, terminal status, and cancellation path; Homebrew adapter `clippy::collapsible_if` warnings were removed; process-timeout coverage now verifies timeout termination does not leave child process-group orphans; and rustup orchestration reliability was re-validated with repeated stress runs.
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
   - `v0.17.10` stable release execution status: released on `main` with tag, publish metadata, and verification complete.
+  - delivered post-`v0.17.10` integration hardening (on `dev`): task terminal transitions and request/response persistence now preserve final results deterministically; Homebrew formula and cask work share one execution lease; XPC connections reuse one service runtime; and system-manager helper paths are canonicalized before selection.
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -938,7 +939,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - Pending: none
 - Redesign integration is functional with layered popover UX + control-center search; accessibility labels and semantic grouping implemented; onboarding walkthrough delivered; UI layer purity cleanup completed
 - Keyboard-only traversal: Tab navigation does not work in macOS SwiftUI (`.focusable()` does not participate in AppKit key view loop); requires NSViewRepresentable bridging approach
-- All walkthrough and redesign localization keys have been rolled out to all 6 locales
+- All walkthrough and redesign localization keys have been rolled out to all 7 locales
 - XPC call timeout enforcement added (30s data fetches, 300s mutations) with exponential backoff reconnection
 - Overflow validation now has both heuristic and on-device executable coverage for Settings, onboarding, navigation, package filters, and manager labels/states
 - Upgrade-all transparency now provides summary counts + top manager breakdown in confirmation flow
@@ -951,7 +952,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - `nix_darwin` is currently detection/refresh-only in Helm. Declarative nix-darwin package/config management is not implemented, and Helm intentionally does not route `nix-env` package mutation flows through the `nix_darwin` manager because that would misrepresent system configuration state.
 - Self-update is intentionally limited to eligible direct Developer ID installs; package-manager-managed installs remain blocked by policy.
 - Diagnostics UI is available in the Inspector (`diagnostics`/`stderr`/`stdout`), including the v0.17 task-log viewer (`logs` tab with level/status filters and pagination).
-- CLI companion implementation is in progress on `dev`: draft spec published at `docs/architecture/HELM_CLI_SPEC.ms` and Rust `helm` binary exists (`core/rust/crates/helm-cli`) with read-only snapshot commands plus runtime-backed orchestration commands (`refresh`, `managers detect`) and `--wait`/`--detach` flag parsing.
+- CLI companion delivery is complete for the current scope on `dev`: the Rust `helm` binary (`core/rust/crates/helm-cli`) provides read-only snapshot commands, runtime-backed orchestration, and `--wait`/`--detach` controls. Its command and transport contracts are maintained in source and `docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md`.
 - CLI read-only contract hardening is in place for the documented schema-safety surface: `status`, `managers list`, `packages list`, `updates summary`, and `tasks show` JSON payloads now use a stable envelope (`schema`, `schema_version`, `generated_at`, `data`), and `tasks show` is implemented as a read-only command.
 - CLI manager-selection controls now include `managers executables list|set` and `managers install-methods list|set` with persisted preferences (`selected_executable_path`, `selected_install_method`) and explicit reset modes (`path-default` / `default`).
 - CLI package mutation coverage now includes `packages install|uninstall|upgrade|pin|unpin` with explicit manager targeting (`--manager` or `name@manager`) and ambiguity-safe `packages show`.
@@ -988,7 +989,7 @@ Based on the full codebase audit conducted on 2026-02-17 and subsequent beta.3 r
   - GUI per-package Homebrew keg cleanup override UI is not yet mirrored in CLI command surface.
   - GUI manager-scoped `Upgrade All` action has no direct manager-scoped CLI bulk-run equivalent.
   - GUI onboarding/walkthrough/support-entry workflows remain GUI-only by design.
-- TUI remains pending by design.
+- TUI baseline delivery is complete; no additional TUI parity scope is currently planned.
 
 ---
 

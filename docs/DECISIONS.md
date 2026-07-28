@@ -303,10 +303,10 @@ Channel rules:
 
 ---
 
-## Decision 022 — Sparkle Delta Policy for 0.16.x
+## Decision 022 — Sparkle Full-Installer Policy
 
 **Decision:**
-For `0.16.x`, direct-channel Sparkle updates ship full signed DMG payloads only. Delta updates are explicitly disabled until a later milestone.
+Direct-channel Sparkle updates ship full signed DMG payloads only. Delta updates are explicitly disabled until a later milestone.
 
 Policy guardrails:
 
