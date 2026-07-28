@@ -146,7 +146,7 @@ jobs:
         run: |
           set -euo pipefail
           cd core/rust
-          cargo test --workspace
+          cargo test --workspace -- --test-threads=1
 
       - name: Run Swift tests before release build
         if: ${{ env.VERIFY_ONLY != 'true' }}
