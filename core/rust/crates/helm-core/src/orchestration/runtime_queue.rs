@@ -379,6 +379,7 @@ impl InMemoryAsyncTaskQueue {
                                 crate::execution::ProcessTerminationMode::Immediate,
                             )?;
                             self.set_forced_cancellation_flag(task_id).await;
+                            self.mark_cancelled_while_reaping(task_id).await;
                             tracing::warn!(
                                 task_id = task_id.0,
                                 manager = ?manager,
@@ -520,6 +521,29 @@ impl InMemoryAsyncTaskQueue {
         let state = self.inner.lock().await;
         if let Some(flag) = state.forced_cancellation_flags.get(&task_id) {
             flag.store(true, Ordering::SeqCst);
+        }
+    }
+
+    async fn mark_cancelled_while_reaping(&self, task_id: TaskId) {
+        let notify = {
+            let mut state = self.inner.lock().await;
+            let transitioned = state
+                .tasks
+                .get(&task_id)
+                .map(|task| !is_terminal(task.status))
+                .unwrap_or(false);
+            if transitioned && let Some(task) = state.tasks.get_mut(&task_id) {
+                task.status = TaskStatus::Cancelled;
+                task.finished_at = Some(SystemTime::now());
+            }
+            transitioned
+                .then(|| state.completion_notifiers.get(&task_id).cloned())
+                .flatten()
+        };
+
+        // Keep the execution lease and process-cancellation state until the task exits and reaps.
+        if let Some(notify) = notify {
+            notify.notify_waiters();
         }
     }
 
