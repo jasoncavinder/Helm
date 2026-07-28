@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::{Mutex as StdMutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use tokio::sync::Mutex;
@@ -33,7 +32,6 @@ pub struct AdapterTaskSnapshot {
 }
 
 type OutcomeSlot = Arc<Mutex<Option<AdapterTaskTerminalState>>>;
-static HOMEBREW_ADAPTER_EXECUTION_LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
 
 #[derive(Clone, Default)]
 pub struct AdapterExecutionRuntime {
@@ -81,19 +79,6 @@ impl AdapterExecutionRuntime {
 
                     let blocking_token = token.clone();
                     let execute_result = tokio::task::spawn_blocking(move || {
-                        let _homebrew_guard = if matches!(
-                            manager,
-                            ManagerId::HomebrewFormula | ManagerId::HomebrewCask
-                        ) {
-                            Some(
-                                HOMEBREW_ADAPTER_EXECUTION_LOCK
-                                    .get_or_init(|| StdMutex::new(()))
-                                    .lock()
-                                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
-                            )
-                        } else {
-                            None
-                        };
                         if blocking_token.is_cancelled() {
                             return Err(cancelled_error(manager, task_type, action));
                         }

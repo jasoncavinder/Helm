@@ -9,7 +9,7 @@ use helm_core::adapters::{
 use helm_core::models::{
     ActionSafety, CachedSearchResult, Capability, InstalledPackage, ManagerAction,
     ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, PackageCandidate, PackageRef,
-    SearchQuery, TaskStatus,
+    SearchQuery, TaskId, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, CancellationMode};
 use helm_core::persistence::SearchCacheStore;
@@ -132,6 +132,19 @@ fn test_db_path(test_name: &str) -> PathBuf {
         .expect("system clock before unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
+}
+
+async fn wait_for_running(runtime: &AdapterRuntime, task_id: TaskId) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if matches!(runtime.status(task_id).await, Ok(TaskStatus::Running)) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("task should reach running state");
 }
 
 async fn wait_for_local_results<F>(
@@ -264,6 +277,7 @@ async fn grace_period_allows_near_complete_search_to_persist() {
         .await
         .unwrap();
 
+    wait_for_running(&runtime, task_id).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
     runtime
         .cancel(
@@ -303,7 +317,7 @@ async fn long_running_search_aborted_after_grace_period() {
 
     // Adapter takes 5s, cancel with 100ms grace → should be aborted
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(SearchAndRefreshAdapter::new(
-        ManagerId::HomebrewFormula,
+        ManagerId::Npm,
         Duration::from_secs(5),
     ));
     let runtime = AdapterRuntime::with_all_stores(
@@ -322,11 +336,9 @@ async fn long_running_search_aborted_after_grace_period() {
         },
     });
 
-    let task_id = runtime
-        .submit(ManagerId::HomebrewFormula, request)
-        .await
-        .unwrap();
+    let task_id = runtime.submit(ManagerId::Npm, request).await.unwrap();
 
+    wait_for_running(&runtime, task_id).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
     runtime
         .cancel(
