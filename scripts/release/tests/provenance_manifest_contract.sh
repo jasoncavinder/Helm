@@ -24,6 +24,8 @@ env \
   GITHUB_RUN_ID="123456" \
   GITHUB_RUN_ATTEMPT="2" \
   GITHUB_SHA="0123456789abcdef" \
+  WORKFLOW_SHA="1111111111111111" \
+  SOURCE_TAG_SHA="fedcba9876543210" \
   GITHUB_REF="refs/tags/v0.17.6" \
   "${SCRIPT_PATH}" \
     --output "${OUT_JSON}" \
@@ -52,6 +54,12 @@ if payload.get("schema_version") != 1:
 
 if payload.get("release", {}).get("tag") != "v0.17.6":
     raise SystemExit("release tag mismatch")
+
+builder = payload.get("builder", {})
+if builder.get("workflow_sha") != "1111111111111111":
+    raise SystemExit("workflow revision mismatch")
+if builder.get("source_tag_sha") != "fedcba9876543210":
+    raise SystemExit("source tag revision mismatch")
 
 subjects = payload.get("subjects") or []
 if len(subjects) != 2:

@@ -153,11 +153,13 @@ async fn idle_timeout_resets_when_process_is_emitting_output() {
         ManagerId::HomebrewFormula,
         TaskType::Refresh,
         ManagerAction::Refresh,
-        CommandSpec::new("/bin/sh")
-            .args(["-c", "for i in 1 2 3 4; do echo tick; sleep 0.05; done"]),
+        CommandSpec::new("/bin/sh").args([
+            "-c",
+            "for i in 1 2 3 4 5 6 7 8; do echo tick; sleep 0.15; done",
+        ]),
     )
     .timeout(Duration::from_secs(10))
-    .idle_timeout(Duration::from_millis(120));
+    .idle_timeout(Duration::from_millis(500));
 
     let handle = spawn_validated(&executor, request).expect("spawn should succeed");
     let output = handle.wait().await.expect("wait should succeed");
@@ -175,10 +177,12 @@ async fn hard_timeout_extends_for_active_install_process() {
         ManagerId::HomebrewFormula,
         TaskType::Install,
         ManagerAction::Install,
-        CommandSpec::new("/bin/sh")
-            .args(["-c", "for i in 1 2 3 4 5 6; do echo tick; sleep 0.11; done"]),
+        CommandSpec::new("/bin/sh").args([
+            "-c",
+            "for i in 1 2 3 4 5 6 7 8 9 10; do echo tick; sleep 0.2; done",
+        ]),
     )
-    .timeout(Duration::from_millis(600))
+    .timeout(Duration::from_millis(1500))
     .idle_timeout(Duration::from_secs(5));
 
     let handle = spawn_validated(&executor, request).expect("spawn should succeed");

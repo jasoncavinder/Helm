@@ -581,6 +581,8 @@ check_required_workflows() {
     "release-macos-dmg.yml"
     "release-cli-direct.yml"
     "release-all-variants.yml"
+    "release-macos-canary.yml"
+    "release-publish-auth-check.yml"
     "appcast-drift.yml"
     "cli-update-drift.yml"
   )
@@ -617,6 +619,10 @@ required = [
     "HELM_SPARKLE_FEED_URL",
     "HELM_SPARKLE_PUBLIC_ED_KEY",
     "HELM_SPARKLE_PRIVATE_ED_KEY",
+    "ASC_KEY_ID",
+    "ASC_ISSUER_ID",
+    "ASC_PRIVATE_KEY_BASE64",
+    "RELEASE_PUBLISH_PAT",
 ]
 
 payload = json.loads(sys.argv[1])
@@ -632,22 +638,7 @@ PY
     info "required release secrets are present"
   fi
 
-  local has_release_publish_pat
-  has_release_publish_pat="$(python3 - "$secrets_json" <<'PY'
-import json
-import sys
-
-payload = json.loads(sys.argv[1])
-present = {item["name"] for item in payload}
-print("yes" if "RELEASE_PUBLISH_PAT" in present else "no")
-PY
-)"
-
-  if [ "$has_release_publish_pat" = "yes" ]; then
-    info "optional release publish PAT secret is present (RELEASE_PUBLISH_PAT)"
-  else
-    warn "optional secret RELEASE_PUBLISH_PAT is missing; publish PR checks may not run when release workflows use github.token fallback"
-  fi
+  info "release publish PAT secret is present (RELEASE_PUBLISH_PAT)"
 }
 
 parse_args() {

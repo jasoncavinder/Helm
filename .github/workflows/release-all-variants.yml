@@ -64,7 +64,7 @@ jobs:
       TAG_NAME: ${{ inputs.tag }}
     steps:
       - name: Checkout tag
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           ref: ${{ env.TAG_NAME }}
 
@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload ${{ matrix.variant }} artifacts to workflow run
         if: ${{ matrix.variant == 'business' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ matrix.artifact_prefix }}-${{ env.TAG_NAME }}
           path: |
@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload ${{ matrix.variant }} artifact to workflow run
         if: ${{ matrix.variant != 'business' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ matrix.artifact_prefix }}-${{ env.TAG_NAME }}
           path: ${{ steps.build_variant.outputs.zip_path }}

@@ -6,6 +6,8 @@ WORKFLOWS_DIR="${ROOT_DIR}/.github/workflows"
 EXPECTED_RUST_TOOLCHAIN="1.93.1"
 EXPECTED_SWIFTLINT_VERSION="0.59.1"
 EXPECTED_SWIFTLINT_SHA256="58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1"
+EXPECTED_CHECKOUT_SHA="fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"
+EXPECTED_UPLOAD_ARTIFACT_SHA="330a01c490aca151604b8cf639adc76d48f6c5d4"
 
 has_pattern() {
   local pattern="$1"
@@ -62,5 +64,28 @@ has_pattern "releases/download/\\$\\{SWIFTLINT_VERSION\\}/portable_swiftlint.zip
   echo "error: swiftlint workflow must install the portable release artifact for the pinned version." >&2
   exit 1
 }
+
+for workflow in \
+  "${WORKFLOWS_DIR}/release-macos-dmg.yml" \
+  "${WORKFLOWS_DIR}/release-cli-direct.yml" \
+  "${WORKFLOWS_DIR}/release-all-variants.yml" \
+  "${WORKFLOWS_DIR}/release-contract-checks.yml" \
+  "${WORKFLOWS_DIR}/release-macos-canary.yml"; do
+  has_pattern "actions/checkout@${EXPECTED_CHECKOUT_SHA}" "${workflow}" || {
+    echo "error: ${workflow} must pin actions/checkout v5." >&2
+    exit 1
+  }
+done
+
+for workflow in \
+  "${WORKFLOWS_DIR}/release-macos-dmg.yml" \
+  "${WORKFLOWS_DIR}/release-cli-direct.yml" \
+  "${WORKFLOWS_DIR}/release-all-variants.yml" \
+  "${WORKFLOWS_DIR}/release-contract-checks.yml"; do
+  has_pattern "actions/upload-artifact@${EXPECTED_UPLOAD_ARTIFACT_SHA}" "${workflow}" || {
+    echo "error: ${workflow} must pin actions/upload-artifact v5." >&2
+    exit 1
+  }
+done
 
 echo "CI toolchain contracts validated."

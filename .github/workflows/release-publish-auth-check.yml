@@ -1,0 +1,104 @@
+name: Release Publish Auth Check
+
+on:
+  schedule:
+    - cron: "23 14 * * 1"
+  workflow_dispatch:
+    inputs:
+      write_probe:
+        description: "Create and immediately clean up a probe branch and PR to validate write permissions"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate-release-publish-auth:
+    runs-on: ubuntu-latest
+    env:
+      PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_PAT }}
+      WRITE_PROBE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.write_probe == 'true' && 'true' || 'false' }}
+    steps:
+      - name: Verify release publication credential
+        run: |
+          set -euo pipefail
+          if [ -z "$PUBLISH_TOKEN" ]; then
+            echo "::error::RELEASE_PUBLISH_PAT is not configured."
+            exit 1
+          fi
+
+          ACTOR="$(GH_TOKEN="$PUBLISH_TOKEN" gh api user --jq '.login')"
+          PUSH_ALLOWED="$(GH_TOKEN="$PUBLISH_TOKEN" gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions.push // false')"
+          if [ "$PUSH_ALLOWED" != "true" ]; then
+            echo "::error::RELEASE_PUBLISH_PAT does not have repository push permission."
+            exit 1
+          fi
+
+          git ls-remote --exit-code "https://x-access-token:${PUBLISH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD >/dev/null
+
+          if [ "$WRITE_PROBE" = "true" ]; then
+            BASE_BRANCH="$(GH_TOKEN="$PUBLISH_TOKEN" gh api "repos/${GITHUB_REPOSITORY}" --jq '.default_branch')"
+            BASE_SHA="$(GH_TOKEN="$PUBLISH_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BASE_BRANCH}" --jq '.object.sha')"
+            TREE_SHA="$(GH_TOKEN="$PUBLISH_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/git/commits/${BASE_SHA}" --jq '.tree.sha')"
+            PROBE_BRANCH="chore/release-auth-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            PROBE_PR_NUMBER=""
+            PROBE_BRANCH_CREATED="false"
+
+            cleanup() {
+              local cleanup_failed=0
+              if [ -n "$PROBE_PR_NUMBER" ]; then
+                if ! GH_TOKEN="$PUBLISH_TOKEN" gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/${PROBE_PR_NUMBER}" -f state=closed >/dev/null; then
+                  echo "::error::Unable to close release publication auth probe PR #${PROBE_PR_NUMBER}."
+                  cleanup_failed=1
+                fi
+              fi
+              if [ "$PROBE_BRANCH_CREATED" = "true" ]; then
+                if ! GH_TOKEN="$PUBLISH_TOKEN" gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${PROBE_BRANCH}" >/dev/null; then
+                  echo "::error::Unable to delete release publication auth probe branch ${PROBE_BRANCH}."
+                  cleanup_failed=1
+                fi
+              fi
+              return "$cleanup_failed"
+            }
+            on_exit() {
+              local original_status=$?
+              trap - EXIT
+              if ! cleanup; then
+                exit 1
+              fi
+              exit "$original_status"
+            }
+            trap on_exit EXIT
+
+            PROBE_COMMIT_SHA="$(GH_TOKEN="$PUBLISH_TOKEN" gh api --method POST "repos/${GITHUB_REPOSITORY}/git/commits" \
+              -f message="chore(release): publication auth probe" \
+              -f tree="$TREE_SHA" \
+              -f "parents[]=$BASE_SHA" \
+              --jq '.sha')"
+            GH_TOKEN="$PUBLISH_TOKEN" gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/heads/${PROBE_BRANCH}" \
+              -f "sha=${PROBE_COMMIT_SHA}" >/dev/null
+            PROBE_BRANCH_CREATED="true"
+            PROBE_PR_NUMBER="$(GH_TOKEN="$PUBLISH_TOKEN" gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f title="chore(release): publication auth probe" \
+              -f head="$PROBE_BRANCH" \
+              -f base="$BASE_BRANCH" \
+              -f body="Automated permission probe; closed immediately." \
+              --jq '.number')"
+          fi
+
+          {
+            echo "## Release Publish Auth Check"
+            echo ""
+            echo "- Authenticated actor: ${ACTOR}"
+            echo "- Repository push permission: ${PUSH_ALLOWED}"
+            echo "- Git read authentication: verified"
+            echo "- Write/PR capability probe: ${WRITE_PROBE}"
+            if [ "$WRITE_PROBE" = "true" ]; then
+              echo "- Probe branch and PR: created and scheduled for cleanup"
+            else
+              echo "- Mutation: none"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

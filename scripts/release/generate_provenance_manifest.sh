@@ -120,6 +120,8 @@ payload = {
         "run_id": os.environ.get("GITHUB_RUN_ID", ""),
         "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
         "sha": os.environ.get("GITHUB_SHA", ""),
+        "workflow_sha": os.environ.get("WORKFLOW_SHA", ""),
+        "source_tag_sha": os.environ.get("SOURCE_TAG_SHA", ""),
         "ref": os.environ.get("GITHUB_REF", ""),
     },
     "release": {

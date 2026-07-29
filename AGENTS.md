@@ -48,6 +48,7 @@ If behavior or policy changes, update the source-of-truth docs that changed real
 - Do not run destructive commands (for example `rm -rf`, branch deletion, cache purges) without explicit user approval.
 - Do not auto-publish releases/appcasts/website deploys.
 - Release and appcast work must remain dry-run/checklist-first unless user explicitly confirms mutation.
+- Before any release tag, publication, workflow dispatch, or release recovery, read `docs/operations/RELEASE_FLOW.md` and `docs/RELEASE_CHECKLIST.md`; run the required rehearsal and preflight gates, and obtain explicit user confirmation before a mutating step.
 
 Branch safety:
 
