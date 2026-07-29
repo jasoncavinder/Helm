@@ -564,8 +564,10 @@ Exit Criteria:
 Goal:
 
 - Introduce a dedicated doctor scan pipeline for manager/package-state health findings.
-- Add deterministic finding fingerprints with explainability/evidence fields.
-- Add repair planning primitives (plan/apply) backed by a temporary embedded local knowledge base.
+- Add deterministic, versioned finding fingerprints that converge for equivalent normalized problems across installations while keeping local evidence separate.
+- Persist finding lifecycle, repair knowledge, import provenance, and repair history in SQLite.
+- Add repair planning primitives (plan/apply) backed by portable local knowledge that references only typed Helm repair capabilities.
+- Add deterministic knowledge import/export contracts without automatic network lookup.
 - Keep repair execution routed through existing task orchestration and safety gates.
 - Deliver first concrete remediation path:
   - Homebrew metadata-only manager installs (installed metadata exists without matching executable instance).
@@ -574,9 +576,15 @@ Goal:
 Exit Criteria:
 
 - Doctor scan report is available and deterministic from local state.
-- Findings include fingerprint, severity, and top evidence factors.
+- Findings include fingerprint, severity, and top evidence factors; fixture tests prove equivalent normalized findings produce the same fingerprint.
+- Fingerprints exclude absolute paths, timestamps, raw output, and other sensitive or incidental evidence.
 - Repair plan/apply is functional for metadata-only Homebrew manager-install mismatch.
-- Embedded knowledge-provider path is clearly isolated behind TODO-marked interfaces for future remote lookup.
+- SQLite-backed planning preserves all currently delivered repair options and stable option IDs for metadata-only installs, post-install setup, and stale selected-executable findings.
+- SQLite-backed knowledge can be deterministically imported/exported and maps findings only to allowlisted typed action IDs.
+- Knowledge payloads cannot contain executable paths, commands/arguments, shell fragments, scripts, plugins, or arbitrary code.
+- Repair apply revalidates the active finding, preserves required confirmation, and verifies the outcome through a follow-up scan.
+- Full, scoped, partial, failed, and cancelled scan tests prove only successfully covered detector scope can resolve persisted findings.
+- Import tests reject forged trust, policy weakening, unknown actions, malformed envelopes, and nondeterministic conflict outcomes.
 - Existing manager install/uninstall UX for metadata-only mismatch is migrated to the repair subsystem path.
 
 Sequencing note:
@@ -593,7 +601,7 @@ Stage 0 (`<=0.16.x`):
 
 Stage 1 (`0.18.x`):
 - Internal local-only groundwork for vulnerability data handling
-- Doctor/repair fingerprinting and local remediation scaffolding in place for future advisory integration
+- Doctor/repair fingerprinting and local remediation scaffolding may share future serialization/provenance/trust infrastructure with advisories while retaining separate domain models, stores, and evaluation semantics
 - No public feature exposure
 - No Pro gating
 - No centralized backend
