@@ -605,6 +605,8 @@ Introduce a dedicated per-manager install-instance model for provenance analysis
 
 ## Decision 034 — Local-First Doctor/Repair Architecture (Phase 1)
 
+**Status:** The embedded/static knowledge-map direction below is superseded by Decision 039. The local-first, core-owned planning, orchestration, and explainability requirements remain in force.
+
 **Decision:**
 Introduce dedicated `doctor` and `repair` subsystems in core, with:
 
@@ -740,6 +742,57 @@ Deferred architecture work:
 - Authority ordering and cancellation are execution policy and must be consistent across GUI, CLI, TUI, and direct FFI callers.
 - Adaptive polling is acceptable until a transport design proves it can preserve service-reconnection and state-consistency guarantees.
 - A pre-1.0 state-management rewrite or plugin architecture would add broad risk without resolving a demonstrated correctness defect.
+
+---
+## Decision 039 — Data-Driven Repair Knowledge and Deterministic Finding Identity
+
+**Decision:**
+Store doctor findings and repair knowledge in Helm's local SQLite database, with portable versioned import/export contracts and deterministic cross-installation fingerprints.
+
+Repair knowledge is declarative data that selects existing typed Helm repair capabilities. It is never executable content. This decision supersedes the embedded/static knowledge-map direction in Decision 034 while preserving its local-first, core-owned planning, orchestration, and explainability requirements.
+
+**Scope:**
+
+- Doctor diagnoses package managers, toolchain managers, and the local environment Helm uses to manage them.
+- Recoverable Helm configuration may produce a finding only when it causes a manager-facing failure.
+- General Helm application defects and release/update recovery remain outside doctor/repair.
+
+**Fingerprint policy:**
+
+- Equivalent normalized problems must produce the same versioned fingerprint across users and installations.
+- The cross-installation contract begins at `v2` and uses canonical netstring-framed fields plus SHA-256; existing `v1:` and `failure-v1-` identifiers are retained only as migrated local aliases.
+- Fingerprints use canonical, resolution-relevant dimensions such as finding code, manager/source identity, normalized package identity, and requirement/failure class.
+- Absolute paths, usernames, timestamps, task IDs, raw output, and other incidental evidence are excluded from shareable fingerprint input.
+- Local recurrence and lifecycle are stored separately so repeated observations update one finding instead of creating duplicate identities.
+- Fingerprint algorithm changes require a new version and fixture-backed compatibility tests.
+
+**Knowledge and execution boundary:**
+
+- SQLite stores findings, repair knowledge, import provenance, and repair history through explicit migrations.
+- Knowledge entries may reference only typed `action_id` values implemented by a finite core action registry.
+- Knowledge entries cannot contain executable paths, command names/arguments, shell fragments, scripts, plugins, arbitrary code, or unvalidated substitutions.
+- Unknown action IDs fail closed and remain non-executable.
+- Registry safety policy is the immutable minimum; knowledge can only add restrictions, and effective behavior uses the most restrictive applicable policy.
+- Trust is assigned locally after verification and cannot be self-asserted by imported payload metadata.
+- Trusted core code derives validated parameters from the current finding and enforces capability, eligibility, provenance, confirmation, managed-policy, timeout, cancellation, and observability rules.
+- Apply must revalidate that the finding is still active, execute through existing task orchestration, and verify the environment afterward.
+
+**Import/export policy:**
+
+- Knowledge serialization is versioned, deterministic, and provenance-aware.
+- Imports are transactional, validated, and never trigger automatic execution.
+- Stable `knowledge_entry_id`, public `option_id`, and core `action_id` identities remain distinct; existing repair option IDs are preserved during migration.
+- Repair knowledge exports never include local finding evidence or observation history. Any finding-history export is a separate, explicitly requested diagnostics format subject to redaction policy; neither format uploads automatically.
+- A bundled versioned data file may seed the local database through the same import contract; automatic online lookup remains deferred.
+
+Canonical detail: `docs/architecture/DOCTOR_REPAIR_KNOWLEDGE.md`.
+
+**Rationale:**
+
+- Different users encountering the same normalized problem should converge on one finding identity and resolution rather than create incompatible duplicate fingerprints.
+- Data-backed knowledge can be inspected, replaced, imported, exported, and shared without shipping new executable behavior.
+- A typed action registry preserves Helm's structured-execution and safety guarantees while allowing repair knowledge to evolve independently.
+- Local persistence supports offline operation, finding lifecycle, repair auditability, and future trusted knowledge distribution.
 
 ---
 ## Summary
