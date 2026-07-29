@@ -245,7 +245,7 @@ struct UpgradeWorkflowStartState {
     }
 }
 
-enum UpgradeWorkflowStatusReconciliationDecision: Equatable {
+enum UpgradeWorkflowStatusDecision: Equatable {
     case keepLocalState
     case clearLocalState
     case recoverLocalState
@@ -261,7 +261,7 @@ struct UpgradeWorkflowStatusReconciliationState {
     mutating func reconcile(
         isActive: Bool?,
         now: Date = Date()
-    ) -> UpgradeWorkflowStatusReconciliationDecision {
+    ) -> UpgradeWorkflowStatusDecision {
         switch isActive {
         case false:
             reset()
