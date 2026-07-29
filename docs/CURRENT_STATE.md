@@ -8,20 +8,20 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.11 stable released on `main`**; a focused `0.17.12` authority-ordering correction is pending before `0.18.x` work resumes on `dev`.
+Current documentation baseline: **0.17.12 stable released on `main`**; `0.18.x` work resumes on `dev`.
 
-Implementation baseline: **pending `0.17.12` patch validation on `dev`**, followed by `0.18.x` planning, after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, current-scope manager adapter completion, and local doctor/repair follow-up for executable-path drift.
+Implementation baseline: **0.18.x planning on `dev`** after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, current-scope manager adapter completion, and local doctor/repair follow-up for executable-path drift.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest stable release currently published on `main`: **0.17.11** (released on 2026-07-28)
-- pending `v0.17.12` corrective patch: bulk and scoped upgrade workflows now execute authority phases in Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
+- latest stable release currently published on `main`: **0.17.12** (released on 2026-07-29)
+- `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - next integration target on `dev`: **0.18.x** (broader doctor/repair foundation and local security groundwork sequencing)
 - repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
-- latest stable publication cut completed for `v0.17.11`:
-  - workspace, docs, website, appcast, and CLI metadata now reflect the published `0.17.11` stable line.
+- latest stable publication cut completed for `v0.17.12`:
+  - workspace, docs, website, appcast, and CLI metadata now reflect the published `0.17.12` stable line.
   - release automation follow-through and publish verification completed on `main`.
   - post-release rustup refresh correction: `rustup check` exit code `100` now represents detected toolchain updates rather than a failed refresh, and current lowercase output grammar is parsed into outdated toolchains.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
@@ -98,6 +98,8 @@ Active milestone:
   - delivered: GitHub governance hardening follow-up (on `dev`): per-branch rulesets are now explicit for `main`/`dev`/`docs`/`web` with branch-specific required checks; new `Policy Gate` + `Docs Checks` + `Web Build` workflows enforce branch targeting/scope policy; repository merge settings keep auto-merge/update-branch enabled while delete-branch-on-merge stays off to protect primary branches; blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics; CodeQL is now main-focused (push/schedule/manual) to avoid PR gate friction.
   - `v0.17.11` stable release execution status: released on `main` with tag, publish metadata, and verification complete.
   - delivered for `v0.17.11`: task terminal transitions and request/response persistence now preserve final results deterministically; Homebrew formula and cask work share one execution lease; XPC connections reuse one service runtime; system-manager helper paths are canonicalized before selection; release, cancellation, MacPorts, and XPC hardening close the release line.
+  - `v0.17.12` stable release execution status: released on `main` with tag, notarized DMG and CLI assets, published appcast and CLI metadata, and post-publication verification complete.
+  - delivered for `v0.17.12`: bulk and scoped upgrade workflow sequencing is backend-owned, authority phases wait for submitted tasks to become terminal, and scoped cancellation prevents later-phase submission.
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
@@ -1015,4 +1017,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.11 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, `v0.17.10`, and `v0.17.11`.
+0.13.x through 0.17.12 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, `v0.17.10`, `v0.17.11`, and `v0.17.12`.
