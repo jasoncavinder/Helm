@@ -22,6 +22,7 @@ Active milestone:
 - latest stable publication cut completed for `v0.17.11`:
   - workspace, docs, website, appcast, and CLI metadata now reflect the published `0.17.11` stable line.
   - release automation follow-through and publish verification completed on `main`.
+  - post-release rustup refresh correction: `rustup check` exit code `100` now represents detected toolchain updates rather than a failed refresh, and current lowercase output grammar is parsed into outdated toolchains.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)

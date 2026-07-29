@@ -17,6 +17,7 @@ Helm is in:
 Focus:
 - keep `main`/`dev`/`docs`/`web` release-state docs and version markers aligned now that `v0.17.11` is published
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
+- preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
 - continue doctor/repair subsystem foundation in core + FFI + service surfaces without widening into online knowledge lookup yet
 - keep repair knowledge lookup local/embedded for now, with explicit TODO seams for future online fingerprint lookup
 - sequence `0.18.x` local security groundwork now that the `0.17.11` hardening slice has landed

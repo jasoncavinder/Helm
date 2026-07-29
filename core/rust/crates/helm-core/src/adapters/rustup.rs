@@ -1615,14 +1615,25 @@ fn parse_rustup_check(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
         .map(str::trim)
         .filter(|line| !line.is_empty())
     {
-        // Skip rustup self-check line: "rustup - Up to date : ..."
-        if line.starts_with("rustup -") || line.starts_with("rustup -") {
+        // Skip rustup self-check lines; Helm tracks toolchain updates, not rustup self-updates.
+        if line.starts_with("rustup -") {
             continue;
         }
 
-        // Only process "Update available" lines
-        // Format: "stable-x86_64-apple-darwin - Update available : 1.82.0 -> 1.93.0"
-        let Some((toolchain_part, update_part)) = line.split_once(" - Update available : ") else {
+        let Some((toolchain_part, status_part)) = line.split_once(" - ") else {
+            continue;
+        };
+
+        let status_part = status_part.trim();
+        let update_marker = "update available";
+        let Some(version_part) = status_part
+            .get(..update_marker.len())
+            .filter(|prefix| prefix.eq_ignore_ascii_case(update_marker))
+            .and_then(|_| status_part.get(update_marker.len()..))
+            .map(str::trim_start)
+            .and_then(|remainder| remainder.strip_prefix(':'))
+            .map(str::trim)
+        else {
             continue;
         };
 
@@ -1631,8 +1642,7 @@ fn parse_rustup_check(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             continue;
         }
 
-        // Parse "1.82.0 -> 1.93.0"
-        let Some((old_version, new_version)) = update_part.split_once(" -> ") else {
+        let Some((old_version, new_version)) = version_part.split_once(" -> ") else {
             continue;
         };
 
@@ -1964,6 +1974,23 @@ wasm32-unknown-unknown\n";
         assert_eq!(packages[0].installed_version.as_deref(), Some("1.82.0"));
         assert_eq!(packages[0].candidate_version, "1.93.0");
         assert!(packages[0].runtime_state.is_empty());
+    }
+
+    #[test]
+    fn parses_current_rustup_check_output() {
+        let output = "stable-aarch64-apple-darwin - update available: 1.96.0 (ac68faa20 2026-05-25) -> 1.97.1 (8bab26f4f 2026-07-14)\nrustup - up to date : 1.29.0\n";
+        let packages = parse_rustup_check(output).unwrap();
+
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].package.name, "stable-aarch64-apple-darwin");
+        assert_eq!(
+            packages[0].installed_version.as_deref(),
+            Some("1.96.0 (ac68faa20 2026-05-25)")
+        );
+        assert_eq!(
+            packages[0].candidate_version,
+            "1.97.1 (8bab26f4f 2026-07-14)"
+        );
     }
 
     #[test]
