@@ -35,7 +35,11 @@ Helm is currently in beta.
 Users may support Helm via:
 
 - GitHub Sponsors
-- Donations
+- Patreon
+- Buy Me a Coffee
+- Ko-fi
+- PayPal
+- Venmo
 - Early access programs
 
 ---

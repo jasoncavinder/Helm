@@ -53,6 +53,17 @@ Helm uses a **three-layer architecture**:
 
 ```
 
+### 2.1 Terminology Contract
+
+Use terms consistently across surfaces:
+
+- **Manager**: the user-facing package/tool ecosystem (`npm`, `homebrew_formula`, `rustup`, etc.).
+- **Adapter**: the internal Rust implementation for a manager.
+- **Task**: a queued/running operation (`refresh`, `install`, `upgrade`, `search`, etc.).
+- **Service (XPC)**: the background execution boundary between UI and Rust core.
+
+User-facing docs should prefer **manager**, **task**, and **service**. Use **adapter** in architecture/developer documentation only.
+
 ---
 
 ## 3. Layer Responsibilities
@@ -184,6 +195,18 @@ disable UI action
 
 This avoids false assumptions about manager behavior.
 
+Policy-driven manageability is distinct from detection:
+
+- A manager can be detected but ineligible for mutating operations under policy.
+- Example: RubyGems/Bundler/pip mapped to macOS base-system executables are detected but treated as non-manageable (enablement/actions blocked).
+- Policy matrix source: `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`.
+
+Install provenance is also distinct from install-method preference:
+
+- Helm persists per-manager install instances (identity + aliases + provenance confidence/margin + explainability) separately from manager preferences.
+- Install-method selection expresses user/operator preference for future install actions.
+- Provenance detection expresses observed install origin for existing instances and drives confidence-based safety policy.
+
 ---
 
 ### 4.3 Authority Model
@@ -233,6 +256,7 @@ Properties:
 
 - Cross-manager parallelism
 - Per-manager serialization
+- Shared execution domains where managers use the same mutable backend; Homebrew formula and cask tasks serialize together
 - True process cancellation
 - Deterministic execution ordering
 
@@ -331,6 +355,33 @@ docs/I18N_STRATEGY.md
 
 ---
 
+### 4.10 Doctor & Repair Subsystems (Phase 1)
+
+Doctor and repair are core-owned subsystems for health diagnosis and remediation planning.
+
+Phase-1 behavior:
+
+- Doctor scans local state and emits structured findings.
+- Findings include deterministic fingerprints plus top evidence factors.
+- Repair resolves findings to remediation options through an embedded/local knowledge provider.
+- Repair execution routes through existing task orchestration (no bypass path).
+
+Design constraints:
+
+- Local-first operation (no network dependency in current phase).
+- Explicit TODO seam for future remote known-fix lookup.
+- Explainability is persisted/surfaced with findings to preserve user trust.
+- Repair actions must preserve existing cancellation, timeout, and task observability contracts.
+
+Initial implemented finding:
+
+- Homebrew metadata-only manager install mismatch:
+  - package metadata indicates manager installed via Homebrew
+  - no matching Homebrew executable instance detected
+  - repair options include Homebrew reinstall and stale-entry cleanup
+
+---
+
 ## 5. Execution Model
 
 ### 5.1 Process Execution
@@ -411,6 +462,7 @@ Stage 3 (`1.4.x`) - Shared Brain:
 - The Security Advisory System (`1.3.x`) is independent of Shared Brain and remains functional without Helm-hosted services.
 - Shared Brain (`1.4.x`) is additive infrastructure that can enrich advisory outcomes but is not a prerequisite for local advisory evaluation.
 - Current releases (`<=0.17.x`) do not send package/fingerprint telemetry to a shared backend.
+- Helm `1.0` crash/error reporting posture is local-only with no automatic remote crash telemetry; operational policy and payload expectations are documented in `docs/operations/CRASH_REPORTING_POLICY.md`.
 
 ---
 
@@ -442,6 +494,7 @@ UI refreshed (inspector shows task detail)
 
 - Managers run in parallel
 - Tasks within same manager are serialized
+- Homebrew formula and cask tasks share one process-wide execution domain because both mutate the same Homebrew installation
 - Authority phases executed sequentially
 
 ---

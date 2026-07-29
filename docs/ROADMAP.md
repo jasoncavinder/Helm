@@ -428,10 +428,10 @@ Delivered (`v0.13.0-rc.1` checkpoint):
 - Security Advisory System milestone added to roadmap (1.3.x)
 
 Delivered (`v0.13.0-rc.2` checkpoint):
-- Support & Feedback card in Settings with 5 actions (Support Helm, Report a Bug, Request a Feature, Send Feedback, Copy Diagnostics)
+- Support & Feedback card in Settings with 5 actions (Support Helm -> GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo; plus Report a Bug, Request a Feature, Send Feedback, Copy Diagnostics)
 - Include Diagnostics toggle with clipboard copy before opening GitHub issue templates
-- Support Helm submenu in status menu right-click (GitHub Sponsors, Patreon)
-- GitHub Sponsors and Patreon funding integration (.github/FUNDING.yml)
+- Support Helm destinations across app surfaces now include all six configured channels (GitHub Sponsors, Patreon, Buy Me a Coffee, Ko-fi, PayPal, Venmo)
+- GitHub Sponsors and Patreon funding integration (.github/FUNDING.yml), plus direct support links for Buy Me a Coffee, Ko-fi, PayPal, and Venmo
 - 11 new L10n keys across all 6 locales
 - AppDelegate decomposed to satisfy SwiftLint thresholds
 
@@ -543,6 +543,48 @@ Exit Criteria:
 
 ---
 
+## v0.17.12 — Upgrade Workflow Authority Correction (pending patch)
+
+Goal:
+
+- Move bulk and scoped upgrade phase sequencing from SwiftUI into the Rust execution boundary.
+- Preserve individual task records, `plan_step_id` labels, cancellation, and diagnostics visibility.
+- Ensure authoritative manager work reaches terminal state before standard or guarded work is scheduled.
+
+Exit Criteria:
+
+- GUI bulk, scoped, and manager-scoped upgrades use the same backend workflow path.
+- Workflow cancellation prevents future authority-phase submission and retains existing in-flight task cancellation.
+- Regression coverage verifies phase ordering and scoped package filtering.
+
+---
+
+## 0.18.x — Doctor & Repair Foundation (rc)
+
+Goal:
+
+- Introduce a dedicated doctor scan pipeline for manager/package-state health findings.
+- Add deterministic finding fingerprints with explainability/evidence fields.
+- Add repair planning primitives (plan/apply) backed by a temporary embedded local knowledge base.
+- Keep repair execution routed through existing task orchestration and safety gates.
+- Deliver first concrete remediation path:
+  - Homebrew metadata-only manager installs (installed metadata exists without matching executable instance).
+- Maintain parity-ready surface contracts for GUI/CLI/TUI, even if some workflows are initially scaffolded.
+
+Exit Criteria:
+
+- Doctor scan report is available and deterministic from local state.
+- Findings include fingerprint, severity, and top evidence factors.
+- Repair plan/apply is functional for metadata-only Homebrew manager-install mismatch.
+- Embedded knowledge-provider path is clearly isolated behind TODO-marked interfaces for future remote lookup.
+- Existing manager install/uninstall UX for metadata-only mismatch is migrated to the repair subsystem path.
+
+Sequencing note:
+
+- This milestone executes first in the `0.18.x` stream before broader local security/advisory groundwork.
+
+---
+
 ## Security Staging (Planned)
 
 Stage 0 (`<=0.16.x`):
@@ -551,6 +593,7 @@ Stage 0 (`<=0.16.x`):
 
 Stage 1 (`0.18.x`):
 - Internal local-only groundwork for vulnerability data handling
+- Doctor/repair fingerprinting and local remediation scaffolding in place for future advisory integration
 - No public feature exposure
 - No Pro gating
 - No centralized backend
@@ -573,7 +616,7 @@ Stage 3 (`1.4.x`) — Shared Brain:
 
 ---
 
-## 0.18.x — Local Security Groundwork (rc)
+## 0.18.x — Local Security Groundwork (rc, second slice)
 
 Goal:
 
@@ -610,6 +653,8 @@ Goal:
 - Logging refinement
 - Crash recovery validation
 - No known race conditions
+- Introduce revision-aware snapshot transport and evaluate event delivery only where it reduces polling without weakening reconnect, ordering, replay, or backpressure guarantees.
+- Consolidate related XPC reads/actions behind additive, versioned request/response contracts; retain compatibility until all surfaces migrate.
 - Memory safety audit
 - i18n validation:
   - key parity across locales
@@ -628,6 +673,7 @@ Exit Criteria:
 - No unhandled panics
 - Stable FFI boundary
 - Deterministic execution verified
+- Snapshot revision/reconnect behavior and consolidated XPC contracts are covered by integration tests.
 
 ---
 
@@ -655,6 +701,7 @@ Goal:
 - Localization coverage for all UI surfaces
 - Website localization
 - Documentation localization (partial)
+- Reassess SwiftUI state ownership after 1.0 operational data is available. A reducer/store rewrite is not a pre-1.0 goal; any change must be incremental and preserve the presentation-only boundary.
 
 Exit Criteria:
 

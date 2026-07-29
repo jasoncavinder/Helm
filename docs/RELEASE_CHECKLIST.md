@@ -21,32 +21,29 @@ This checklist is required before creating a release tag on `main`.
   - `main`/`dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
   - `docs`: `Policy Gate`, `Docs Checks`
   - `web`: `Policy Gate`, `Web Build`
+- [ ] Confirm advisory release-monitor workflows are **not** required branch checks:
+  - `Release Publish Verify`
+  - `Appcast Drift Guard`
+  - `CLI Update Metadata Drift Guard`
 - [ ] Confirm repo merge settings remain enabled/configured: auto-merge on, update-branch on, and delete-branch-on-merge off.
 - [ ] Confirm release metadata publication remains PR-based (no direct-push fallback path in `.github/workflows/release-macos-dmg.yml`).
+- [ ] Confirm `main` ruleset bypass actors are least-privilege for release publish PR flow (prefer GitHub Actions app `pull_request` bypass, avoid broad `always` bypass).
 
 ## Release Preflight (All Releases, Mandatory Before Tagging)
 
 - [ ] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
+- [ ] Read and follow `docs/operations/RELEASE_FLOW.md` before any release mutation.
+- [ ] Run `scripts/release/rehearsal_dry_run.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` and retain its passing report.
+- [ ] Confirm `Release macOS Canary` passed on `macos-26` after the latest release-workflow or toolchain change.
+- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after any release credential rotation or permission change.
 - [ ] Confirm preflight reports token scopes include `repo` and `workflow`.
 - [ ] Confirm preflight validates required release workflows are present and enabled.
 - [ ] Confirm preflight validates required DMG/signing/update secrets are present.
+- [ ] Confirm `RELEASE_PUBLISH_PAT` is configured and authenticated so release-generated publish PRs can receive required checks and auto-merge normally.
 - [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
 - [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
+- [ ] Confirm crash/error reporting policy remains local-only for the release line and no automatic remote telemetry path was introduced (`docs/operations/CRASH_REPORTING_POLICY.md`).
 - [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
-
-## Release Branch Drift Control (All Releases)
-
-- [ ] Before opening the final release-prep PR, sync the working release branch with latest `origin/main` (merge or rebase).
-- [ ] Review conflict-risk files after branch sync:
-  - `CHANGELOG.md`
-  - `apps/macos-ui/Generated/HelmVersion.swift`
-  - `apps/macos-ui/Generated/HelmVersion.xcconfig`
-  - `.github/workflows/release-cli-direct.yml`
-  - `.github/workflows/release-macos-dmg.yml`
-  - `web/public/updates/appcast.xml`
-  - `web/public/updates/cli/latest.json`
-  - `web/public/updates/cli/latest-rc.json`
-  - `web/public/updates/release-notes/*`
 
 ## Release Publication Verification (All Releases)
 
@@ -54,56 +51,37 @@ This checklist is required before creating a release tag on `main`.
   - `Artifacts uploaded: yes`
   - `Publish PR opened: yes/no`
   - `Main metadata synced: yes/no`
-- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and rerun the workflow to verify `Main metadata synced: yes`.
+- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and run workflow_dispatch with `verify_only=true` for the corresponding release workflow to verify `Main metadata synced: yes` without rebuilding artifacts.
 - [ ] Confirm release publication verification status is green after publish PR merge:
   - `Release Publish Verify`
   - `Appcast Drift Guard`
   - `CLI Update Metadata Drift Guard`
 - [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.17.4 (Stable Patch Release Gate)
+## v0.17.12 (Stable Patch Release Gate, Completed)
 
-### Scope and Documentation
-- [ ] `CHANGELOG.md` includes finalized `0.17.4` patch notes for the stable incremental cut.
-- [ ] `docs/CURRENT_STATE.md` and `docs/NEXT_STEPS.md` reflect `v0.17.4` stable release-cut status.
-- [ ] Website changelog includes `0.17.4` patch entry and release-order alignment.
-- [ ] `docs/architecture/HELM_TUI_IMPLEMENTATION_PLAN.md` reflects delivered TUI behavior and known parity deltas (if any).
+### Scope
 
-### Versioning
-- [ ] Workspace version bumped to `0.17.4` in `core/rust/Cargo.toml`.
-- [ ] Rust lockfile local package versions aligned to `0.17.4` in `core/rust/Cargo.lock`.
-- [ ] Generated app version artifacts aligned to `0.17.4` (`apps/macos-ui/Generated/HelmVersion.swift`, `apps/macos-ui/Generated/HelmVersion.xcconfig`).
+- [x] Bulk and scoped upgrade authority sequencing is backend-owned through Rust/FFI/XPC rather than SwiftUI polling.
+- [x] Individual upgrade task records, `plan_step_id` labels, terminal output, and per-task cancellation remain visible through existing diagnostics surfaces.
+- [x] Scoped-workflow cancellation blocks future authority-phase submission.
+- [x] Website, appcast, and CLI update metadata identify the published `v0.17.12` stable release.
 
-### Validation
-- [ ] Rust tests pass (`cargo test -p helm-core -p helm-ffi --manifest-path core/rust/Cargo.toml`).
-- [ ] CLI tests pass (`cargo test -p helm-cli --manifest-path core/rust/Cargo.toml`).
-- [ ] `HelmTests` pass (`xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' test`).
-- [ ] Locale checks pass (`apps/macos-ui/scripts/check_locale_integrity.sh` and `apps/macos-ui/scripts/check_locale_lengths.sh`).
-- [ ] Third-party license audit commands complete without runtime-license scope regressions (`cargo metadata`, `cargo tree`, website lockfile license scan).
-- [ ] Launch-at-login behavior validated on both paths:
-  - macOS 13+ (`SMAppService.mainApp`)
-  - macOS 11/12 login-helper fallback (`SMLoginItemSetEnabled`)
-- [ ] Bundled CLI shim install/remove validated from GUI Settings (`~/.local/bin/helm`), including app-bundle provenance marker writes.
-- [ ] TUI smoke validation complete:
-  - no-arg TTY launch
-  - command palette/help overlays
-  - updates/packages/tasks/managers/settings/diagnostics navigation
-  - package install/uninstall/upgrade + keg-policy actions
-  - manager detect/executable/install-method/priority controls
-  - self-update status/check/apply/uninstall command parity in settings pane
-- [ ] Sparkle feed publication + direct-channel update smoke validation complete against the stable appcast entry.
+### Required Validation
 
-### Branch and Tag
-- [ ] Release-prep PR merged to `dev`.
-- [ ] `dev` merged into `main` for stable cut.
-- [ ] If release-critical docs updates were developed on `docs`, merge `docs` into `main`.
-- [ ] If release-critical website updates were developed on `web`, merge `web` into `main`.
-- [ ] Create annotated stable tag from `main`: `git tag -a v0.17.4 -m "Helm v0.17.4"`.
-- [ ] Push stable tag: `git push origin v0.17.4`.
-- [ ] Publish GitHub release for `v0.17.4` (mark as latest, non-prerelease).
-- [ ] Confirm release-generated publish PR (`chore/publish-updates-v0.17.4`) merged to `main`.
-- [ ] Confirm release-generated CLI metadata publish PR (`chore/publish-cli-updates-v0.17.4-stable`) merged to `main`.
-- [ ] Confirm `Appcast Drift Guard` is green after publication.
+- [x] Verify authoritative tasks reach terminal state before standard or guarded bulk-upgrade tasks are submitted.
+- [x] Verify scoped-workflow cancellation prevents later-phase scheduling and individual in-flight tasks remain cancellable.
+- [x] Run the required preflight, rehearsal, canary, publish-auth, publication, and post-publication verification gates from `docs/operations/RELEASE_FLOW.md`.
+
+## v0.17.10 (Stable Patch Release Gate, Completed)
+
+- Published on `main` on 2026-03-11 with tag, release metadata, and post-publication verification complete.
+- Historical execution details remain preserved in git history, published release metadata, and the `v0.17.10` changelog entry.
+
+## v0.17.9 (Stable Patch Release Gate, Completed)
+
+- Completed and published on `main` on 2026-03-11.
+- Historical execution details remain preserved in git history, published release metadata, and the `v0.17.9` changelog entry.
 
 ## Historical RC and Prior-Release Checklists (Archive)
 

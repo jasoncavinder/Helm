@@ -60,7 +60,7 @@ This is planned architecture only; implementation is staged in future milestones
 These define toolchain versions and are considered authoritative over downstream package managers:
 
 - **mise** (recommended)
-- **asdf** (optional / compatibility mode)
+- **asdf** (optional)
 - **rustup** (recommended)
 
 **Authority rules:** These should always execute before downstream package updates.
@@ -171,7 +171,7 @@ System integrity and tooling:
 ### **Hybrid Model**
 
 - **SwiftUI frontend:** UI rendering, immediate responses.
-- **Background service (daemon / XPC boundary):** Privileged or long-lived operations.
+- **Background service (XPC boundary):** Privileged or long-lived operations.
 - **Rust core:** Adapter modules, orchestration logic, persistence API.
 
 The core boundary is **documented and versioned**. Rust core is UI-agnostic and safe.
@@ -276,6 +276,7 @@ Settings include:
 - Background task queue with observable statuses.
 - Task types: detection, install, uninstall, refresh, search, upgrade.
 - Per-manager exclusivity locks; same manager tasks run serially.
+- Managers that share mutable backend state use a common execution lock; Homebrew formula and cask tasks never run concurrently within a Helm runtime process.
 - True process cancellation, not just UI dismissal.
 
 ---
@@ -311,7 +312,7 @@ Helm must support self-updating via a signed update mechanism.
 Requirements:
 - Code-signed updates
 - Version integrity verification
-- Delta updates preferred
+- Full signed DMG updates are the current direct-channel policy; delta payloads are deferred
 - No shell-based update mechanisms
 - Manual approval required (auto-update optional)
 
