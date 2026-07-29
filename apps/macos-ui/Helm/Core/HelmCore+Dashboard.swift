@@ -294,12 +294,14 @@ extension HelmCore {
     }
 
     func upgradeAllPackages(forManagerId managerId: String) {
-        let packages = outdatedPackages.filter {
-            $0.managerId == managerId && !$0.pinned && canUpgradeIndividually($0)
-        }
-        for package in packages {
-            upgradePackage(package)
-        }
+        startScopedUpgradeWorkflow(
+            includePinned: false,
+            allowOsUpdates: false,
+            managerScopeId: managerId,
+            packageFilter: "",
+            source: "core.dashboard",
+            action: "upgradeAllPackages"
+        )
     }
 
     func health(forManagerId managerId: String) -> OperationalHealth {
@@ -939,6 +941,7 @@ extension HelmCore {
             if !upgradePlanFailureGroups.isEmpty {
                 upgradePlanFailureGroups = []
             }
+            refreshScopedUpgradeWorkflowStatus()
             return
         }
 
@@ -975,6 +978,57 @@ extension HelmCore {
 
         upgradePlanTaskProjectionByStepId = projection
         rebuildUpgradePlanFailureGroups()
+        refreshScopedUpgradeWorkflowStatus()
+    }
+
+    func refreshScopedUpgradeWorkflowStatus() {
+        guard let workflowId = scopedUpgradeWorkflowId,
+              !scopedUpgradeWorkflowStatusCheckInFlight,
+              let service = service() else { return }
+        scopedUpgradeWorkflowStatusCheckInFlight = true
+        withTimeout(
+            30,
+            source: "core.dashboard",
+            action: "isUpgradeWorkflowActive",
+            taskType: "upgrade",
+            operation: { completion in
+                service.isUpgradeWorkflowActive(workflowId: workflowId) { completion($0) }
+            },
+            fallback: nil
+        ) { [weak self] isActive in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.scopedUpgradeWorkflowStatusCheckInFlight = false
+                guard self.scopedUpgradeWorkflowId == workflowId else { return }
+                let resolvedIsActive: Bool?
+                switch isActive {
+                case let .some(value):
+                    resolvedIsActive = value
+                case .none:
+                    resolvedIsActive = nil
+                }
+                switch self.scopedUpgradeWorkflowStatusReconciliationState.reconcile(isActive: resolvedIsActive) {
+                case .keepLocalState:
+                    break
+                case .clearLocalState:
+                    self.scopedUpgradeWorkflowId = nil
+                    self.scopedUpgradePlanRunInProgress = false
+                    self.scopedUpgradeWorkflowStartState.clear(workflowId: workflowId)
+                case .recoverLocalState:
+                    taskSyncLogger.warning(
+                        "Upgrade workflow status remained indeterminate; clearing local workflow UI state (workflow_id=\(workflowId), retries=\(UpgradeWorkflowStatusReconciliationState.maximumIndeterminateResults), budget_seconds=\(Int(UpgradeWorkflowStatusReconciliationState.recoveryBudget)))"
+                    )
+                    self.scopedUpgradeWorkflowId = nil
+                    self.scopedUpgradePlanRunInProgress = false
+                    self.scopedUpgradeWorkflowStartState.clear(workflowId: workflowId)
+                    self.recordLastError(
+                        source: "core.dashboard",
+                        action: "isUpgradeWorkflowActive.indeterminate_recovery",
+                        taskType: "upgrade"
+                    )
+                }
+            }
+        }
     }
 
     func rebuildUpgradePlanFailureGroups() {

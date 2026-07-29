@@ -543,6 +543,22 @@ Exit Criteria:
 
 ---
 
+## v0.17.12 — Upgrade Workflow Authority Correction (pending patch)
+
+Goal:
+
+- Move bulk and scoped upgrade phase sequencing from SwiftUI into the Rust execution boundary.
+- Preserve individual task records, `plan_step_id` labels, cancellation, and diagnostics visibility.
+- Ensure authoritative manager work reaches terminal state before standard or guarded work is scheduled.
+
+Exit Criteria:
+
+- GUI bulk, scoped, and manager-scoped upgrades use the same backend workflow path.
+- Workflow cancellation prevents future authority-phase submission and retains existing in-flight task cancellation.
+- Regression coverage verifies phase ordering and scoped package filtering.
+
+---
+
 ## 0.18.x — Doctor & Repair Foundation (rc)
 
 Goal:
@@ -637,6 +653,8 @@ Goal:
 - Logging refinement
 - Crash recovery validation
 - No known race conditions
+- Introduce revision-aware snapshot transport and evaluate event delivery only where it reduces polling without weakening reconnect, ordering, replay, or backpressure guarantees.
+- Consolidate related XPC reads/actions behind additive, versioned request/response contracts; retain compatibility until all surfaces migrate.
 - Memory safety audit
 - i18n validation:
   - key parity across locales
@@ -655,6 +673,7 @@ Exit Criteria:
 - No unhandled panics
 - Stable FFI boundary
 - Deterministic execution verified
+- Snapshot revision/reconnect behavior and consolidated XPC contracts are covered by integration tests.
 
 ---
 
@@ -682,6 +701,7 @@ Goal:
 - Localization coverage for all UI surfaces
 - Website localization
 - Documentation localization (partial)
+- Reassess SwiftUI state ownership after 1.0 operational data is available. A reducer/store rewrite is not a pre-1.0 goal; any change must be incremental and preserve the presentation-only boundary.
 
 Exit Criteria:
 
