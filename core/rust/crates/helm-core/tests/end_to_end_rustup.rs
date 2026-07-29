@@ -117,9 +117,18 @@ impl ProcessExecutor for RustupFakeExecutor {
             Vec::new()
         };
 
+        let status = if program == "rustup" || program.ends_with("/rustup") {
+            match args.as_slice() {
+                [command] if command == "check" => ProcessExitStatus::ExitCode(100),
+                _ => ProcessExitStatus::ExitCode(0),
+            }
+        } else {
+            ProcessExitStatus::ExitCode(0)
+        };
+
         Ok(Box::new(FakeProcess {
             output: ProcessOutput {
-                status: ProcessExitStatus::ExitCode(0),
+                status,
                 stdout,
                 stderr: Vec::new(),
                 started_at: now,

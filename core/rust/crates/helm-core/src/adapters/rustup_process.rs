@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
-use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
+use crate::adapters::process_utils::{
+    run_and_collect_stdout, run_and_collect_stdout_accepting_exit_codes,
+    run_and_collect_version_output,
+};
 use crate::adapters::rustup::{
     RustupDetectOutput, RustupInstallSource, RustupSource, RustupToolchainDetail,
     rustup_add_component_request, rustup_add_target_request, rustup_check_request,
@@ -171,7 +174,8 @@ impl RustupSource for ProcessRustupSource {
 
     fn check(&self) -> AdapterResult<String> {
         let request = self.configure_request(rustup_check_request(None));
-        run_and_collect_stdout(self.executor.as_ref(), request)
+        // rustup exits 100 when updates are available, which is a successful outdated-state result.
+        run_and_collect_stdout_accepting_exit_codes(self.executor.as_ref(), request, &[100])
     }
 
     fn install_self(&self, source: RustupInstallSource) -> AdapterResult<String> {

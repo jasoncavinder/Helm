@@ -39,6 +39,14 @@ pub(crate) fn run_and_collect_stdout(
     executor: &dyn ProcessExecutor,
     request: ProcessSpawnRequest,
 ) -> AdapterResult<String> {
+    run_and_collect_stdout_accepting_exit_codes(executor, request, &[])
+}
+
+pub(crate) fn run_and_collect_stdout_accepting_exit_codes(
+    executor: &dyn ProcessExecutor,
+    request: ProcessSpawnRequest,
+    allowed_exit_codes: &[i32],
+) -> AdapterResult<String> {
     let manager = request.manager;
     let task_type = request.task_type;
     let action = request.action;
@@ -49,7 +57,9 @@ pub(crate) fn run_and_collect_stdout(
     let output: ProcessOutput = handle.block_on(process.wait())?;
 
     match output.status {
-        ProcessExitStatus::ExitCode(0) => Ok(String::from_utf8_lossy(&output.stdout).to_string()),
+        ProcessExitStatus::ExitCode(code) if code == 0 || allowed_exit_codes.contains(&code) => {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        }
         ProcessExitStatus::ExitCode(code) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(CoreError {
@@ -81,7 +91,7 @@ mod tests {
     };
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskType};
 
-    use super::run_and_collect_stdout;
+    use super::{run_and_collect_stdout, run_and_collect_stdout_accepting_exit_codes};
 
     #[derive(Clone)]
     struct StaticExecutor {
@@ -180,5 +190,30 @@ mod tests {
         assert_eq!(error.manager, Some(ManagerId::Npm));
         assert_eq!(error.task, Some(TaskType::Refresh));
         assert_eq!(error.action, Some(ManagerAction::ListInstalled));
+    }
+
+    #[test]
+    fn run_and_collect_stdout_accepts_explicit_expected_exit_code() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _guard = runtime.enter();
+
+        let now = SystemTime::now();
+        let executor = Arc::new(StaticExecutor {
+            output: ProcessOutput {
+                status: ProcessExitStatus::ExitCode(100),
+                stdout: b"updates available\n".to_vec(),
+                stderr: Vec::new(),
+                started_at: now,
+                finished_at: now,
+            },
+        });
+
+        let stdout =
+            run_and_collect_stdout_accepting_exit_codes(executor.as_ref(), make_request(), &[100])
+                .expect("expected exit code should be accepted");
+        assert_eq!(stdout, "updates available\n");
     }
 }
