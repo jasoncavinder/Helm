@@ -303,10 +303,10 @@ Channel rules:
 
 ---
 
-## Decision 022 — Sparkle Delta Policy for 0.16.x
+## Decision 022 — Sparkle Full-Installer Policy
 
 **Decision:**
-For `0.16.x`, direct-channel Sparkle updates ship full signed DMG payloads only. Delta updates are explicitly disabled until a later milestone.
+Direct-channel Sparkle updates ship full signed DMG payloads only. Delta updates are explicitly disabled until a later milestone.
 
 Policy guardrails:
 
@@ -384,6 +384,7 @@ Operational baseline:
 - Build command: `npm ci && npm run build`
 - Output directory: `dist`
 - Framework: Astro (Starlight)
+- Node runtime: 24 (pinned by `web/.node-version`)
 - Deploy model: GitHub-connected automatic deployments from `main`, plus preview deployments for pull requests/branches
 
 **Rationale:**
@@ -472,6 +473,273 @@ The upcoming CLI and existing GUI must share a single per-user coordinator/task 
 - `helm-ffi` now initializes a coordinator-compatible bridge/host using the same per-user state-dir protocol as `helm-cli`.
 - If an external coordinator already exists, GUI mutation/cancellation requests route through that external authority.
 - If no coordinator exists, GUI host starts a local coordinator endpoint and CLI launch-on-demand requests connect to it.
+
+---
+## Decision 029 — Base-System Manager Policy Gate
+
+**Decision:**
+Treat macOS base-system language-manager executables as detectable but not manageable.
+
+**Policy:**
+
+- Affected managers may remain visible in detection and executable-path selection.
+- Current blocked executables:
+  - RubyGems: `/usr/bin/gem`
+  - Bundler: `/usr/bin/bundle`
+  - pip: `/usr/bin/python3`, `/usr/bin/pip`, `/usr/bin/pip3`
+- Manager enablement is blocked when resolved executable matches blocked criteria.
+- No privilege-escalation path is offered for this blocked case.
+- Runtime task submission treats policy-ineligible managers as effectively disabled.
+- Shared matrix and rule maintenance contract live in `docs/architecture/MANAGER_ELIGIBILITY_POLICY.md`.
+
+**Rationale:**
+
+- Avoid mutating Apple-managed base-system toolchains.
+- Prevent non-deterministic failures and environment-specific behavior.
+- Keep behavior predictable across user systems while preserving detection transparency.
+
+---
+## Decision 030 — CLI First-Run Onboarding Gate
+
+**Decision:**
+`helm-cli` enforces first-run onboarding and license acceptance before running normal operational commands.
+
+**Policy:**
+
+- Persist CLI onboarding state and accepted license terms version in Helm settings storage.
+- Block command execution until both are satisfied, except for:
+  - `help` / `--version`
+  - `completion`
+  - `onboarding` namespace
+- First-run onboarding UX is terminal/menu based (non-TUI).
+- On successful onboarding, the original command continues in the same invocation.
+- Non-interactive/script-friendly first-run controls:
+  - `--accept-license`
+  - `--accept-defaults`
+- If onboarding is required and machine mode is requested (`--json`/`--ndjson`) without sufficient acceptance flags:
+  - return deterministic JSON error with explicit onboarding/license-required guidance.
+
+**Rationale:**
+
+- Aligns CLI legal/onboarding guarantees with GUI onboarding requirements.
+- Keeps CI/script bootstrap deterministic while preserving explicit consent semantics.
+- Avoids hidden state mutation or partial command execution before prerequisites are met.
+
+---
+## Decision 031 — Release Friction Promotion Path
+
+**Decision:**
+Capture release-process friction in `TMP_RELEASE_FRICTION` during execution, then promote recurring friction into permanent operational docs and decisions.
+
+**Rationale:**
+
+- Keeps release notes lightweight during execution while preserving actionable context
+- Prevents recurring operator pain from staying in temporary files
+- Ensures release runbook/checklist/decision docs stay aligned with observed release behavior
+
+---
+## Decision 032 — 1.0 Crash Reporting Posture (Local-Only)
+
+**Decision:**
+For `1.0`, Helm keeps crash/error reporting local-only and does not ship automatic remote crash telemetry.
+
+**Policy details:**
+
+- Diagnostics remain user-initiated export workflows.
+- No automatic upload of diagnostics, package inventory, or environment fingerprints.
+- Expected diagnostics payload schema and privacy constraints are documented in:
+  - `docs/operations/CRASH_REPORTING_POLICY.md`
+- Operational owner is the release operator on duty (maintainer by default in current phase).
+
+**Rationale:**
+
+- Preserves Helm's local-first privacy model for pre-1.0 and 1.0 launch.
+- Reduces privacy/compliance risk before a dedicated opt-in telemetry design exists.
+- Keeps support workflows functional via explicit diagnostics export without background collection.
+
+---
+## Decision 033 — Manager Install-Instance Provenance Model (Phase 1)
+
+**Decision:**
+Introduce a dedicated per-manager install-instance model for provenance analysis while preserving existing single-path detection compatibility.
+
+**Policy details:**
+
+- Persist install instances in a dedicated table (`manager_install_instances`, migration v9; `decision_margin` added in migration v10).
+- Each instance uses a deterministic identity model with ordered fallback:
+  - `DevInode` (`dev:ino`) when available
+  - `CanonicalPath` when canonical path is available but inode identity is unavailable
+  - `FallbackHash` (canonical/display path + stable file metadata)
+- Persist identity metadata (`identity_kind`, `identity_value`) and deterministic `instance_id` for continuity across runs even if alias paths change.
+- External ownership evidence (for example `brew`, `pkgutil`) must be:
+  - timeout-bounded
+  - lazy/invoked only for ambiguity resolution
+  - cached per detection run
+  - optional (signal boost only; detection must fail closed and continue)
+- Persist explainability and policy outputs per instance:
+  - `provenance`, `confidence`
+  - `decision_margin` between top and competing provenance scores (when a competing score exists)
+  - top evidence factors
+  - competing provenance and score when relevant
+  - derived `automation_level`, `uninstall_strategy`, `update_strategy`, `remediation_strategy`
+- Managed-policy controls are evaluated at lifecycle runtime/surface projection time (not persisted into provenance records):
+  - install-method policy context: `HELM_MANAGED_INSTALL_METHOD_POLICY`, `HELM_MANAGED_INSTALL_METHOD_POLICY_ALLOW_RESTRICTED`
+  - automation ceiling policy context: `HELM_MANAGED_AUTOMATION_POLICY` (`automatic|needs_confirmation|read_only`)
+  - managed-policy automation ceilings clamp effective automation/strategy behavior conservatively without rewriting stored provenance evidence.
+- Route provenance classification through adapter-level spec hooks:
+  - `rustup` uses explicit scoring rules in Phase 2
+  - non-rustup managers remain explicit `Unknown` stubs with `TODO(provenance-spec)` markers until adapter rules are implemented
+- Non-rustup managers default to `Unknown` provenance in Phase 1 with explicit `TODO(provenance-spec)` markers.
+- Rollout gate:
+  - do not switch manager uninstall routing to provenance-first until instance/provenance stability and multi-install ambiguity tests are validated.
+  - phase 3 controlled exception: rustup manager uninstall is now provenance-first in CLI (with structured blast-radius preview, `--yes` confirmation gate, and explicit unknown-provenance override); non-rustup uninstall remains compatibility-routed until adapter specs are implemented.
+
+**Rationale:**
+
+- Decouples install-method preference from actual provenance detection.
+- Improves safety for multi-install and ambiguous-manager environments.
+- Enables confidence-based automation policy instead of path-only assumptions.
+- Keeps adoption low-risk by preserving existing detection compatibility and delaying routing switch-over.
+
+---
+
+## Decision 034 — Local-First Doctor/Repair Architecture (Phase 1)
+
+**Decision:**
+Introduce dedicated `doctor` and `repair` subsystems in core, with:
+
+- deterministic local finding fingerprints
+- embedded/local knowledge lookup for known remediations
+- repair planning + apply primitives routed through existing task orchestration
+
+Phase-1 scope is intentionally narrow and starts with Homebrew metadata-only manager-install mismatch remediation.
+
+**Policy details:**
+
+- Doctor findings must include:
+  - `finding_code`
+  - `issue_code`
+  - deterministic `fingerprint`
+  - severity and top evidence factors
+- Repair planning maps finding fingerprints to actionable options.
+- External/online lookup is deferred; current release uses embedded knowledge data and explicit TODO seams for future remote providers.
+- Repair execution must reuse existing manager/package mutation pathways and keep task lifecycle visibility/cancellation semantics intact.
+- UI/CLI/TUI should consume the same core finding/repair contracts; surface-level UX can evolve independently.
+
+**Rationale:**
+
+- Creates a stable bridge from current local diagnostics to future online known-fix workflows without hard-coupling current releases to backend availability.
+- Consolidates ad hoc one-off remediation logic behind one subsystem contract.
+- Preserves user trust through deterministic local-first behavior and explainable reasoning prior to backend rollout.
+
+---
+## Decision 035 — Post-Install Setup Is a First-Class Health Gate
+
+**Decision:**
+Treat manager post-install shell/setup requirements as explicit doctor/repair findings and as a manageability gate (not a soft warning).
+
+Initial implemented manager scope:
+
+- `rustup`
+- `mise`
+- `asdf`
+
+**Policy details:**
+
+- Detection/doctor emits `post_install_setup_required` when manager install instances are present but required setup checks are unmet.
+- Manager enablement must be blocked when setup-required findings are present.
+- Repair planning exposes `apply_post_install_setup_defaults` when safe automation is available.
+- GUI/CLI/TUI consume the same issue/repair contract:
+  - user-facing guided steps
+  - explicit verify/check-again path
+  - optional automation path when supported
+- Install flow can optionally request automatic post-install setup completion; default remains opt-in (`off`).
+- Non-implemented managers remain out of scope until adapter-specific setup requirements are defined.
+
+**Rationale:**
+
+- Prevents false "installed/healthy" states when core shell activation is missing.
+- Aligns manager health, enablement policy, and repair UX behind one deterministic contract.
+- Preserves trust by surfacing clear guidance and explicit verification rather than silent assumptions.
+
+---
+## Decision 036 — Repository-Local Codex Operating System
+
+**Decision:**
+Adopt a repository-local Codex operating model with:
+
+- repo-scoped instructions layering (`AGENTS.md` + subtree `AGENTS.md` files)
+- reusable workflow Skills under `ops/codex/skills/`
+- repo-local Codex config (`.codex/config.toml`) using lean `project_doc_max_bytes` (`131072`)
+- reusable slash-command templates under `.codex/commands/`
+- structured local notify logging on `agent-turn-complete` to `dev/logs/codex-runs.ndjson`
+
+**Policy details:**
+
+- Keep policy/invariants in root `AGENTS.md`; move procedures into Skills.
+- Detect repeated/fragile workflows and promote them into Skills instead of expanding root instructions.
+- Keep automation local-first; external MCP integrations remain optional and justified-by-need.
+- Release/publish operations remain explicit-confirmation and dry-run/checklist-first by default.
+- Session observability must avoid secrets and log only minimal structured run metadata.
+
+**Rationale:**
+
+- Reduces instruction repetition and context-window bloat across sessions.
+- Standardizes recurring execution paths (quality gates, remediation batches, updater checks, docs sync).
+- Improves traceability for long-running/multi-step Codex work without introducing remote telemetry.
+- Preserves Helm safety posture while increasing day-to-day operator efficiency.
+
+---
+## Decision 037 — Shared Execution Domains for Common Backends
+
+**Decision:**
+Managers that mutate the same backend may share one core execution domain instead of relying only on per-manager serialization.
+
+Initial implemented scope:
+
+- `homebrew_formula`
+- `homebrew_cask`
+
+**Policy details:**
+
+- Formula and cask tasks map to the same process-wide Homebrew execution lock across adapter runtimes.
+- The exclusion lease remains held for the actual adapter execution lifetime, including when orchestration cancellation detaches the awaiting task.
+- Existing authority-phase ordering remains unchanged; execution-domain locking constrains concurrency without reordering managers.
+- Homebrew lock-conflict failures are classified into structured diagnostics with bounded recent visibility.
+- Helm does not delete Homebrew-owned lockfiles automatically; recovery guidance is wait/retry and operator diagnosis.
+- Coordination across separate Helm processes continues to route through the shared coordinator where available.
+
+**Rationale:**
+
+- Formula and cask adapters invoke the same Homebrew installation and can otherwise collide despite having different manager IDs.
+- Holding exclusion through real adapter completion prevents cancellation from admitting overlapping Homebrew work.
+- Avoiding native lockfile deletion preserves Homebrew's ownership and locking guarantees.
+
+---
+## Decision 038 — Backend-Owned Upgrade Workflows and Deferred Transport Refinement
+
+**Decision:**
+Bulk and scoped upgrade workflows are owned by the Rust execution boundary. SwiftUI sends scoped intent and presents state; it does not schedule authority phases, use UI task projections to determine completion, or decide when downstream manager work may start.
+
+Implemented in the released `v0.17.12` patch:
+
+- bulk and scoped workflows derive the current safe upgrade plan in Rust/FFI;
+- managers are scheduled by canonical authority phase;
+- all submitted tasks in one phase become terminal before the next phase is scheduled;
+- scoped-workflow cancellation prevents future phase submission while per-task cancellation remains process-backed and observable; pre-start caller-supplied cancellation IDs reserve cancellation only for a bounded window so abandoned IDs cannot block future workflows.
+
+Deferred architecture work:
+
+- `0.19.x`: add revision-aware snapshots and evaluate narrowly scoped event delivery, with reconnect/replay/ordering/backpressure tests before reducing polling;
+- `0.19.x`: consolidate related XPC operations through additive versioned contracts, without a disruptive boundary rewrite;
+- `1.1.x` reassessment: consider incremental SwiftUI state-container/reducer extraction only if post-1.0 operational evidence justifies it;
+- runtime-loadable manager adapters remain out of scope through 1.0. Static registry registration remains the safety and reviewability baseline.
+
+**Rationale:**
+
+- Authority ordering and cancellation are execution policy and must be consistent across GUI, CLI, TUI, and direct FFI callers.
+- Adaptive polling is acceptable until a transport design proves it can preserve service-reconnection and state-consistency guarantees.
+- A pre-1.0 state-management rewrite or plugin architecture would add broad risk without resolving a demonstrated correctness defect.
 
 ---
 ## Summary

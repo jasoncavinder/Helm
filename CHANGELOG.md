@@ -6,18 +6,170 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.17.12] - 2026-07-29
+
+### Fixed
+- Bulk and scoped upgrade workflows now execute authority phases in the Rust execution boundary. Helm waits for all submitted tasks in an authoritative phase before scheduling standard or guarded manager work.
+- Cancelling a scoped upgrade workflow prevents later authority phases from being scheduled while retaining existing per-task cancellation and diagnostics.
+- Indeterminate workflow-status probes now recover local UI state after a bounded retry window without weakening backend workflow ownership.
+- Legacy external-coordinator bulk updates retain authority ordering under behavior-level regression coverage.
+
+### Changed
+- SwiftUI now submits and renders scoped upgrade workflows instead of coordinating their phase sequencing locally.
+
+`v0.17.12` is the final planned `0.17.x` patch before broader `0.18.x` work.
+
+## [0.17.11] - 2026-07-28
+
+Patch `0.17.11` ships manager lifecycle, release-process, and execution-safety hardening.
+
+### Added
+- Manager install-instance provenance now records ownership confidence, competing evidence, and the active instance across core, CLI, service, and GUI surfaces.
+- Manager and package uninstall flows now provide provenance-aware blast-radius previews before mutating the system.
+
+### Changed
+- Manager install, update, and uninstall planning now shares deterministic lifecycle routing across the CLI, FFI, and GUI.
+- Release automation now validates existing releases before auxiliary builds, produces deterministic provenance manifests, and verifies publication metadata convergence.
+
+### Fixed
+- Cancellation now terminates registered processes after the grace period, including callers waiting on terminal state.
+- MacPorts self-uninstall cleanup rejects unsafe paths, and XPC access now accepts only the Helm application caller.
+- Dependency upgrades resolve known Rust and web-package vulnerabilities while retaining CI compatibility.
+
+## [0.17.10] - 2026-03-11
+
+### Added
+- Doctor/repair now detects stale selected manager executable overrides and can clear them locally through the existing repair flow.
+
+### Changed
+- Executable discovery now accounts for non-default `CARGO_HOME`, `ASDF_DIR`, `ASDF_DATA_DIR`, and modern `mise`/`rtx` shim and install roots more consistently across core, FFI, and CLI surfaces.
+- Catalog-sync participation is now explicitly scoped instead of being inferred from generic package-search participation.
+
+### Fixed
+- Onboarding no longer risks clobbering a valid discovered `rustup` executable path during follow-up detection.
+- Non-default `cargo`, `cargo-binstall`, and `rustup` installs now route execution through the correct resolved binary path instead of assuming `~/.cargo/bin`.
+- Executable discovery caches now self-heal when cached paths disappear and are invalidated on recent manager lifecycle transitions.
+
+## [0.17.9] - 2026-03-11
+
+Patch `0.17.9` completes current-scope manager adapter coverage and package workflow hardening ahead of the `0.18.x` doctor/repair and local-security cycle.
+
+### Added
+- Rustup package workflows are now first-class in Helm, including toolchain search/install/uninstall/upgrade and rustup toolchain detail controls for components, targets, profile, default toolchain, and directory overrides.
+- End-to-end orchestration coverage for the remaining manager adapters, including Homebrew casks, MacPorts, the remaining language managers, and the guarded/status system adapters.
+
+### Changed
+- Manager adapter scope is now explicitly documented so package, status, and detection-only managers are considered complete relative to Helm's product model.
+- Package-family workflows now keep the main package surfaces collapsed while moving exact version/member targeting into inspector and install flows.
+- Homebrew formulae and casks, asdf, mise, and rustup are now treated as complete first-class package workflows within Helm's intended scope.
+
+### Fixed
+- Version-scoped virtual pinning now applies coherently across GUI, CLI, and TUI for multi-version managers.
+- Shared package-search participation policy is now consistent across core, CLI, TUI, and FFI surfaces.
+- Homebrew-backed outdated detection for `colima`, `podman`, and `docker-desktop` is now provenance-aware instead of assuming Homebrew ownership for non-Homebrew installs.
+- Cargo-binstall end-to-end tracking coverage now waits deterministically for persisted mutation state, eliminating the observed CI race in tracked-package assertions.
+- Managed Helm CLI shim installation now routes through the service helper path and validates the final shim state so sandboxed app builds install a non-quarantined shim correctly.
+
+## [0.17.8] - 2026-03-03
+
+Patch `0.17.8` finalizes manager lifecycle parity expansion and hardens managed CLI shim installation behavior.
+
+### Added
+- Expanded manager lifecycle parity across core, CLI, FFI, and GUI surfaces for planner-backed install/update/uninstall flows.
+
+### Changed
+- Manager lifecycle parity sweep was merged into the stable patch line for a single release cut.
+
+### Fixed
+- Managed CLI shim install flow now stages writes through a temporary `.helm.tmp` path before replacement.
+- Managed CLI shim handling now clears quarantine attributes to avoid blocked execution after install.
+- Release preflight now avoids the unsupported `gh secret list --limit` invocation path.
+
+## [0.17.7] - 2026-02-26
+
+Patch `0.17.7` closes the pre-release quality audit and release-gate blockers with orchestration reliability hardening and lint/test cleanup.
+
+### Added
+- Runtime queue timeout diagnostics now emit periodic wait heartbeats and richer timeout/cancellation context for request-response orchestration waits.
+- Rust timeout-process coverage now asserts process-group child cleanup to prevent timeout/cancel orphan regressions.
+
+### Changed
+- Refresh orchestration now logs deterministic effective timeout derivation (`min(policy_timeout, orchestration_cap)`) with attempt/retry context for rustup-style request-response flows.
+- Graceful cancellation paths now re-check terminal state before forced abort handling.
+
+### Fixed
+- Removed remaining Homebrew adapter `clippy::collapsible_if` warnings and additional strict-clippy regressions in CLI/FFI touched surfaces.
+- Eliminated an intermittent runtime-queue wait-notify race that could surface as flaky timeout behavior in rustup end-to-end tests.
+
+## [0.17.6] - 2026-02-24
+
+Patch `0.17.6` hardens refresh reliability and diagnostics after the `v0.17.5` release cycle.
+
 ### Added
 - Task diagnostics now capture richer execution metadata, including effective working directory, start/finish timestamps, duration, exit code, termination reason, and structured error attribution.
 - Diagnostics summary output now includes failure-class counters to speed up triage of refresh and coordinator failures.
 - Coordinator health diagnostics now surface stale-state reasons (dead PID, missing executable target, invalid ready-state payload) for faster runtime recovery analysis.
 
 ### Changed
-- Coordinator request handling now performs a one-time stale-state recovery and retry when timeout failures indicate a stale local coordinator state.
-- Refresh/search request-response flows now retry once for transient timeout/network-resolution failures.
+- Coordinator request handling now performs a one-time stale-state recovery and retry when timeout failures indicate stale local coordinator state.
+- Refresh/search request-response flows now retry once for transient timeout and network-resolution failures.
 - npm refresh list timeout has been increased from 60s to 120s to reduce avoidable refresh failures on slower networks.
 
 ### Fixed
 - Process execution no longer fails immediately when a previously recorded working directory no longer exists; executor now falls back to a valid existing directory before spawn.
+
+## [0.17.5] - 2026-02-24
+
+Patch `0.17.5` ships manager eligibility-policy enforcement, first-run CLI onboarding, and task/about UX hardening after `0.17.4`.
+
+### Added
+- Manager eligibility policy matrix and enforcement for system-managed executables:
+  - RubyGems `/usr/bin/gem`
+  - Bundler `/usr/bin/bundle`
+  - pip `/usr/bin/python3|pip|pip3`
+- CLI first-run onboarding flow with terminal prompts, onboarding status/run/reset commands, and script-oriented first-run flags:
+  - `--accept-license`
+  - `--accept-defaults`
+- Manual failed-task dismissal action in task rows.
+
+### Changed
+- Failed tasks are now retained until replacement, manual dismissal, manager disable/uninstall cleanup, or local-data reset.
+- About overlay is simplified to product/version/copyright focus with update-available indication only.
+- Settings section order is now `General -> Managers -> CLI -> Service Health -> Support & Feedback -> Advanced`.
+- Reset Local Data now closes Control Center so the app re-enters onboarding on next interaction.
+
+### Fixed
+- Enabling ineligible managers is now blocked with structured/localized remediation; stale enabled state is auto-healed to disabled.
+- Runtime task submission now hard-stops ineligible managers (policy-blocked state treated as disabled).
+- CLI shim status now resolves home-directory paths robustly for settings diagnostics.
+- Manager disable now purges manager-scoped persisted task records.
+
+## [0.17.4] - 2026-02-24
+
+Patch `0.17.4` packages the first ratatui-powered Helm TUI, bundled-app CLI shim workflows, and post-`0.17.3` GUI/CLI parity closures.
+
+### Added
+- No-arg TTY launch now opens a ratatui/crossterm TUI with branded splash, keyboard-first navigation, and section workflows for updates/packages/tasks/managers/settings/diagnostics.
+- GUI Settings now supports installing/removing a managed `~/.local/bin/helm` shim that resolves to the app-bundled CLI and writes app-bundle install provenance.
+- CLI now supports smart uninstall via `helm self uninstall`, with channel-aware policy handling:
+  - direct-script: remove executable + matching marker
+  - app-bundle-shim: remove managed shim + matching marker
+  - channel-managed installs: return actionable uninstall guidance
+
+### Changed
+- Launch-at-login now supports macOS 11+ with dual-path implementation:
+  - macOS 13+: `SMAppService.mainApp`
+  - macOS 11/12: embedded login-helper fallback via `SMLoginItemSetEnabled`
+- GUI/CLI/TUI parity expanded:
+  - progressive local+remote search in CLI/TUI
+  - per-package Homebrew keg-policy controls in CLI/TUI
+  - manager-scoped bulk upgrade execution in CLI
+  - TUI package install actions and Homebrew keg-policy editing
+
+### Fixed
+- TUI filter mode now exits correctly when the filter text is erased.
+- Help/completion contracts now include the expanded self-management command surface (`self uninstall`).
+
 ## [0.17.3] - 2026-02-23
 
 Patch `0.17.3` finalizes CLI parity-hardening and release-channel safety guardrails delivered after `0.17.2`, while keeping GUI Sparkle flows intact for direct DMG installs.

@@ -2,7 +2,7 @@
 
 Status: Active operational guide  
 Owner: Helm Release Engineering  
-Last Updated: 2026-02-23
+Last Updated: 2026-02-24
 
 ---
 
@@ -15,12 +15,83 @@ This guide covers:
 - `install.sh` validation and maintainer actions outside CI
 - all-variant release orchestration (`release-all-variants.yml`)
 
+Mandatory release preflight tooling:
+
+- `scripts/release/preflight.sh` (scope/auth/workflow/secret/git checks)
+- `scripts/release/runbook.sh` (prepare/tag/publish/verify wrappers)
+
 Reference contracts:
 
 - `docs/architecture/BUILD_VARIANTS.md`
+- `docs/operations/RELEASE_REHEARSAL_DRY_RUN.md`
+- `docs/operations/SPARKLE_RECOVERY_SCENARIOS.md`
+- `docs/operations/REAL_MANAGER_CANARY.md`
+- `docs/operations/GUARDED_OS_UPDATE_VALIDATION.md`
 - `.github/workflows/release-cli-direct.yml`
+- `.github/workflows/release-publish-verify.yml`
 - `.github/workflows/cli-installer-checks.yml`
 - `.github/workflows/release-all-variants.yml`
+- `.github/workflows/guarded-os-update-contracts.yml`
+- `docs/contracts/release-line.json`
+- `scripts/release/check_release_line_copy.sh`
+- `scripts/release/rehearsal_dry_run.sh`
+- `scripts/tests/guarded_os_update_contract.sh`
+
+Release check policy (required vs advisory):
+
+- merge-gating required checks are enforced by branch rulesets (`Policy Gate`, test/lint/build checks)
+- post-publish convergence checks remain advisory:
+  - `Release Publish Verify`
+  - `Appcast Drift Guard`
+  - `CLI Update Metadata Drift Guard`
+- advisory checks must still be monitored and resolved before release sign-off
+
+### 1.1 CI Toolchain Pin Contract (Reproducibility)
+
+Pinned versions:
+
+- Rust toolchain: `1.93.1` (all workflows using `dtolnay/rust-toolchain`)
+- SwiftLint: `0.59.1` via `portable_swiftlint.zip`
+- SwiftLint portable SHA-256: `58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1`
+
+Drift guard:
+
+- `scripts/release/tests/ci_toolchain_contract.sh`
+- executed by `.github/workflows/release-contract-checks.yml`
+
+Pin-rotation procedure:
+
+1. Choose target Rust + SwiftLint versions.
+2. Update Rust `toolchain:` values in:
+   - `.github/workflows/ci-test.yml`
+   - `.github/workflows/dependency-security.yml`
+   - `.github/workflows/release-cli-direct.yml`
+   - `.github/workflows/release-macos-dmg.yml`
+   - `.github/workflows/release-all-variants.yml`
+3. Download the target SwiftLint `portable_swiftlint.zip`, compute SHA-256, and update:
+   - `.github/workflows/swiftlint.yml` (`SWIFTLINT_VERSION`, `SWIFTLINT_PORTABLE_SHA256`)
+4. Update constants in `scripts/release/tests/ci_toolchain_contract.sh`.
+5. Run contracts locally before opening a PR:
+
+```bash
+scripts/release/tests/ci_toolchain_contract.sh
+```
+
+### 1.2 Immutable GitHub Action Pinning (Criticality-Phased)
+
+Phase 1 (pre-release required) is complete for release/security workflows:
+
+- `.github/workflows/release-contract-checks.yml`
+- `.github/workflows/appcast-drift.yml`
+- `.github/workflows/dependency-security.yml`
+- `.github/workflows/codeql.yml`
+- `.github/workflows/semgrep.yml`
+
+Policy:
+
+- release/security workflows must stay pinned to immutable action SHAs.
+- CI/test/lint and non-critical automation pinning continues in later phases.
+- new workflows must use immutable SHA pins when introduced.
 
 ---
 
@@ -37,6 +108,13 @@ Availability note:
 
 - `latest.json` is required and must stay publishable/non-404 for stable direct installs.
 - `latest-rc.json` is published only after the first prerelease tag flow (`vX.Y.Z-rc.N`).
+
+Branch truth policy:
+
+- publish-ready metadata is authoritative on `main` and `release/*` branches only.
+- `dev` is not required to carry publish-ready metadata artifacts.
+- `CLI Update Metadata Drift Guard` skips non-publish refs and enforces stable metadata only on publish-truth refs.
+- prerelease pointer validation (`latest-rc.json`) runs only when that file is present; if present, it must map to the latest published prerelease tag with `channel=rc`.
 
 Schema:
 
@@ -151,6 +229,13 @@ or the wrapper form:
 scripts/release/runbook.sh prepare --tag vX.Y.Z
 ```
 
+If your shell prints locale warnings, normalize locale env before release commands:
+
+```bash
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+```
+
 Expected outcome:
 
 - zero preflight errors
@@ -161,32 +246,7 @@ Expected outcome:
 
 If preflight fails, resolve failures before creating/pushing tags.
 
-### 5.0.1 Sync Release Branch to Latest `origin/main` Before Final Prep PR
-
-Before opening the final release-prep PR, reduce drift risk by syncing the release branch with current `main`:
-
-```bash
-git fetch origin
-git switch <release-prep-branch>
-git merge --ff-only origin/main
-```
-
-If fast-forward is not possible, use one of:
-
-- merge-based update: `git merge origin/main`
-- rebase-based update (before publish): `git rebase origin/main`
-
-After sync, manually review high-conflict paths:
-
-- `CHANGELOG.md`
-- `apps/macos-ui/Generated/HelmVersion.swift`
-- `apps/macos-ui/Generated/HelmVersion.xcconfig`
-- `.github/workflows/release-cli-direct.yml`
-- `.github/workflows/release-macos-dmg.yml`
-- `web/public/updates/appcast.xml`
-- `web/public/updates/cli/latest.json`
-- `web/public/updates/cli/latest-rc.json`
-- `web/public/updates/release-notes/*`
+Run the full mandatory sequence in `docs/operations/RELEASE_FLOW.md`, including the non-mutating rehearsal, `Release macOS Canary`, and `Release Publish Auth Check` before a stable tag.
 
 ### 5.1 Authenticate `gh` with Maintainer PAT
 
@@ -194,6 +254,8 @@ Required scopes (minimum):
 
 - `repo`
 - `workflow`
+
+Without these, release operators cannot reliably rerun/dispatch workflows (`Resource not accessible by personal access token`).
 
 Commands:
 
@@ -224,10 +286,47 @@ gh repo view --json name,defaultBranchRef
 gh workflow list
 ```
 
+### 5.2.1 Verify Main Ruleset Publish-PR Bypass Policy
+
+`scripts/release/preflight.sh` now validates `main` ruleset policy for release publish branches.
+
+Expected policy (least privilege):
+
+- `pull_request` and `required_status_checks` rules are present on `refs/heads/main`
+- required checks include `Policy Gate`
+- bypass actor policy uses pull-request-only mode (never `always`)
+- preferred: bypass actor includes GitHub Actions app in pull-request mode:
+  - `actor_type=Integration`
+  - `actor_id=15368` (`github-actions`)
+  - `bypass_mode=pull_request`
+- fallback (when GitHub rejects integration actor for repository-owned rulesets): `Repository admin` role in `pull_request` mode
+
+Quick verification:
+
+```bash
+gh api repos/jasoncavinder/Helm/rulesets/13089765 --jq '{id,name,bypass_actors,rules:[.rules[].type],required_checks:(.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks | map(.context))}'
+```
+
+If remediation is needed, update the `Protect main branch` ruleset so bypass actors use `pull_request` mode (not `always`), and apply the best available actor path:
+
+- preferred: GitHub Actions integration actor
+- fallback: `Repository admin` role with `pull_request` bypass mode only
+
+UI remediation path:
+
+1. GitHub repository `Settings` -> `Rules` -> `Rulesets`.
+2. Open `Protect main branch`.
+3. In `Bypass list`, add `GitHub Actions` and set bypass mode to `Pull requests only`.
+4. In `Bypass list`, change any broad role bypass from `Always` to `Pull requests only` (or remove it).
+5. Save ruleset changes and rerun preflight.
+
 ### 5.3 Set/Verify Release Secrets
 
 Existing DMG release workflow (`release-macos-dmg.yml`) still requires current Apple/signing secrets.
-CLI release workflow relies on `github.token` for release uploads + PR publication and does not add new required secrets.
+Release workflows use `github.token` for release-asset uploads, and stable release preflight requires `RELEASE_PUBLISH_PAT` for publish-PR automation.
+If `RELEASE_PUBLISH_PAT` is missing or cannot push/create a publish PR, workflows retry with `github.token`. The fallback can require manual/admin merge follow-up because required PR checks may not fire from a workflow-token-created PR.
+
+After setting or rotating `RELEASE_PUBLISH_PAT`, run `Release Publish Auth Check` from the Actions tab with `write_probe=true`. This explicitly creates and then cleans up an empty probe branch and PR, validating effective Git contents-write and pull-request permissions. The scheduled/default check remains read-only.
 
 To set or rotate secrets:
 
@@ -239,14 +338,16 @@ gh secret set MACOS_KEYCHAIN_PASSWORD
 gh secret set HELM_SPARKLE_FEED_URL
 gh secret set HELM_SPARKLE_PUBLIC_ED_KEY
 gh secret set HELM_SPARKLE_PRIVATE_ED_KEY
+gh secret set RELEASE_PUBLISH_PAT
 ```
 
 ### 5.4 Trigger CLI Release Publication Manually
 
-Use this to backfill existing tags (for example `v0.17.3`) or rerun publication:
+Use this to backfill existing tags (for example `v0.17.3`) or run metadata verification-only after publish PR merge:
 
 ```bash
 gh workflow run release-cli-direct.yml -f tag=v0.17.3
+gh workflow run release-cli-direct.yml -f tag=v0.17.3 -f verify_only=true
 gh run list --workflow "Release CLI Direct Installer" --limit 5
 gh run view <run-id> --log
 ```
@@ -257,12 +358,61 @@ Tag policy used by `release-cli-direct.yml`:
 - prerelease tags: `vX.Y.Z-rc.N` -> publish `web/public/updates/cli/latest-rc.json`
 - unsupported tag formats are rejected
 
-### 5.5 Trigger All-Variant Build/Release Orchestration
+### 5.5 Interpret Release Workflow Publication Summaries
+
+Both direct release workflows now emit a publication summary with:
+
+- `Artifacts uploaded: yes/no`
+- `Publish PR opened: yes/no`
+- `Main metadata synced: yes/no`
+
+Outcome semantics:
+
+- hard failures are retained for build/signing/notarization/upload faults and when neither publication credential can create a required publish PR
+- if publication PR automation succeeds but PR merge is still pending, the run can complete with follow-up required (non-red terminal state)
+- when follow-up is required: merge the publish PR, then dispatch the same workflow with `verify_only=true` to confirm `Main metadata synced: yes` without rebuilding artifacts
+- release logs now use phase prefixes to simplify triage:
+  - `[preflight]` for auth/scope/policy setup checks
+  - `[build]` for compile/package/notarization execution
+  - `[publish]` for release asset and publish-PR operations
+  - `[verify]` for metadata consistency and final checkpoint output
+
+Verify-only dispatch examples after publish PR merge:
+
+```bash
+gh workflow run release-cli-direct.yml -f tag=vX.Y.Z -f verify_only=true
+gh workflow run release-macos-dmg.yml -f tag=vX.Y.Z -f verify_only=true
+```
+
+### 5.6 Verify Publish-PR Merge Checkpoint
+
+`release-publish-verify.yml` runs automatically on `main` pushes touching publish metadata paths and can be run manually.
+
+It verifies:
+
+- top `appcast.xml` version matches `cli/latest.json` stable version
+- matched stable version maps to a non-draft, non-prerelease GitHub release tag
+- matching release-notes artifact exists under `web/public/updates/release-notes/<tag>.html`
+- `cli/latest-rc.json` (when present) maps to a non-draft prerelease tag with `channel=rc`
+
+Manual trigger:
+
+```bash
+gh workflow run release-publish-verify.yml
+gh run list --workflow "Release Publish Verify" --limit 5
+gh run view <run-id> --log
+```
+
+Optional strict target check:
+
+```bash
+gh workflow run release-publish-verify.yml -f tag=vX.Y.Z
+```
+
+### 5.7 Trigger All-Variant Build/Release Orchestration
 
 This workflow runs:
 
-- direct GUI DMG release flow
-- direct CLI release flow
 - MAS profile unsigned build artifact
 - Setapp profile unsigned build artifact
 - business profile unsigned `.app` zip + unsigned `.pkg` artifact
@@ -270,18 +420,32 @@ This workflow runs:
 Command:
 
 ```bash
-gh workflow run release-all-variants.yml -f tag=v0.17.3 -f upload_auxiliary_assets=true
+gh workflow run release-all-variants.yml -f tag=v0.17.3
 gh run list --workflow "Release All Variants" --limit 5
 gh run view <run-id> --log
 ```
 
 Notes:
 
-- `release-all-variants.yml` ensures a release exists for the tag (creates draft if missing).
-- direct channel jobs keep existing release workflows unchanged.
+- Publish and verify the direct GUI and CLI release before running this workflow. It requires an existing published GitHub release and never creates or publishes a release itself.
+- Direct channel release workflows are not invoked by this workflow, so their release-event builders cannot be duplicated.
 - MAS/Setapp/business orchestration shares one matrix-driven build path and one helper (`scripts/release/build_unsigned_variant.sh`) keyed by `docs/contracts/distribution-profiles.json`.
 - MAS/Setapp/business outputs are intentionally unsigned in the baseline orchestration workflow.
+- Unsigned auxiliary artifacts upload only to the workflow run by default. Pass `-f upload_auxiliary_assets=true` only after explicit review to attach them to the existing GitHub release.
 - signed store/vendor pipelines remain a separate follow-up.
+
+### 5.8 Promote Recurring Release Friction Into Permanent Docs
+
+`TMP_RELEASE_FRICTION` is temporary capture only and should not be committed.
+
+Promotion path after each release:
+
+1. append concrete friction entries during execution (`symptom`, `root cause`, `workaround`, `date`, `run/pr reference`)
+2. mark entries as recurring when they repeat or cause release delay
+3. promote recurring items into durable docs:
+   - policy/process decisions -> `docs/DECISIONS.md`
+   - operator/runbook/checklist updates -> this file and `docs/RELEASE_CHECKLIST.md`
+4. link the fixing PR/commit in the promoted entry and close the temporary friction item
 
 ---
 
@@ -296,6 +460,7 @@ Notes:
 
 Additional metadata guard:
 
+- `release-publish-verify.yml` validates publish-PR merge outcomes against GitHub release state on every relevant `main` metadata push.
 - `cli-update-drift.yml` validates that stable/prerelease CLI metadata pointers align with latest GitHub releases.
 - release workflows pin release-critical third-party actions to immutable SHAs and use explicit per-job token write scopes.
 - `release-cli-direct.yml` verifies the built universal binary reports a version matching the target tag before asset publication.
