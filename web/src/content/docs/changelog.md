@@ -11,6 +11,18 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.17.12 — 2026-07-29
+
+Patch `0.17.12` moves bulk and scoped upgrade workflow sequencing into the Rust execution boundary.
+
+### Fixed
+- Authority phases now wait for every submitted task to become terminal before standard or guarded manager work is scheduled.
+- Scoped-workflow cancellation prevents later phase submission while preserving individual task cancellation and diagnostics.
+- Indeterminate workflow-status probes recover UI state after a bounded retry window without moving execution ownership into SwiftUI.
+
+### Changed
+- SwiftUI submits and renders scoped upgrade workflows while Rust/FFI/XPC owns their sequencing.
+
 ## 0.17.11 — 2026-07-28
 
 Patch `0.17.11` ships manager lifecycle, release-process, and execution-safety hardening.
