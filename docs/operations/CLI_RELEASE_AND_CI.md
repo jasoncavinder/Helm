@@ -246,6 +246,8 @@ Expected outcome:
 
 If preflight fails, resolve failures before creating/pushing tags.
 
+Run the full mandatory sequence in `docs/operations/RELEASE_FLOW.md`, including the non-mutating rehearsal, `Release macOS Canary`, and `Release Publish Auth Check` before a stable tag.
+
 ### 5.1 Authenticate `gh` with Maintainer PAT
 
 Required scopes (minimum):
@@ -321,8 +323,10 @@ UI remediation path:
 ### 5.3 Set/Verify Release Secrets
 
 Existing DMG release workflow (`release-macos-dmg.yml`) still requires current Apple/signing secrets.
-Release workflows still use `github.token` for release-asset uploads, but publish-PR automation now prefers optional `RELEASE_PUBLISH_PAT`.
-If `RELEASE_PUBLISH_PAT` is missing, workflows fall back to `github.token`, which can prevent required PR checks from firing on publish branches and may require manual/admin merge follow-up.
+Release workflows use `github.token` for release-asset uploads, and stable release preflight requires `RELEASE_PUBLISH_PAT` for publish-PR automation.
+If `RELEASE_PUBLISH_PAT` is missing or cannot push/create a publish PR, workflows retry with `github.token`. The fallback can require manual/admin merge follow-up because required PR checks may not fire from a workflow-token-created PR.
+
+After setting or rotating `RELEASE_PUBLISH_PAT`, run `Release Publish Auth Check` from the Actions tab with `write_probe=true`. This explicitly creates and then cleans up an empty probe branch and PR, validating effective Git contents-write and pull-request permissions. The scheduled/default check remains read-only.
 
 To set or rotate secrets:
 
@@ -364,7 +368,7 @@ Both direct release workflows now emit a publication summary with:
 
 Outcome semantics:
 
-- hard failures are retained for build/signing/notarization/upload/PR-creation faults
+- hard failures are retained for build/signing/notarization/upload faults and when neither publication credential can create a required publish PR
 - if publication PR automation succeeds but PR merge is still pending, the run can complete with follow-up required (non-red terminal state)
 - when follow-up is required: merge the publish PR, then dispatch the same workflow with `verify_only=true` to confirm `Main metadata synced: yes` without rebuilding artifacts
 - release logs now use phase prefixes to simplify triage:
