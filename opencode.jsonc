@@ -9,7 +9,7 @@
 
   "permission": {
     // Do not let agents wander outside the Helm repository.
-    "external_directory": "deny",
+    "external_directory": "ask",
 
     // Require approval before changing files.
     "edit": "ask",
@@ -25,12 +25,12 @@
       "git branch*": "allow",
       "git rev-parse*": "allow",
 
-      "git commit*": "deny",
-      "git push*": "deny",
-      "git reset --hard*": "deny",
-      "git clean*": "deny",
-      "rm *": "deny",
-      "sudo *": "deny"
+      "git commit*": "ask",
+      "git push*": "ask",
+      "git reset --hard*": "ask",
+      "git clean*": "ask",
+      "rm *": "ask",
+      "sudo *": "ask"
     },
 
     // Interrupt identical repeating tool calls.
