@@ -784,7 +784,10 @@ final class HelmCore: ObservableObject {
     var latestCoreTasksSnapshot: [CoreTaskRecord] = []
     var previousFailedTaskCount: Int = 0
     var previousRefreshState: Bool = false
-    var scopedUpgradePlanRunToken = UUID()
+    var scopedUpgradeWorkflowId: String?
+    var scopedUpgradeWorkflowStartState = UpgradeWorkflowStartState()
+    var scopedUpgradeWorkflowStatusReconciliationState = UpgradeWorkflowStatusReconciliationState()
+    var scopedUpgradeWorkflowStatusCheckInFlight = false
     private var reconnectAttempt: Int = 0
     private var lastTaskSnapshotRefreshAt: Date = .distantPast
     private var lastFullSnapshotRefreshAt: Date = .distantPast

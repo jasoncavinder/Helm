@@ -6,7 +6,18 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
-Post-`v0.17.11`, `dev` is now positioned for broader `0.18.x` work.
+## [0.17.12] - 2026-07-29
+
+### Fixed
+- Bulk and scoped upgrade workflows now execute authority phases in the Rust execution boundary. Helm waits for all submitted tasks in an authoritative phase before scheduling standard or guarded manager work.
+- Cancelling a scoped upgrade workflow prevents later authority phases from being scheduled while retaining existing per-task cancellation and diagnostics.
+- Indeterminate workflow-status probes now recover local UI state after a bounded retry window without weakening backend workflow ownership.
+- Legacy external-coordinator bulk updates retain authority ordering under behavior-level regression coverage.
+
+### Changed
+- SwiftUI now submits and renders scoped upgrade workflows instead of coordinating their phase sequencing locally.
+
+`v0.17.12` is the final planned `0.17.x` patch before broader `0.18.x` work.
 
 ## [0.17.11] - 2026-07-28
 

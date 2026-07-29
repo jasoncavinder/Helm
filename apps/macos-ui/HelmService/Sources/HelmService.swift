@@ -479,6 +479,63 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func startScopedUpgradeWorkflow(
+        includePinned: Bool,
+        allowOsUpdates: Bool,
+        managerScopeId: String,
+        packageFilter: String,
+        withReply reply: @escaping (String?) -> Void
+    ) {
+        let workflowId = managerScopeId.withCString { scope in
+            packageFilter.withCString { filter in
+                helm_start_scoped_upgrade_workflow(includePinned, allowOsUpdates, scope, filter)
+            }
+        }
+        guard let workflowId else {
+            logger.warning("helm_start_scoped_upgrade_workflow returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(workflowId) }
+        reply(String(cString: workflowId))
+    }
+
+    func startScopedUpgradeWorkflowWithId(
+        workflowId: String,
+        includePinned: Bool,
+        allowOsUpdates: Bool,
+        managerScopeId: String,
+        packageFilter: String,
+        withReply reply: @escaping (Bool) -> Void
+    ) {
+        let result = workflowId.withCString { workflow in
+            managerScopeId.withCString { scope in
+                packageFilter.withCString { filter in
+                    helm_start_scoped_upgrade_workflow_with_id(
+                        workflow,
+                        includePinned,
+                        allowOsUpdates,
+                        scope,
+                        filter
+                    )
+                }
+            }
+        }
+        if !result {
+            logger.warning("helm_start_scoped_upgrade_workflow_with_id returned false")
+        }
+        reply(result)
+    }
+
+    func cancelUpgradeWorkflow(workflowId: String, withReply reply: @escaping (Bool) -> Void) {
+        let result = workflowId.withCString(helm_cancel_upgrade_workflow)
+        reply(result)
+    }
+
+    func isUpgradeWorkflowActive(workflowId: String, withReply reply: @escaping (Bool) -> Void) {
+        reply(workflowId.withCString(helm_is_upgrade_workflow_active))
+    }
+
     func upgradePackage(
         managerId: String,
         packageName: String,

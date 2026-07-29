@@ -55,6 +55,9 @@
 //! | `helm_set_package_manager_preference` | Package manager preferences |
 //! | `helm_preview_upgrade_plan` | Upgrade |
 //! | `helm_upgrade_all` | Upgrade |
+//! | `helm_start_scoped_upgrade_workflow` | Upgrade |
+//! | `helm_start_scoped_upgrade_workflow_with_id` | Upgrade |
+//! | `helm_cancel_upgrade_workflow` | Upgrade |
 //! | `helm_upgrade_package` | Upgrade |
 //! | `helm_list_pins` | Pinning |
 //! | `helm_pin_package` | Pinning |
@@ -193,11 +196,75 @@ struct TaskLabel {
     args: std::collections::BTreeMap<String, String>,
 }
 
+struct UpgradeWorkflowControl {
+    cancelled: AtomicBool,
+    started: AtomicBool,
+    task_ids: Mutex<Vec<TaskId>>,
+    cancellation_reservation_expires_at: Option<Instant>,
+}
+
+impl UpgradeWorkflowControl {
+    fn new() -> Self {
+        Self {
+            cancelled: AtomicBool::new(false),
+            started: AtomicBool::new(false),
+            task_ids: Mutex::new(Vec::new()),
+            cancellation_reservation_expires_at: None,
+        }
+    }
+
+    fn cancelled_reservation(expires_at: Instant) -> Self {
+        Self {
+            cancelled: AtomicBool::new(true),
+            started: AtomicBool::new(false),
+            task_ids: Mutex::new(Vec::new()),
+            cancellation_reservation_expires_at: Some(expires_at),
+        }
+    }
+
+    // Exactly one request with an ID may start the workflow; later retries are harmless.
+    fn start_once(&self) -> bool {
+        self.started
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    // Returning false tells the caller to cancel a task that raced with workflow cancellation.
+    fn admit_task(&self, task_id: TaskId) -> bool {
+        let mut task_ids = lock_or_recover(&self.task_ids, "upgrade_workflow_tasks");
+        if self.cancelled.load(Ordering::Acquire) {
+            return false;
+        }
+        task_ids.push(task_id);
+        true
+    }
+
+    fn cancel(&self) -> Vec<TaskId> {
+        self.cancelled.store(true, Ordering::Release);
+        lock_or_recover(&self.task_ids, "upgrade_workflow_tasks").clone()
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn is_expired_cancellation_reservation(&self, now: Instant) -> bool {
+        !self.started.load(Ordering::Acquire)
+            && self
+                .cancellation_reservation_expires_at
+                .is_some_and(|expires_at| now >= expires_at)
+    }
+}
+
 lazy_static! {
     static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
     static ref TASK_LABELS: Mutex<std::collections::HashMap<u64, TaskLabel>> =
         Mutex::new(std::collections::HashMap::new());
     static ref LAST_ERROR_KEY: Mutex<Option<String>> = Mutex::new(None);
+    static ref UPGRADE_WORKFLOWS: Mutex<std::collections::HashMap<String, Arc<UpgradeWorkflowControl>>> =
+        Mutex::new(std::collections::HashMap::new());
+    static ref COMPLETED_UPGRADE_WORKFLOWS: Mutex<std::collections::VecDeque<String>> =
+        Mutex::new(std::collections::VecDeque::new());
 }
 
 const LOCK_POISONED_ERROR_KEY: &str = "error.ffi.lock_poisoned";
@@ -734,6 +801,7 @@ static MANAGER_AUTOMATION_POLICY_CONTEXT: OnceLock<ManagerAutomationPolicyContex
 static COORDINATOR_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 static COORDINATOR_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 static AUTO_CHECK_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
+static UPGRADE_WORKFLOW_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 const COORDINATOR_REQUEST_TIMEOUT_SECS: u64 = 30;
 const COORDINATOR_POLL_SLEEP_MS: u64 = 25;
@@ -749,6 +817,8 @@ const AUTO_CHECK_ALLOW_INSECURE_ENV: &str = "HELM_CLI_ALLOW_INSECURE_UPDATE_URLS
 const AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS: u64 = 10;
 const AUTO_CHECK_HTTP_READ_TIMEOUT_SECS: u64 = 30;
 const AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS: u64 = 30;
+const COMPLETED_UPGRADE_WORKFLOW_ID_LIMIT: usize = 64;
+const UPGRADE_WORKFLOW_CANCELLATION_RESERVATION_SECS: u64 = 30;
 const AUTO_CHECK_ALLOWED_HOSTS: [&str; 5] = [
     "helmapp.dev",
     "github.com",
@@ -928,6 +998,8 @@ enum CoordinatorWorkflowRequest {
     UpdatesRun {
         include_pinned: bool,
         allow_os_updates: bool,
+        #[serde(default)]
+        manager_id: Option<String>,
     },
 }
 
@@ -3338,7 +3410,7 @@ struct UpgradeAllTargets {
     softwareupdate_outdated: bool,
 }
 
-#[derive(serde::Serialize, Clone, Debug, Eq, PartialEq)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct FfiUpgradePlanStep {
     step_id: String,
@@ -4645,9 +4717,30 @@ fn handle_local_coordinator_request(
         }
         CoordinatorRequest::StartWorkflow { workflow } => {
             let job_id = next_coordinator_request_id();
+            let upgrade_workflow_id = match &workflow {
+                CoordinatorWorkflowRequest::UpdatesRun { .. } => {
+                    let workflow_id = next_upgrade_workflow_id();
+                    match register_upgrade_workflow(workflow_id.clone()) {
+                        Ok(Some(_)) | Ok(None) => Some(workflow_id),
+                        Err(error) => {
+                            return CoordinatorResponse {
+                                ok: false,
+                                task_id: None,
+                                job_id: Some(job_id),
+                                payload: None,
+                                error: Some(error.to_string()),
+                            };
+                        }
+                    }
+                }
+                _ => None,
+            };
             let workflow_runtime = runtime.clone();
             let store = Arc::new(SqliteStore::new(store.database_path().to_path_buf()));
             if let Err(error) = store.migrate_to_latest() {
+                if let Some(workflow_id) = upgrade_workflow_id.as_deref() {
+                    finish_upgrade_workflow(workflow_id);
+                }
                 return CoordinatorResponse {
                     ok: false,
                     task_id: None,
@@ -4666,6 +4759,9 @@ fn handle_local_coordinator_request(
                     &rt_handle,
                     workflow,
                 );
+                if let Some(workflow_id) = upgrade_workflow_id {
+                    finish_upgrade_workflow(&workflow_id);
+                }
             });
             CoordinatorResponse {
                 ok: true,
@@ -4745,7 +4841,15 @@ fn run_coordinator_workflow(
         CoordinatorWorkflowRequest::UpdatesRun {
             include_pinned,
             allow_os_updates,
-        } => run_updates_workflow(runtime, store, rt_handle, include_pinned, allow_os_updates),
+            manager_id,
+        } => run_updates_workflow(
+            runtime,
+            store,
+            rt_handle,
+            include_pinned,
+            allow_os_updates,
+            manager_id.as_deref(),
+        ),
     }
 }
 
@@ -4883,115 +4987,32 @@ fn run_updates_workflow(
     rt_handle: &tokio::runtime::Handle,
     include_pinned: bool,
     allow_os_updates: bool,
+    manager_id: Option<&str>,
 ) -> Result<(), String> {
-    let outdated = store
-        .list_outdated()
-        .map_err(|error| format!("failed to list outdated packages: {error}"))?;
-    let targets = collect_upgrade_all_targets(&outdated, include_pinned);
-
-    if runtime.is_manager_enabled(ManagerId::Asdf) {
-        for package_name in targets.asdf {
-            let request = AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::Asdf,
-                    name: package_name,
-                }),
-                target_name: None,
-                version: None,
-            });
-            let _ = submit_request_wait(runtime, rt_handle, ManagerId::Asdf, request)?;
-        }
-    }
-
-    if runtime.is_manager_enabled(ManagerId::HomebrewFormula) {
-        for package_name in targets.homebrew {
-            let policy = effective_homebrew_keg_policy(store, &package_name);
-            let cleanup_old_kegs = policy == HomebrewKegPolicy::Cleanup;
-            let target_name = encode_homebrew_upgrade_target(&package_name, cleanup_old_kegs);
-            let request = AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::HomebrewFormula,
-                    name: target_name,
-                }),
-                target_name: None,
-                version: None,
-            });
-            let _ = submit_request_wait(runtime, rt_handle, ManagerId::HomebrewFormula, request)?;
-        }
-    }
-
-    if runtime.is_manager_enabled(ManagerId::HomebrewCask) {
-        for package_name in targets.homebrew_cask {
-            let request = AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::HomebrewCask,
-                    name: package_name,
-                }),
-                target_name: None,
-                version: None,
-            });
-            let _ = submit_request_wait(runtime, rt_handle, ManagerId::HomebrewCask, request)?;
-        }
-    }
-
-    if runtime.is_manager_enabled(ManagerId::Mas) {
-        for package_name in targets.mas {
-            let request = AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager: ManagerId::Mas,
-                    name: package_name,
-                }),
-                target_name: None,
-                version: None,
-            });
-            let _ = submit_request_wait(runtime, rt_handle, ManagerId::Mas, request)?;
-        }
-    }
-
-    for (manager, packages) in [
-        (ManagerId::Mise, targets.mise),
-        (ManagerId::Npm, targets.npm),
-        (ManagerId::Pnpm, targets.pnpm),
-        (ManagerId::Yarn, targets.yarn),
-        (ManagerId::Cargo, targets.cargo),
-        (ManagerId::CargoBinstall, targets.cargo_binstall),
-        (ManagerId::Pip, targets.pip),
-        (ManagerId::Pipx, targets.pipx),
-        (ManagerId::Poetry, targets.poetry),
-        (ManagerId::RubyGems, targets.rubygems),
-        (ManagerId::Bundler, targets.bundler),
-        (ManagerId::Rustup, targets.rustup),
-    ] {
-        if !runtime.is_manager_enabled(manager) {
-            continue;
-        }
-        for package_name in packages {
-            let request = AdapterRequest::Upgrade(UpgradeRequest {
-                package: Some(PackageRef {
-                    manager,
-                    name: package_name,
-                }),
-                target_name: None,
-                version: None,
-            });
-            let _ = submit_request_wait(runtime, rt_handle, manager, request)?;
-        }
-    }
-
-    if allow_os_updates
-        && targets.softwareupdate_outdated
-        && runtime.is_manager_enabled(ManagerId::SoftwareUpdate)
-        && !runtime.is_safe_mode()
+    let manager_scope_id = manager_id.unwrap_or(ALL_MANAGERS_UPGRADE_SCOPE);
+    if manager_scope_id != ALL_MANAGERS_UPGRADE_SCOPE
+        && manager_scope_id.parse::<ManagerId>().is_err()
     {
-        let request = AdapterRequest::Upgrade(UpgradeRequest {
-            package: Some(PackageRef {
-                manager: ManagerId::SoftwareUpdate,
-                name: "__confirm_os_updates__".to_string(),
-            }),
-            target_name: None,
-            version: None,
-        });
-        let _ = submit_request_wait(runtime, rt_handle, ManagerId::SoftwareUpdate, request)?;
+        return Err(format!("unknown manager id '{manager_scope_id}'"));
+    }
+    let steps =
+        preview_upgrade_workflow_steps(include_pinned, allow_os_updates, manager_scope_id, "")
+            .map_err(str::to_string)?;
+    run_external_updates_workflow_steps(runtime, store, rt_handle, steps)
+}
+
+fn run_external_updates_workflow_steps(
+    runtime: &AdapterRuntime,
+    store: &SqliteStore,
+    rt_handle: &tokio::runtime::Handle,
+    steps: Vec<FfiUpgradePlanStep>,
+) -> Result<(), String> {
+    for step in steps {
+        let (manager, request, _) = upgrade_workflow_request(store, &step)
+            .ok_or_else(|| format!("invalid upgrade workflow step '{}'", step.step_id))?;
+        // The external coordinator retains the legacy synchronous transport, so execute its
+        // authority-ordered plan sequentially and wait for each task before the next step.
+        let _ = submit_request_wait(runtime, rt_handle, manager, request)?;
     }
 
     Ok(())
@@ -7346,6 +7367,393 @@ pub extern "C" fn helm_preview_upgrade_plan(
     }
 }
 
+const ALL_MANAGERS_UPGRADE_SCOPE: &str = "__all_managers__";
+
+fn upgrade_authority_rank(authority: &str) -> u8 {
+    match authority {
+        "authoritative" => 0,
+        "standard" => 1,
+        "guarded" => 2,
+        "detection_only" => 3,
+        _ => 4,
+    }
+}
+
+fn scoped_upgrade_workflow_steps(
+    mut steps: Vec<FfiUpgradePlanStep>,
+    manager_scope_id: &str,
+    package_filter: &str,
+) -> Vec<FfiUpgradePlanStep> {
+    let package_filter = package_filter.trim().to_ascii_lowercase();
+    steps.retain(|step| {
+        (manager_scope_id == ALL_MANAGERS_UPGRADE_SCOPE || manager_scope_id == step.manager_id)
+            && (package_filter.is_empty()
+                || step
+                    .package_name
+                    .to_ascii_lowercase()
+                    .contains(&package_filter)
+                || step
+                    .reason_label_key
+                    .to_ascii_lowercase()
+                    .contains(&package_filter))
+    });
+    steps.sort_by(|left, right| {
+        upgrade_authority_rank(&left.authority)
+            .cmp(&upgrade_authority_rank(&right.authority))
+            .then_with(|| left.order_index.cmp(&right.order_index))
+            .then_with(|| left.manager_id.cmp(&right.manager_id))
+            .then_with(|| left.package_name.cmp(&right.package_name))
+    });
+    steps
+}
+
+fn prune_expired_upgrade_workflow_reservations(
+    workflows: &mut std::collections::HashMap<String, Arc<UpgradeWorkflowControl>>,
+    now: Instant,
+) {
+    workflows.retain(|_, control| !control.is_expired_cancellation_reservation(now));
+}
+
+fn next_upgrade_workflow_id() -> String {
+    format!(
+        "upgrade-workflow-{}",
+        UPGRADE_WORKFLOW_COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+fn register_upgrade_workflow(
+    workflow_id: String,
+) -> Result<Option<Arc<UpgradeWorkflowControl>>, &'static str> {
+    let mut workflows = lock_or_recover(&UPGRADE_WORKFLOWS, "upgrade_workflows");
+    prune_expired_upgrade_workflow_reservations(&mut workflows, Instant::now());
+    let completed = lock_or_recover(&COMPLETED_UPGRADE_WORKFLOWS, "completed_upgrade_workflows");
+    if let Some(control) = workflows.get(&workflow_id).cloned() {
+        return Ok(control.start_once().then_some(control));
+    }
+    if completed
+        .iter()
+        .any(|completed_id| completed_id == &workflow_id)
+    {
+        return Ok(None);
+    }
+    if !workflows.is_empty() {
+        return Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
+    }
+    let control = Arc::new(UpgradeWorkflowControl::new());
+    debug_assert!(control.start_once());
+    workflows.insert(workflow_id, control.clone());
+    Ok(Some(control))
+}
+
+fn finish_upgrade_workflow(workflow_id: &str) {
+    let mut workflows = lock_or_recover(&UPGRADE_WORKFLOWS, "upgrade_workflows");
+    let mut completed =
+        lock_or_recover(&COMPLETED_UPGRADE_WORKFLOWS, "completed_upgrade_workflows");
+    if workflows.remove(workflow_id).is_none() {
+        return;
+    }
+    completed.retain(|completed_id| completed_id != workflow_id);
+    completed.push_back(workflow_id.to_string());
+    while completed.len() > COMPLETED_UPGRADE_WORKFLOW_ID_LIMIT {
+        completed.pop_front();
+    }
+}
+
+fn preview_upgrade_workflow_steps(
+    include_pinned: bool,
+    allow_os_updates: bool,
+    manager_scope_id: &str,
+    package_filter: &str,
+) -> Result<Vec<FfiUpgradePlanStep>, &'static str> {
+    let plan = helm_preview_upgrade_plan(include_pinned, allow_os_updates);
+    if plan.is_null() {
+        return Err(SERVICE_ERROR_PROCESS_FAILURE);
+    }
+    let json = unsafe { CString::from_raw(plan) }
+        .into_string()
+        .map_err(|_| SERVICE_ERROR_PROCESS_FAILURE)?;
+    let steps = serde_json::from_str(&json).map_err(|_| SERVICE_ERROR_PROCESS_FAILURE)?;
+    Ok(scoped_upgrade_workflow_steps(
+        steps,
+        manager_scope_id,
+        package_filter,
+    ))
+}
+
+fn upgrade_workflow_request(
+    store: &SqliteStore,
+    step: &FfiUpgradePlanStep,
+) -> Option<(ManagerId, AdapterRequest, bool)> {
+    let manager = step.manager_id.parse::<ManagerId>().ok()?;
+    let cleanup_old_kegs = manager == ManagerId::HomebrewFormula
+        && effective_homebrew_keg_policy(store, &step.package_name) == HomebrewKegPolicy::Cleanup;
+    let package_name = if manager == ManagerId::HomebrewFormula {
+        encode_homebrew_upgrade_target(&step.package_name, cleanup_old_kegs)
+    } else {
+        step.package_name.clone()
+    };
+    Some((
+        manager,
+        AdapterRequest::Upgrade(UpgradeRequest {
+            package: Some(PackageRef {
+                manager,
+                name: package_name,
+            }),
+            target_name: None,
+            version: None,
+        }),
+        cleanup_old_kegs,
+    ))
+}
+
+async fn submit_upgrade_workflow_step(
+    runtime: &AdapterRuntime,
+    store: &SqliteStore,
+    step: &FfiUpgradePlanStep,
+    control: &UpgradeWorkflowControl,
+) -> Option<helm_core::models::TaskId> {
+    let (manager, request, cleanup_old_kegs) = upgrade_workflow_request(store, step)?;
+    match runtime.submit(manager, request).await {
+        Ok(task_id) => {
+            let (label_key, label_args) =
+                upgrade_task_label_for(manager, &step.package_name, cleanup_old_kegs);
+            set_task_label(task_id, label_key, &label_args);
+            if !control.admit_task(task_id) {
+                let _ = runtime.cancel(task_id, CancellationMode::Immediate).await;
+            }
+            Some(task_id)
+        }
+        Err(error) => {
+            eprintln!(
+                "scoped_upgrade_workflow: failed to queue {} upgrade '{}': {error}",
+                step.manager_id, step.package_name
+            );
+            None
+        }
+    }
+}
+
+fn start_scoped_upgrade_workflow(
+    include_pinned: bool,
+    allow_os_updates: bool,
+    workflow_id: String,
+    manager_scope_id: String,
+    package_filter: String,
+) -> Result<(), &'static str> {
+    if manager_scope_id != ALL_MANAGERS_UPGRADE_SCOPE
+        && manager_scope_id.parse::<ManagerId>().is_err()
+    {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+
+    let steps = preview_upgrade_workflow_steps(
+        include_pinned,
+        allow_os_updates,
+        &manager_scope_id,
+        &package_filter,
+    )?;
+    let (store, runtime, rt_handle) = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = guard.as_ref().ok_or(SERVICE_ERROR_INTERNAL)?;
+        (
+            state.store.clone(),
+            state.runtime.clone(),
+            state.rt_handle.clone(),
+        )
+    };
+    let Some(control) = register_upgrade_workflow(workflow_id.clone())? else {
+        return Ok(());
+    };
+    let finished_workflow_id = workflow_id.clone();
+
+    rt_handle.spawn(async move {
+        for authority_rank in 0..=4 {
+            if control.is_cancelled() {
+                break;
+            }
+            let phase_steps = steps
+                .iter()
+                .filter(|step| upgrade_authority_rank(&step.authority) == authority_rank);
+            let mut task_ids = Vec::new();
+            for step in phase_steps {
+                if control.is_cancelled() {
+                    break;
+                }
+                if let Some(task_id) =
+                    submit_upgrade_workflow_step(&runtime, &store, step, &control).await
+                {
+                    task_ids.push(task_id);
+                }
+            }
+            // Every submitted task reaches a terminal state before the next authority phase.
+            for task_id in task_ids {
+                let _ = runtime.wait_for_terminal(task_id, None).await;
+            }
+        }
+        finish_upgrade_workflow(&finished_workflow_id);
+    });
+
+    Ok(())
+}
+
+/// Start a manager/package-scoped bulk upgrade workflow and return its identifier.
+///
+/// The workflow submits individual package tasks in canonical authority phases and does not
+/// schedule a later phase until every submitted task in the current phase is terminal.
+///
+/// # Safety
+///
+/// `manager_scope_id` and `package_filter` must be valid, non-null UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow(
+    include_pinned: bool,
+    allow_os_updates: bool,
+    manager_scope_id: *const c_char,
+    package_filter: *const c_char,
+) -> *mut c_char {
+    clear_last_error_key();
+    let manager_scope_id = match unsafe { parse_required_cstr_arg(manager_scope_id) } {
+        Ok(value) => value,
+        Err(error) => return return_error_ptr(error),
+    };
+    let package_filter = if package_filter.is_null() {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    } else {
+        match unsafe { CStr::from_ptr(package_filter) }.to_str() {
+            Ok(value) => value.to_string(),
+            Err(_) => return return_error_ptr(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+    let workflow_id = next_upgrade_workflow_id();
+    match start_scoped_upgrade_workflow(
+        include_pinned,
+        allow_os_updates,
+        workflow_id.clone(),
+        manager_scope_id,
+        package_filter,
+    ) {
+        Ok(()) => CString::new(workflow_id)
+            .map(CString::into_raw)
+            .unwrap_or_else(|_| return_error_ptr(SERVICE_ERROR_PROCESS_FAILURE)),
+        Err(error) => return_error_ptr(error),
+    }
+}
+
+/// Start a scoped bulk upgrade workflow using a caller-supplied stable identifier.
+///
+/// Repeating the same request ID is idempotent while the workflow is active. A cancellation
+/// received before its matching start request is retained and prevents task submission.
+///
+/// # Safety
+///
+/// All string arguments must be valid, non-null UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow_with_id(
+    workflow_id: *const c_char,
+    include_pinned: bool,
+    allow_os_updates: bool,
+    manager_scope_id: *const c_char,
+    package_filter: *const c_char,
+) -> bool {
+    clear_last_error_key();
+    let workflow_id = match unsafe { parse_required_cstr_arg(workflow_id) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
+    };
+    let manager_scope_id = match unsafe { parse_required_cstr_arg(manager_scope_id) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
+    };
+    let package_filter = if package_filter.is_null() {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    } else {
+        match unsafe { CStr::from_ptr(package_filter) }.to_str() {
+            Ok(value) => value.to_string(),
+            Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
+        }
+    };
+    start_scoped_upgrade_workflow(
+        include_pinned,
+        allow_os_updates,
+        workflow_id,
+        manager_scope_id,
+        package_filter,
+    )
+    .is_ok()
+}
+
+/// Stop a bulk upgrade workflow before it schedules another authority phase.
+/// Existing individual tasks remain cancellable through `helm_cancel_task`.
+///
+/// # Safety
+///
+/// `workflow_id` must be a valid, non-null UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_cancel_upgrade_workflow(workflow_id: *const c_char) -> bool {
+    clear_last_error_key();
+    let workflow_id = match unsafe { parse_required_cstr_arg(workflow_id) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
+    };
+    let control = {
+        let mut workflows = lock_or_recover(&UPGRADE_WORKFLOWS, "upgrade_workflows");
+        prune_expired_upgrade_workflow_reservations(&mut workflows, Instant::now());
+        let completed =
+            lock_or_recover(&COMPLETED_UPGRADE_WORKFLOWS, "completed_upgrade_workflows");
+        if let Some(control) = workflows.get(&workflow_id).cloned() {
+            control
+        } else if completed
+            .iter()
+            .any(|completed_id| completed_id == &workflow_id)
+        {
+            return true;
+        } else {
+            // Retain an early cancellation briefly so a delayed start reply cannot lose control.
+            if !workflows.is_empty() {
+                return return_error_bool(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
+            }
+            let control = Arc::new(UpgradeWorkflowControl::cancelled_reservation(
+                Instant::now()
+                    + Duration::from_secs(UPGRADE_WORKFLOW_CANCELLATION_RESERVATION_SECS),
+            ));
+            workflows.insert(workflow_id, control.clone());
+            control
+        }
+    };
+    let task_ids = control.cancel();
+    if !task_ids.is_empty() {
+        let (runtime, rt_handle) = {
+            let guard = lock_or_recover(&STATE, "state");
+            let Some(state) = guard.as_ref() else {
+                return return_error_bool(SERVICE_ERROR_INTERNAL);
+            };
+            (state.runtime.clone(), state.rt_handle.clone())
+        };
+        rt_handle.spawn(async move {
+            for task_id in task_ids {
+                let _ = runtime.cancel(task_id, CancellationMode::Immediate).await;
+            }
+        });
+    }
+    true
+}
+
+/// Return whether a bulk upgrade workflow is still scheduling or waiting for a phase.
+///
+/// # Safety
+///
+/// `workflow_id` must be a valid, non-null UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_is_upgrade_workflow_active(workflow_id: *const c_char) -> bool {
+    let workflow_id = match unsafe { parse_required_cstr_arg(workflow_id) } {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let mut workflows = lock_or_recover(&UPGRADE_WORKFLOWS, "upgrade_workflows");
+    prune_expired_upgrade_workflow_reservations(&mut workflows, Instant::now());
+    workflows.contains_key(&workflow_id)
+}
+
 /// Queue upgrade tasks for supported managers using cached outdated snapshot.
 ///
 /// - `include_pinned`: if false, pinned packages are excluded.
@@ -7354,9 +7762,25 @@ pub extern "C" fn helm_preview_upgrade_plan(
 pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
     clear_last_error_key();
     if external_coordinator_state_dir().is_some() {
+        return legacy_upgrade_all(include_pinned, allow_os_updates);
+    }
+    start_scoped_upgrade_workflow(
+        include_pinned,
+        allow_os_updates,
+        next_upgrade_workflow_id(),
+        ALL_MANAGERS_UPGRADE_SCOPE.to_string(),
+        String::new(),
+    )
+    .is_ok()
+}
+
+fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
+    clear_last_error_key();
+    if external_coordinator_state_dir().is_some() {
         return coordinator_start_workflow_external(CoordinatorWorkflowRequest::UpdatesRun {
             include_pinned,
             allow_os_updates,
+            manager_id: None,
         })
         .is_ok();
     }
@@ -10794,26 +11218,31 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 #[cfg(test)]
 mod tests {
     use super::{
-        FfiUpgradePlanStep, SERVICE_ERROR_UNSUPPORTED_CAPABILITY, build_manager_statuses,
-        build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
-        collect_upgrade_all_targets, homebrew_probe_candidates,
+        ALL_MANAGERS_UPGRADE_SCOPE, CoordinatorRequest, CoordinatorWorkflowRequest,
+        FfiUpgradePlanStep, SERVICE_ERROR_UNSUPPORTED_CAPABILITY, UpgradeWorkflowControl,
+        build_manager_statuses, build_manager_uninstall_plan, build_manager_uninstall_preview,
+        build_visible_tasks, collect_upgrade_all_targets, homebrew_probe_candidates,
         manager_allows_individual_package_install, manager_allows_individual_package_uninstall,
         manager_authority_key, manager_participates_in_catalog_sync,
         manager_participates_in_package_search, manager_uninstall_label_for_route,
-        parse_homebrew_config_version, push_upgrade_plan_step,
-        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
-        rustup_probe_candidates, search_label_args, search_label_key_for_query,
-        search_task_type_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
-        upgrade_task_label_for,
+        parse_homebrew_config_version, prune_expired_upgrade_workflow_reservations,
+        push_upgrade_plan_step, resolve_homebrew_manager_update_strategy,
+        resolve_rustup_uninstall_strategy, run_external_updates_workflow_steps,
+        rustup_probe_candidates, scoped_upgrade_workflow_steps, search_label_args,
+        search_label_key_for_query, search_task_type_for_query, upgrade_plan_step_id,
+        upgrade_reason_label_for, upgrade_task_label_for,
     };
-    use helm_core::adapters::{AdapterRequest, ManagerAdapter, UninstallRequest};
+    use helm_core::adapters::{
+        AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, UninstallRequest,
+    };
     use helm_core::manager_policy::{
         PIP_SYSTEM_UNMANAGED_REASON_CODE, RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE,
     };
     use helm_core::models::{
-        AutomationLevel, DetectionInfo, InstallProvenance, InstalledPackage, ManagerId,
-        ManagerInstallInstance, OutdatedPackage, PackageRef, StrategyKind, TaskId, TaskLogRecord,
-        TaskRecord, TaskStatus, TaskType,
+        ActionSafety, AutomationLevel, Capability, DetectionInfo, InstallProvenance,
+        InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
+        ManagerId, ManagerInstallInstance, OutdatedPackage, PackageRef, StrategyKind, TaskId,
+        TaskLogRecord, TaskRecord, TaskStatus, TaskType,
     };
     use helm_core::orchestration::adapter_runtime::AdapterRuntime;
     use helm_core::persistence::{DetectionStore, ManagerPreference, PackageStore, TaskStore};
@@ -10828,7 +11257,7 @@ mod tests {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::Path;
     use std::sync::{Arc, Mutex, OnceLock};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     #[cfg(unix)]
     fn unix_mode(path: &Path) -> u32 {
@@ -10974,6 +11403,59 @@ mod tests {
             .expect("clock should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("helm-ffi-{name}-{nanos}"))
+    }
+
+    const RECORDING_UPGRADE_CAPABILITIES: &[Capability] = &[Capability::Upgrade];
+
+    struct RecordingUpgradeAdapter {
+        descriptor: ManagerDescriptor,
+        executed_steps: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl RecordingUpgradeAdapter {
+        fn new(manager: ManagerId, executed_steps: Arc<Mutex<Vec<String>>>) -> Self {
+            Self {
+                descriptor: ManagerDescriptor {
+                    id: manager,
+                    display_name: "Recording Upgrade Adapter",
+                    category: ManagerCategory::Language,
+                    authority: ManagerAuthority::Standard,
+                    capabilities: RECORDING_UPGRADE_CAPABILITIES,
+                },
+                executed_steps,
+            }
+        }
+    }
+
+    impl ManagerAdapter for RecordingUpgradeAdapter {
+        fn descriptor(&self) -> &ManagerDescriptor {
+            &self.descriptor
+        }
+
+        fn action_safety(&self, action: ManagerAction) -> ActionSafety {
+            action.safety()
+        }
+
+        fn execute(
+            &self,
+            request: AdapterRequest,
+        ) -> helm_core::adapters::AdapterResult<AdapterResponse> {
+            let AdapterRequest::Upgrade(request) = request else {
+                panic!("recording adapter only accepts upgrade requests");
+            };
+            let package = request.package.expect("legacy workflow targets a package");
+            self.executed_steps
+                .lock()
+                .expect("recording lock should not be poisoned")
+                .push(format!("{}:{}", package.manager.as_str(), package.name));
+            Ok(AdapterResponse::Mutation(MutationResult {
+                package,
+                package_identifier: None,
+                action: ManagerAction::Upgrade,
+                before_version: Some("1.0.0".to_string()),
+                after_version: Some("2.0.0".to_string()),
+            }))
+        }
     }
 
     #[test]
@@ -12094,6 +12576,264 @@ mod tests {
         assert_eq!(steps[0].authority, manager_authority_key(ManagerId::Npm));
         assert_eq!(steps[1].step_id, "softwareupdate:__confirm_os_updates__");
         assert_eq!(steps[1].order_index, 1);
+    }
+
+    #[test]
+    fn scoped_upgrade_workflow_uses_authority_order_and_raw_package_filter() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::HomebrewFormula,
+            "git".to_string(),
+            false,
+            &mut order_index,
+        );
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Npm,
+            "typescript".to_string(),
+            false,
+            &mut order_index,
+        );
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Rustup,
+            "stable".to_string(),
+            false,
+            &mut order_index,
+        );
+
+        let ordered = scoped_upgrade_workflow_steps(steps.clone(), ALL_MANAGERS_UPGRADE_SCOPE, "");
+        assert_eq!(
+            ordered
+                .into_iter()
+                .map(|step| step.manager_id)
+                .collect::<Vec<_>>(),
+            vec!["rustup", "npm", "homebrew_formula"]
+        );
+
+        let filtered = scoped_upgrade_workflow_steps(steps, ALL_MANAGERS_UPGRADE_SCOPE, "SCRIPT");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].step_id, "npm:typescript");
+    }
+
+    #[test]
+    fn scoped_upgrade_workflow_honors_manager_scope() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Rustup,
+            "stable".to_string(),
+            false,
+            &mut order_index,
+        );
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Npm,
+            "typescript".to_string(),
+            false,
+            &mut order_index,
+        );
+
+        let scoped = scoped_upgrade_workflow_steps(steps, "npm", "");
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].step_id, "npm:typescript");
+    }
+
+    #[test]
+    fn expired_upgrade_workflow_cancellation_reservation_is_pruned() {
+        let mut workflows = HashMap::new();
+        let now = Instant::now();
+        workflows.insert(
+            "never-started".to_string(),
+            Arc::new(UpgradeWorkflowControl::cancelled_reservation(now)),
+        );
+
+        prune_expired_upgrade_workflow_reservations(&mut workflows, now);
+
+        assert!(workflows.is_empty());
+    }
+
+    #[test]
+    fn unexpired_upgrade_workflow_cancellation_reservation_cancels_delayed_start() {
+        let now = Instant::now();
+        let control = UpgradeWorkflowControl::cancelled_reservation(now + Duration::from_secs(1));
+
+        assert!(!control.is_expired_cancellation_reservation(now));
+        assert!(control.start_once());
+        assert!(control.is_cancelled());
+    }
+
+    #[test]
+    fn cancelled_upgrade_workflow_rejects_late_task_admission() {
+        let control = UpgradeWorkflowControl::new();
+        assert!(control.admit_task(TaskId(41)));
+        assert_eq!(control.cancel(), vec![TaskId(41)]);
+        assert!(!control.admit_task(TaskId(42)));
+    }
+
+    #[test]
+    fn supplied_upgrade_workflow_id_is_idempotent_after_early_cancellation() {
+        let control = UpgradeWorkflowControl::new();
+        assert!(control.cancel().is_empty());
+        assert!(control.start_once());
+        assert!(!control.start_once());
+        assert!(control.is_cancelled());
+    }
+
+    #[test]
+    fn external_updates_run_request_deserializes_with_cli_wire_contract() {
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case")]
+        enum CliCoordinatorRequest {
+            StartWorkflow {
+                workflow: CliCoordinatorWorkflowRequest,
+            },
+        }
+
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case")]
+        enum CliCoordinatorWorkflowRequest {
+            UpdatesRun {
+                include_pinned: bool,
+                allow_os_updates: bool,
+                manager_id: Option<String>,
+            },
+        }
+
+        let request = CoordinatorRequest::StartWorkflow {
+            workflow: CoordinatorWorkflowRequest::UpdatesRun {
+                include_pinned: true,
+                allow_os_updates: false,
+                manager_id: None,
+            },
+        };
+        let encoded = serde_json::to_string(&request).expect("FFI request should serialize");
+        let decoded: CliCoordinatorRequest =
+            serde_json::from_str(&encoded).expect("CLI should deserialize FFI request");
+
+        match decoded {
+            CliCoordinatorRequest::StartWorkflow {
+                workflow:
+                    CliCoordinatorWorkflowRequest::UpdatesRun {
+                        include_pinned,
+                        allow_os_updates,
+                        manager_id,
+                    },
+            } => {
+                assert!(include_pinned);
+                assert!(!allow_os_updates);
+                assert_eq!(manager_id, None);
+            }
+        }
+    }
+
+    #[test]
+    fn external_updates_run_request_preserves_manager_scope() {
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case")]
+        enum CliCoordinatorRequest {
+            StartWorkflow {
+                workflow: CliCoordinatorWorkflowRequest,
+            },
+        }
+
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case")]
+        enum CliCoordinatorWorkflowRequest {
+            UpdatesRun { manager_id: Option<String> },
+        }
+
+        let request = CoordinatorRequest::StartWorkflow {
+            workflow: CoordinatorWorkflowRequest::UpdatesRun {
+                include_pinned: false,
+                allow_os_updates: false,
+                manager_id: Some("npm".to_string()),
+            },
+        };
+        let encoded = serde_json::to_string(&request).expect("FFI request should serialize");
+        let decoded: CliCoordinatorRequest =
+            serde_json::from_str(&encoded).expect("CLI should deserialize FFI request");
+
+        match decoded {
+            CliCoordinatorRequest::StartWorkflow {
+                workflow: CliCoordinatorWorkflowRequest::UpdatesRun { manager_id },
+            } => assert_eq!(manager_id.as_deref(), Some("npm")),
+        }
+    }
+
+    #[test]
+    fn external_updates_workflow_executes_authority_ordered_steps() {
+        let store = temp_sqlite_store("external-updates-authority-order");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+        let executed_steps = Arc::new(Mutex::new(Vec::new()));
+        let runtime = AdapterRuntime::new(vec![
+            Arc::new(RecordingUpgradeAdapter::new(
+                ManagerId::Rustup,
+                executed_steps.clone(),
+            )) as Arc<dyn ManagerAdapter>,
+            Arc::new(RecordingUpgradeAdapter::new(
+                ManagerId::Npm,
+                executed_steps.clone(),
+            )) as Arc<dyn ManagerAdapter>,
+            Arc::new(RecordingUpgradeAdapter::new(
+                ManagerId::HomebrewFormula,
+                executed_steps.clone(),
+            )) as Arc<dyn ManagerAdapter>,
+        ])
+        .expect("recording adapter runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let mut unsorted_steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut unsorted_steps,
+            ManagerId::HomebrewFormula,
+            "git".to_string(),
+            false,
+            &mut order_index,
+        );
+        push_upgrade_plan_step(
+            &mut unsorted_steps,
+            ManagerId::Npm,
+            "typescript".to_string(),
+            false,
+            &mut order_index,
+        );
+        push_upgrade_plan_step(
+            &mut unsorted_steps,
+            ManagerId::Rustup,
+            "stable".to_string(),
+            false,
+            &mut order_index,
+        );
+
+        let authority_ordered_steps =
+            scoped_upgrade_workflow_steps(unsorted_steps, ALL_MANAGERS_UPGRADE_SCOPE, "");
+        run_external_updates_workflow_steps(
+            &runtime,
+            &store,
+            tokio_runtime.handle(),
+            authority_ordered_steps,
+        )
+        .expect("external updates workflow should execute every step");
+
+        assert_eq!(
+            *executed_steps
+                .lock()
+                .expect("recording lock should not be poisoned"),
+            vec![
+                "rustup:stable".to_string(),
+                "npm:typescript".to_string(),
+                "homebrew_formula:git".to_string(),
+            ]
+        );
+        let _ = fs::remove_file(store.database_path());
     }
 
     #[test]

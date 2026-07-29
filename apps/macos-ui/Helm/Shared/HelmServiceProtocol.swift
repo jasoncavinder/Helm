@@ -41,6 +41,23 @@ import Foundation
     func setPackageManagerPreference(packageFamilyKey: String, managerId: String?, withReply reply: @escaping (Bool) -> Void)
     func previewUpgradePlan(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (String?) -> Void)
     func upgradeAll(includePinned: Bool, allowOsUpdates: Bool, withReply reply: @escaping (Bool) -> Void)
+    func startScopedUpgradeWorkflow(
+        includePinned: Bool,
+        allowOsUpdates: Bool,
+        managerScopeId: String,
+        packageFilter: String,
+        withReply reply: @escaping (String?) -> Void
+    )
+    func startScopedUpgradeWorkflowWithId(
+        workflowId: String,
+        includePinned: Bool,
+        allowOsUpdates: Bool,
+        managerScopeId: String,
+        packageFilter: String,
+        withReply reply: @escaping (Bool) -> Void
+    )
+    func cancelUpgradeWorkflow(workflowId: String, withReply reply: @escaping (Bool) -> Void)
+    func isUpgradeWorkflowActive(workflowId: String, withReply reply: @escaping (Bool) -> Void)
     func upgradePackage(managerId: String, packageName: String, packageTargetName: String?, version: String?, withReply reply: @escaping (Int64) -> Void)
     func installPackage(managerId: String, packageName: String, packageTargetName: String?, version: String?, withReply reply: @escaping (Int64) -> Void)
     func uninstallPackage(managerId: String, packageName: String, packageTargetName: String?, version: String?, withReply reply: @escaping (Int64) -> Void)

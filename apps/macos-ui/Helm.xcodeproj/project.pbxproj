@@ -12,9 +12,6 @@
 		8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
 		8CE1FDD32F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
 		8CE1FDD82F3D2BAA000A3945 /* HelmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD52F3D2BA9000A3945 /* HelmService.swift */; };
-		N100000000000000000000001 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
-		N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
-		N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */; };
 		8CE1FDD92F3D2BAA000A3945 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD62F3D2BA9000A3945 /* main.swift */; };
 		8CE1FDDA2F3D2BAA000A3945 /* HelmServiceDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD72F3D2BA9000A3945 /* HelmServiceDelegate.swift */; };
 		8CE1FDDD2F3D2DA7000A3945 /* libhelm_ffi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8CFB6D482F3D1B24002372B8 /* libhelm_ffi.a */; };
@@ -76,6 +73,9 @@
 		L200000000000000000000001 /* helm-cli in Resources */ = {isa = PBXBuildFile; fileRef = L100000000000000000000001 /* helm-cli */; };
 		M200000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = M100000000000000000000002 /* main.swift */; };
 		M200000000000000000000002 /* HelmLoginHelper.app in Embed Login Items */ = {isa = PBXBuildFile; fileRef = M100000000000000000000001 /* HelmLoginHelper.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		N100000000000000000000001 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
+		N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
+		N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -125,8 +125,6 @@
 		8CE1FDD52F3D2BA9000A3945 /* HelmService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HelmService.swift; sourceTree = "<group>"; };
 		8CE1FDD62F3D2BA9000A3945 /* main.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		8CE1FDD72F3D2BA9000A3945 /* HelmServiceDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HelmServiceDelegate.swift; sourceTree = "<group>"; };
-		N100000000000000000000002 /* HelmCliShimCommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunner.swift; sourceTree = "<group>"; };
-		N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunnerTests.swift; sourceTree = "<group>"; };
 		8CE1FDDE2F3D3249000A3945 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = "../../../service/macos-service/Info.plist"; sourceTree = "<group>"; };
 		8CE1FDE02F3D3410000A3945 /* HelmService-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "HelmService-Bridging-Header.h"; path = "../../../service/macos-service/HelmService-Bridging-Header.h"; sourceTree = "<group>"; };
 		8CFB6D482F3D1B24002372B8 /* libhelm_ffi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libhelm_ffi.a; path = Generated/libhelm_ffi.a; sourceTree = "<group>"; };
@@ -192,6 +190,8 @@
 		M100000000000000000000002 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		M100000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		M100000000000000000000004 /* HelmLoginHelper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HelmLoginHelper.entitlements; sourceTree = "<group>"; };
+		N100000000000000000000002 /* HelmCliShimCommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunner.swift; sourceTree = "<group>"; };
+		N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunnerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -997,6 +997,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};

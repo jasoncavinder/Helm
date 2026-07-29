@@ -221,6 +221,56 @@ bool helm_set_package_manager_preference(const char *package_family_key, const c
 char *helm_preview_upgrade_plan(bool include_pinned, bool allow_os_updates);
 
 /**
+ * Start a manager/package-scoped bulk upgrade workflow and return its identifier.
+ *
+ * The workflow submits individual package tasks in canonical authority phases and does not
+ * schedule a later phase until every submitted task in the current phase is terminal.
+ *
+ * # Safety
+ *
+ * `manager_scope_id` and `package_filter` must be valid, non-null UTF-8 C strings.
+ */
+char *helm_start_scoped_upgrade_workflow(bool include_pinned,
+                                         bool allow_os_updates,
+                                         const char *manager_scope_id,
+                                         const char *package_filter);
+
+/**
+ * Start a scoped bulk upgrade workflow using a caller-supplied stable identifier.
+ *
+ * Repeating the same request ID is idempotent while the workflow is active. A cancellation
+ * received before its matching start request is retained and prevents task submission.
+ *
+ * # Safety
+ *
+ * All string arguments must be valid, non-null UTF-8 C strings.
+ */
+bool helm_start_scoped_upgrade_workflow_with_id(const char *workflow_id,
+                                                bool include_pinned,
+                                                bool allow_os_updates,
+                                                const char *manager_scope_id,
+                                                const char *package_filter);
+
+/**
+ * Stop a bulk upgrade workflow before it schedules another authority phase.
+ * Existing individual tasks remain cancellable through `helm_cancel_task`.
+ *
+ * # Safety
+ *
+ * `workflow_id` must be a valid, non-null UTF-8 C string.
+ */
+bool helm_cancel_upgrade_workflow(const char *workflow_id);
+
+/**
+ * Return whether a bulk upgrade workflow is still scheduling or waiting for a phase.
+ *
+ * # Safety
+ *
+ * `workflow_id` must be a valid, non-null UTF-8 C string.
+ */
+bool helm_is_upgrade_workflow_active(const char *workflow_id);
+
+/**
  * Queue upgrade tasks for supported managers using cached outdated snapshot.
  *
  * - `include_pinned`: if false, pinned packages are excluded.

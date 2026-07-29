@@ -58,6 +58,21 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.17.12 (Stable Patch Release Gate, Pending)
+
+### Scope
+
+- [x] Bulk and scoped upgrade authority sequencing is backend-owned through Rust/FFI/XPC rather than SwiftUI polling.
+- [x] Individual upgrade task records, `plan_step_id` labels, terminal output, and per-task cancellation remain visible through existing diagnostics surfaces.
+- [x] Scoped-workflow cancellation blocks future authority-phase submission.
+- [x] Website current-version markers are aligned to the published `v0.17.11` baseline and identify `v0.17.12` as pending validation.
+
+### Required Validation
+
+- [ ] Verify authoritative tasks reach terminal state before standard or guarded bulk-upgrade tasks are submitted.
+- [ ] Verify scoped-workflow cancellation prevents later-phase scheduling and individual in-flight tasks remain cancellable.
+- [ ] Run the required preflight, rehearsal, canary, and publish-auth gates from `docs/operations/RELEASE_FLOW.md` before tag creation.
+
 ## v0.17.10 (Stable Patch Release Gate, Completed)
 
 - Published on `main` on 2026-03-11 with tag, release metadata, and post-publication verification complete.

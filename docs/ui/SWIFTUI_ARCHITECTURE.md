@@ -2,7 +2,7 @@
 
 This document describes the current SwiftUI architecture of the Helm macOS app.
 
-It reflects the actual implementation as of v0.14.0.
+It reflects the implementation pending `v0.17.12` patch validation.
 
 ---
 
@@ -51,7 +51,7 @@ Helm uses **shared singleton `ObservableObject` instances** — not view models 
 
 | Instance | Type | Access Pattern | Role |
 |----------|------|---------------|------|
-| `HelmCore.shared` | `ObservableObject` | `@ObservedObject` / `@StateObject` | All data, XPC communication, business logic |
+| `HelmCore.shared` | `ObservableObject` | `@ObservedObject` / `@StateObject` | UI state, XPC communication, intent dispatch, and presentation projections |
 | `ControlCenterContext()` | `ObservableObject` | `@EnvironmentObject` | UI navigation, selection, overlay routing |
 | `WalkthroughManager.shared` | `ObservableObject` | `@ObservedObject` | Onboarding walkthrough orchestration |
 | `LocalizationManager.shared` | `ObservableObject` | `@ObservedObject` | Locale loading and string resolution |
@@ -67,6 +67,8 @@ Helm uses **shared singleton `ObservableObject` instances** — not view models 
 | `Core/HelmCore+Actions.swift` | Mutation methods: `upgradePackage()`, `cancelTask()`, `togglePackagePin()`, manager operations |
 | `Core/HelmCore+Fetching.swift` | XPC data fetching: `fetchPackages()`, `fetchTasks()`, `fetchManagerStatus()`, `fetchSearchResults()` |
 | `Core/HelmCore+Settings.swift` | Settings: safe mode, keg cleanup, keg policies, manager enable/disable |
+
+`HelmCore` is a presentation coordinator, not an execution orchestrator. In particular, bulk and scoped upgrade intents are sent to the XPC/Rust workflow path; SwiftUI renders task and workflow state but does not sequence authority phases or poll for phase completion to schedule subsequent managers.
 
 ### ControlCenterContext
 

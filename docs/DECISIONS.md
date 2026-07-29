@@ -716,6 +716,32 @@ Initial implemented scope:
 - Avoiding native lockfile deletion preserves Homebrew's ownership and locking guarantees.
 
 ---
+## Decision 038 — Backend-Owned Upgrade Workflows and Deferred Transport Refinement
+
+**Decision:**
+Bulk and scoped upgrade workflows are owned by the Rust execution boundary. SwiftUI sends scoped intent and presents state; it does not schedule authority phases, use UI task projections to determine completion, or decide when downstream manager work may start.
+
+Implemented in the pending `v0.17.12` patch:
+
+- bulk and scoped workflows derive the current safe upgrade plan in Rust/FFI;
+- managers are scheduled by canonical authority phase;
+- all submitted tasks in one phase become terminal before the next phase is scheduled;
+- scoped-workflow cancellation prevents future phase submission while per-task cancellation remains process-backed and observable; pre-start caller-supplied cancellation IDs reserve cancellation only for a bounded window so abandoned IDs cannot block future workflows.
+
+Deferred architecture work:
+
+- `0.19.x`: add revision-aware snapshots and evaluate narrowly scoped event delivery, with reconnect/replay/ordering/backpressure tests before reducing polling;
+- `0.19.x`: consolidate related XPC operations through additive versioned contracts, without a disruptive boundary rewrite;
+- `1.1.x` reassessment: consider incremental SwiftUI state-container/reducer extraction only if post-1.0 operational evidence justifies it;
+- runtime-loadable manager adapters remain out of scope through 1.0. Static registry registration remains the safety and reviewability baseline.
+
+**Rationale:**
+
+- Authority ordering and cancellation are execution policy and must be consistent across GUI, CLI, TUI, and direct FFI callers.
+- Adaptive polling is acceptable until a transport design proves it can preserve service-reconnection and state-consistency guarantees.
+- A pre-1.0 state-management rewrite or plugin architecture would add broad risk without resolving a demonstrated correctness defect.
+
+---
 ## Summary
 
 Helm prioritizes:
