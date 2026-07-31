@@ -133,8 +133,10 @@ jobs:
                 report_error "PRs into docs must come from docs-* branches (or main for sync PRs)."
               fi
 
-              if [[ "$HEAD_REF" != "main" ]] && [[ "$docs_only" != "true" ]]; then
-                report_error "PRs into docs may only change docs scope files."
+              if [[ "$HEAD_REF" != "main" ]] \
+                && [[ ! "$HEAD_REF" =~ ^docs-sync- ]] \
+                && [[ "$docs_only" != "true" ]]; then
+                report_error "PRs into docs may only change docs scope files unless the PR is a main or docs-sync-* synchronization."
               fi
               ;;
             web)
