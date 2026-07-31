@@ -49,6 +49,10 @@ __pycache__/
 venv/
 .venv/
 
+# ─── opencode ─────────────────────────────────────────────────────────────────
+/opencode.jsonc
+.opencode/
+
 # ─── Claude Code ──────────────────────────────────────────────────────────────
 # Per-machine tool-permission grants written by Claude Code at runtime.
 # This file is auto-created and differs between contributors/machines.
