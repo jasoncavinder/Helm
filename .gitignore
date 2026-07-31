@@ -2,6 +2,8 @@
 # Leading slash scopes this to the repo root; prevents accidentally matching
 # any other rust/target that may appear elsewhere in the tree.
 /core/rust/target/
+.cargo-target/
+target/
 
 # ─── Xcode / Swift ────────────────────────────────────────────────────────────
 # Custom build root used by the CI pipeline and local builds.
@@ -59,3 +61,17 @@ venv/
 # ─── Project-specific ─────────────────────────────────────────────────────────
 # Sentinel file written by worktree-setup scripts to identify the owning agent.
 .WORKTREE_ID
+
+# Local scratch outputs (ad-hoc test binaries, logs, release staging).
+/artifacts/
+/dev/logs/codex-runs.ndjson
+
+# Codex runtime state (machine/session specific). Keep only repo-scoped
+# configuration + reusable command templates under version control.
+/.codex/*
+!/.codex/config.toml
+!/.codex/commands/
+!/.codex/commands/**
+
+# Root-level temporary notes used during release/debug sessions.
+/TMP_*
