@@ -1,6 +1,6 @@
 # Skill Candidates
 
-Generated (UTC): `2026-03-03T20:47:44Z`
+Generated (UTC): `2026-07-29T22:08:29Z`
 Source log: `/Users/jasoncavinder/Projects/Helm/dev/logs/codex-runs.ndjson`
 
 This report proposes reusable skill candidates from telemetry. It does **not** create skills automatically.
@@ -15,14 +15,14 @@ ops/codex/scripts/draft-skill-from-candidate.sh <candidate-name>
 
 | Rank | Candidate | Priority | Repeats | Components |
 |---|---|---:|---:|---|
-| 1 | `operating-lean-commands` | 9.32 | 2 | core/rust, apps/macos-ui, dev/logs |
+| 1 | `operating-lean-slash` | 7.33 | 2 | skills/docs-sync, skills/audit-remediation-batch, AGENTS.md |
 
-## Candidate: operating-lean-commands
+## Candidate: operating-lean-slash
 
 - Rank: 1
-- Priority Score: `9.32`
+- Priority Score: `7.33`
 - Repeated Entries: `2`
-- Dominant Components: `core/rust, apps/macos-ui, dev/logs, ops/codex/skills/audit-remediation-batch`
+- Dominant Components: `skills/docs-sync, skills/audit-remediation-batch, AGENTS.md, core/rust`
 
 Example summaries:
 - Implemented codex operating model scaffold.
@@ -34,14 +34,14 @@ Example summaries:
 WORKFLOW SPEC
 
 Name:
-operating-lean-commands
+operating-lean-slash
 
 Purpose:
-Standardize a repeated 'operating lean' workflow observed across core/rust, apps/macos-ui, dev/logs, ops/codex/skills/audit-remediation-batch. This candidate is based on 2 similar telemetry entries.
+Standardize a repeated 'operating lean' workflow observed across skills/docs-sync, skills/audit-remediation-batch, AGENTS.md, core/rust. This candidate is based on 2 similar telemetry entries.
 
 Inputs:
 - task objective and expected outcome
-- target scope/components (common: core/rust, apps/macos-ui, dev/logs, ops/codex/skills/audit-remediation-batch)
+- target scope/components (common: skills/docs-sync, skills/audit-remediation-batch, AGENTS.md, core/rust)
 
 Outputs:
 - concise execution summary
@@ -50,7 +50,7 @@ Outputs:
 
 Steps:
 1. Confirm the workflow scope, boundaries, and desired outcome.
-2. Gather required context from dominant components (core/rust, apps/macos-ui, dev/logs, ops/codex/skills/audit-remediation-batch).
+2. Gather required context from dominant components (skills/docs-sync, skills/audit-remediation-batch, AGENTS.md, core/rust).
 3. Execute the recurring core actions inferred from similar summaries.
 4. Run targeted validation aligned to impacted components.
 5. Record outcomes and capture concise telemetry-style summary.
@@ -70,6 +70,6 @@ No split suggested (<=25 inferred steps).
 Draft command (approval required):
 
 ```bash
-ops/codex/scripts/draft-skill-from-candidate.sh operating-lean-commands
+ops/codex/scripts/draft-skill-from-candidate.sh operating-lean-slash
 ```
 

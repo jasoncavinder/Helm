@@ -50,11 +50,15 @@ If behavior or policy changes, update the source-of-truth docs that changed real
 - Release and appcast work must remain dry-run/checklist-first unless user explicitly confirms mutation.
 - Before any release tag, publication, workflow dispatch, or release recovery, read `docs/operations/RELEASE_FLOW.md` and `docs/RELEASE_CHECKLIST.md`; run the required rehearsal and preflight gates, and obtain explicit user confirmation before a mutating step.
 
-Branch safety:
+Branch and worktree safety:
 
+- The primary checkout is coordination-only for agents. Do not edit files, run task builds, or commit from it.
+- Perform every agent task in a dedicated linked worktree under the primary checkout's `.worktrees/<task-id>/` directory. If already launched in an assigned worktree there, use it and do not create a nested worktree.
+- Use one unique task branch and one worktree per agent/task. Never share a worktree or task branch between concurrent agents.
+- Use the `agent-worktree-isolation` Skill to create new task worktrees from the intended base ref, then run all edits and verification inside the assigned worktree.
+- Verify both the worktree path (`git rev-parse --show-toplevel`) and branch (`git branch --show-current`) before edits.
 - Never commit directly to long-lived branches: `main`, `dev`, `docs`, `web`.
-- Verify branch first (`git branch --show-current`) before edits.
-- If on a long-lived branch, create a task branch first.
+- Do not remove or modify another agent's worktree. Remove only your own worktree after its changes are safely committed or handed off.
 
 Sandbox note for macOS tooling:
 
@@ -64,6 +68,8 @@ Sandbox note for macOS tooling:
 
 Use these existing Skills when triggers match:
 
+- `agent-worktree-isolation`
+  - Trigger: before every agent task or when assigning concurrent agent lanes.
 - `run-quality-gate`
   - Trigger: PR-readiness, CI-like validation, cross-layer refactors.
 - `audit-remediation-batch`
@@ -143,6 +149,8 @@ Recommend multi-agent execution when tasks involve:
 - refactors across many modules
 - implementation + testing + review as distinct lanes
 - audit remediation batches
+
+Give every agent lane its own task branch and linked worktree under `.worktrees/`; exchange commit IDs or findings rather than sharing a checkout.
 
 Suggested role pattern:
 

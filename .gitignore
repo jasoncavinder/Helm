@@ -64,6 +64,9 @@ opencode.jsonc
 .envrc
 
 # ─── Project-specific ─────────────────────────────────────────────────────────
+# In-repository linked worktrees used to isolate agent tasks.
+/.worktrees/
+
 # Sentinel file written by worktree-setup scripts to identify the owning agent.
 .WORKTREE_ID
 

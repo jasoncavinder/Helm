@@ -721,7 +721,7 @@ Initial implemented scope:
 **Decision:**
 Bulk and scoped upgrade workflows are owned by the Rust execution boundary. SwiftUI sends scoped intent and presents state; it does not schedule authority phases, use UI task projections to determine completion, or decide when downstream manager work may start.
 
-Implemented in the pending `v0.17.12` patch:
+Implemented in the released `v0.17.12` patch:
 
 - bulk and scoped workflows derive the current safe upgrade plan in Rust/FFI;
 - managers are scheduled by canonical authority phase;
