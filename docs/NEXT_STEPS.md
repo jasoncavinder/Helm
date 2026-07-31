@@ -320,7 +320,7 @@ Current checkpoint:
     - `Policy Gate` now validates PR base/head/scope policy for all protected branches
     - `Docs Checks` and `Web Build` workflows now gate `docs` and `web` branches respectively
     - blocking ruleset `update` enforcement was removed after protected-ref merge-block diagnostics so normal PR merges can complete
-    - CodeQL now runs on `main` push + schedule/manual (non-PR gate) to reduce merge friction while retaining scanning coverage
+    - CodeQL Advanced Setup now analyzes Actions, JavaScript/TypeScript, Rust, and Swift on pull requests targeting `main`/`dev` and on `main` pushes; manual dispatch remains available, while the mixed-in weekly schedule was removed so repository inactivity cannot disable PR/push scanning
   - CLI delivery completed on `dev`:
     - command surface, output contract, and shared-coordinator behavior are implemented in `core/rust/crates/helm-cli` and documented by `docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md`
     - new Rust CLI crate scaffolded at `core/rust/crates/helm-cli` (binary: `helm`) with read-only commands (`status`, `ls`/`packages`, `updates`, `tasks`, `managers`, `settings`) and `--json` output

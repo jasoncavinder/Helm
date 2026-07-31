@@ -1,11 +1,11 @@
 name: CodeQL
 
 on:
+  pull_request:
+    branches: [main, dev]
   push:
     branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: "17 7 * * 1"
 
 permissions:
   actions: read
@@ -14,19 +14,36 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze (swift)
-    runs-on: macos-14
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+            os: ubuntu-latest
+          - language: javascript-typescript
+            build-mode: none
+            os: ubuntu-latest
+          - language: rust
+            build-mode: none
+            os: ubuntu-latest
+          - language: swift
+            build-mode: manual
+            os: macos-26
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@45580472a5bb82c4681c4ac726cfdb60060c2ee1 # v3.32.4
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
-          languages: swift
-          build-mode: manual
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
 
       - name: Build (swift)
+        if: matrix.language == 'swift'
         run: |
           set -euo pipefail
           apps/macos-ui/scripts/check_channel_policy.sh
@@ -42,4 +59,4 @@ jobs:
             build
 
       - name: Analyze
-        uses: github/codeql-action/analyze@45580472a5bb82c4681c4ac726cfdb60060c2ee1 # v3.32.4
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
