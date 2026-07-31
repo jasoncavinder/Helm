@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-TEMPLATE_PATH="$ROOT_DIR/ops/codex/skills/skill-generator/templates/SKILL.template.md"
+TEMPLATE_PATH="$ROOT_DIR/skills/skill-generator/templates/SKILL.template.md"
 SKILLS_ROOT="$ROOT_DIR/skills"
 
 SPEC_FILE=""

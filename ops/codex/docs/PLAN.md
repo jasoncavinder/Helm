@@ -128,6 +128,8 @@ Recommend MCP only when external context is required repeatedly and local-first 
 
 ## 8) Multi-Agent Guidance
 
+All agent work runs through the `agent-worktree-isolation` Skill in dedicated linked worktrees under the primary checkout's `.worktrees/` directory. Each lane uses a unique task branch and worktree; the primary checkout remains coordination-only.
+
 Recommend multi-agent for:
 
 - large exploration tasks
