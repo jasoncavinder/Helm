@@ -242,7 +242,7 @@ Before an agent starts work, give it a unique branch and linked worktree under t
 ops/codex/skills/agent-worktree-isolation/scripts/create-agent-worktree.sh <task-id> <task-branch> <base-ref>
 ```
 
-Run the helper from the primary checkout. It validates the task ID, branch, base ref, ignore rule, and destination before creating anything, and it never reuses or removes a worktree. Run that agent's edits, builds, tests, and commits only inside its assigned worktree. Never assign two agents the same worktree or branch, and do not use the primary checkout for task work. Agents may remove only their own worktree after its changes are safely committed or handed off.
+Run the helper from the primary checkout. It validates the task ID, branch, base ref, ignore rule, and destination before creating anything, and it never reuses or removes a worktree. Run that agent's edits, builds, tests, and commits only inside its assigned worktree. Never assign two agents the same worktree or branch, and do not use the primary checkout for task work. Agents must explicitly remove their assigned task branch and worktree once they are no longer needed (e.g., after the work is merged, discarded, or safely handed off).
 
 Avoid multi-agent mode for small single-file changes.
 

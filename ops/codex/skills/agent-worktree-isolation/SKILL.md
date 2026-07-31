@@ -53,4 +53,4 @@ Create and use one isolated linked worktree and task branch for every Helm agent
 7. Verify `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short` before editing.
 8. Perform the task and targeted verification only in the assigned worktree.
 9. Report the worktree path, branch, changed files, and verification results.
-10. Never remove the worktree automatically; provide cleanup only after changes are safely committed or handed off.
+10. Never remove the worktree automatically; always explicitly clean up your assigned task branch and worktree once they are no longer needed (e.g., after the work is merged, discarded, or safely handed off).
