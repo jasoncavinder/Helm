@@ -11,12 +11,14 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x planning on `dev` (post-v0.17.11 stable release)
+v0.17.12 patch validation on `dev`, then 0.18.x planning (post-v0.17.11 stable release)
 ```
 
 Focus:
+- complete the focused `v0.17.12` corrective patch: retain bulk/scoped upgrade authority sequencing, workflow cancellation, and task visibility in Rust/FFI/XPC rather than SwiftUI
 - keep `main`/`dev`/`docs`/`web` release-state docs and version markers aligned now that `v0.17.11` is published
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
+- preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
 - continue doctor/repair subsystem foundation in core + FFI + service surfaces without widening into online knowledge lookup yet
 - keep repair knowledge lookup local/embedded for now, with explicit TODO seams for future online fingerprint lookup
 - sequence `0.18.x` local security groundwork now that the `0.17.11` hardening slice has landed
@@ -26,6 +28,7 @@ Focus:
 
 Current checkpoint:
 - `v0.17.11` is the current stable release on `main`; current-scope manager adapter completion, final stable-line hardening, and package workflow hardening are now published:
+  - pending `v0.17.12` correction moves bulk and scoped upgrade phase coordination out of SwiftUI. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
   - all current manager adapters are considered complete for Helm's intended scope
   - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries

@@ -214,6 +214,82 @@ struct UpgradePreviewPlanner {
     }
 }
 
+struct UpgradeWorkflowStartState {
+    private(set) var isInFlight = false
+    private(set) var cancellationPending = false
+    private(set) var workflowId: String?
+
+    mutating func begin(workflowId: String) {
+        isInFlight = true
+        cancellationPending = false
+        self.workflowId = workflowId
+    }
+
+    mutating func requestCancellation() {
+        guard isInFlight else { return }
+        cancellationPending = true
+    }
+
+    mutating func finish(workflowId: String) -> Bool {
+        guard self.workflowId == workflowId else { return false }
+        isInFlight = false
+        defer { cancellationPending = false }
+        return cancellationPending
+    }
+
+    mutating func clear(workflowId: String) {
+        guard self.workflowId == workflowId else { return }
+        isInFlight = false
+        cancellationPending = false
+        self.workflowId = nil
+    }
+}
+
+enum UpgradeWorkflowStatusDecision: Equatable {
+    case keepLocalState
+    case clearLocalState
+    case recoverLocalState
+}
+
+struct UpgradeWorkflowStatusReconciliationState {
+    static let maximumIndeterminateResults = 3
+    static let recoveryBudget: TimeInterval = 90
+
+    private(set) var indeterminateResultCount = 0
+    private(set) var firstIndeterminateResultAt: Date?
+
+    mutating func reconcile(
+        isActive: Bool?,
+        now: Date = Date()
+    ) -> UpgradeWorkflowStatusDecision {
+        switch isActive {
+        case false:
+            reset()
+            return .clearLocalState
+        case true:
+            reset()
+            return .keepLocalState
+        case nil:
+            indeterminateResultCount += 1
+            if firstIndeterminateResultAt == nil {
+                firstIndeterminateResultAt = now
+            }
+            guard indeterminateResultCount >= Self.maximumIndeterminateResults,
+                  let firstIndeterminateResultAt,
+                  now.timeIntervalSince(firstIndeterminateResultAt) >= Self.recoveryBudget else {
+                return .keepLocalState
+            }
+            reset()
+            return .recoverLocalState
+        }
+    }
+
+    mutating func reset() {
+        indeterminateResultCount = 0
+        firstIndeterminateResultAt = nil
+    }
+}
+
 struct PackageConsolidationPolicy {
     static func statusRank(_ rawStatus: String) -> Int {
         switch rawStatus.lowercased() {

@@ -163,8 +163,9 @@ prepare_paths() {
     REPORT_PATH="${ROOT_DIR}/${REPORT_PATH}"
   fi
 
-  REPORT_DIR="$(cd "$(dirname "$REPORT_PATH")" && pwd)"
+  REPORT_DIR="$(dirname "$REPORT_PATH")"
   mkdir -p "$REPORT_DIR"
+  REPORT_DIR="$(cd "$REPORT_DIR" && pwd)"
 
   LOG_DIR="${REPORT_DIR}/logs-${tag_slug}-${stamp}"
   mkdir -p "$LOG_DIR"

@@ -32,10 +32,14 @@ This checklist is required before creating a release tag on `main`.
 ## Release Preflight (All Releases, Mandatory Before Tagging)
 
 - [ ] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
+- [ ] Read and follow `docs/operations/RELEASE_FLOW.md` before any release mutation.
+- [ ] Run `scripts/release/rehearsal_dry_run.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` and retain its passing report.
+- [ ] Confirm `Release macOS Canary` passed on `macos-26` after the latest release-workflow or toolchain change.
+- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after any release credential rotation or permission change.
 - [ ] Confirm preflight reports token scopes include `repo` and `workflow`.
 - [ ] Confirm preflight validates required release workflows are present and enabled.
 - [ ] Confirm preflight validates required DMG/signing/update secrets are present.
-- [ ] Confirm optional `RELEASE_PUBLISH_PAT` is configured (recommended) so release-generated publish PRs can receive required checks and auto-merge normally.
+- [ ] Confirm `RELEASE_PUBLISH_PAT` is configured and authenticated so release-generated publish PRs can receive required checks and auto-merge normally.
 - [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
 - [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
 - [ ] Confirm crash/error reporting policy remains local-only for the release line and no automatic remote telemetry path was introduced (`docs/operations/CRASH_REPORTING_POLICY.md`).
@@ -53,6 +57,21 @@ This checklist is required before creating a release tag on `main`.
   - `Appcast Drift Guard`
   - `CLI Update Metadata Drift Guard`
 - [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
+
+## v0.17.12 (Stable Patch Release Gate, Pending)
+
+### Scope
+
+- [x] Bulk and scoped upgrade authority sequencing is backend-owned through Rust/FFI/XPC rather than SwiftUI polling.
+- [x] Individual upgrade task records, `plan_step_id` labels, terminal output, and per-task cancellation remain visible through existing diagnostics surfaces.
+- [x] Scoped-workflow cancellation blocks future authority-phase submission.
+- [x] Website current-version markers are aligned to the published `v0.17.11` baseline and identify `v0.17.12` as pending validation.
+
+### Required Validation
+
+- [ ] Verify authoritative tasks reach terminal state before standard or guarded bulk-upgrade tasks are submitted.
+- [ ] Verify scoped-workflow cancellation prevents later-phase scheduling and individual in-flight tasks remain cancellable.
+- [ ] Run the required preflight, rehearsal, canary, and publish-auth gates from `docs/operations/RELEASE_FLOW.md` before tag creation.
 
 ## v0.17.10 (Stable Patch Release Gate, Completed)
 

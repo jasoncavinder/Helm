@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   build-and-upload-dmg:
-    runs-on: macos-14
+    runs-on: macos-26
     permissions:
       contents: write
       pull-requests: write
@@ -44,6 +44,8 @@ jobs:
       HELM_SPARKLE_PRIVATE_ED_KEY: ${{ secrets.HELM_SPARKLE_PRIVATE_ED_KEY }}
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
       VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.verify_only == 'true' && 'true' || 'false') || 'false' }}
+      EXPECTED_XCODE_MAJOR: "26"
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
 
@@ -93,6 +95,7 @@ jobs:
             echo "PUBLISH_FOLLOWUP_REQUIRED=no"
             echo "MAIN_METADATA_SYNCED=unknown"
             echo "PUBLISH_AUTH_MODE=unknown"
+            echo "SOURCE_TAG_SHA=unknown"
           } >> "$GITHUB_ENV"
 
       - name: Resolve release publish auth mode
@@ -111,9 +114,26 @@ jobs:
 
       - name: Checkout
         if: ${{ env.VERIFY_ONLY != 'true' }}
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           ref: ${{ env.TAG_NAME }}
+
+      - name: Verify macOS release runtime
+        if: ${{ env.VERIFY_ONLY != 'true' }}
+        run: |
+          set -euo pipefail
+          MACOS_VERSION="$(sw_vers -productVersion)"
+          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2}')"
+          XCODE_MAJOR="${XCODE_VERSION%%.*}"
+          SOURCE_TAG_SHA="$(git rev-parse HEAD)"
+
+          if [ -z "$XCODE_VERSION" ] || [ "$XCODE_MAJOR" != "$EXPECTED_XCODE_MAJOR" ]; then
+            echo "::error::Release runner requires Xcode ${EXPECTED_XCODE_MAJOR}.x; found '${XCODE_VERSION:-unavailable}'."
+            exit 1
+          fi
+
+          echo "SOURCE_TAG_SHA=${SOURCE_TAG_SHA}" >> "$GITHUB_ENV"
+          echo "[preflight] runner=${RUNNER_OS} macOS=${MACOS_VERSION} xcode=${XCODE_VERSION} source_tag_sha=${SOURCE_TAG_SHA} workflow_sha=${WORKFLOW_SHA}"
 
       - name: Install Rust toolchain (universal targets)
         if: ${{ env.VERIFY_ONLY != 'true' }}
@@ -146,7 +166,7 @@ jobs:
         run: |
           set -euo pipefail
           cd core/rust
-          cargo test --workspace
+          cargo test --workspace -- --test-threads=1
 
       - name: Run Swift tests before release build
         if: ${{ env.VERIFY_ONLY != 'true' }}
@@ -548,7 +568,7 @@ jobs:
 
       - name: Upload build artifacts to workflow run
         if: ${{ env.VERIFY_ONLY != 'true' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: helm-macos-dmg-${{ env.TAG_NAME }}
           path: |
@@ -576,6 +596,7 @@ jobs:
         if: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && env.VERIFY_ONLY != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PUBLISH_PAT != '' && secrets.RELEASE_PUBLISH_PAT || github.token }}
+          FALLBACK_GH_TOKEN: ${{ github.token }}
           PUBLISH_WITH_PAT: ${{ secrets.RELEASE_PUBLISH_PAT != '' && 'true' || 'false' }}
         run: |
           set -euo pipefail
@@ -587,7 +608,23 @@ jobs:
           PUBLISH_DIR="$RUNNER_TEMP/appcast-publish"
           PUBLISH_BRANCH="chore/publish-updates-${TAG_NAME}"
 
-          git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$PUBLISH_DIR"
+          clone_publish_repo() {
+            git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$PUBLISH_DIR"
+          }
+
+          if ! clone_publish_repo; then
+            if [ "$PUBLISH_WITH_PAT" != "true" ]; then
+              echo "::error::Unable to clone main with github.token for metadata publication."
+              exit 1
+            fi
+
+            echo "::warning::RELEASE_PUBLISH_PAT could not clone the repository; retrying with github.token."
+            PUBLISH_DIR="${RUNNER_TEMP}/appcast-publish-fallback"
+            GH_TOKEN="$FALLBACK_GH_TOKEN"
+            PUBLISH_WITH_PAT="false"
+            echo "PUBLISH_AUTH_MODE=github_token_fallback" >> "$GITHUB_ENV"
+            clone_publish_repo
+          fi
           mkdir -p "$PUBLISH_DIR/$(dirname "$FEED_PATH")"
           mkdir -p "$PUBLISH_DIR/$(dirname "$RELEASE_NOTES_FEED_PATH")"
           cp "$APPCAST_PATH" "$PUBLISH_DIR/$FEED_PATH"
@@ -606,7 +643,19 @@ jobs:
           git commit -m "chore(release): publish Sparkle appcast + release notes for ${TAG_NAME}"
 
           git checkout -B "$PUBLISH_BRANCH"
-          git push -u origin "$PUBLISH_BRANCH" --force-with-lease
+          if ! git push -u origin "$PUBLISH_BRANCH" --force-with-lease; then
+            if [ "$PUBLISH_WITH_PAT" != "true" ]; then
+              echo "::error::Unable to push metadata publish branch with github.token."
+              exit 1
+            fi
+
+            echo "::warning::RELEASE_PUBLISH_PAT could not push the publish branch; retrying with github.token."
+            GH_TOKEN="$FALLBACK_GH_TOKEN"
+            PUBLISH_WITH_PAT="false"
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            echo "PUBLISH_AUTH_MODE=github_token_fallback" >> "$GITHUB_ENV"
+            git push -u origin "$PUBLISH_BRANCH" --force-with-lease
+          fi
 
           EXISTING_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
           if [ -n "$EXISTING_PR" ]; then
@@ -631,14 +680,26 @@ jobs:
               --head "$PUBLISH_BRANCH" \
               --title "chore(release): publish Sparkle appcast + release notes for ${TAG_NAME}" \
               --body-file "$PR_BODY_FILE" 2>&1)" || {
+              if [ "$PUBLISH_WITH_PAT" = "true" ]; then
+                echo "::warning::RELEASE_PUBLISH_PAT could not create the publish PR; retrying with github.token."
+                GH_TOKEN="$FALLBACK_GH_TOKEN"
+                PUBLISH_WITH_PAT="false"
+                echo "PUBLISH_AUTH_MODE=github_token_fallback" >> "$GITHUB_ENV"
+                PR_URL="$(gh pr create \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --base main \
+                  --head "$PUBLISH_BRANCH" \
+                  --title "chore(release): publish Sparkle appcast + release notes for ${TAG_NAME}" \
+                  --body-file "$PR_BODY_FILE" 2>&1)" && true
+              fi
+            }
+            if [ -z "${PR_URL:-}" ] || ! PR_NUMBER="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"; then
               echo "::error::Unable to create publish PR via GitHub Actions token."
               echo "::error::Fallback branch was pushed: ${PUBLISH_BRANCH}"
               echo "::error::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
               echo "::error::gh output: ${PR_URL}"
               exit 1
-            }
-
-            PR_NUMBER="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$PUBLISH_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
+            fi
             if [ -z "$PR_NUMBER" ]; then
               echo "::error::Publish PR was created but could not be resolved to an open PR number."
               echo "::error::Open manual PR: https://github.com/${GITHUB_REPOSITORY}/compare/main...${PUBLISH_BRANCH}?expand=1"
@@ -787,6 +848,8 @@ jobs:
           publish_pr_opened="${PUBLISH_PR_OPENED:-no}"
           main_metadata_synced="${MAIN_METADATA_SYNCED:-unknown}"
           publish_auth_mode="${PUBLISH_AUTH_MODE:-unknown}"
+          workflow_sha="${WORKFLOW_SHA:-unknown}"
+          source_tag_sha="${SOURCE_TAG_SHA:-unknown}"
           publish_pr_number="${PUBLISH_PR_NUMBER:-}"
           publish_pr_url="${PUBLISH_PR_URL:-}"
           publish_followup_required="${PUBLISH_FOLLOWUP_REQUIRED:-no}"
@@ -797,6 +860,8 @@ jobs:
             echo "- Verify only run: ${VERIFY_ONLY}"
             echo "- Artifacts uploaded: ${artifacts_uploaded}"
             echo "- Publish auth mode: ${publish_auth_mode}"
+            echo "- Workflow revision: ${workflow_sha}"
+            echo "- Source tag revision: ${source_tag_sha}"
             echo "- Publish PR opened: ${publish_pr_opened}"
             echo "- Main metadata synced: ${main_metadata_synced}"
             if [ -n "${publish_pr_number}" ]; then

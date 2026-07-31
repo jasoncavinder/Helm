@@ -66,6 +66,8 @@ The XPC layer must support, at minimum:
 - Manager self-update (where supported)
 - Cancel task (best-effort + process-level where possible)
 
+Bulk upgrade workflows are backend-owned. UI may provide manager/package scope as an intent and render workflow/task state, but it must not sequence authority phases or infer task completion to schedule downstream managers. The service returns individual task handles and may return a workflow handle for scoped cancellation; individual task logs and terminal output remain the source of execution transparency.
+
 ### 2.3 Versioning
 
 - If the XPC protocol changes materially, record it in `docs/DECISIONS.md`.
@@ -109,6 +111,7 @@ FFI must expose functions sufficient for:
 - get/set language override
 - get/set manager enablement
 - upgrade-all confirmation token flow (see §6)
+- start/cancel/query scoped upgrade workflows without exposing UI-owned phase state
 
 ### 3.3 Data Encoding
 

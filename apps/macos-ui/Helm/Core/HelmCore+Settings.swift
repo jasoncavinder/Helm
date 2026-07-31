@@ -738,6 +738,9 @@ extension HelmCore {
     // MARK: - Upgrade All
 
     func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        guard scopedUpgradeWorkflowId == nil,
+              !scopedUpgradeWorkflowStartState.isInFlight,
+              !scopedUpgradePlanRunInProgress else { return }
         DispatchQueue.main.async {
             self.upgradePlanIncludePinned = includePinned
             self.upgradePlanAllowOsUpdates = allowOsUpdates
@@ -746,24 +749,14 @@ extension HelmCore {
             }
             self.rebuildUpgradePlanFailureGroups()
         }
-        guard let service = service() else {
-            recordLastError(
-                source: "core.settings",
-                action: "upgradeAll.service_unavailable",
-                taskType: "upgrade"
-            )
-            return
-        }
-        service.upgradeAll(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { success in
-            if !success {
-                logger.error("upgradeAll(includePinned: \(includePinned), allowOsUpdates: \(allowOsUpdates)) failed")
-                self.recordLastError(
-                    source: "core.settings",
-                    action: "upgradeAll",
-                    taskType: "upgrade"
-                )
-            }
-        }
+        startScopedUpgradeWorkflow(
+            includePinned: includePinned,
+            allowOsUpdates: allowOsUpdates,
+            managerScopeId: Self.allManagersScopeId,
+            packageFilter: "",
+            source: "core.settings",
+            action: "upgradeAll"
+        )
     }
 
     func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {

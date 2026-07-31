@@ -8,20 +8,22 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.11 stable released on `main`** with `0.18.x` planning active on `dev`.
+Current documentation baseline: **0.17.11 stable released on `main`**; a focused `0.17.12` authority-ordering correction is pending before `0.18.x` work resumes on `dev`.
 
-Implementation baseline: **0.18.x planning on `dev`** after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, post-`v0.17.5` refresh reliability/diagnostics hardening, complete current-scope manager adapter coverage, and local doctor/repair follow-up for executable-path drift.
+Implementation baseline: **pending `0.17.12` patch validation on `dev`**, followed by `0.18.x` planning, after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, current-scope manager adapter completion, and local doctor/repair follow-up for executable-path drift.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.17.11** (released on 2026-07-28)
+- pending `v0.17.12` corrective patch: bulk and scoped upgrade workflows now execute authority phases in Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - next integration target on `dev`: **0.18.x** (broader doctor/repair foundation and local security groundwork sequencing)
 - repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
 - latest stable publication cut completed for `v0.17.11`:
   - workspace, docs, website, appcast, and CLI metadata now reflect the published `0.17.11` stable line.
   - release automation follow-through and publish verification completed on `main`.
+  - post-release rustup refresh correction: `rustup check` exit code `100` now represents detected toolchain updates rather than a failed refresh, and current lowercase output grammar is parsed into outdated toolchains.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)

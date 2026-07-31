@@ -641,6 +641,7 @@ enum CoordinatorWorkflowRequest {
     UpdatesRun {
         include_pinned: bool,
         allow_os_updates: bool,
+        #[serde(default)]
         manager_id: Option<String>,
     },
 }
@@ -16305,12 +16306,12 @@ fn print_completion_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        CLI_LICENSE_TERMS_VERSION, Command, CoordinatorClientTransport, ExecutionMode,
-        GlobalOptions, HomebrewKegPolicy, InstallChannel, ManagerId, RustupPackagesCommand,
-        SelfUpdateErrorKind, UpdatePolicy, UpgradeExecutionStep,
-        acquire_coordinator_bootstrap_lock, apply_manager_enablement_self_heal,
-        build_json_payload_lines, classify_failure_class, cmd_updates_run,
-        command_bypasses_cli_onboarding, command_help_topic_exists,
+        CLI_LICENSE_TERMS_VERSION, Command, CoordinatorClientTransport, CoordinatorRequest,
+        CoordinatorWorkflowRequest, ExecutionMode, GlobalOptions, HomebrewKegPolicy,
+        InstallChannel, ManagerId, RustupPackagesCommand, SelfUpdateErrorKind, UpdatePolicy,
+        UpgradeExecutionStep, acquire_coordinator_bootstrap_lock,
+        apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
+        cmd_updates_run, command_bypasses_cli_onboarding, command_help_topic_exists,
         coordinator_transport_for_cancel, coordinator_transport_for_submit,
         coordinator_transport_for_workflow, count_upgrade_step_failures,
         ensure_cli_onboarding_completed, exit_code_for_error, failure_class_hint, list_managers,
@@ -18034,6 +18035,25 @@ mod tests {
         )
         .expect_err("duplicate --manager should fail");
         assert!(error.contains("specified multiple times"));
+    }
+
+    #[test]
+    fn coordinator_updates_run_accepts_legacy_request_without_manager_id() {
+        let request: CoordinatorRequest = serde_json::from_str(
+            r#"{"kind":"start_workflow","workflow":{"kind":"updates_run","include_pinned":false,"allow_os_updates":true}}"#,
+        )
+        .expect("legacy updates workflow request should deserialize");
+
+        assert!(matches!(
+            request,
+            CoordinatorRequest::StartWorkflow {
+                workflow: CoordinatorWorkflowRequest::UpdatesRun {
+                    include_pinned: false,
+                    allow_os_updates: true,
+                    manager_id: None,
+                },
+            }
+        ));
     }
 
     #[test]

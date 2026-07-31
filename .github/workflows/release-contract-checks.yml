@@ -16,7 +16,18 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+
+      - name: Install actionlint
+        run: |
+          ACTIONLINT_DIR="$RUNNER_TEMP/actionlint-bin"
+          mkdir -p "$ACTIONLINT_DIR"
+          GOBIN="$ACTIONLINT_DIR" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.8
+          echo "ACTIONLINT_BIN=$ACTIONLINT_DIR/actionlint" >> "$GITHUB_ENV"
+
+      - name: Validate GitHub Actions workflows
+        run: |
+          "$ACTIONLINT_BIN"
 
       - name: Validate unsigned build script safety contracts
         run: scripts/release/tests/build_unsigned_variant_contract.sh
@@ -93,7 +104,7 @@ jobs:
           PY
 
       - name: Upload release rehearsal report artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: release-rehearsal-report
           path: ${{ runner.temp }}/release-rehearsal-report.json

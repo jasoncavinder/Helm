@@ -6,7 +6,6 @@ import os.log
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core.actions")
 
 extension HelmCore {
-    private static let scopedUpgradePlanPhaseTimeoutSeconds: TimeInterval = 300
 
     func cancelTask(_ task: TaskItem) {
         guard task.isRunning, let taskId = Int64(task.id) else { return }
@@ -190,43 +189,84 @@ extension HelmCore {
             managerScopeId: managerScopeId,
             packageFilter: packageFilter
         )
-        let runCandidateSteps = scopedSteps.filter { step in
-            let status = projectedUpgradePlanStatus(for: step)
-            let hasProjectedTask = upgradePlanTaskProjectionByStepId[step.id] != nil
-            return UpgradePreviewPlanner.shouldRunScopedStep(
-                status: status,
-                hasProjectedTask: hasProjectedTask,
-                managerId: step.managerId,
-                safeModeEnabled: safeModeEnabled
-            )
-        }
+        guard !scopedSteps.isEmpty else { return }
 
-        guard !runCandidateSteps.isEmpty else { return }
-
-        let runToken = UUID()
-        scopedUpgradePlanRunToken = runToken
-        scopedUpgradePlanRunInProgress = true
-
-        let phasesByRank = Dictionary(grouping: runCandidateSteps) { step in
-            HelmCore.authorityRank(for: step.authority)
-        }
-        let orderedPhaseRanks = phasesByRank.keys.sorted()
-        guard !orderedPhaseRanks.isEmpty else {
-            finishScopedUpgradePlanRun(runToken: runToken, invalidateToken: true)
-            return
-        }
-
-        runScopedUpgradePlanPhases(
-            phaseRanks: orderedPhaseRanks,
-            phasesByRank: phasesByRank,
-            phaseIndex: 0,
-            runToken: runToken
+        startScopedUpgradeWorkflow(
+            includePinned: upgradePlanIncludePinned,
+            allowOsUpdates: upgradePlanAllowOsUpdates,
+            managerScopeId: managerScopeId,
+            packageFilter: packageFilter,
+            source: "core.actions",
+            action: "runUpgradePlanScoped"
         )
     }
 
+    func startScopedUpgradeWorkflow(
+        includePinned: Bool,
+        allowOsUpdates: Bool,
+        managerScopeId: String,
+        packageFilter: String,
+        source: String,
+        action: String
+    ) {
+        guard scopedUpgradeWorkflowId == nil,
+              !scopedUpgradeWorkflowStartState.isInFlight,
+              !scopedUpgradePlanRunInProgress else { return }
+        guard let service = service() else {
+            recordLastError(
+                source: source,
+                action: "\(action).service_unavailable",
+                taskType: "upgrade"
+            )
+            return
+        }
+
+        let workflowId = "upgrade-workflow-\(UUID().uuidString.lowercased())"
+        scopedUpgradeWorkflowId = workflowId
+        scopedUpgradePlanRunInProgress = true
+        scopedUpgradeWorkflowStartState.begin(workflowId: workflowId)
+        scopedUpgradeWorkflowStatusReconciliationState.reset()
+        withTimeout(
+            30,
+            source: source,
+            action: "\(action).start",
+            taskType: "upgrade",
+            operation: { completion in
+                service.startScopedUpgradeWorkflowWithId(
+                    workflowId: workflowId,
+                    includePinned: includePinned,
+                    allowOsUpdates: allowOsUpdates,
+                    managerScopeId: managerScopeId,
+                    packageFilter: packageFilter
+                ) { completion($0) }
+            },
+            fallback: false
+        ) { [weak self] accepted in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let cancellationPending = self.scopedUpgradeWorkflowStartState.finish(workflowId: workflowId)
+                guard self.scopedUpgradeWorkflowId == workflowId else { return }
+                guard accepted == true else {
+                    self.recordLastError(source: source, action: action, taskType: "upgrade")
+                    // The service may have accepted the request after this XPC reply timed out.
+                    // Keep the caller-generated ID until the backend query resolves ownership.
+                    self.refreshScopedUpgradeWorkflowStatus()
+                    return
+                }
+                if cancellationPending {
+                    self.cancelScopedUpgradeWorkflow(workflowId)
+                } else {
+                    self.refreshScopedUpgradeWorkflowStatus()
+                }
+            }
+        }
+    }
+
     func cancelRemainingUpgradePlanSteps(managerScopeId: String, packageFilter: String) {
-        scopedUpgradePlanRunToken = UUID()
-        scopedUpgradePlanRunInProgress = false
+        scopedUpgradeWorkflowStartState.requestCancellation()
+        if let workflowId = scopedUpgradeWorkflowId {
+            cancelScopedUpgradeWorkflow(workflowId)
+        }
 
         let scopedStepIds = Set(
             HelmCore.scopedUpgradePlanSteps(
@@ -275,111 +315,17 @@ extension HelmCore {
         }
     }
 
-    private func runScopedUpgradePlanPhases(
-        phaseRanks: [Int],
-        phasesByRank: [Int: [CoreUpgradePlanStep]],
-        phaseIndex: Int,
-        runToken: UUID
-    ) {
-        guard runToken == scopedUpgradePlanRunToken else {
-            return
-        }
-
-        guard phaseIndex < phaseRanks.count else {
-            finishScopedUpgradePlanRun(runToken: runToken, invalidateToken: true)
-            return
-        }
-
-        let phaseRank = phaseRanks[phaseIndex]
-        let phaseSteps = phasesByRank[phaseRank] ?? []
-        guard !phaseSteps.isEmpty else {
-            runScopedUpgradePlanPhases(
-                phaseRanks: phaseRanks,
-                phasesByRank: phasesByRank,
-                phaseIndex: phaseIndex + 1,
-                runToken: runToken
-            )
-            return
-        }
-
-        let dispatchGroup = DispatchGroup()
-        for step in phaseSteps {
-            dispatchGroup.enter()
-            retryUpgradePlanStep(step) { _ in
-                dispatchGroup.leave()
+    private func cancelScopedUpgradeWorkflow(_ workflowId: String) {
+        service()?.cancelUpgradeWorkflow(workflowId: workflowId) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard self.scopedUpgradeWorkflowId == workflowId else { return }
+                if !success {
+                    logger.warning("cancelUpgradeWorkflow(\(workflowId)) returned false")
+                }
+                self.refreshScopedUpgradeWorkflowStatus()
             }
         }
-
-        dispatchGroup.notify(queue: .main) { [weak self] in
-            self?.waitForScopedUpgradePlanPhaseCompletion(stepIds: Set(phaseSteps.map(\.id)), runToken: runToken) {
-                self?.runScopedUpgradePlanPhases(
-                    phaseRanks: phaseRanks,
-                    phasesByRank: phasesByRank,
-                    phaseIndex: phaseIndex + 1,
-                    runToken: runToken
-                )
-            }
-        }
-    }
-
-    private func waitForScopedUpgradePlanPhaseCompletion(
-        stepIds: Set<String>,
-        runToken: UUID,
-        startedAt: Date = Date(),
-        completion: @escaping () -> Void
-    ) {
-        guard !stepIds.isEmpty else {
-            completion()
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-            guard let self = self else { return }
-            guard runToken == self.scopedUpgradePlanRunToken else {
-                return
-            }
-            if Date().timeIntervalSince(startedAt) > Self.scopedUpgradePlanPhaseTimeoutSeconds {
-                logger.warning(
-                    "Scoped upgrade phase timed out after \(Self.scopedUpgradePlanPhaseTimeoutSeconds)s; cancelling scoped run token"
-                )
-                self.recordLastError(
-                    source: "core.actions",
-                    action: "runUpgradePlanScoped.phase_timeout",
-                    taskType: "upgrade"
-                )
-                self.finishScopedUpgradePlanRun(runToken: runToken, invalidateToken: true)
-                return
-            }
-
-            let inFlight = self.upgradePlanSteps.contains { step in
-                guard stepIds.contains(step.id) else { return false }
-                let status = self.projectedUpgradePlanStatus(for: step)
-                let hasProjectedTask = self.upgradePlanTaskProjectionByStepId[step.id] != nil
-                return UpgradePreviewPlanner.isInFlightStatus(
-                    status: status,
-                    hasProjectedTask: hasProjectedTask
-                )
-            }
-
-            if inFlight {
-                self.waitForScopedUpgradePlanPhaseCompletion(
-                    stepIds: stepIds,
-                    runToken: runToken,
-                    startedAt: startedAt,
-                    completion: completion
-                )
-            } else {
-                completion()
-            }
-        }
-    }
-
-    private func finishScopedUpgradePlanRun(runToken: UUID, invalidateToken: Bool) {
-        guard runToken == scopedUpgradePlanRunToken else { return }
-        if invalidateToken {
-            scopedUpgradePlanRunToken = UUID()
-        }
-        scopedUpgradePlanRunInProgress = false
     }
 
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {

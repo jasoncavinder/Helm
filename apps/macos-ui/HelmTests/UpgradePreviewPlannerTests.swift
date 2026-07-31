@@ -231,6 +231,68 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         XCTAssertEqual(taskIds, Set<Int64>([101, 202]))
     }
 
+    func testWorkflowStartKnowsItsIdBeforeTheBackendReply() {
+        var state = UpgradeWorkflowStartState()
+        state.begin(workflowId: "upgrade-workflow-request-1")
+        state.requestCancellation()
+
+        XCTAssertEqual(state.workflowId, "upgrade-workflow-request-1")
+        XCTAssertTrue(state.finish(workflowId: "upgrade-workflow-request-1"))
+        XCTAssertFalse(state.isInFlight)
+        XCTAssertFalse(state.cancellationPending)
+    }
+
+    func testWorkflowStartCompletionWithoutCancellationDoesNotRequestCancellation() {
+        var state = UpgradeWorkflowStartState()
+        state.begin(workflowId: "upgrade-workflow-request-2")
+
+        XCTAssertFalse(state.finish(workflowId: "upgrade-workflow-request-2"))
+        XCTAssertFalse(state.isInFlight)
+    }
+
+    func testWorkflowStatusReconciliationClearsImmediatelyWhenInactive() {
+        var state = UpgradeWorkflowStatusReconciliationState()
+
+        XCTAssertEqual(state.reconcile(isActive: false), .clearLocalState)
+        XCTAssertEqual(state.indeterminateResultCount, 0)
+    }
+
+    func testWorkflowStatusReconciliationRecoversOnlyAfterRetryAndTimeBudget() {
+        var state = UpgradeWorkflowStatusReconciliationState()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertEqual(state.reconcile(isActive: nil, now: start), .keepLocalState)
+        XCTAssertEqual(
+            state.reconcile(isActive: nil, now: start.addingTimeInterval(30)),
+            .keepLocalState
+        )
+        XCTAssertEqual(
+            state.reconcile(isActive: nil, now: start.addingTimeInterval(89)),
+            .keepLocalState
+        )
+        XCTAssertEqual(
+            state.reconcile(isActive: nil, now: start.addingTimeInterval(90)),
+            .recoverLocalState
+        )
+        XCTAssertEqual(state.indeterminateResultCount, 0)
+    }
+
+    func testWorkflowStatusReconciliationResetsAfterActiveResult() {
+        var state = UpgradeWorkflowStatusReconciliationState()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        _ = state.reconcile(isActive: nil, now: start)
+        XCTAssertEqual(
+            state.reconcile(isActive: true, now: start.addingTimeInterval(30)),
+            .keepLocalState
+        )
+        XCTAssertEqual(state.indeterminateResultCount, 0)
+        XCTAssertEqual(
+            state.reconcile(isActive: nil, now: start.addingTimeInterval(120)),
+            .keepLocalState
+        )
+    }
+
     private func step(
         id: String,
         order: UInt64,

@@ -6,6 +6,9 @@ WORKFLOWS_DIR="${ROOT_DIR}/.github/workflows"
 ALL_VARIANTS_WORKFLOW="${WORKFLOWS_DIR}/release-all-variants.yml"
 CLI_WORKFLOW="${WORKFLOWS_DIR}/release-cli-direct.yml"
 DMG_WORKFLOW="${WORKFLOWS_DIR}/release-macos-dmg.yml"
+CANARY_WORKFLOW="${WORKFLOWS_DIR}/release-macos-canary.yml"
+AUTH_CHECK_WORKFLOW="${WORKFLOWS_DIR}/release-publish-auth-check.yml"
+PREFLIGHT_SCRIPT="${ROOT_DIR}/scripts/release/preflight.sh"
 WEB_BUILD_WORKFLOW="${WORKFLOWS_DIR}/web-build.yml"
 
 fail() {
@@ -39,6 +42,25 @@ reject_pattern 'release-cli-direct\.yml' "$ALL_VARIANTS_WORKFLOW" "all-variants 
 for workflow in "$CLI_WORKFLOW" "$DMG_WORKFLOW"; do
   expect_pattern 'git push -u origin "\$PUBLISH_BRANCH" --force-with-lease' "$workflow" "metadata publication must use force-with-lease"
   reject_pattern 'git push.*--force($|[[:space:]])' "$workflow" "metadata publication must not fall back to unconditional force"
+  expect_pattern 'FALLBACK_GH_TOKEN: \$\{\{ github\.token \}\}' "$workflow" "metadata publication must retry with github.token"
+  expect_pattern 'PUBLISH_AUTH_MODE=github_token_fallback' "$workflow" "metadata publication must record fallback authentication"
+done
+
+expect_pattern 'runs-on: macos-26' "$CANARY_WORKFLOW" "release canary must use the supported macOS runner"
+expect_pattern 'EXPECTED_XCODE_MAJOR: "26"' "$CANARY_WORKFLOW" "release canary must pin the expected Xcode major"
+expect_pattern 'cargo test --workspace --manifest-path core/rust/Cargo.toml -- --test-threads=1' "$CANARY_WORKFLOW" "release canary must run the serialized Rust release gate"
+expect_pattern 'Build unsigned universal release app' "$CANARY_WORKFLOW" "release canary must build an unsigned universal app"
+
+expect_pattern 'RELEASE_PUBLISH_PAT' "$AUTH_CHECK_WORKFLOW" "release auth check must validate the publish credential"
+expect_pattern 'git ls-remote --exit-code' "$AUTH_CHECK_WORKFLOW" "release auth check must verify Git authentication"
+expect_pattern 'write_probe:' "$AUTH_CHECK_WORKFLOW" "release auth check must require explicit write-probe opt-in"
+expect_pattern 'repos/\$\{GITHUB_REPOSITORY\}/pulls' "$AUTH_CHECK_WORKFLOW" "release auth check must validate pull-request permission"
+expect_pattern 'git/refs/heads/\$\{PROBE_BRANCH\}' "$AUTH_CHECK_WORKFLOW" "release auth check must clean up its probe branch"
+expect_pattern 'GITHUB_RUN_ATTEMPT' "$AUTH_CHECK_WORKFLOW" "release auth probe branches must be unique across reruns"
+expect_pattern 'trap on_exit EXIT' "$AUTH_CHECK_WORKFLOW" "release auth check must fail when probe cleanup fails"
+
+for secret in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64 RELEASE_PUBLISH_PAT; do
+  expect_pattern "\"${secret}\"" "$PREFLIGHT_SCRIPT" "release preflight must require ${secret}"
 done
 
 expect_pattern 'branches: \[web, dev, main\]' "$WEB_BUILD_WORKFLOW" "web build must cover web, dev, and main promotion branches"
