@@ -795,6 +795,37 @@ Canonical detail: `docs/architecture/DOCTOR_REPAIR_KNOWLEDGE.md`.
 - Local persistence supports offline operation, finding lifecycle, repair auditability, and future trusted knowledge distribution.
 
 ---
+## Decision 040 — Agent-Agnostic Operating Model
+
+**Decision:**
+Migrate the repository from Codex-specific tooling to an agent-agnostic model using opencode as the primary agent platform.
+
+**Changes:**
+
+- Root `AGENTS.md` updated to agent-agnostic title and references
+- Workflow Skills migrated from `ops/codex/skills/` to `.opencode/skills/` (7 skills)
+- Agent scripts migrated from `ops/codex/scripts/` to `scripts/agents/`
+- Notify logging renamed from `dev/logs/codex-runs.ndjson` to `dev/logs/agent-runs.ndjson`
+- Prompt templates migrated from `.codex/commands/` to `.opencode/templates/`
+- Removed `.claude/`, `.codex/`, and `ops/` directories after migration
+- Decision 036 (Codex Operating System) superseded by this decision
+
+**Policy details:**
+
+- Skills live in `.opencode/skills/` with opencode-compatible frontmatter
+- Agent scripts live in `scripts/agents/` with repo-relative path resolution
+- Notify logging uses `dev/logs/agent-runs.ndjson` for agent session telemetry
+- Skill mining and candidate reporting use `scripts/agents/skill-mine.sh`
+- `skill-generator` skill is deprecated; new skills are created manually
+
+**Rationale:**
+
+- Removes dependency on a single agent platform (Codex)
+- Skills and scripts are now discoverable by any opencode-compatible agent
+- Reduces repository surface area by consolidating tooling directories
+- Preserves all workflow logic while making it platform-agnostic
+
+---
 ## Summary
 
 Helm prioritizes:

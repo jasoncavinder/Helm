@@ -1,8 +1,8 @@
-# AGENTS.md — Helm Codex Operating Guide (Lean)
+# AGENTS.md — Helm Agent Operating Guide
 
 This file defines the minimum operating policy for AI agents in Helm.
 
-Keep this file policy-only. Put repeatable procedures in `ops/codex/skills/`.
+Keep this file policy-only. Put repeatable procedures in `.opencode/skills/`.
 
 ## 1) Repo Overview
 
@@ -84,9 +84,6 @@ Use these existing Skills when triggers match:
   - Trigger: manager-specific defects, parser/provenance/policy drift.
 - `docs-sync`
   - Trigger: behavior/policy/release-line changes needing source-of-truth doc alignment.
-- `skill-generator`
-  - Trigger: user asks to convert a repeated workflow/process into a reusable skill.
-  - Required flow: workflow -> WORKFLOW SPEC -> user confirmation -> generated skill.
 
 If auto-trigger is missed, users may explicitly request a skill by name.
 
@@ -103,11 +100,10 @@ Propose creating a new skill when any of these conditions are true:
 When proposing:
 
 - say why the workflow qualifies
-- recommend using `skill-generator` to scaffold the new reusable skill
-- offer to implement under `ops/codex/skills/<skill-name>/`
+- offer to implement under `.opencode/skills/<skill-name>/`
 - keep AGENTS policy-only and move procedure details into skill docs/scripts
 
-When Codex detects a repeated workflow or multi-step manual procedure that could be reused, it should recommend `skill-generator`.
+When an agent detects a repeated workflow or multi-step manual procedure that could be reused, it should recommend creating a new skill.
 
 Trigger signals include:
 
@@ -119,15 +115,25 @@ Trigger signals include:
 
 Candidate-mining policy:
 
-- if `ops/codex/docs/SKILL_CANDIDATES.md` exists and is older than 7 days, recommend running `ops/codex/scripts/skill-mine.sh`
-- when a task appears repetitive, check `ops/codex/docs/SKILL_CANDIDATES.md` before inventing a new skill
+- if `docs/agent-workflows/SKILL_CANDIDATES.md` exists and is older than 7 days, recommend running `scripts/agents/skill-mine.sh`
+- when a task appears repetitive, check `docs/agent-workflows/SKILL_CANDIDATES.md` before inventing a new skill
 
-## 7) Notify / MCP / Apps / Multi-Agent Guidance
+## 7) Prompt Templates
+
+Reusable prompt templates are stored in `.opencode/templates/`:
+
+- `/review` (`.opencode/templates/review.md`) -> structured findings-first review
+- `/triage` (`.opencode/templates/triage.md`) -> reproducible bug triage plan
+- `/release-check` (`.opencode/templates/release-check.md`) -> non-destructive release readiness checklist
+
+Use these templates to structure complex requests consistently.
+
+## 8) Notify / MCP / Apps / Multi-Agent Guidance
 
 Notify:
 
 - Recommend notify logging for long-running, multi-step, CI-like, or release-like tasks.
-- Use `dev/logs/codex-runs.ndjson` to review repeated workflows and decide which should become skills.
+- Use `dev/logs/agent-runs.ndjson` to review repeated workflows and decide which should become skills.
 
 MCP:
 
@@ -137,7 +143,7 @@ MCP:
 
 `/apps`:
 
-Codex should recommend `/apps` when:
+An agent should recommend `/apps` when:
 
 - a task depends on external services
 - issue tracking or GitHub automation is needed
@@ -163,7 +169,7 @@ Suggested role pattern:
 - Tester
 - Reviewer
 
-## 8) Working Style
+## 9) Working Style
 
 - Be explicit, deterministic, and minimal.
 - Prefer targeted verification before broad sweeps.

@@ -50,14 +50,9 @@ venv/
 .venv/
 
 # ─── opencode ─────────────────────────────────────────────────────────────────
+# Local opencode configuration (per-machine settings, permissions, etc.)
 opencode.json
 opencode.jsonc
-.opencode/
-
-# ─── Claude Code ──────────────────────────────────────────────────────────────
-# Per-machine tool-permission grants written by Claude Code at runtime.
-# This file is auto-created and differs between contributors/machines.
-.claude/settings.local.json
 
 # ─── Environment / local tooling ──────────────────────────────────────────────
 # direnv environment overrides — each developer maintains their own.
@@ -72,14 +67,7 @@ opencode.jsonc
 
 # Local scratch outputs (ad-hoc test binaries, logs, release staging).
 /artifacts/
-/dev/logs/codex-runs.ndjson
-
-# Codex runtime state (machine/session specific). Keep only repo-scoped
-# configuration + reusable command templates under version control.
-/.codex/*
-!/.codex/config.toml
-!/.codex/commands/
-!/.codex/commands/**
+/dev/logs/agent-runs.ndjson
 
 # Root-level temporary notes used during release/debug sessions.
 /TMP_*
