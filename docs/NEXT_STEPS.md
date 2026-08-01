@@ -15,11 +15,14 @@ Helm is in:
 ```
 
 Focus:
-- keep `main`/`dev`/`docs`/`web` release-state docs and version markers aligned now that `v0.17.12` is published
+- keep `main`/`dev` release-state docs and version markers aligned now that `v0.17.12` is published
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
 - continue doctor/repair subsystem foundation in core + FFI + service surfaces without widening into online knowledge lookup yet
-- keep repair knowledge lookup local/embedded for now, with explicit TODO seams for future online fingerprint lookup
+- replace the transitional embedded repair map with SQLite-backed, versioned knowledge and deterministic import/export contracts while keeping lookup local/embedded for now
+- ensure equivalent normalized manager/environment problems produce the same cross-installation fingerprint while sensitive local evidence remains outside fingerprint identity
+- restrict repair knowledge to allowlisted typed Helm action IDs; knowledge must never contain commands, arguments, scripts, plugins, or arbitrary executable content
+- retain explicit TODO seams for future online fingerprint lookup once local knowledge contract is stable
 - sequence `0.18.x` local security groundwork now that the `0.17.12` hardening slice has landed
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
@@ -32,7 +35,7 @@ Current checkpoint:
   - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
-    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and embedded repair knowledge-provider scaffolding
+    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and transitional embedded repair knowledge-provider scaffolding pending the `0.18.x` SQLite-backed knowledge contract
     - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
     - added repair-apply execution path through FFI + XPC (`helm_apply_manager_package_state_issue_repair`) and migrated GUI metadata-only repair actions to that subsystem
     - CLI doctor scaffolding now includes `helm doctor scan` and `helm doctor repair plan|apply` for local-first health/repair flows

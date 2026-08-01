@@ -171,6 +171,11 @@ Authority phases are executed in this order:
   - tasks history
   - app settings
 
+The `0.18.x` doctor/repair contract additionally makes SQLite the canonical store for:
+
+- doctor finding lifecycle and structured evidence
+- repair knowledge, import provenance, and repair history
+
 ### 5.2 Schema Versioning
 
 - Schema must be versioned.
@@ -182,6 +187,21 @@ Authority phases are executed in this order:
 - Pin state must persist across restarts.
 - Task history must persist across restarts.
 - Cache corruption must not crash the UI; it must degrade safely (e.g., rebuild cache).
+
+### 5.4 Doctor/Repair Persistence Contract (`0.18.x` Target)
+
+- Equivalent normalized findings use one deterministic, versioned fingerprint across installations.
+- Local occurrence state (`first_seen`, `last_seen`, resolution) is separate from shareable fingerprint identity.
+- Repair knowledge is versioned data that maps finding selectors to typed core action IDs.
+- Stable knowledge-entry IDs, surface option IDs, and core action IDs are distinct; existing public repair option IDs remain compatible across the database migration.
+- Knowledge imports are transactional and retain source, schema, checksum/signature, and trust metadata.
+- Trust is assigned by the local importer after verification; imported payloads cannot self-assert authority.
+- Internal source identity is importer-assigned; unverified imports cannot claim, revise, or tombstone protected bundled/verified source namespaces.
+- Each effective `(finding selector, option_id)` has one action binding; imported knowledge cannot rebind protected option IDs.
+- Finding resolution applies only to detectors that completed successfully for the same explicit scan scope.
+- Monotonic scan generations prevent older late-completing scans from overwriting newer finding state.
+- Unknown or malformed knowledge entries fail closed without preventing doctor from reporting findings.
+- Stored findings do not authorize mutation; apply revalidates current state before execution.
 
 ---
 
@@ -211,6 +231,16 @@ Contract shape:
 Safe mode is an app policy flag that:
 - blocks `softwareupdate` upgrade execution
 - requires explicit disabling before macOS OS updates can proceed
+
+### 6.4 Repair Knowledge Execution Boundary (Invariant)
+
+Repair knowledge may select an existing typed core capability, but it must never carry executable behavior.
+
+Knowledge payloads cannot contain executable paths, command names/arguments, shell fragments, scripts, plugins, arbitrary code, or unvalidated substitutions. Trusted core code owns action registration, parameter derivation, structured process construction, policy checks, confirmation, orchestration, cancellation, and post-action verification.
+
+Imported knowledge cannot register actions or weaken the safety policy of an installed action. Unknown action IDs are non-executable.
+
+Registry policy is the immutable minimum. Knowledge may only add restrictions; effective confirmation and automation use the most restrictive applicable registry, managed-environment, and knowledge policy.
 
 ---
 

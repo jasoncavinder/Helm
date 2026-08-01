@@ -85,16 +85,13 @@ v1.0.0
 
 ## Branch Integration Model
 
-- `dev` is the integration branch for app/runtime/core code.
-- `docs` is the integration branch for documentation/policy/licensing docs.
-- `web` is the integration branch for website implementation under `web/`.
+- `dev` is the integration branch for all code, documentation, website, testing, tooling, and policy work.
 - `main` remains the stable/releasable branch.
 
 Promotion flow:
 
-- code release content: `dev` -> `main`
-- docs-only publication content: `docs` -> `main`
-- website-only publication content: `web` -> `main`
+- all integration content: `dev` -> `main`
+  - includes code, docs, website, and policy changes via task branches targeting `dev`
 
 Only app releases are version-tagged by default; standalone docs/website publications generally do not require a SemVer tag unless explicitly tied to a release cut.
 
@@ -108,8 +105,6 @@ Required checks by protected branch:
 
 - `main`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
 - `dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
-- `docs`: `Policy Gate`, `Docs Checks`
-- `web`: `Policy Gate`, `Web Build`
 
 Advisory (non-required) release monitors:
 
@@ -129,7 +124,7 @@ Operational settings:
 
 - auto-merge enabled
 - update-branch enabled
-- auto-delete merged branches disabled (to protect `main`/`dev`/`docs`/`web`)
+- auto-delete merged branches disabled (to protect `main`/`dev`)
 
 `Policy Gate` is the authoritative branch-target/scope guardrail for PRs.
 
@@ -146,7 +141,7 @@ Operational settings:
    - `scripts/release/preflight.sh --tag <tag>`
    - or wrapper: `scripts/release/runbook.sh prepare --tag <tag>`
 5. Open and merge PR `dev` -> `main` (auto-merge is preferred once required checks are green).
-6. If release-critical docs/website deltas were developed on `docs` or `web`, merge those branches into `main` via PR before tagging.
+6. Confirm all release-critical docs/website deltas are included in the `dev` -> `main` PR before tagging.
 7. Create annotated tag.
 8. Push tag to GitHub.
 9. Publish GitHub release notes.

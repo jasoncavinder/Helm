@@ -5,7 +5,7 @@ permissions:
 
 on:
   pull_request:
-    branches: [main, dev, docs, web]
+    branches: [main, dev]
 
 jobs:
   policy-gate:
@@ -26,20 +26,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-
-          is_docs_path() {
-            case "$1" in
-              docs/*|README.md|CHANGELOG.md|AGENTS.md|.github/cla.yml|.github/FUNDING.yml|.github/ISSUE_TEMPLATE/*) return 0 ;;
-              *) return 1 ;;
-            esac
-          }
-
-          is_web_path() {
-            case "$1" in
-              web/*|docs/website/*|docs/brand/WEBSITE_*|docs/brand/LANDING_COPY_REWRITE.md) return 0 ;;
-              *) return 1 ;;
-            esac
-          }
 
           is_release_publish_path() {
             case "$1" in
@@ -67,13 +53,9 @@ jobs:
             is_dependabot=true
           fi
 
-          docs_only=true
-          web_only=true
           release_publish_only=true
           cli_update_metadata_touched=false
           for path in "${changed_files[@]}"; do
-            is_docs_path "$path" || docs_only=false
-            is_web_path "$path" || web_only=false
             is_release_publish_path "$path" || release_publish_only=false
             if is_cli_update_metadata_path "$path"; then
               cli_update_metadata_touched=true
@@ -82,14 +64,14 @@ jobs:
 
           case "$BASE_REF" in
             main)
-              if [[ ! "$HEAD_REF" =~ ^(dev|docs|web)$ ]] \
+              if [[ ! "$HEAD_REF" =~ ^(dev)$ ]] \
                 && [[ ! "$HEAD_REF" =~ ^hotfix/ ]] \
                 && [[ ! "$HEAD_REF" =~ ^release/ ]] \
                 && [[ ! "$HEAD_REF" =~ ^chore/publish-updates- ]] \
                 && [[ ! "$HEAD_REF" =~ ^chore/publish-cli-updates- ]] \
                 && [[ ! "$HEAD_REF" =~ ^hotfix/cli-updates-emergency- ]] \
                 && [[ "$is_dependabot" != "true" ]]; then
-                report_error "PRs into main must come from dev, docs, web, hotfix/*, release/*, chore/publish-updates-*, chore/publish-cli-updates-*, or hotfix/cli-updates-emergency-*."
+                report_error "PRs into main must come from dev, hotfix/*, release/*, chore/publish-updates-*, chore/publish-cli-updates-*, or hotfix/cli-updates-emergency-*."
               fi
 
               if [[ "$HEAD_REF" =~ ^chore/publish-updates- ]] && [[ "$release_publish_only" != "true" ]]; then
@@ -115,39 +97,13 @@ jobs:
               ;;
             dev)
               if [[ "$HEAD_REF" != "main" ]] \
-                && [[ ! "$HEAD_REF" =~ ^(feat|fix|chore|test|refactor|agent|hotfix|release)/ ]] \
+                && [[ ! "$HEAD_REF" =~ ^(feat|fix|chore|test|refactor|agent|hotfix|release|docs|web)/ ]] \
                 && [[ "$is_dependabot" != "true" ]]; then
-                report_error "PRs into dev must use feature branch prefixes (feat|fix|chore|test|refactor|agent|hotfix|release)."
-              fi
-
-              if [[ "$docs_only" == "true" ]] && [[ "$is_dependabot" != "true" ]]; then
-                report_error "Docs-only PRs should target docs, not dev."
-              fi
-
-              if [[ "$web_only" == "true" ]] && [[ "$is_dependabot" != "true" ]]; then
-                report_error "Web-only PRs should target web, not dev."
-              fi
-              ;;
-            docs)
-              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^docs- ]] && [[ "$is_dependabot" != "true" ]]; then
-                report_error "PRs into docs must come from docs-* branches (or main for sync PRs)."
-              fi
-
-              if [[ "$HEAD_REF" != "main" ]] && [[ "$docs_only" != "true" ]]; then
-                report_error "PRs into docs may only change docs scope files."
-              fi
-              ;;
-            web)
-              if [[ "$HEAD_REF" != "main" ]] && [[ ! "$HEAD_REF" =~ ^web- ]] && [[ "$is_dependabot" != "true" ]]; then
-                report_error "PRs into web must come from web-* branches (or main for sync PRs)."
-              fi
-
-              if [[ "$HEAD_REF" != "main" ]] && [[ "$web_only" != "true" ]]; then
-                report_error "PRs into web may only change web scope files."
+                report_error "PRs into dev must use feature branch prefixes (feat|fix|chore|test|refactor|agent|hotfix|release|docs|web)."
               fi
               ;;
             *)
-              report_error "Unsupported base branch '$BASE_REF'. Allowed base branches are main, dev, docs, and web."
+              report_error "Unsupported base branch '$BASE_REF'. Allowed base branches are main and dev."
               ;;
           esac
 

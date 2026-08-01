@@ -63,7 +63,7 @@ for secret in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64 RELEASE_PUBLISH_PA
   expect_pattern "\"${secret}\"" "$PREFLIGHT_SCRIPT" "release preflight must require ${secret}"
 done
 
-expect_pattern 'branches: \[web, dev, main\]' "$WEB_BUILD_WORKFLOW" "web build must cover web, dev, and main promotion branches"
+expect_pattern 'branches: \[dev, main\]' "$WEB_BUILD_WORKFLOW" "web build must cover dev and main integration branches"
 expect_pattern '"web/\*\*"' "$WEB_BUILD_WORKFLOW" "web build must filter for web paths"
 
 printf '[release-workflow-contract] passed\n'
