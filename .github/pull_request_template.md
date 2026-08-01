@@ -5,9 +5,9 @@
 
 ## Branch Policy
 
-- [ ] Base branch is correct for this scope (`dev`, `docs`, `web`, or `main` hotfix/promotion flow).
-- [ ] Head branch naming follows policy (`feat/`, `fix/`, `chore/`, `test/`, `refactor/`, `docs-*`, `web-*`, `hotfix/`, `release/`, or `chore/publish-updates-*`).
-- [ ] If targeting `main`, source branch is valid (`dev`, `docs`, `web`, `hotfix/*`, `release/*`, or `chore/publish-updates-*`).
+- [ ] Base branch is correct for this scope (`dev` or `main` hotfix/promotion flow).
+- [ ] Head branch naming follows policy (`feat/`, `fix/`, `chore/`, `test/`, `refactor/`, `docs/`, `web/`, `hotfix/`, `release/`, or `chore/publish-updates-*`).
+- [ ] If targeting `main`, source branch is valid (`dev`, `hotfix/*`, `release/*`, or `chore/publish-updates-*`).
 
 ## Scope Declaration
 

@@ -58,7 +58,7 @@ fi
 git check-ref-format --branch "$TASK_BRANCH" >/dev/null 2>&1 || fail "invalid task branch: $TASK_BRANCH"
 
 case "$TASK_BRANCH" in
-  main|dev|docs|web)
+  main|dev)
     fail "long-lived branch '$TASK_BRANCH' cannot be used as a task branch"
     ;;
 esac

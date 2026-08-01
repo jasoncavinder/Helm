@@ -57,7 +57,7 @@ Branch and worktree safety:
 - Use one unique task branch and one worktree per agent/task. Never share a worktree or task branch between concurrent agents.
 - Use the `agent-worktree-isolation` Skill to create new task worktrees from the intended base ref, then run all edits and verification inside the assigned worktree.
 - Verify both the worktree path (`git rev-parse --show-toplevel`) and branch (`git branch --show-current`) before edits.
-- Never commit directly to long-lived branches: `main`, `dev`, `docs`, `web`.
+- Never commit directly to long-lived branches: `main`, `dev`.
 - Do not remove or modify another agent's worktree. Remove only your own worktree after its changes are safely committed or handed off.
 
 Sandbox note for macOS tooling:

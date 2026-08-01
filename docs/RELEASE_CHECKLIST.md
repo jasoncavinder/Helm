@@ -16,11 +16,11 @@ This checklist is required before creating a release tag on `main`.
 
 ## GitHub Governance Integrity (All Releases)
 
-- [ ] Confirm branch rulesets are active for `main`, `dev`, `docs`, and `web`.
+- [ ] Confirm branch rulesets are active for `main` and `dev`.
 - [ ] Confirm required checks match current policy:
   - `main`/`dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
-  - `docs`: `Policy Gate`, `Docs Checks`
-  - `web`: `Policy Gate`, `Web Build`
+  - docs: `Docs Checks` (path-filtered on `main`/`dev`)
+  - web: `Web Build` (path-filtered on `main`/`dev`)
 - [ ] Confirm advisory release-monitor workflows are **not** required branch checks:
   - `Release Publish Verify`
   - `Appcast Drift Guard`

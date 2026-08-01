@@ -36,7 +36,7 @@ Create and use one isolated linked worktree and task branch for every Helm agent
 - never edit, build, test, or commit from the primary coordination checkout
 - never share a worktree or task branch between agents
 - never create nested worktrees
-- never use long-lived branches `main`, `dev`, `docs`, or `web` as task branches
+- never use long-lived branches `main` or `dev` as task branches
 - never modify or remove another agent's worktree
 - never use forced worktree creation or removal
 - stop and ask if the destination or branch already exists

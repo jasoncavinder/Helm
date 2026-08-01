@@ -5,9 +5,19 @@ permissions:
 
 on:
   pull_request:
-    branches: [docs]
+    branches: [main, dev]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'AGENTS.md'
   push:
-    branches: [docs]
+    branches: [main, dev]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'AGENTS.md'
 
 jobs:
   docs-checks:

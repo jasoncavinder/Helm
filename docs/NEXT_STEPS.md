@@ -15,7 +15,7 @@ Helm is in:
 ```
 
 Focus:
-- keep `main`/`dev`/`docs`/`web` release-state docs and version markers aligned now that `v0.17.12` is published
+- keep `main`/`dev` release-state docs and version markers aligned now that `v0.17.12` is published
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
 - continue doctor/repair subsystem foundation in core + FFI + service surfaces without widening into online knowledge lookup yet
