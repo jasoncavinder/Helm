@@ -18,9 +18,13 @@ This checklist is required before creating a release tag on `main`.
 
 - [ ] Confirm branch rulesets are active for `main` and `dev`.
 - [ ] Confirm required checks match current policy:
-  - `main`/`dev`: `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
-  - docs: `Docs Checks` (path-filtered on `main`/`dev`)
-  - web: `Web Build` (path-filtered on `main`/`dev`)
+
+  Required branch checks (unconditional for every PR to `main` or `dev`):
+    - `Policy Gate`, `Rust Core Tests`, `Xcode Build Check`, `hardcoded-ui-strings`, `Semgrep scan`, `Lint Swift`
+
+  Path-scoped workflows (run only when relevant paths change):
+    - `Docs Checks` — triggers on docs, AGENTS.md, CONTRIBUTING.md, PR template
+    - `Web Build` — triggers on website content and build paths
 - [ ] Confirm advisory release-monitor workflows are **not** required branch checks:
   - `Release Publish Verify`
   - `Appcast Drift Guard`

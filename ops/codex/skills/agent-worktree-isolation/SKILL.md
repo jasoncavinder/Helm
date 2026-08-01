@@ -37,10 +37,14 @@ Create and use one isolated linked worktree and task branch for every Helm agent
 - never share a worktree or task branch between agents
 - never create nested worktrees
 - never use long-lived branches `main` or `dev` as task branches
-- never modify or remove another agent's worktree
+- never use reserved bare names `docs` or `web` as task branch names; use scoped forms such as `docs/<topic>` or `web/<topic>`
+- never modify or remove another agent's worktree or branch
+- after work is merged, discarded, or safely handed off, report the assigned branch and worktree as ready for cleanup
+- remove your own task branch or worktree only after explicit authorization from the user or coordinating agent
 - never use forced worktree creation or removal
 - stop and ask if the destination or branch already exists
 - do not clean up a worktree containing uncommitted or untracked changes
+- cleanup is never automatic; it requires explicit authorization
 
 ## Workflow Steps
 
@@ -53,4 +57,4 @@ Create and use one isolated linked worktree and task branch for every Helm agent
 7. Verify `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short` before editing.
 8. Perform the task and targeted verification only in the assigned worktree.
 9. Report the worktree path, branch, changed files, and verification results.
-10. Never remove the worktree automatically; provide cleanup only after changes are safely committed or handed off.
+10. Never remove the worktree automatically; provide cleanup only after changes are safely committed or handed off and explicit authorization is received.

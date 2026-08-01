@@ -58,7 +58,11 @@ Branch and worktree safety:
 - Use the `agent-worktree-isolation` Skill to create new task worktrees from the intended base ref, then run all edits and verification inside the assigned worktree.
 - Verify both the worktree path (`git rev-parse --show-toplevel`) and branch (`git branch --show-current`) before edits.
 - Never commit directly to long-lived branches: `main`, `dev`.
-- Do not remove or modify another agent's worktree. Remove only your own worktree after its changes are safely committed or handed off.
+- Do not remove or modify another agent's worktree or branch.
+- After work is merged, discarded, or safely handed off, report the assigned branch and worktree as ready for cleanup.
+- Remove your own task branch or worktree only after explicit authorization from the user or coordinating agent.
+- Do not clean up a worktree containing uncommitted or untracked changes.
+- Cleanup is never automatic; it requires explicit authorization.
 
 Sandbox note for macOS tooling:
 

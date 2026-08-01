@@ -11,6 +11,9 @@ on:
       - 'README.md'
       - 'CHANGELOG.md'
       - 'AGENTS.md'
+      - 'CONTRIBUTING.md'
+      - '.github/pull_request_template.md'
+      - '.github/workflows/docs-checks.yml'
   push:
     branches: [main, dev]
     paths:
@@ -18,6 +21,9 @@ on:
       - 'README.md'
       - 'CHANGELOG.md'
       - 'AGENTS.md'
+      - 'CONTRIBUTING.md'
+      - '.github/pull_request_template.md'
+      - '.github/workflows/docs-checks.yml'
 
 jobs:
   docs-checks:
@@ -33,6 +39,7 @@ jobs:
 
           required_files=(
             AGENTS.md
+            CONTRIBUTING.md
             docs/PROJECT_BRIEF.md
             docs/CURRENT_STATE.md
             docs/NEXT_STEPS.md
@@ -50,7 +57,7 @@ jobs:
             fi
           done
 
-          if rg -n "^(<<<<<<<|=======|>>>>>>>)" docs AGENTS.md README.md; then
+          if rg -n "^(<<<<<<<|=======|>>>>>>>)" docs AGENTS.md README.md CONTRIBUTING.md .github/pull_request_template.md; then
             echo "::error::Found unresolved merge markers in docs scope."
             exit 1
           fi

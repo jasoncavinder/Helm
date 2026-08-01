@@ -6,8 +6,20 @@
 ## Branch Policy
 
 - [ ] Base branch is correct for this scope (`dev` or `main` hotfix/promotion flow).
-- [ ] Head branch naming follows policy (`feat/`, `fix/`, `chore/`, `test/`, `refactor/`, `docs/`, `web/`, `hotfix/`, `release/`, or `chore/publish-updates-*`).
-- [ ] If targeting `main`, source branch is valid (`dev`, `hotfix/*`, `release/*`, or `chore/publish-updates-*`).
+- [ ] Head branch naming follows policy.
+
+Accepted prefixes for PRs into `dev`:
+  - `feat/`, `fix/`, `chore/`, `test/`, `refactor/`, `agent/`, `hotfix/`, `release/`, `docs/`, `web/`
+  - Dependabot is an accepted automated exception.
+
+Accepted source categories for PRs into `main`:
+  - `dev` (primary branch promotion)
+  - `hotfix/*`, `release/*`
+  - `chore/publish-updates-*`, `chore/publish-cli-updates-*`
+  - `hotfix/cli-updates-emergency-*`
+  - Dependabot where supported
+
+- [ ] If targeting `main`, source branch is valid per the categories above.
 
 ## Scope Declaration
 

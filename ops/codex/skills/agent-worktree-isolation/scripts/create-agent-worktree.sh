@@ -61,6 +61,9 @@ case "$TASK_BRANCH" in
   main|dev)
     fail "long-lived branch '$TASK_BRANCH' cannot be used as a task branch"
     ;;
+  docs|web)
+    fail "reserved bare name '$TASK_BRANCH' must use scoped form such as docs/<topic> or web/<topic>"
+    ;;
 esac
 
 DISCOVERED_PRIMARY=""

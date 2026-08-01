@@ -57,7 +57,7 @@ This ensures the project can be relicensed or dual-licensed in the future.
 1. Open an issue to discuss the change
 2. Ensure the change aligns with project direction
 3. Keep changes focused and minimal
-4. Target the `dev` branch for all code and documentation changes; `main` receives approved promotions and release-critical fixes
+4. Target the `dev` branch for all normal code, documentation, website, test, tooling, and repository-policy work; `main` receives approved promotions from dev and explicitly permitted release-critical or publication changes
 5. All user-facing text must use localization keys (no hardcoded English strings)
 
 ---
