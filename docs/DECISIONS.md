@@ -803,12 +803,14 @@ Migrate the repository from Codex-specific tooling to an agent-agnostic model us
 **Changes:**
 
 - Root `AGENTS.md` updated to agent-agnostic title and references
-- Workflow Skills migrated from `ops/codex/skills/` to `.opencode/skills/` (7 skills)
+- Workflow Skills migrated from `ops/codex/skills/` to `.opencode/skills/` (6 skills)
 - Agent scripts migrated from `ops/codex/scripts/` to `scripts/agents/`
 - Notify logging renamed from `dev/logs/codex-runs.ndjson` to `dev/logs/agent-runs.ndjson`
 - Prompt templates migrated from `.codex/commands/` to `.opencode/templates/`
 - Removed `.claude/`, `.codex/`, and `ops/` directories after migration
+- Legacy `skill-generator` workflow removed; new skills are created manually
 - Decision 036 (Codex Operating System) superseded by this decision
+- OpenCode project plugin records session-idle telemetry through `scripts/agents/notify-turn-complete.sh`
 
 **Policy details:**
 
@@ -816,7 +818,7 @@ Migrate the repository from Codex-specific tooling to an agent-agnostic model us
 - Agent scripts live in `scripts/agents/` with repo-relative path resolution
 - Notify logging uses `dev/logs/agent-runs.ndjson` for agent session telemetry
 - Skill mining and candidate reporting use `scripts/agents/skill-mine.sh`
-- `skill-generator` skill is deprecated; new skills are created manually
+- `.opencode/templates/` contains inactive prompt drafts retained for manual evaluation, not active commands
 
 **Rationale:**
 

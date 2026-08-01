@@ -26,7 +26,7 @@ Focus:
 - sequence `0.18.x` local security groundwork now that the `0.17.12` hardening slice has landed
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
-- keep the agent-agnostic operating model current (lean `AGENTS`, isolated task worktrees under `.worktrees/` via `agent-worktree-isolation`, `.opencode/skills/`, `.opencode/templates/`, notify logging to `dev/logs/agent-runs.ndjson`, and `scripts/agents/` workflows) so recurring AI workflows remain deterministic and low-friction
+- keep the agent-agnostic operating model current (lean `AGENTS`, isolated task worktrees under `.worktrees/` via `agent-worktree-isolation`, `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, notify logging to `dev/logs/agent-runs.ndjson`, and `scripts/agents/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
 - `v0.17.12` is the current stable release on `main`; current-scope manager adapter completion, final stable-line hardening, and package workflow hardening are now published:

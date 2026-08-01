@@ -2,8 +2,24 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import type { PluginInput, Hooks } from "@opencode-ai/plugin";
 
-// In-memory map to prevent duplicate logging for the same assistant message
-const processedMessages = new Set<string>();
+// Session-bounded deduplication state: Map<sessionID, lastCompletedMessageID>
+const processedMessages = new Map<string, string>();
+const inFlightMessages = new Set<string>();
+
+function safeLog(input: PluginInput, level: "warn", message: string, extra?: Record<string, unknown>) {
+  try {
+    input.client.app.log({
+      body: {
+        service: "agent-run-logger",
+        level,
+        message,
+        extra,
+      },
+    });
+  } catch {
+    // Silently ignore structured logging failures
+  }
+}
 
 export default async function agentRunLogger(input: PluginInput): Promise<Hooks> {
   return {
@@ -15,21 +31,20 @@ export default async function agentRunLogger(input: PluginInput): Promise<Hooks>
         }
 
         // 2. Obtain session ID from the documented event shape
-        // Using `any` cast to safely extract properties from the union type
-        const sessionID = (event as any).properties?.sessionID;
+        const sessionID = event.properties.sessionID;
         if (!sessionID) {
           return;
         }
 
         // 3. Use the SDK client to retrieve session messages
-        const result = await input.client.messages({ path: { id: sessionID } });
+        const result = await input.client.session.messages({ path: { id: sessionID } });
         if (result.error || !result.data || !Array.isArray(result.data)) {
-          console.warn("[agent-run-logger] Could not retrieve session messages");
+          safeLog(input, "warn", "Could not retrieve session messages", { sessionID });
           return;
         }
 
         // 4. Locate the most recent completed assistant message
-        let latestAssistantMessage: any = null;
+        let latestAssistantMessage: typeof result.data[0] | null = null;
         for (let i = result.data.length - 1; i >= 0; i--) {
           const msg = result.data[i];
           if (msg.info?.role === "assistant" && msg.info?.time?.completed) {
@@ -47,24 +62,36 @@ export default async function agentRunLogger(input: PluginInput): Promise<Hooks>
           return;
         }
 
-        // 10. Prevent duplicate log records using session + message combo
-        // 11. Allow later assistant turns in the same session to produce new records
+        // 5. Prevent duplicate log records using session + message combo
         const dedupKey = `${sessionID}:${messageID}`;
-        if (processedMessages.has(dedupKey)) {
+
+        // If already in flight, do not launch a duplicate process
+        if (inFlightMessages.has(dedupKey)) {
           return;
         }
-        processedMessages.add(dedupKey);
 
-        // 5. Extract only normal assistant text parts for the summary
-        // 6. Exclude reasoning, tool arguments, tool output, file contents, etc.
+        // If this message was already successfully processed, skip
+        const lastCompleted = processedMessages.get(sessionID);
+        if (lastCompleted === messageID) {
+          return;
+        }
+
+        inFlightMessages.add(dedupKey);
+
+        // 6. Extract only normal assistant text parts for the summary
         const parts = latestAssistantMessage.parts || [];
         const textParts = parts.filter(
-          (p: any) => p.type === "text" && !p.synthetic && !p.ignored
+          (p) => p.type === "text" && !p.synthetic && !p.ignored
         );
 
         // 7. Normalize whitespace
-        const rawSummary = textParts.map((p: any) => p.text || "").join(" ");
-        const summary = rawSummary.replace(/\s+/g, " ").trim() || "No text content";
+        const rawSummary = textParts.map((p) => p.text || "").join(" ");
+        let summary = rawSummary.replace(/\s+/g, " ").trim() || "No text content";
+
+        // Bound summary to ~2000 characters
+        if (summary.length > 2000) {
+          summary = summary.slice(0, 2000);
+        }
 
         // Build the allow-listed payload (no complete messages, user prompts, reasoning, etc)
         const payload = {
@@ -73,37 +100,80 @@ export default async function agentRunLogger(input: PluginInput): Promise<Hooks>
           messageID,
           workingDirectory: input.worktree,
           timestamp: new Date().toISOString(),
+          summary,
         };
 
-        // 9. Use current plugin worktree to resolve script path
+        // 8. Use current plugin worktree to resolve script path
         const scriptPath = path.join(input.worktree, "scripts", "agents", "notify-turn-complete.sh");
 
-        // 8. Invoke existing script using injection-safe process API
-        const child = spawn("bash", [scriptPath, "session.idle", summary], {
-          cwd: input.worktree,
-          env: process.env,
-          stdio: ["pipe", "ignore", "ignore"],
-        });
+        // Guard flag to prevent double-reporting when both error and exit fire
+        let settled = false;
 
-        // 13. Catch retrieval, parsing, spawn, and script-exit failures
-        // 14. Report failures through structured app logging at warning level
+        const finalize = () => {
+          if (settled) return;
+          settled = true;
+          inFlightMessages.delete(dedupKey);
+        };
+
+        // 9. Invoke existing script using injection-safe process API
+        let child: ReturnType<typeof spawn>;
+        try {
+          child = spawn("bash", [scriptPath, "opencode-session-idle"], {
+            cwd: input.worktree,
+            env: process.env,
+            stdio: ["pipe", "ignore", "ignore"],
+          });
+        } catch (err: unknown) {
+          finalize();
+          safeLog(input, "warn", "Failed to spawn notify script", {
+            sessionID,
+            messageID,
+            errorName: err instanceof Error ? err.name : "UnknownError",
+          });
+          return;
+        }
+
         child.on("error", (err: Error) => {
-          console.warn("[agent-run-logger] Failed to spawn notify script:", err.message);
+          finalize();
+          safeLog(input, "warn", "Notify script error", {
+            sessionID,
+            messageID,
+            errorName: err.name,
+          });
         });
 
         child.on("exit", (code) => {
-          if (code !== null && code !== 0) {
-            console.warn(`[agent-run-logger] Notify script exited with code ${code}`);
+          finalize();
+          if (code !== 0) {
+            safeLog(input, "warn", "Notify script exited nonzero", {
+              sessionID,
+              messageID,
+              exitCode: code ?? -1,
+            });
+          } else {
+            // Mark as successfully processed for this session
+            processedMessages.set(sessionID, messageID);
           }
         });
 
-        // Write the structured JSON payload to standard input
-        child.stdin.write(JSON.stringify(payload));
-        child.stdin.end();
+        // 10. Write the structured JSON payload to standard input
+        try {
+          child.stdin.write(JSON.stringify(payload));
+          child.stdin.end();
+        } catch (err: unknown) {
+          finalize();
+          safeLog(input, "warn", "Failed to write to notify script stdin", {
+            sessionID,
+            messageID,
+            errorName: err instanceof Error ? err.name : "UnknownError",
+          });
+        }
 
-      } catch (err: any) {
-        // 12. Never allow telemetry failure to interrupt or fail the OpenCode session
-        console.warn("[agent-run-logger] Error in session.idle handler:", err.message);
+      } catch (err: unknown) {
+        // Never allow telemetry failure to interrupt or fail the OpenCode session
+        safeLog(input, "warn", "Error in session.idle handler", {
+          errorName: err instanceof Error ? err.name : "UnknownError",
+        });
       }
     },
   };
