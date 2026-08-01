@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-LOCALES_DIR="${ROOT_DIR}/locales"
+LOCALES_DIR="${LOCALES_DIR:-${ROOT_DIR}/locales}"
 BASE_LOCALE="en"
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -26,19 +26,21 @@ error_count=0
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+# Pre-process base locale files once: extract keys and placeholders
 for base_file in "${files[@]}"; do
   file_name="$(basename "${base_file}")"
-  
+
   if ! jq empty "${base_file}" >/dev/null 2>&1; then
     echo "invalid_json locale=${BASE_LOCALE} file=${file_name}"
     error_count=$((error_count + 1))
-    touch "${TMP_DIR}/base_${file_name}.pl"
+    touch "${TMP_DIR}/base_${file_name}.invalid"
     continue
   fi
-  
+
   jq -r 'to_entries[] | .key + "\t" + (.value | tostring | [match("\\{([A-Za-z0-9_]+)\\}"; "g").captures[0].string] | sort | unique | join(","))' "${base_file}" | sort > "${TMP_DIR}/base_${file_name}.pl"
 done
 
+# Compare each non-base locale against the base
 for locale_path in "${locales[@]}"; do
   locale="$(basename "${locale_path}")"
   [[ "${locale}" == "${BASE_LOCALE}" ]] && continue
@@ -47,6 +49,11 @@ for locale_path in "${locales[@]}"; do
   for base_file in "${files[@]}"; do
     file_name="$(basename "${base_file}")"
     locale_file="${LOCALES_DIR}/${locale}/${file_name}"
+
+    # Skip comparison when base JSON was invalid (already reported above)
+    if [[ -f "${TMP_DIR}/base_${file_name}.invalid" ]]; then
+      continue
+    fi
 
     if [[ ! -f "${locale_file}" ]]; then
       echo "missing_file locale=${locale} file=${file_name}"
@@ -59,37 +66,36 @@ for locale_path in "${locales[@]}"; do
       error_count=$((error_count + 1))
       continue
     fi
-    
-    if [[ ! -s "${TMP_DIR}/base_${file_name}.pl" ]]; then
-      continue
-    fi
 
     jq -r 'to_entries[] | .key + "\t" + (.value | tostring | [match("\\{([A-Za-z0-9_]+)\\}"; "g").captures[0].string] | sort | unique | join(","))' "${locale_file}" | sort > "${TMP_DIR}/locale_${locale}_${file_name}.pl"
 
+    base_tmp="${TMP_DIR}/base_${file_name}.pl"
+    locale_tmp="${TMP_DIR}/locale_${locale}_${file_name}.pl"
+
     mapfile -t mismatches < <(awk -F'\t' -v loc="${locale}" -v file="${file_name}" '
-      NR==FNR {
+      FILENAME == ARGV[1] {
         base_pl[$1] = $2
         base_order[++n] = $1
         next
       }
-      {
+      FILENAME == ARGV[2] {
         loc_pl[$1] = $2
         loc_order[++m] = $1
       }
       END {
-        for (i=1; i<=n; i++) {
+        for (i = 1; i <= n; i++) {
           k = base_order[i]
           if (!(k in loc_pl)) {
             print "missing_key locale=" loc " file=" file " key=" k
           }
         }
-        for (i=1; i<=m; i++) {
+        for (i = 1; i <= m; i++) {
           k = loc_order[i]
           if (!(k in base_pl)) {
             print "extra_key locale=" loc " file=" file " key=" k
           }
         }
-        for (i=1; i<=n; i++) {
+        for (i = 1; i <= n; i++) {
           k = base_order[i]
           b = base_pl[k]
           if (!(k in loc_pl)) {
@@ -102,7 +108,7 @@ for locale_path in "${locales[@]}"; do
           }
         }
       }
-    ' "${TMP_DIR}/base_${file_name}.pl" "${TMP_DIR}/locale_${locale}_${file_name}.pl")
+    ' "${base_tmp}" "${locale_tmp}")
 
     for mismatch in "${mismatches[@]}"; do
       [[ -z "${mismatch}" ]] && continue
