@@ -24,11 +24,17 @@ run_test() {
 
   # Collect expected patterns
   local -a expects=()
+  local -a ordered_expects=()
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --expect)
         shift
         expects+=("$1")
+        ;;
+      --expect_order)
+        shift
+        ordered_expects+=("$1")
         ;;
       --expect_exit)
         shift
@@ -61,6 +67,26 @@ run_test() {
     fi
   done
 
+# Validate ordered patterns by comparing their first matching line numbers
+local previous_line=0
+local current_line
+
+for pat in "${ordered_expects[@]}"; do
+  current_line="$(
+    printf '%s\n' "${actual_output}" |
+      grep -nF -m 1 -- "${pat}" |
+      cut -d: -f1 ||
+      true
+  )"
+
+  if [[ -z "${current_line}" || ${current_line} -le ${previous_line} ]]; then
+    pass=false
+    break
+  fi
+
+    previous_line="${current_line}"
+  done
+
   if [[ "${pass}" == true ]]; then
     echo "PASS: ${name}"
     PASS=$((PASS + 1))
@@ -71,6 +97,14 @@ run_test() {
     for pat in "${expects[@]}"; do
       echo "    '${pat}'"
     done
+
+    if ((${#ordered_expects[@]} > 0)); then
+      echo "  Expected output in this order:"
+      for pat in "${ordered_expects[@]}"; do
+        echo "    '${pat}'"
+      done
+    fi
+
     echo "  Actual output:"
     echo "${actual_output}" | sed 's/^/    /'
     FAIL=$((FAIL + 1))
@@ -159,9 +193,9 @@ run_test "output_order" 2 \
   'mkdir -p "${tmpdir}/locales/en" "${tmpdir}/locales/fr"
    echo "{\"a\": \"Hello {x}\", \"b\": \"World\"}" > "${tmpdir}/locales/en/app.json"
    echo "{\"a\": \"Bonjour {y}\", \"c\": \"Extra\"}" > "${tmpdir}/locales/fr/app.json"' \
-  --expect "missing_key locale=fr file=app.json key=b" \
-  --expect "extra_key locale=fr file=app.json key=c" \
-  --expect "placeholder_mismatch locale=fr file=app.json key=a"
+  --expect_order "missing_key locale=fr file=app.json key=b" \
+  --expect_order "extra_key locale=fr file=app.json key=c" \
+  --expect_order "placeholder_mismatch locale=fr file=app.json key=a"
 
 # ---- Test 12: Base with placeholders, locale without → mismatch ----
 run_test "base_has_placeholder_locale_none" 2 \

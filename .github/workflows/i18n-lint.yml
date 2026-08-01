@@ -29,6 +29,9 @@ jobs:
       - name: Check Locale String Length Overflow
         run: apps/macos-ui/scripts/check_locale_lengths.sh
 
+      - name: Test Locale Integrity Checker
+        run: bash apps/macos-ui/scripts/test_locale_integrity.sh
+
       - name: Block Hardcoded UI Strings
         run: |
           set -euo pipefail

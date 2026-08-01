@@ -51,13 +51,13 @@ for locale_path in "${locales[@]}"; do
     locale_file="${LOCALES_DIR}/${locale}/${file_name}"
 
     # Skip comparison when base JSON was invalid (already reported above)
-    if [[ -f "${TMP_DIR}/base_${file_name}.invalid" ]]; then
-      continue
-    fi
-
     if [[ ! -f "${locale_file}" ]]; then
       echo "missing_file locale=${locale} file=${file_name}"
       error_count=$((error_count + 1))
+      continue
+    fi
+
+    if [[ -f "${TMP_DIR}/base_${file_name}.invalid" ]]; then
       continue
     fi
 
