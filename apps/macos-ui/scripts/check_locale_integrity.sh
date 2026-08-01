@@ -15,11 +15,6 @@ if [[ ! -d "${LOCALES_DIR}/${BASE_LOCALE}" ]]; then
   exit 1
 fi
 
-extract_placeholders() {
-  local value="$1"
-  printf '%s\n' "$value" | grep -oE '\{[A-Za-z0-9_]+\}' | tr -d '{}' | sort -u || true
-}
-
 echo "Locale integrity audit"
 echo "base=${BASE_LOCALE}"
 
@@ -27,6 +22,22 @@ mapfile -t files < <(find "${LOCALES_DIR}/${BASE_LOCALE}" -maxdepth 1 -type f -n
 mapfile -t locales < <(find "${LOCALES_DIR}" -mindepth 1 -maxdepth 1 -type d -print | sort)
 
 error_count=0
+
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${TMP_DIR}"' EXIT
+
+for base_file in "${files[@]}"; do
+  file_name="$(basename "${base_file}")"
+  
+  if ! jq empty "${base_file}" >/dev/null 2>&1; then
+    echo "invalid_json locale=${BASE_LOCALE} file=${file_name}"
+    error_count=$((error_count + 1))
+    touch "${TMP_DIR}/base_${file_name}.pl"
+    continue
+  fi
+  
+  jq -r 'to_entries[] | .key + "\t" + (.value | tostring | [match("\\{([A-Za-z0-9_]+)\\}"; "g").captures[0].string] | sort | unique | join(","))' "${base_file}" | sort > "${TMP_DIR}/base_${file_name}.pl"
+done
 
 for locale_path in "${locales[@]}"; do
   locale="$(basename "${locale_path}")"
@@ -43,50 +54,60 @@ for locale_path in "${locales[@]}"; do
       continue
     fi
 
-    if ! jq empty "${base_file}" >/dev/null 2>&1; then
-      echo "invalid_json locale=${BASE_LOCALE} file=${file_name}"
-      error_count=$((error_count + 1))
-      continue
-    fi
-
     if ! jq empty "${locale_file}" >/dev/null 2>&1; then
       echo "invalid_json locale=${locale} file=${file_name}"
       error_count=$((error_count + 1))
       continue
     fi
+    
+    if [[ ! -s "${TMP_DIR}/base_${file_name}.pl" ]]; then
+      continue
+    fi
 
-    mapfile -t base_keys < <(jq -r 'keys[]' "${base_file}" | sort)
-    mapfile -t locale_keys < <(jq -r 'keys[]' "${locale_file}" | sort)
+    jq -r 'to_entries[] | .key + "\t" + (.value | tostring | [match("\\{([A-Za-z0-9_]+)\\}"; "g").captures[0].string] | sort | unique | join(","))' "${locale_file}" | sort > "${TMP_DIR}/locale_${locale}_${file_name}.pl"
 
-    mapfile -t missing_keys < <(comm -23 <(printf '%s\n' "${base_keys[@]}") <(printf '%s\n' "${locale_keys[@]}"))
-    mapfile -t extra_keys < <(comm -13 <(printf '%s\n' "${base_keys[@]}") <(printf '%s\n' "${locale_keys[@]}"))
+    mapfile -t mismatches < <(awk -F'\t' -v loc="${locale}" -v file="${file_name}" '
+      NR==FNR {
+        base_pl[$1] = $2
+        base_order[++n] = $1
+        next
+      }
+      {
+        loc_pl[$1] = $2
+        loc_order[++m] = $1
+      }
+      END {
+        for (i=1; i<=n; i++) {
+          k = base_order[i]
+          if (!(k in loc_pl)) {
+            print "missing_key locale=" loc " file=" file " key=" k
+          }
+        }
+        for (i=1; i<=m; i++) {
+          k = loc_order[i]
+          if (!(k in base_pl)) {
+            print "extra_key locale=" loc " file=" file " key=" k
+          }
+        }
+        for (i=1; i<=n; i++) {
+          k = base_order[i]
+          b = base_pl[k]
+          if (!(k in loc_pl)) {
+            l = ""
+          } else {
+            l = loc_pl[k]
+          }
+          if (b != l) {
+            print "placeholder_mismatch locale=" loc " file=" file " key=" k " base={" b "} localized={" l "}"
+          }
+        }
+      }
+    ' "${TMP_DIR}/base_${file_name}.pl" "${TMP_DIR}/locale_${locale}_${file_name}.pl")
 
-    for key in "${missing_keys[@]}"; do
-      [[ -z "${key}" ]] && continue
-      echo "missing_key locale=${locale} file=${file_name} key=${key}"
+    for mismatch in "${mismatches[@]}"; do
+      [[ -z "${mismatch}" ]] && continue
+      echo "${mismatch}"
       error_count=$((error_count + 1))
-    done
-
-    for key in "${extra_keys[@]}"; do
-      [[ -z "${key}" ]] && continue
-      echo "extra_key locale=${locale} file=${file_name} key=${key}"
-      error_count=$((error_count + 1))
-    done
-
-    mapfile -t keys_to_check < <(printf '%s\n' "${base_keys[@]}")
-    for key in "${keys_to_check[@]}"; do
-      [[ -z "${key}" ]] && continue
-
-      base_value="$(jq -r --arg k "${key}" '.[$k] // ""' "${base_file}")"
-      locale_value="$(jq -r --arg k "${key}" '.[$k] // ""' "${locale_file}")"
-
-      base_placeholders="$(extract_placeholders "${base_value}")"
-      locale_placeholders="$(extract_placeholders "${locale_value}")"
-
-      if [[ "${base_placeholders}" != "${locale_placeholders}" ]]; then
-        echo "placeholder_mismatch locale=${locale} file=${file_name} key=${key} base={${base_placeholders//$'\n'/,}} localized={${locale_placeholders//$'\n'/,}}"
-        error_count=$((error_count + 1))
-      fi
     done
   done
 done
