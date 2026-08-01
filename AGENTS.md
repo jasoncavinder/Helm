@@ -120,13 +120,12 @@ Candidate-mining policy:
 
 ## 7) Prompt Templates
 
-Reusable prompt templates are stored in `.opencode/templates/`:
+The `.opencode/templates/` directory contains inactive prompt drafts retained temporarily for manual evaluation.
 
-- `/review` (`.opencode/templates/review.md`) -> structured findings-first review
-- `/triage` (`.opencode/templates/triage.md`) -> reproducible bug triage plan
-- `/release-check` (`.opencode/templates/release-check.md`) -> non-destructive release readiness checklist
-
-Use these templates to structure complex requests consistently.
+- These files are reference material only.
+- Agents must not use or promote them unless explicitly requested.
+- Moving a draft into `.opencode/commands/` is a separate future decision requiring explicit user approval.
+- These drafts may be deleted later.
 
 ## 8) Notify / MCP / Apps / Multi-Agent Guidance
 

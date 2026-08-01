@@ -266,7 +266,7 @@ lines.append("")
 if not entries:
     lines.append("## No telemetry entries detected")
     lines.append("")
-    lines.append("No NDJSON telemetry records were found. Run some Codex sessions, then rerun:")
+    lines.append("No NDJSON telemetry records were found. Run some agent sessions, then rerun:")
     lines.append("")
     lines.append("```bash")
     lines.append("scripts/agents/skill-mine.sh")
