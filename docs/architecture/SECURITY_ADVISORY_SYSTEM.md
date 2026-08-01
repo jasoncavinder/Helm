@@ -143,3 +143,9 @@ Shared Brain is additive:
 Current-state reminder:
 
 - Releases through `0.17.x` do not send package/fingerprint data to any shared Helm backend.
+
+Doctor/repair boundary:
+
+- Operational doctor findings and repair knowledge are a separate domain from package-vulnerability advisories.
+- Doctor repair knowledge may be imported/exported locally and may later share provenance/trust infrastructure, but it cannot contain executable behavior and does not enable advisory fingerprint sharing in `1.3.x`.
+- See `docs/architecture/DOCTOR_REPAIR_KNOWLEDGE.md` for the deterministic finding and typed-action contract.

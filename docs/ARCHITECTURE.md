@@ -357,20 +357,25 @@ docs/I18N_STRATEGY.md
 
 ### 4.10 Doctor & Repair Subsystems (Phase 1)
 
-Doctor and repair are core-owned subsystems for health diagnosis and remediation planning.
+Doctor and repair are core-owned subsystems for health diagnosis and remediation planning for managed package managers, toolchain managers, and their operating environment. Recoverable Helm configuration belongs in this subsystem only when it causes a manager-facing failure; general Helm self-diagnostics do not.
 
-Phase-1 behavior:
+Phase-1 target contract:
 
 - Doctor scans local state and emits structured findings.
-- Findings include deterministic fingerprints plus top evidence factors.
-- Repair resolves findings to remediation options through an embedded/local knowledge provider.
+- Equivalent normalized findings produce the same versioned fingerprint across installations; sensitive and incidental local evidence is not part of fingerprint identity.
+- Findings and repair knowledge are stored locally in SQLite with lifecycle, provenance, and import/export metadata.
+- Repair resolves findings to declarative knowledge entries that reference only typed Helm action IDs.
 - Repair execution routes through existing task orchestration (no bypass path).
 
 Design constraints:
 
 - Local-first operation (no network dependency in current phase).
-- Explicit TODO seam for future remote known-fix lookup.
+- Repair knowledge is data, not executable content: it cannot contain commands, argument arrays, shell fragments, scripts, plugins, or arbitrary code.
+- Trusted core code owns the finite action registry, parameter validation, structured process construction, and all safety gates.
+- Registry policy is the immutable safety floor; knowledge can only make execution more restrictive, and import trust is assigned locally after verification.
+- Knowledge import/export is versioned, deterministic, transactional, and provenance-aware; automatic online lookup is deferred.
 - Explainability is persisted/surfaced with findings to preserve user trust.
+- Repair apply revalidates the active finding and post-action doctor verification records whether the environment was repaired.
 - Repair actions must preserve existing cancellation, timeout, and task observability contracts.
 
 Initial implemented finding:
@@ -379,6 +384,14 @@ Initial implemented finding:
   - package metadata indicates manager installed via Homebrew
   - no matching Homebrew executable instance detected
   - repair options include Homebrew reinstall and stale-entry cleanup
+
+Canonical finding, knowledge, persistence, and execution contract:
+
+```
+docs/architecture/DOCTOR_REPAIR_KNOWLEDGE.md
+```
+
+Current implementation note: the `0.17.x` scaffold uses a transitional embedded repair map. The `0.18.x` work replaces that map with the SQLite-backed contract above.
 
 ---
 
