@@ -20,6 +20,7 @@ ops/codex/scripts/session.sh "Implement <change> in core/rust; run targeted test
 
 Use a skill when the task matches a known repeatable flow:
 
+- `agent-worktree-isolation`
 - `run-quality-gate`
 - `audit-remediation-batch`
 - `sparkle-appcast-checklist`
@@ -34,6 +35,7 @@ Prefer skill execution over retyping long procedures in prompts.
 If Codex does not auto-trigger the right skill, invoke it explicitly:
 
 ```text
+Use skill: agent-worktree-isolation with task-id=<task-id>, branch=<task-branch>, and base=<base-ref>.
 Use skill: run-quality-gate with scope=rust.
 Use skill: sparkle-appcast-checklist in dry-run mode for tag vX.Y.Z-rc.N.
 Use skill: docs-sync after these changes.
@@ -233,6 +235,14 @@ Suggested role pattern:
 2. Implementer: apply scoped code/docs changes.
 3. Tester: run targeted validation and report failures.
 4. Reviewer: findings-first regression/safety review.
+
+Before an agent starts work, give it a unique branch and linked worktree under the primary checkout:
+
+```bash
+ops/codex/skills/agent-worktree-isolation/scripts/create-agent-worktree.sh <task-id> <task-branch> <base-ref>
+```
+
+Run the helper from the primary checkout. It validates the task ID, branch, base ref, ignore rule, and destination before creating anything, and it never reuses or removes a worktree. Run that agent's edits, builds, tests, and commits only inside its assigned worktree. Never assign two agents the same worktree or branch, and do not use the primary checkout for task work. Agents must not remove or modify another agent's worktree or branch. After work is merged, discarded, or safely handed off, the agent reports its assigned branch and worktree as ready for cleanup. The agent removes its own task branch or worktree only after explicit authorization from the user or coordinating agent. Agents must not clean up a worktree containing uncommitted or untracked changes. Cleanup is never automatic; it requires explicit authorization.
 
 Avoid multi-agent mode for small single-file changes.
 
