@@ -19,7 +19,7 @@ Active milestone:
 - latest stable release currently published on `main`: **0.17.12** (released on 2026-07-29)
 - `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - next integration target on `dev`: **0.18.x** (SQLite-backed doctor/repair knowledge with deterministic cross-installation fingerprints, followed by local security groundwork)
-- repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.
+- repository operations follow-up on `dev`: agent-agnostic operating model with policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, and structured local notify logging to `dev/logs/agent-runs.ndjson`.
 - latest stable publication cut completed for `v0.17.12`:
   - workspace, docs, website, appcast, and CLI metadata now reflect the published `0.17.12` stable line.
   - release automation follow-through and publish verification completed on `main`.
