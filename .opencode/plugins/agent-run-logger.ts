@@ -1,14 +1,19 @@
 import * as path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import type { PluginInput, Hooks } from "@opencode-ai/plugin";
 
 // Session-bounded deduplication state: Map<sessionID, lastCompletedMessageID>
 const processedMessages = new Map<string, string>();
 const inFlightMessages = new Set<string>();
 
-function safeLog(input: PluginInput, level: "warn", message: string, extra?: Record<string, unknown>) {
+async function safeLog(
+  input: PluginInput,
+  level: "warn",
+  message: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
   try {
-    input.client.app.log({
+    await input.client.app.log({
       body: {
         service: "agent-run-logger",
         level,
@@ -17,7 +22,125 @@ function safeLog(input: PluginInput, level: "warn", message: string, extra?: Rec
       },
     });
   } catch {
-    // Silently ignore structured logging failures
+    // Structured logging must never affect the OpenCode session.
+  }
+}
+
+// Dependencies for the child-process lifecycle, injectable for testing.
+export type LifecycleDeps = {
+  spawnSync: typeof spawn;
+  safeLogSync: (message: string, extra?: Record<string, unknown>) => void;
+  processedMessages: Map<string, string>;
+  inFlightMessages: Set<string>;
+};
+
+// Execute the child-process lifecycle for a single telemetry record.
+// Returns a promise that resolves when the process has fully closed.
+// Exported for testing only; not part of the public plugin contract.
+export async function executeLifecycle(
+  sessionID: string,
+  messageID: string,
+  payload: string,
+  scriptPath: string,
+  cwd: string,
+  deps: LifecycleDeps,
+): Promise<void> {
+  const dedupKey = `${sessionID}:${messageID}`;
+  let settled = false;
+
+  const settle = (): boolean => {
+    if (settled) {
+      return false;
+    }
+    settled = true;
+    deps.inFlightMessages.delete(dedupKey);
+    return true;
+  };
+
+  // Wrap safeLogSync so synchronous throws never escape callbacks.
+  const log = (message: string, extra?: Record<string, unknown>) => {
+    try {
+      deps.safeLogSync(message, extra);
+    } catch {
+      // Logging failure must never interrupt the session.
+    }
+  };
+
+  let child: ChildProcess;
+  try {
+    child = deps.spawnSync("bash", [scriptPath, "opencode-session-idle"], {
+      cwd,
+      env: process.env,
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+  } catch (err: unknown) {
+    if (!settle()) {
+      return;
+    }
+    log("Failed to spawn notify script", {
+      sessionID,
+      messageID,
+      errorName: err instanceof Error ? err.name : "UnknownError",
+    });
+    return;
+  }
+
+  child.on("error", (err: Error) => {
+    if (!settle()) {
+      return;
+    }
+    log("Notify script error", {
+      sessionID,
+      messageID,
+      errorName: err.name,
+    });
+  });
+
+  child.stdin.on("error", (err: Error) => {
+    if (!settle()) {
+      return;
+    }
+    log("Notify script stdin error", {
+      sessionID,
+      messageID,
+      errorName: err.name,
+    });
+  });
+
+  child.on("close", (code, signal) => {
+    if (!settle()) {
+      return;
+    }
+    if (code === 0) {
+      deps.processedMessages.set(sessionID, messageID);
+      return;
+    }
+    log("Notify script did not complete successfully", {
+      sessionID,
+      messageID,
+      exitCode: code ?? -1,
+      signal: signal ?? undefined,
+    });
+  });
+
+  try {
+    child.stdin.write(payload);
+    child.stdin.end();
+  } catch (err: unknown) {
+    if (!settle()) {
+      return;
+    }
+    log("Notify script stdin write failed", {
+      sessionID,
+      messageID,
+      errorName: err instanceof Error ? err.name : "UnknownError",
+    });
+    // Best-effort terminate the child without allowing errors to escape.
+    try {
+      child.kill();
+    } catch {
+      // Ignore termination errors.
+    }
   }
 }
 
@@ -39,7 +162,7 @@ export default async function agentRunLogger(input: PluginInput): Promise<Hooks>
         // 3. Use the SDK client to retrieve session messages
         const result = await input.client.session.messages({ path: { id: sessionID } });
         if (result.error || !result.data || !Array.isArray(result.data)) {
-          safeLog(input, "warn", "Could not retrieve session messages", { sessionID });
+          await safeLog(input, "warn", "Could not retrieve session messages", { sessionID });
           return;
         }
 
@@ -94,7 +217,7 @@ export default async function agentRunLogger(input: PluginInput): Promise<Hooks>
         }
 
         // Build the allow-listed payload (no complete messages, user prompts, reasoning, etc)
-        const payload = {
+        const payloadObj = {
           event: "session.idle",
           sessionID,
           messageID,
@@ -106,72 +229,27 @@ export default async function agentRunLogger(input: PluginInput): Promise<Hooks>
         // 8. Use current plugin worktree to resolve script path
         const scriptPath = path.join(input.worktree, "scripts", "agents", "notify-turn-complete.sh");
 
-        // Guard flag to prevent double-reporting when both error and exit fire
-        let settled = false;
-
-        const finalize = () => {
-          if (settled) return;
-          settled = true;
-          inFlightMessages.delete(dedupKey);
+        // 9. Execute child-process lifecycle
+        const lifecycleDeps: LifecycleDeps = {
+          spawnSync: spawn,
+          safeLogSync: (msg, extra) => {
+            void safeLog(input, "warn", msg, extra);
+          },
+          processedMessages,
+          inFlightMessages,
         };
 
-        // 9. Invoke existing script using injection-safe process API
-        let child: ReturnType<typeof spawn>;
-        try {
-          child = spawn("bash", [scriptPath, "opencode-session-idle"], {
-            cwd: input.worktree,
-            env: process.env,
-            stdio: ["pipe", "ignore", "ignore"],
-          });
-        } catch (err: unknown) {
-          finalize();
-          safeLog(input, "warn", "Failed to spawn notify script", {
-            sessionID,
-            messageID,
-            errorName: err instanceof Error ? err.name : "UnknownError",
-          });
-          return;
-        }
-
-        child.on("error", (err: Error) => {
-          finalize();
-          safeLog(input, "warn", "Notify script error", {
-            sessionID,
-            messageID,
-            errorName: err.name,
-          });
-        });
-
-        child.on("exit", (code) => {
-          finalize();
-          if (code !== 0) {
-            safeLog(input, "warn", "Notify script exited nonzero", {
-              sessionID,
-              messageID,
-              exitCode: code ?? -1,
-            });
-          } else {
-            // Mark as successfully processed for this session
-            processedMessages.set(sessionID, messageID);
-          }
-        });
-
-        // 10. Write the structured JSON payload to standard input
-        try {
-          child.stdin.write(JSON.stringify(payload));
-          child.stdin.end();
-        } catch (err: unknown) {
-          finalize();
-          safeLog(input, "warn", "Failed to write to notify script stdin", {
-            sessionID,
-            messageID,
-            errorName: err instanceof Error ? err.name : "UnknownError",
-          });
-        }
-
+        await executeLifecycle(
+          sessionID,
+          messageID,
+          JSON.stringify(payloadObj),
+          scriptPath,
+          input.worktree,
+          lifecycleDeps,
+        );
       } catch (err: unknown) {
         // Never allow telemetry failure to interrupt or fail the OpenCode session
-        safeLog(input, "warn", "Error in session.idle handler", {
+        await safeLog(input, "warn", "Error in session.idle handler", {
           errorName: err instanceof Error ? err.name : "UnknownError",
         });
       }
