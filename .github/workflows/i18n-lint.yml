@@ -30,10 +30,4 @@ jobs:
         run: apps/macos-ui/scripts/check_locale_lengths.sh
 
       - name: Block Hardcoded UI Strings
-        run: |
-          set -euo pipefail
-          PATTERN='Text\("[A-Za-z]|Button\("[A-Za-z]|Toggle\("[A-Za-z]|TextField\("[A-Za-z]|\.alert\("[A-Za-z]|\.help\("[A-Za-z]'
-          if rg -n "$PATTERN" apps/macos-ui/Helm; then
-            echo "Found hardcoded UI strings; use L10n keys instead."
-            exit 1
-          fi
+        run: apps/macos-ui/scripts/check_hardcoded_ui_strings.sh
