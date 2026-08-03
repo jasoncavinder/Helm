@@ -1848,13 +1848,18 @@ private extension InspectorManagerDetailView {
                 HStack(spacing: 8) {
                     ForEach(repairOptions, id: \.optionId) { option in
                         Button(option.title) {
-                            core.applyManagerPackageStateIssueRepair(
-                                managerId: manager.id,
-                                sourceManagerId: issue.sourceManagerId,
-                                packageName: issue.packageName,
-                                issueCode: issue.issueCode,
-                                optionId: option.optionId
-                            )
+                            if option.requiresConfirmation {
+                                confirmAction = .repair(issue: issue, option: option)
+                            } else {
+                                core.applyManagerPackageStateIssueRepair(
+                                    managerId: manager.id,
+                                    sourceManagerId: issue.sourceManagerId,
+                                    packageName: issue.packageName,
+                                    issueCode: issue.issueCode,
+                                    optionId: option.optionId,
+                                    confirmed: false
+                                )
+                            }
                         }
                         .buttonStyle(HelmSecondaryButtonStyle())
                         .disabled(managerIsUninstalling)
@@ -2015,6 +2020,10 @@ private struct InspectorManagerDetailView: View {
     private enum ConfirmAction: Identifiable {
         case update
         case removeStalePackageEntry(packageName: String, sourceManagerId: String)
+        case repair(
+            issue: ManagerPackageStateIssue,
+            option: ManagerPackageStateIssueRepairOption
+        )
         case enableRequiredManagerForInstance(
             parentManagerId: String,
             instanceId: String,
@@ -2027,6 +2036,8 @@ private struct InspectorManagerDetailView: View {
                 return "update"
             case let .removeStalePackageEntry(packageName, sourceManagerId):
                 return "remove-stale-package-entry-\(sourceManagerId)-\(packageName)"
+            case let .repair(issue, option):
+                return "repair-\(issue.fingerprint ?? issue.issueCode)-\(option.optionId)"
             case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
                 return "enable-required-\(parentManagerId)-\(instanceId)-\(followUp.id)"
             }
@@ -2979,6 +2990,22 @@ private struct InspectorManagerDetailView: View {
                     },
                     secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
                 )
+            case let .repair(issue, option):
+                return Alert(
+                    title: Text(option.title),
+                    message: Text(option.description),
+                    primaryButton: .default(Text(L10n.Common.continue.localized)) {
+                        core.applyManagerPackageStateIssueRepair(
+                            managerId: manager.id,
+                            sourceManagerId: issue.sourceManagerId,
+                            packageName: issue.packageName,
+                            issueCode: issue.issueCode,
+                            optionId: option.optionId,
+                            confirmed: true
+                        )
+                    },
+                    secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
+                )
             case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
                 return Alert(
                     title: Text(
@@ -3352,7 +3379,8 @@ extension InspectorManagerDetailView {
             sourceManagerId: issue.sourceManagerId,
             packageName: issue.packageName,
             issueCode: issue.issueCode,
-            optionId: "apply_post_install_setup_defaults"
+            optionId: "apply_post_install_setup_defaults",
+            confirmed: true
         )
     }
 
@@ -3498,7 +3526,8 @@ extension InspectorManagerDetailView {
             sourceManagerId: issue.sourceManagerId,
             packageName: issue.packageName,
             issueCode: issue.issueCode,
-            optionId: "reinstall_manager_via_homebrew"
+            optionId: "reinstall_manager_via_homebrew",
+            confirmed: false
         )
     }
 
@@ -3511,7 +3540,8 @@ extension InspectorManagerDetailView {
             sourceManagerId: issue.sourceManagerId,
             packageName: issue.packageName,
             issueCode: issue.issueCode,
-            optionId: "remove_stale_package_entry"
+            optionId: "remove_stale_package_entry",
+            confirmed: true
         )
     }
 

@@ -529,6 +529,9 @@ bool helm_set_manager_timeout_profile(const char *manager_id,
  * - `remove_stale_package_entry`
  * - `clear_selected_executable_override`
  *
+ * Options whose registry policy requires confirmation are rejected unless
+ * `confirmed` is true.
+ *
  * # Safety
  *
  * All pointers must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
@@ -537,7 +540,8 @@ int64_t helm_apply_manager_package_state_issue_repair(const char *manager_id,
                                                       const char *source_manager_id,
                                                       const char *package_name,
                                                       const char *issue_code,
-                                                      const char *option_id);
+                                                      const char *option_id,
+                                                      bool confirmed);
 
 /**
  * Install a manager tool. Returns the task ID, or -1 on error.

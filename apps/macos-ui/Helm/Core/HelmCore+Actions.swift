@@ -1251,7 +1251,8 @@ extension HelmCore {
         sourceManagerId: String,
         packageName: String,
         issueCode: String,
-        optionId: String
+        optionId: String,
+        confirmed: Bool
     ) {
         if isManagerUninstalling(managerId) {
             return
@@ -1290,7 +1291,8 @@ extension HelmCore {
                     sourceManagerId: sourceManagerId,
                     packageName: packageName,
                     issueCode: issueCode,
-                    optionId: optionId
+                    optionId: optionId,
+                    confirmed: confirmed
                 ) {
                     completion($0)
                 }

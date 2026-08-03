@@ -837,6 +837,7 @@ class HelmService: NSObject, HelmServiceProtocol {
         packageName: String,
         issueCode: String,
         optionId: String,
+        confirmed: Bool,
         withReply reply: @escaping (Int64) -> Void
     ) {
         let taskId = managerId.withCString { manager in
@@ -849,7 +850,8 @@ class HelmService: NSObject, HelmServiceProtocol {
                                 sourceManager,
                                 package,
                                 issue,
-                                option
+                                option,
+                                confirmed
                             )
                         }
                     }
@@ -857,7 +859,7 @@ class HelmService: NSObject, HelmServiceProtocol {
             }
         }
         logger.info(
-            "helm_apply_manager_package_state_issue_repair(\(managerId), \(sourceManagerId), \(packageName), \(issueCode), \(optionId)) result: \(taskId)"
+            "helm_apply_manager_package_state_issue_repair(\(managerId), \(sourceManagerId), \(packageName), \(issueCode), \(optionId), confirmed=\(confirmed)) result: \(taskId)"
         )
         reply(taskId)
     }

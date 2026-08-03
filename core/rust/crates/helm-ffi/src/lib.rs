@@ -10356,12 +10356,22 @@ fn spawn_post_install_setup_task(
     Ok(task_id)
 }
 
+fn repair_confirmation_satisfied(
+    option: &helm_core::repair::RepairOption,
+    confirmed: bool,
+) -> bool {
+    !option.requires_confirmation || confirmed
+}
+
 /// Apply a manager package-state repair option and queue the corresponding task.
 ///
 /// The current scaffold supports metadata-only Homebrew manager installs by routing one of:
 /// - `reinstall_manager_via_homebrew`
 /// - `remove_stale_package_entry`
 /// - `clear_selected_executable_override`
+///
+/// Options whose registry policy requires confirmation are rejected unless
+/// `confirmed` is true.
 ///
 /// # Safety
 ///
@@ -10373,6 +10383,7 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
     package_name: *const c_char,
     issue_code: *const c_char,
     option_id: *const c_char,
+    confirmed: bool,
 ) -> i64 {
     clear_last_error_key();
     if manager_id.is_null()
@@ -10458,6 +10469,9 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
         Some(option) => option,
         None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
+    if !repair_confirmation_satisfied(option, confirmed) {
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
+    }
 
     match option.action {
         helm_core::repair::RepairAction::ReinstallManagerViaHomebrew => {
@@ -11241,11 +11255,12 @@ mod tests {
         manager_authority_key, manager_participates_in_catalog_sync,
         manager_participates_in_package_search, manager_uninstall_label_for_route,
         parse_homebrew_config_version, prune_expired_upgrade_workflow_reservations,
-        push_upgrade_plan_step, resolve_homebrew_manager_update_strategy,
-        resolve_rustup_uninstall_strategy, run_external_updates_workflow_steps,
-        rustup_probe_candidates, scoped_upgrade_workflow_steps, search_label_args,
-        search_label_key_for_query, search_task_type_for_query, upgrade_plan_step_id,
-        upgrade_reason_label_for, upgrade_task_label_for,
+        push_upgrade_plan_step, repair_confirmation_satisfied,
+        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
+        run_external_updates_workflow_steps, rustup_probe_candidates,
+        scoped_upgrade_workflow_steps, search_label_args, search_label_key_for_query,
+        search_task_type_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
+        upgrade_task_label_for,
     };
     use helm_core::adapters::{
         AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, UninstallRequest,
@@ -14036,6 +14051,25 @@ mod tests {
         assert!(!manager_allows_individual_package_uninstall(
             ManagerId::SoftwareUpdate
         ));
+    }
+
+    #[test]
+    fn repair_confirmation_policy_is_enforced_at_the_ffi_boundary() {
+        let plan = helm_core::repair::plan_for_issue(
+            ManagerId::Rustup,
+            ManagerId::HomebrewFormula,
+            "rustup",
+            helm_core::doctor::ISSUE_CODE_METADATA_ONLY_INSTALL,
+        )
+        .expect("metadata-only finding should have a repair plan");
+        let reinstall = helm_core::repair::resolve_option(&plan, "reinstall_manager_via_homebrew")
+            .expect("reinstall option should exist");
+        let remove = helm_core::repair::resolve_option(&plan, "remove_stale_package_entry")
+            .expect("remove option should exist");
+
+        assert!(repair_confirmation_satisfied(reinstall, false));
+        assert!(!repair_confirmation_satisfied(remove, false));
+        assert!(repair_confirmation_satisfied(remove, true));
     }
 
     fn status_for(
