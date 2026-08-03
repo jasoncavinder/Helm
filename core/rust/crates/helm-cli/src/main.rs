@@ -58,7 +58,7 @@ use helm_core::models::{
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::doctor_persistence::{
-    DoctorStore, begin_local_doctor_scan, complete_local_doctor_scan,
+    DoctorStore, RepairHistoryRecord, begin_local_doctor_scan, complete_local_doctor_scan,
 };
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
 use helm_core::registry;
@@ -8094,6 +8094,7 @@ fn cmd_doctor_repair(
             let issue_code = command_args[4].trim();
             let option_id = command_args[5].trim();
             let confirmed = command_args.get(6).is_some_and(|value| value == "--yes");
+            ensure_repair_execution_mode(options.execution_mode)?;
             let plan = active_repair_plan(
                 store,
                 manager,
@@ -8115,96 +8116,231 @@ fn cmd_doctor_repair(
                 .migrate_to_latest()
                 .map_err(|error| format!("failed to initialize store for repair apply: {error}"))?;
 
-            match option.action {
+            let fingerprint = plan.fingerprint.clone();
+            let repair_option_id = option.option_id.clone();
+            let action_id = option.action.as_str().to_string();
+            let execution_result = match option.action {
                 helm_core::repair::RepairAction::ReinstallManagerViaHomebrew => {
                     let args = vec![
                         manager.as_str().to_string(),
                         "--method".to_string(),
                         "homebrew".to_string(),
                     ];
-                    cmd_managers_mutation(store_handle, options, "install", args.as_slice())
+                    cmd_managers_mutation(
+                        store_handle.clone(),
+                        options.clone(),
+                        "install",
+                        args.as_slice(),
+                    )
                 }
                 helm_core::repair::RepairAction::RemoveStalePackageEntry => {
                     let args = vec![
                         format!("{}@{}", package_name, source_manager.as_str()),
                         "--yes".to_string(),
                     ];
-                    cmd_packages_mutation(store_handle, options, "uninstall", args.as_slice())
+                    cmd_packages_mutation(
+                        store_handle.clone(),
+                        options.clone(),
+                        "uninstall",
+                        args.as_slice(),
+                    )
                 }
                 helm_core::repair::RepairAction::ApplyPostInstallSetupDefaults => {
-                    let manager_instances = store_handle
-                        .list_install_instances(Some(manager))
-                        .map_err(|error| {
-                            format!(
-                                "failed to list manager install instances for repair apply: {error}"
+                    (|| -> Result<(), String> {
+                        let manager_instances = store_handle
+                            .list_install_instances(Some(manager))
+                            .map_err(|error| {
+                                format!(
+                                    "failed to list manager install instances for repair apply: {error}"
+                                )
+                            })?;
+                        let automation_result =
+                            helm_core::post_install_setup::apply_recommended_post_install_setup(
+                                manager,
+                                Some(manager_instances.as_slice()),
                             )
-                        })?;
-                    let automation_result =
-                        helm_core::post_install_setup::apply_recommended_post_install_setup(
-                            manager,
-                            Some(manager_instances.as_slice()),
+                            .map_err(|error| {
+                                format!(
+                                    "failed to apply recommended post-install setup for '{}': {error}",
+                                    manager.as_str()
+                                )
+                            })?;
+                        if options.json {
+                            emit_json_payload(
+                                "helm.cli.v1.doctor.repair.apply_post_install_setup",
+                                json!({
+                                    "manager": manager.as_str(),
+                                    "changed": automation_result.changed,
+                                    "rc_file": automation_result.rc_file.display().to_string(),
+                                    "summary": automation_result.summary
+                                }),
+                            );
+                        } else {
+                            println!(
+                                "Applied post-install setup for {}: {} ({})",
+                                manager.as_str(),
+                                automation_result.summary,
+                                automation_result.rc_file.display()
+                            );
+                        }
+                        cmd_managers_detect(
+                            store_handle.clone(),
+                            options.clone(),
+                            &[manager.as_str().to_string()],
                         )
-                        .map_err(|error| {
-                            format!(
-                                "failed to apply recommended post-install setup for '{}': {error}",
-                                manager.as_str()
-                            )
-                        })?;
-                    if options.json {
-                        emit_json_payload(
-                            "helm.cli.v1.doctor.repair.apply_post_install_setup",
-                            json!({
-                                "manager": manager.as_str(),
-                                "changed": automation_result.changed,
-                                "rc_file": automation_result.rc_file.display().to_string(),
-                                "summary": automation_result.summary
-                            }),
-                        );
-                    } else {
-                        println!(
-                            "Applied post-install setup for {}: {} ({})",
-                            manager.as_str(),
-                            automation_result.summary,
-                            automation_result.rc_file.display()
-                        );
-                    }
-                    cmd_managers_detect(store_handle, options, &[manager.as_str().to_string()])
+                    })()
                 }
                 helm_core::repair::RepairAction::ClearSelectedExecutableOverride => {
-                    store_handle
-                        .set_manager_selected_executable_path(manager, None)
-                        .map_err(|error| {
-                            format!(
-                                "failed to clear selected executable override for '{}': {error}",
+                    (|| -> Result<(), String> {
+                        store_handle
+                            .set_manager_selected_executable_path(manager, None)
+                            .map_err(|error| {
+                                format!(
+                                    "failed to clear selected executable override for '{}': {error}",
+                                    manager.as_str()
+                                )
+                            })?;
+                        sync_manager_executable_overrides(store_handle.as_ref())?;
+
+                        if options.json {
+                            emit_json_payload(
+                                "helm.cli.v1.doctor.repair.clear_selected_executable_override",
+                                json!({
+                                    "manager": manager.as_str(),
+                                    "cleared": true
+                                }),
+                            );
+                        } else {
+                            println!(
+                                "Cleared selected executable override for {}.",
                                 manager.as_str()
-                            )
-                        })?;
-                    sync_manager_executable_overrides(store_handle.as_ref())?;
+                            );
+                        }
 
-                    if options.json {
-                        emit_json_payload(
-                            "helm.cli.v1.doctor.repair.clear_selected_executable_override",
-                            json!({
-                                "manager": manager.as_str(),
-                                "cleared": true
-                            }),
-                        );
-                    } else {
-                        println!(
-                            "Cleared selected executable override for {}.",
-                            manager.as_str()
-                        );
-                    }
-
-                    Ok(())
+                        Ok(())
+                    })()
                 }
-            }
+            };
+            finalize_cli_repair_attempt(
+                store_handle.as_ref(),
+                fingerprint.as_str(),
+                repair_option_id.as_str(),
+                action_id.as_str(),
+                execution_result,
+            )
         }
         other => Err(format!(
             "unsupported doctor repair subcommand '{}'; currently supported: plan, apply",
             other
         )),
     }
+}
+
+fn ensure_repair_execution_mode(mode: ExecutionMode) -> Result<(), String> {
+    if mode == ExecutionMode::Detach {
+        return Err(
+            "doctor repair apply does not support --detach because repair outcomes must be verified before the command returns"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn finalize_cli_repair_attempt(
+    store: &SqliteStore,
+    fingerprint: &str,
+    option_id: &str,
+    action_id: &str,
+    execution_result: Result<(), String>,
+) -> Result<(), String> {
+    if let Err(execution_error) = execution_result {
+        return match record_cli_repair_history(
+            store,
+            fingerprint,
+            option_id,
+            action_id,
+            "failed",
+            "not_verified",
+        ) {
+            Ok(()) => Err(execution_error),
+            Err(history_error) => Err(format!(
+                "{execution_error}; additionally failed to persist repair history: {history_error}"
+            )),
+        };
+    }
+
+    let report = match collect_doctor_report(store) {
+        Ok(report) => report,
+        Err(verification_error) => {
+            let history_result = record_cli_repair_history(
+                store,
+                fingerprint,
+                option_id,
+                action_id,
+                "succeeded",
+                "not_verified",
+            );
+            return match history_result {
+                Ok(()) => Err(format!(
+                    "repair action completed but follow-up doctor verification failed: {verification_error}"
+                )),
+                Err(history_error) => Err(format!(
+                    "repair action completed but follow-up doctor verification failed: {verification_error}; additionally failed to persist repair history: {history_error}"
+                )),
+            };
+        }
+    };
+    let verified_outcome = repair_verified_outcome(&report, fingerprint);
+    record_cli_repair_history(
+        store,
+        fingerprint,
+        option_id,
+        action_id,
+        "succeeded",
+        verified_outcome,
+    )?;
+    if verified_outcome == "not_repaired" {
+        return Err(format!(
+            "repair action completed but finding '{fingerprint}' remains active after verification"
+        ));
+    }
+    Ok(())
+}
+
+fn repair_verified_outcome(
+    report: &helm_core::doctor::DoctorReport,
+    fingerprint: &str,
+) -> &'static str {
+    if report
+        .findings
+        .iter()
+        .any(|finding| finding.fingerprint == fingerprint)
+    {
+        "not_repaired"
+    } else {
+        "repaired"
+    }
+}
+
+fn record_cli_repair_history(
+    store: &SqliteStore,
+    fingerprint: &str,
+    option_id: &str,
+    action_id: &str,
+    result: &str,
+    verified_outcome: &str,
+) -> Result<(), String> {
+    store
+        .record_repair_history(&RepairHistoryRecord {
+            fingerprint: fingerprint.to_string(),
+            option_id: option_id.to_string(),
+            action_id: action_id.to_string(),
+            task_id: None,
+            result: result.to_string(),
+            verified_outcome: Some(verified_outcome.to_string()),
+            executed_at_unix: json_generated_at_unix(),
+        })
+        .map_err(|error| format!("failed to persist repair history: {error}"))
 }
 
 fn cmd_completion(options: GlobalOptions, command_args: &[String]) -> Result<(), String> {
@@ -16367,13 +16503,14 @@ mod tests {
         cmd_updates_run, command_bypasses_cli_onboarding, command_help_topic_exists,
         coordinator_transport_for_cancel, coordinator_transport_for_submit,
         coordinator_transport_for_workflow, count_upgrade_step_failures,
-        ensure_cli_onboarding_completed, exit_code_for_error, failure_class_hint, list_managers,
-        manager_operation_failure_error, mark_exit_code, parse_args, parse_args_with_tty,
-        parse_homebrew_keg_policy_arg, parse_manager_id, parse_manager_mutation_args,
-        parse_package_mutation_args, parse_package_selector, parse_package_show_args,
-        parse_packages_rustup_args, parse_search_args, parse_structured_terminal_error_message,
-        parse_updates_run_preview_args, provenance_can_self_update, raw_args_request_json,
-        raw_args_request_ndjson, read_update_bytes_with_limit, remove_install_marker_if_channel,
+        ensure_cli_onboarding_completed, ensure_repair_execution_mode, exit_code_for_error,
+        failure_class_hint, list_managers, manager_operation_failure_error, mark_exit_code,
+        parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
+        parse_manager_mutation_args, parse_package_mutation_args, parse_package_selector,
+        parse_package_show_args, parse_packages_rustup_args, parse_search_args,
+        parse_structured_terminal_error_message, parse_updates_run_preview_args,
+        provenance_can_self_update, raw_args_request_json, raw_args_request_ndjson,
+        read_update_bytes_with_limit, remove_install_marker_if_channel, repair_verified_outcome,
         resolve_redirect_url, resolve_update_redirect_target,
         selected_executable_differs_from_default, self_uninstall_recommended_action,
         should_launch_coordinator_on_demand, strip_exit_code_marker, upgrade_request_name,
@@ -17146,6 +17283,49 @@ mod tests {
             .expect("doctor alias should parse");
         assert_eq!(command, Command::Doctor);
         assert_eq!(args, vec!["provenance".to_string()]);
+    }
+
+    #[test]
+    fn doctor_repair_apply_rejects_detached_execution() {
+        assert!(ensure_repair_execution_mode(ExecutionMode::Wait).is_ok());
+        let error = ensure_repair_execution_mode(ExecutionMode::Detach).unwrap_err();
+        assert!(error.contains("must be verified"));
+    }
+
+    #[test]
+    fn doctor_repair_verification_reports_active_and_resolved_findings() {
+        let fingerprint = "helm-doctor:v2:sha256:test";
+        let report = helm_core::doctor::DoctorReport {
+            generated_at_unix: 1,
+            health: helm_core::doctor::DoctorHealthStatus::Attention,
+            findings: vec![helm_core::doctor::DoctorFinding {
+                finding_code: "test_finding".to_string(),
+                issue_code: "test_issue".to_string(),
+                fingerprint: fingerprint.to_string(),
+                manager_id: ManagerId::Rustup.as_str().to_string(),
+                source_manager_id: None,
+                package_name: None,
+                severity: helm_core::doctor::DoctorFindingSeverity::Warning,
+                summary: "test".to_string(),
+                evidence_primary: None,
+                evidence_secondary: None,
+            }],
+            summary: helm_core::doctor::DoctorSummary {
+                manager_count: 1,
+                total_findings: 1,
+                warnings: 1,
+                errors: 0,
+            },
+        };
+
+        assert_eq!(
+            repair_verified_outcome(&report, fingerprint),
+            "not_repaired"
+        );
+        assert_eq!(
+            repair_verified_outcome(&report, "helm-doctor:v2:sha256:resolved"),
+            "repaired"
+        );
     }
 
     #[test]

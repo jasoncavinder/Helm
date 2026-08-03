@@ -3282,6 +3282,42 @@ fn repair_automation_rank(level: crate::repair::RepairAutomationLevel) -> u8 {
     }
 }
 
+impl SqliteStore {
+    fn finish_incomplete_doctor_scan(
+        &self,
+        scan_id: &str,
+        completed_at_unix: i64,
+        terminal_state: &'static str,
+    ) -> PersistenceResult<()> {
+        let operation = match terminal_state {
+            "failed" => "fail_scan",
+            "cancelled" => "cancel_scan",
+            _ => return Err(storage_error_text("finish_scan", "invalid terminal state")),
+        };
+        self.with_connection(operation, |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            transaction.execute(
+                "UPDATE doctor_scan_scopes SET completion_state = ?2
+                 WHERE scan_id = ?1 AND completion_state = 'pending'",
+                params![scan_id, terminal_state],
+            )?;
+            let changed = transaction.execute(
+                "UPDATE doctor_scans SET completed_at_unix = ?2, completion_state = ?3
+                 WHERE scan_id = ?1 AND completion_state = 'running'",
+                params![scan_id, completed_at_unix, terminal_state],
+            )?;
+            if changed != 1 {
+                return Err(storage_error_sqlite(
+                    "doctor scan is missing or already terminal",
+                ));
+            }
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+}
+
 impl DoctorStore for SqliteStore {
     fn start_scan(
         &self,
@@ -3442,27 +3478,11 @@ impl DoctorStore for SqliteStore {
     }
 
     fn fail_scan(&self, scan_id: &str, completed_at_unix: i64) -> PersistenceResult<()> {
-        self.with_connection("fail_scan", |connection| {
-            ensure_schema_ready(connection)?;
-            let transaction = connection.transaction()?;
-            transaction.execute(
-                "UPDATE doctor_scan_scopes SET completion_state = 'failed'
-                 WHERE scan_id = ?1 AND completion_state = 'pending'",
-                [scan_id],
-            )?;
-            let changed = transaction.execute(
-                "UPDATE doctor_scans SET completed_at_unix = ?2, completion_state = 'failed'
-                 WHERE scan_id = ?1 AND completion_state = 'running'",
-                params![scan_id, completed_at_unix],
-            )?;
-            if changed != 1 {
-                return Err(storage_error_sqlite(
-                    "doctor scan is missing or already terminal",
-                ));
-            }
-            transaction.commit()?;
-            Ok(())
-        })
+        self.finish_incomplete_doctor_scan(scan_id, completed_at_unix, "failed")
+    }
+
+    fn cancel_scan(&self, scan_id: &str, completed_at_unix: i64) -> PersistenceResult<()> {
+        self.finish_incomplete_doctor_scan(scan_id, completed_at_unix, "cancelled")
     }
 
     fn get_active_findings(&self) -> PersistenceResult<Vec<PersistedDoctorFinding>> {

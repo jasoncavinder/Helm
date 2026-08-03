@@ -118,6 +118,7 @@ pub trait DoctorStore: Send + Sync {
         completed_at_unix: i64,
     ) -> PersistenceResult<()>;
     fn fail_scan(&self, scan_id: &str, completed_at_unix: i64) -> PersistenceResult<()>;
+    fn cancel_scan(&self, scan_id: &str, completed_at_unix: i64) -> PersistenceResult<()>;
     fn get_active_findings(&self) -> PersistenceResult<Vec<PersistedDoctorFinding>>;
     fn import_knowledge(
         &self,

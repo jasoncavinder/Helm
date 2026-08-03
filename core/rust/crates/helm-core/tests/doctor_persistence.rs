@@ -5,7 +5,7 @@ use helm_core::doctor::{
 use helm_core::models::ManagerId;
 use helm_core::persistence::MigrationStore;
 use helm_core::persistence::doctor_persistence::{
-    DoctorScanScope, DoctorStore, KnowledgeTrustLevel, PersistedDoctorFinding,
+    DoctorScanScope, DoctorStore, KnowledgeTrustLevel, PersistedDoctorFinding, RepairHistoryRecord,
 };
 use helm_core::persistence::repair_knowledge::{KnowledgeEnvelope, sha256_hex};
 use helm_core::sqlite::{BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY, SqliteStore, current_schema_version};
@@ -33,28 +33,81 @@ fn scope() -> DoctorScanScope {
     }
 }
 
+fn mise_scope() -> DoctorScanScope {
+    DoctorScanScope {
+        detector_id: "detector-b".to_string(),
+        manager_id: ManagerId::Mise,
+    }
+}
+
 fn finding(generation: i64, observed_at: i64) -> PersistedDoctorFinding {
+    finding_for(
+        ManagerId::Rustup,
+        ManagerId::HomebrewFormula,
+        "rustup",
+        "detector-a",
+        generation,
+        observed_at,
+    )
+}
+
+fn mise_finding(generation: i64, observed_at: i64) -> PersistedDoctorFinding {
+    finding_for(
+        ManagerId::Mise,
+        ManagerId::HomebrewFormula,
+        "mise",
+        "detector-b",
+        generation,
+        observed_at,
+    )
+}
+
+fn finding_for(
+    manager_id: ManagerId,
+    source_manager_id: ManagerId,
+    package_name: &str,
+    detector_id: &str,
+    generation: i64,
+    observed_at: i64,
+) -> PersistedDoctorFinding {
     PersistedDoctorFinding {
         fingerprint: fingerprint_for_metadata_only_install(
-            ManagerId::Rustup,
-            ManagerId::HomebrewFormula,
-            "rustup",
+            manager_id,
+            source_manager_id,
+            package_name,
         ),
         finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL.to_string(),
         issue_code: ISSUE_CODE_METADATA_ONLY_INSTALL.to_string(),
-        manager_id: ManagerId::Rustup,
-        source_manager_id: Some(ManagerId::HomebrewFormula),
+        manager_id,
+        source_manager_id: Some(source_manager_id),
         subject_kind: "package".to_string(),
-        subject_value: "rustup".to_string(),
+        subject_value: package_name.to_string(),
         severity: "warning".to_string(),
         evidence_json: "{}".to_string(),
-        detector_id: "detector-a".to_string(),
+        detector_id: detector_id.to_string(),
         detector_version: "1".to_string(),
         first_seen_unix: observed_at,
         last_seen_unix: observed_at,
         latest_observation_generation: generation,
         resolution_state: "active".to_string(),
     }
+}
+
+fn seed_two_scopes(store: &SqliteStore, scan_id: &str, started_at: i64) {
+    let scopes = [scope(), mise_scope()];
+    let generation = store.start_scan(scan_id, started_at, &scopes).unwrap();
+    store
+        .complete_scan(
+            scan_id,
+            generation,
+            &[
+                finding(generation, started_at),
+                mise_finding(generation, started_at),
+            ],
+            &scopes,
+            started_at + 1,
+        )
+        .unwrap();
 }
 
 fn bundled_envelope() -> KnowledgeEnvelope {
@@ -129,6 +182,124 @@ fn failed_or_undeclared_scopes_do_not_resolve_findings() {
     );
     store.fail_scan("scan-4", 1_007).unwrap();
     assert_eq!(store.get_active_findings().unwrap().len(), 1);
+}
+
+#[test]
+fn full_scan_resolves_all_covered_findings() {
+    let store = create_store("full-scan-resolution");
+    seed_two_scopes(&store, "seed", 2_000);
+    assert_eq!(store.get_active_findings().unwrap().len(), 2);
+
+    let scopes = [scope(), mise_scope()];
+    let generation = store.start_scan("full", 2_002, &scopes).unwrap();
+    store
+        .complete_scan("full", generation, &[], &scopes, 2_003)
+        .unwrap();
+    assert!(store.get_active_findings().unwrap().is_empty());
+}
+
+#[test]
+fn scoped_and_partial_scans_resolve_only_successful_scopes() {
+    let store = create_store("scoped-partial-resolution");
+    seed_two_scopes(&store, "seed", 3_000);
+
+    let scoped_generation = store.start_scan("scoped", 3_002, &[scope()]).unwrap();
+    store
+        .complete_scan("scoped", scoped_generation, &[], &[scope()], 3_003)
+        .unwrap();
+    let active = store.get_active_findings().unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].manager_id, ManagerId::Mise);
+
+    let rustup_generation = store
+        .start_scan("restore-rustup", 3_004, &[scope()])
+        .unwrap();
+    store
+        .complete_scan(
+            "restore-rustup",
+            rustup_generation,
+            &[finding(rustup_generation, 3_004)],
+            &[scope()],
+            3_005,
+        )
+        .unwrap();
+    assert_eq!(store.get_active_findings().unwrap().len(), 2);
+
+    let declared = [scope(), mise_scope()];
+    let partial_generation = store.start_scan("partial", 3_006, &declared).unwrap();
+    store
+        .complete_scan("partial", partial_generation, &[], &[scope()], 3_007)
+        .unwrap();
+    let active = store.get_active_findings().unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].manager_id, ManagerId::Mise);
+}
+
+#[test]
+fn failed_and_cancelled_scans_preserve_active_findings() {
+    let store = create_store("failed-cancelled-resolution");
+    seed_two_scopes(&store, "seed", 4_000);
+    let scopes = [scope(), mise_scope()];
+
+    store.start_scan("failed", 4_002, &scopes).unwrap();
+    store.fail_scan("failed", 4_003).unwrap();
+    assert_eq!(store.get_active_findings().unwrap().len(), 2);
+
+    store.start_scan("cancelled", 4_004, &scopes).unwrap();
+    store.cancel_scan("cancelled", 4_005).unwrap();
+    assert_eq!(store.get_active_findings().unwrap().len(), 2);
+    assert!(store.cancel_scan("cancelled", 4_006).is_err());
+}
+
+#[test]
+fn repair_history_persists_result_and_verification_outcome() {
+    let store = create_store("repair-history");
+    let fingerprint = fingerprint_for_metadata_only_install(
+        ManagerId::Rustup,
+        ManagerId::HomebrewFormula,
+        "rustup",
+    );
+    store
+        .record_repair_history(&RepairHistoryRecord {
+            fingerprint: fingerprint.clone(),
+            option_id: "reinstall_manager_via_homebrew".to_string(),
+            action_id: "homebrew.reinstall_formula".to_string(),
+            task_id: None,
+            result: "succeeded".to_string(),
+            verified_outcome: Some("repaired".to_string()),
+            executed_at_unix: 5_000,
+        })
+        .unwrap();
+
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    let stored = connection
+        .query_row(
+            "SELECT fingerprint, option_id, action_id, result, verified_outcome, executed_at_unix
+             FROM repair_history",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        stored,
+        (
+            fingerprint,
+            "reinstall_manager_via_homebrew".to_string(),
+            "homebrew.reinstall_formula".to_string(),
+            "succeeded".to_string(),
+            Some("repaired".to_string()),
+            5_000,
+        )
+    );
 }
 
 #[test]
