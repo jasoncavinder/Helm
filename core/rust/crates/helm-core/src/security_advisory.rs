@@ -71,9 +71,9 @@ pub struct PackageCoordinates {
 impl PackageCoordinates {
     pub fn new(ecosystem: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
-            ecosystem: ecosystem.into(),
+            ecosystem: normalize_ecosystem(&ecosystem.into()),
             scope: None,
-            name: name.into(),
+            name: normalize_package_name(&name.into()),
         }
     }
 
@@ -83,9 +83,9 @@ impl PackageCoordinates {
         name: impl Into<String>,
     ) -> Self {
         Self {
-            ecosystem: ecosystem.into(),
-            scope: Some(scope.into()),
-            name: name.into(),
+            ecosystem: normalize_ecosystem(&ecosystem.into()),
+            scope: Some(normalize_package_name(&scope.into())),
+            name: normalize_package_name(&name.into()),
         }
     }
 
@@ -133,8 +133,16 @@ pub struct AdvisorySource {
 impl AdvisorySource {
     pub fn new(provider: impl Into<String>) -> Self {
         Self {
-            provider: provider.into(),
+            provider: normalize_source_provider(&provider.into()),
             feed: None,
+            schema_version: None,
+        }
+    }
+
+    pub fn with_feed(provider: impl Into<String>, feed: impl Into<String>) -> Self {
+        Self {
+            provider: normalize_source_provider(&provider.into()),
+            feed: Some(normalize_source_provider(&feed.into())),
             schema_version: None,
         }
     }
@@ -377,6 +385,11 @@ pub fn normalize_source_provider(provider: &str) -> String {
         .to_ascii_lowercase()
 }
 
+pub fn contains_control_chars(s: &str) -> bool {
+    s.chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+}
+
 /// Validate that an advisory record has the required fields populated.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AdvisoryValidationError {
@@ -390,6 +403,14 @@ pub enum AdvisoryValidationError {
     InvalidCvssScore,
     EmptySummary,
     EmptySourceProvider,
+    NonCanonicalEcosystem,
+    NonCanonicalPackageName,
+    NonCanonicalScope,
+    NonCanonicalSourceProvider,
+    NonCanonicalSourceFeed,
+    ControlCharacterPresent,
+    InvalidAffectedRange,
+    InvalidFixedVersion,
 }
 
 impl fmt::Display for AdvisoryValidationError {
@@ -405,6 +426,14 @@ impl fmt::Display for AdvisoryValidationError {
             Self::InvalidCvssScore => write!(f, "cvss_score must be finite and between 0 and 10"),
             Self::EmptySummary => write!(f, "summary is empty"),
             Self::EmptySourceProvider => write!(f, "source provider is empty"),
+            Self::NonCanonicalEcosystem => write!(f, "ecosystem is not canonical"),
+            Self::NonCanonicalPackageName => write!(f, "package name is not canonical"),
+            Self::NonCanonicalScope => write!(f, "scope is not canonical"),
+            Self::NonCanonicalSourceProvider => write!(f, "source provider is not canonical"),
+            Self::NonCanonicalSourceFeed => write!(f, "source feed is not canonical"),
+            Self::ControlCharacterPresent => write!(f, "control character present in text field"),
+            Self::InvalidAffectedRange => write!(f, "affected range is invalid or empty"),
+            Self::InvalidFixedVersion => write!(f, "fixed version is invalid or empty"),
         }
     }
 }
@@ -416,17 +445,97 @@ pub fn validate_advisory(record: &AdvisoryRecord) -> Result<(), AdvisoryValidati
     if record.advisory_id.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptyAdvisoryId);
     }
+    if contains_control_chars(&record.advisory_id) {
+        return Err(AdvisoryValidationError::ControlCharacterPresent);
+    }
+
     if record.package.name.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptyPackageName);
     }
+    if record.package.name != normalize_package_name(&record.package.name) {
+        return Err(AdvisoryValidationError::NonCanonicalPackageName);
+    }
+    if contains_control_chars(&record.package.name) {
+        return Err(AdvisoryValidationError::ControlCharacterPresent);
+    }
+
     if record.package.ecosystem.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptyEcosystem);
     }
+    if record.package.ecosystem != normalize_ecosystem(&record.package.ecosystem) {
+        return Err(AdvisoryValidationError::NonCanonicalEcosystem);
+    }
+
+    if let Some(ref scope) = record.package.scope {
+        if scope != &normalize_package_name(scope) {
+            return Err(AdvisoryValidationError::NonCanonicalScope);
+        }
+        if contains_control_chars(scope) {
+            return Err(AdvisoryValidationError::ControlCharacterPresent);
+        }
+    }
+
     if record.summary.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptySummary);
     }
+    if contains_control_chars(&record.summary) {
+        return Err(AdvisoryValidationError::ControlCharacterPresent);
+    }
+    if record
+        .description
+        .as_ref()
+        .is_some_and(|desc| contains_control_chars(desc))
+    {
+        return Err(AdvisoryValidationError::ControlCharacterPresent);
+    }
+
     if record.source.provider.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptySourceProvider);
+    }
+    if record.source.provider != normalize_source_provider(&record.source.provider) {
+        return Err(AdvisoryValidationError::NonCanonicalSourceProvider);
+    }
+
+    if record
+        .source
+        .feed
+        .as_ref()
+        .is_some_and(|feed| feed != &normalize_source_provider(feed))
+    {
+        return Err(AdvisoryValidationError::NonCanonicalSourceFeed);
+    }
+
+    match &record.affected_range {
+        AffectedRange::Exact { version } => {
+            if version.trim().is_empty() || contains_control_chars(version) {
+                return Err(AdvisoryValidationError::InvalidAffectedRange);
+            }
+        }
+        AffectedRange::Range { lower, upper, .. } => {
+            if lower.trim().is_empty() || contains_control_chars(lower) {
+                return Err(AdvisoryValidationError::InvalidAffectedRange);
+            }
+            if upper
+                .as_ref()
+                .is_some_and(|up| up.trim().is_empty() || contains_control_chars(up))
+            {
+                return Err(AdvisoryValidationError::InvalidAffectedRange);
+            }
+        }
+        AffectedRange::Raw { expression } => {
+            if expression.trim().is_empty() || contains_control_chars(expression) {
+                return Err(AdvisoryValidationError::InvalidAffectedRange);
+            }
+        }
+        AffectedRange::All => {}
+    }
+
+    if record
+        .fixed_version
+        .as_ref()
+        .is_some_and(|fv| fv.version.trim().is_empty() || contains_control_chars(&fv.version))
+    {
+        return Err(AdvisoryValidationError::InvalidFixedVersion);
     }
     if record.schema_version != ADVISORY_SCHEMA_VERSION {
         return Err(AdvisoryValidationError::InvalidSchemaVersion);
@@ -615,7 +724,7 @@ impl Ord for FreshnessState {
 // ---------------------------------------------------------------------------
 
 /// Flat storage record for SQLite persistence. This type is designed to map
-/// directly to a future `advisories` table (migration 18).
+/// directly to the `security_advisories` table.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AdvisoryCacheRecord {
@@ -680,13 +789,13 @@ impl AdvisoryCacheRecord {
 }
 
 // ---------------------------------------------------------------------------
-// Storage trait (interface for SQLite migration 18)
+// Storage trait (interface for SQLite persistence)
 // ---------------------------------------------------------------------------
 
 /// Storage trait for advisory cache records.
 ///
 /// This trait is the integration contract for the SQLite-backed persistence
-/// layer. Codex implements the concrete backend in migration 18.
+/// layer.
 pub trait AdvisoryCacheStore: Send + Sync {
     /// Insert or replace advisory cache records.
     fn upsert_advisories(&self, records: &[AdvisoryCacheRecord]) -> Result<usize, String>;

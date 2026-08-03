@@ -90,3 +90,61 @@ fn advisory_cache_clear_all_is_idempotent() {
     store.clear_all().unwrap();
     assert_eq!(store.count().unwrap(), 0);
 }
+
+#[test]
+fn advisory_cache_rejects_adversarial_records_transactionally() {
+    let store = store("adversarial-validation");
+    let valid = cache_record("OSV-1", 1_000, 2_000);
+
+    // Mismatched cache key
+    let mut bad_key = cache_record("OSV-2", 1_000, 2_000);
+    bad_key.cache_key = "advisory:osv:cve-other".to_string();
+    assert!(store.upsert_advisories(&[valid.clone(), bad_key]).is_err());
+    assert_eq!(store.count().unwrap(), 0);
+
+    // Noncanonical ecosystem
+    let mut bad_eco = cache_record("OSV-3", 1_000, 2_000);
+    bad_eco.ecosystem = "  cargo  ".to_string();
+    assert!(store.upsert_advisories(&[valid.clone(), bad_eco]).is_err());
+    assert_eq!(store.count().unwrap(), 0);
+
+    // Noncanonical source provider
+    let mut bad_prov = cache_record("OSV-4", 1_000, 2_000);
+    bad_prov.source_provider = "OSV".to_string();
+    assert!(store.upsert_advisories(&[valid.clone(), bad_prov]).is_err());
+    assert_eq!(store.count().unwrap(), 0);
+
+    // Control character
+    let mut bad_ctrl = cache_record("OSV-5", 1_000, 2_000);
+    bad_ctrl.summary = "bad\u{001b}summary".to_string();
+    assert!(store.upsert_advisories(&[valid.clone(), bad_ctrl]).is_err());
+    assert_eq!(store.count().unwrap(), 0);
+}
+
+#[test]
+fn advisory_cache_normalized_queries() {
+    let store = store("normalized-queries");
+
+    let mut record = cache_record("OSV-1", 1_000, 2_000);
+    record.ecosystem = "cargo".to_string();
+    record.package_name = "café".to_string();
+    // Wait, the cache key has to be recomputed if we change package_name, but cache_key for advisory record depends only on source_provider, source_feed, and advisory_id!
+    // It doesn't depend on package_name. Let's verify.
+    // Yes: advisory:<source>:<id>
+
+    store.upsert_advisories(&[record]).unwrap();
+
+    // Query with unnormalized inputs (whitespace + case)
+    let records = store
+        .get_advisories_for_package("  Cargo  ", "  café  ")
+        .unwrap();
+    assert_eq!(records.len(), 1);
+
+    // Query with NFD unicode string
+    let nfd_name = "cafe\u{0301}"; // e + combining acute accent
+    let records_nfd = store.get_advisories_for_package("cargo", nfd_name).unwrap();
+    assert_eq!(records_nfd.len(), 1);
+
+    let src_records = store.get_advisories_by_source("  osV ").unwrap();
+    assert_eq!(src_records.len(), 1);
+}

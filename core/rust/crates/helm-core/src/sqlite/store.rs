@@ -2706,10 +2706,12 @@ impl AdvisoryCacheStore for SqliteStore {
         ecosystem: &str,
         package_name: &str,
     ) -> Result<Vec<AdvisoryCacheRecord>, String> {
+        let ecosystem_norm = crate::security_advisory::normalize_ecosystem(ecosystem);
+        let package_norm = crate::security_advisory::normalize_package_name(package_name);
         self.query_advisory_records(
             "get_advisories_for_package",
             "WHERE ecosystem = ?1 AND package_name = ?2 ORDER BY cache_key ASC",
-            params![ecosystem, package_name],
+            params![ecosystem_norm, package_norm],
         )
     }
 
@@ -2717,10 +2719,11 @@ impl AdvisoryCacheStore for SqliteStore {
         &self,
         source_provider: &str,
     ) -> Result<Vec<AdvisoryCacheRecord>, String> {
+        let provider_norm = crate::security_advisory::normalize_source_provider(source_provider);
         self.query_advisory_records(
             "get_advisories_by_source",
             "WHERE source_provider = ?1 ORDER BY cache_key ASC",
-            params![source_provider],
+            params![provider_norm],
         )
     }
 
@@ -2814,6 +2817,17 @@ fn validate_advisory_cache_record(record: &AdvisoryCacheRecord) -> rusqlite::Res
     ]
     .into_iter()
     .all(|value| !value.trim().is_empty());
+
+    let has_control_chars = [
+        record.advisory_id.as_str(),
+        record.package_name.as_str(),
+        record.summary.as_str(),
+    ]
+    .into_iter()
+    .any(crate::security_advisory::contains_control_chars)
+        || record.ecosystem.chars().any(|c| c.is_control())
+        || record.source_provider.chars().any(|c| c.is_control());
+
     let valid_severity = matches!(
         record.severity.as_str(),
         "low" | "medium" | "high" | "critical"
@@ -2828,7 +2842,40 @@ fn validate_advisory_cache_record(record: &AdvisoryCacheRecord) -> rusqlite::Res
         .cvss_score
         .is_none_or(|score| score.is_finite() && (0.0..=10.0).contains(&score));
 
-    if has_required_text && valid_severity && valid_range && valid_timestamps && valid_score {
+    // Ensure noncanonical records are rejected
+    let is_canonical = record.ecosystem
+        == crate::security_advisory::normalize_ecosystem(&record.ecosystem)
+        && record.package_name
+            == crate::security_advisory::normalize_package_name(&record.package_name)
+        && record.source_provider
+            == crate::security_advisory::normalize_source_provider(&record.source_provider)
+        && record
+            .scope
+            .as_ref()
+            .is_none_or(|s| s == &crate::security_advisory::normalize_package_name(s))
+        && record
+            .source_feed
+            .as_ref()
+            .is_none_or(|f| f == &crate::security_advisory::normalize_source_provider(f));
+
+    let expected_source_key = if let Some(feed) = &record.source_feed {
+        format!("{}:{}", record.source_provider, feed)
+    } else {
+        record.source_provider.clone()
+    };
+    let expected_cache_key =
+        format!("advisory:{}:{}", expected_source_key, record.advisory_id).to_lowercase();
+    let cache_key_matches = record.cache_key == expected_cache_key;
+
+    if has_required_text
+        && !has_control_chars
+        && valid_severity
+        && valid_range
+        && valid_timestamps
+        && valid_score
+        && is_canonical
+        && cache_key_matches
+    {
         Ok(())
     } else {
         Err(storage_error_sqlite("invalid advisory cache record"))
