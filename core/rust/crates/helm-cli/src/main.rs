@@ -7888,7 +7888,7 @@ fn cmd_doctor(
     }
 }
 
-fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), String> {
+fn collect_doctor_report(store: &SqliteStore) -> Result<helm_core::doctor::DoctorReport, String> {
     let installed_packages = store
         .list_installed()
         .map_err(|error| format!("failed to list installed packages for doctor scan: {error}"))?;
@@ -7915,14 +7915,55 @@ fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), St
     }
     let executable_states = build_manager_executable_doctor_states(&detection_map, &preference_map);
     let recent_failure_diagnostics = collect_recent_doctor_failure_diagnostics(store);
-    let report = helm_core::doctor::scan_package_state_report(
+    Ok(helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
         &executable_states,
         recent_failure_diagnostics.as_slice(),
         SystemTime::now(),
-    );
+    ))
+}
+
+fn active_repair_plan(
+    store: &SqliteStore,
+    manager: ManagerId,
+    source_manager: ManagerId,
+    package_name: &str,
+    issue_code: &str,
+) -> Result<helm_core::repair::RepairPlan, String> {
+    let report = collect_doctor_report(store)?;
+    let finding = report
+        .findings
+        .iter()
+        .find(|finding| {
+            finding.matches_repair_reference(
+                manager,
+                source_manager,
+                package_name,
+                issue_code,
+            )
+        })
+        .ok_or_else(|| {
+            format!(
+                "doctor finding is no longer active for manager='{}' source='{}' package='{}' issue='{}'; run 'helm doctor scan' again",
+                manager.as_str(),
+                source_manager.as_str(),
+                package_name,
+                issue_code,
+            )
+        })?;
+
+    helm_core::repair::plan_for_finding(finding).ok_or_else(|| {
+        format!(
+            "no repair plan available for active finding '{}'",
+            finding.fingerprint
+        )
+    })
+}
+
+fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), String> {
+    let report = collect_doctor_report(store)?;
 
     if options.json {
         emit_json_payload("helm.cli.v1.doctor.scan", json!({ "report": report }));
@@ -7983,21 +8024,8 @@ fn cmd_doctor_repair(
             let source_manager = parse_manager_id(&command_args[2])?;
             let package_name = command_args[3].trim();
             let issue_code = command_args[4].trim();
-            let plan = helm_core::repair::plan_for_issue(
-                manager,
-                source_manager,
-                package_name,
-                issue_code,
-            )
-            .ok_or_else(|| {
-                format!(
-                    "no repair plan available for manager='{}' source='{}' package='{}' issue='{}'",
-                    manager.as_str(),
-                    source_manager.as_str(),
-                    package_name,
-                    issue_code
-                )
-            })?;
+            let plan =
+                active_repair_plan(store, manager, source_manager, package_name, issue_code)?;
 
             if options.json {
                 emit_json_payload("helm.cli.v1.doctor.repair.plan", json!({ "plan": plan }));
@@ -8030,9 +8058,11 @@ fn cmd_doctor_repair(
             Ok(())
         }
         "apply" => {
-            if command_args.len() != 6 {
+            if !matches!(command_args.len(), 6 | 7)
+                || (command_args.len() == 7 && command_args[6] != "--yes")
+            {
                 return Err(
-                    "doctor repair apply requires: <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+                    "doctor repair apply requires: <manager-id> <source-manager-id> <package-name> <issue-code> <option-id> [--yes]"
                         .to_string(),
                 );
             }
@@ -8041,23 +8071,22 @@ fn cmd_doctor_repair(
             let package_name = command_args[3].trim().to_string();
             let issue_code = command_args[4].trim();
             let option_id = command_args[5].trim();
-            let plan = helm_core::repair::plan_for_issue(
+            let confirmed = command_args.get(6).is_some_and(|value| value == "--yes");
+            let plan = active_repair_plan(
+                store,
                 manager,
                 source_manager,
                 package_name.as_str(),
                 issue_code,
-            )
-            .ok_or_else(|| {
-                format!(
-                    "no repair plan available for manager='{}' source='{}' package='{}' issue='{}'",
-                    manager.as_str(),
-                    source_manager.as_str(),
-                    package_name,
-                    issue_code
-                )
-            })?;
+            )?;
             let option = helm_core::repair::resolve_option(&plan, option_id)
                 .ok_or_else(|| format!("unknown repair option '{}'", option_id))?;
+            if option.requires_confirmation && !confirmed {
+                return Err(format!(
+                    "doctor repair option '{}' requires --yes confirmation",
+                    option_id
+                ));
+            }
 
             let store_handle = Arc::new(SqliteStore::new(store.database_path().to_path_buf()));
             store_handle
@@ -16116,11 +16145,12 @@ fn print_doctor_repair_help() {
         "  helm doctor repair plan <manager-id> <source-manager-id> <package-name> <issue-code>"
     );
     println!(
-        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id> [--yes]"
     );
     println!();
     println!("DESCRIPTION:");
     println!("  Plan or apply a known repair for a doctor finding fingerprint.");
+    println!("  Confirmation-required options must include --yes when applied.");
 }
 
 fn print_doctor_repair_plan_help() {
@@ -16136,11 +16166,12 @@ fn print_doctor_repair_plan_help() {
 fn print_doctor_repair_apply_help() {
     println!("USAGE:");
     println!(
-        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id>"
+        "  helm doctor repair apply <manager-id> <source-manager-id> <package-name> <issue-code> <option-id> [--yes]"
     );
     println!();
     println!("DESCRIPTION:");
     println!("  Apply a specific repair option and queue the resulting task.");
+    println!("  Confirmation-required options must include --yes.");
 }
 
 fn print_diagnostics_summary_help() {

@@ -2014,6 +2014,7 @@ private struct InspectorManagerDetailView: View {
 
     private enum ConfirmAction: Identifiable {
         case update
+        case removeStalePackageEntry(packageName: String, sourceManagerId: String)
         case enableRequiredManagerForInstance(
             parentManagerId: String,
             instanceId: String,
@@ -2024,6 +2025,8 @@ private struct InspectorManagerDetailView: View {
             switch self {
             case .update:
                 return "update"
+            case let .removeStalePackageEntry(packageName, sourceManagerId):
+                return "remove-stale-package-entry-\(sourceManagerId)-\(packageName)"
             case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
                 return "enable-required-\(parentManagerId)-\(instanceId)-\(followUp.id)"
             }
@@ -2956,6 +2959,26 @@ private struct InspectorManagerDetailView: View {
                     primaryButton: .default(Text(L10n.Common.update.localized)) { core.updateManager(manager.id) },
                     secondaryButton: .cancel()
                 )
+            case let .removeStalePackageEntry(packageName, sourceManagerId):
+                return Alert(
+                    title: Text(
+                        L10n.App.Packages.Alert.uninstallTitle.localized(
+                            with: ["package": packageName]
+                        )
+                    ),
+                    message: Text(
+                        L10n.App.Packages.Alert.uninstallMessage.localized(
+                            with: [
+                                "package": packageName,
+                                "manager": localizedManagerDisplayName(sourceManagerId)
+                            ]
+                        )
+                    ),
+                    primaryButton: .destructive(Text(L10n.Common.uninstall.localized)) {
+                        removeMetadataOnlyInstallIssue()
+                    },
+                    secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
+                )
             case let .enableRequiredManagerForInstance(parentManagerId, instanceId, followUp):
                 return Alert(
                     title: Text(
@@ -3069,7 +3092,10 @@ extension InspectorManagerDetailView {
                 Button(
                     L10n.App.Inspector.PackageStateIssue.MetadataOnly.removeStaleAction.localized
                 ) {
-                    removeMetadataOnlyInstallIssue()
+                    confirmAction = .removeStalePackageEntry(
+                        packageName: issue.packageName,
+                        sourceManagerId: issue.sourceManagerId
+                    )
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
                 .disabled(!metadataOnlyIssueCanRemoveStaleEntry || managerIsUninstalling)

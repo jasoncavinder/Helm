@@ -1513,6 +1513,49 @@ fn group_recent_doctor_failure_diagnostics_by_manager(
     grouped
 }
 
+fn collect_doctor_report(
+    store: &SqliteStore,
+) -> Result<helm_core::doctor::DoctorReport, &'static str> {
+    let installed_packages = store
+        .list_installed()
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    let instances = store
+        .list_install_instances(None)
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    let mut instances_by_manager: std::collections::HashMap<
+        ManagerId,
+        Vec<ManagerInstallInstance>,
+    > = std::collections::HashMap::new();
+    for instance in instances {
+        instances_by_manager
+            .entry(instance.manager)
+            .or_default()
+            .push(instance);
+    }
+    let detection_map: std::collections::HashMap<_, _> = store
+        .list_detections()
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?
+        .into_iter()
+        .collect();
+    let pref_map: std::collections::HashMap<_, _> = store
+        .list_manager_preferences()
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+    let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
+    let recent_failure_diagnostics = collect_recent_doctor_failure_diagnostics(store);
+
+    Ok(helm_core::doctor::scan_package_state_report(
+        ManagerId::ALL,
+        &instances_by_manager,
+        installed_packages.as_slice(),
+        &executable_states,
+        recent_failure_diagnostics.as_slice(),
+        SystemTime::now(),
+    ))
+}
+
 fn collect_manager_executable_paths(
     id: ManagerId,
     active_path: Option<&std::path::Path>,
@@ -6703,68 +6746,23 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_doctor_scan() -> *mut c_char {
     clear_last_error_key();
-    let guard = lock_or_recover(&STATE, "state");
-    let state = match guard.as_ref() {
-        Some(s) => s,
-        None => {
-            set_last_error_key(SERVICE_ERROR_INTERNAL);
+    let store = {
+        let guard = lock_or_recover(&STATE, "state");
+        match guard.as_ref() {
+            Some(state) => state.store.clone(),
+            None => {
+                set_last_error_key(SERVICE_ERROR_INTERNAL);
+                return std::ptr::null_mut();
+            }
+        }
+    };
+    let report = match collect_doctor_report(store.as_ref()) {
+        Ok(report) => report,
+        Err(error_key) => {
+            set_last_error_key(error_key);
             return std::ptr::null_mut();
         }
     };
-
-    let installed_packages = match state.store.list_installed() {
-        Ok(packages) => packages,
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let instances = match state.store.list_install_instances(None) {
-        Ok(instances) => instances,
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let mut instances_by_manager: std::collections::HashMap<
-        ManagerId,
-        Vec<ManagerInstallInstance>,
-    > = std::collections::HashMap::new();
-    for instance in instances {
-        instances_by_manager
-            .entry(instance.manager)
-            .or_default()
-            .push(instance);
-    }
-    let detection_map: std::collections::HashMap<_, _> = match state.store.list_detections() {
-        Ok(entries) => entries.into_iter().collect(),
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let pref_map: std::collections::HashMap<_, _> = match state.store.list_manager_preferences() {
-        Ok(entries) => entries
-            .into_iter()
-            .map(|pref| (pref.manager, pref))
-            .collect(),
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
-    let recent_failure_diagnostics =
-        collect_recent_doctor_failure_diagnostics(state.store.as_ref());
-
-    let report = helm_core::doctor::scan_package_state_report(
-        ManagerId::ALL,
-        &instances_by_manager,
-        installed_packages.as_slice(),
-        &executable_states,
-        recent_failure_diagnostics.as_slice(),
-        SystemTime::now(),
-    );
     let json = match serde_json::to_string(&report) {
         Ok(json) => json,
         Err(_) => {
@@ -10430,12 +10428,29 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
         }
     };
 
-    let plan = match helm_core::repair::plan_for_issue(
-        manager,
-        source_manager,
-        package_name.as_str(),
-        issue_code.as_str(),
-    ) {
+    let validation_store = {
+        let guard = lock_or_recover(&STATE, "state");
+        match guard.as_ref() {
+            Some(state) => state.store.clone(),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
+        }
+    };
+    let current_report = match collect_doctor_report(validation_store.as_ref()) {
+        Ok(report) => report,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let active_finding = match current_report.findings.iter().find(|finding| {
+        finding.matches_repair_reference(
+            manager,
+            source_manager,
+            package_name.as_str(),
+            issue_code.as_str(),
+        )
+    }) {
+        Some(finding) => finding,
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+    };
+    let plan = match helm_core::repair::plan_for_finding(active_finding) {
         Some(plan) => plan,
         None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };

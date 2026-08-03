@@ -16,6 +16,12 @@ pub const REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS: &str =
     "apply_post_install_setup_defaults";
 pub const REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE: &str =
     "clear_selected_executable_override";
+pub const REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA: &str = "homebrew.reinstall_formula";
+pub const REPAIR_ACTION_HOMEBREW_UNINSTALL_FORMULA: &str = "homebrew.uninstall_formula";
+pub const REPAIR_ACTION_APPLY_POST_INSTALL_SETUP_DEFAULTS: &str =
+    "manager.apply_post_install_setup_defaults";
+pub const REPAIR_ACTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE: &str =
+    "manager.clear_selected_executable_override";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,23 +41,153 @@ impl RepairAutomationLevel {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum RepairAction {
+    #[serde(rename = "homebrew.reinstall_formula")]
     ReinstallManagerViaHomebrew,
+    #[serde(rename = "homebrew.uninstall_formula")]
     RemoveStalePackageEntry,
+    #[serde(rename = "manager.apply_post_install_setup_defaults")]
     ApplyPostInstallSetupDefaults,
+    #[serde(rename = "manager.clear_selected_executable_override")]
     ClearSelectedExecutableOverride,
 }
 
 impl RepairAction {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
-            Self::ReinstallManagerViaHomebrew => "reinstall_manager_via_homebrew",
-            Self::RemoveStalePackageEntry => "remove_stale_package_entry",
-            Self::ApplyPostInstallSetupDefaults => "apply_post_install_setup_defaults",
-            Self::ClearSelectedExecutableOverride => "clear_selected_executable_override",
+            Self::ReinstallManagerViaHomebrew => REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA,
+            Self::RemoveStalePackageEntry => REPAIR_ACTION_HOMEBREW_UNINSTALL_FORMULA,
+            Self::ApplyPostInstallSetupDefaults => REPAIR_ACTION_APPLY_POST_INSTALL_SETUP_DEFAULTS,
+            Self::ClearSelectedExecutableOverride => {
+                REPAIR_ACTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE
+            }
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RepairActionDefinition {
+    pub action: RepairAction,
+    pub action_id: &'static str,
+    pub protected_option_id: &'static str,
+    pub finding_code: &'static str,
+    pub issue_code: &'static str,
+    pub requires_confirmation: bool,
+    pub minimum_automation_level: RepairAutomationLevel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepairRegistryError {
+    UnknownAction,
+    ProtectedOptionRebinding,
+}
+
+const REPAIR_ACTION_DEFINITIONS: [RepairActionDefinition; 4] = [
+    RepairActionDefinition {
+        action: RepairAction::ReinstallManagerViaHomebrew,
+        action_id: REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA,
+        protected_option_id: REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW,
+        finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL,
+        issue_code: ISSUE_CODE_METADATA_ONLY_INSTALL,
+        requires_confirmation: false,
+        minimum_automation_level: RepairAutomationLevel::Automatic,
+    },
+    RepairActionDefinition {
+        action: RepairAction::RemoveStalePackageEntry,
+        action_id: REPAIR_ACTION_HOMEBREW_UNINSTALL_FORMULA,
+        protected_option_id: REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY,
+        finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL,
+        issue_code: ISSUE_CODE_METADATA_ONLY_INSTALL,
+        requires_confirmation: true,
+        minimum_automation_level: RepairAutomationLevel::NeedsConfirmation,
+    },
+    RepairActionDefinition {
+        action: RepairAction::ApplyPostInstallSetupDefaults,
+        action_id: REPAIR_ACTION_APPLY_POST_INSTALL_SETUP_DEFAULTS,
+        protected_option_id: REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS,
+        finding_code: FINDING_CODE_POST_INSTALL_SETUP_REQUIRED,
+        issue_code: ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED,
+        requires_confirmation: true,
+        minimum_automation_level: RepairAutomationLevel::NeedsConfirmation,
+    },
+    RepairActionDefinition {
+        action: RepairAction::ClearSelectedExecutableOverride,
+        action_id: REPAIR_ACTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE,
+        protected_option_id: REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE,
+        finding_code: FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE,
+        issue_code: ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE,
+        requires_confirmation: false,
+        minimum_automation_level: RepairAutomationLevel::Automatic,
+    },
+];
+
+pub fn repair_action_definitions() -> &'static [RepairActionDefinition] {
+    &REPAIR_ACTION_DEFINITIONS
+}
+
+pub fn repair_action_definition(action: RepairAction) -> &'static RepairActionDefinition {
+    REPAIR_ACTION_DEFINITIONS
+        .iter()
+        .find(|definition| definition.action == action)
+        .expect("every RepairAction must have a compiled registry definition")
+}
+
+pub fn repair_action_from_id(action_id: &str) -> Option<RepairAction> {
+    REPAIR_ACTION_DEFINITIONS
+        .iter()
+        .find(|definition| definition.action_id == action_id)
+        .map(|definition| definition.action)
+}
+
+pub fn validate_knowledge_binding(
+    option_id: &str,
+    action_id: &str,
+) -> Result<RepairAction, RepairRegistryError> {
+    let action = repair_action_from_id(action_id).ok_or(RepairRegistryError::UnknownAction)?;
+    if let Some(protected) = REPAIR_ACTION_DEFINITIONS
+        .iter()
+        .find(|definition| definition.protected_option_id == option_id)
+        && protected.action != action
+    {
+        return Err(RepairRegistryError::ProtectedOptionRebinding);
+    }
+    Ok(action)
+}
+
+fn automation_restrictiveness(level: RepairAutomationLevel) -> u8 {
+    match level {
+        RepairAutomationLevel::Automatic => 0,
+        RepairAutomationLevel::NeedsConfirmation => 1,
+        RepairAutomationLevel::ReadOnly => 2,
+    }
+}
+
+fn option_satisfies_registry(plan: &RepairPlan, option: &RepairOption) -> bool {
+    let definition = repair_action_definition(option.action);
+    validate_knowledge_binding(option.option_id.as_str(), definition.action_id).is_ok()
+        && definition.finding_code == plan.finding_code
+        && definition.issue_code == plan.issue_code
+        && (!definition.requires_confirmation || option.requires_confirmation)
+        && automation_restrictiveness(option.automation_level)
+            >= automation_restrictiveness(definition.minimum_automation_level)
+}
+
+fn registered_option(
+    action: RepairAction,
+    title: &str,
+    description: &str,
+    recommended: bool,
+) -> RepairOption {
+    let definition = repair_action_definition(action);
+    RepairOption {
+        option_id: definition.protected_option_id.to_string(),
+        action,
+        title: title.to_string(),
+        description: description.to_string(),
+        recommended,
+        requires_confirmation: definition.requires_confirmation,
+        automation_level: definition.minimum_automation_level,
     }
 }
 
@@ -97,28 +233,18 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
             knowledge_source: REPAIR_KNOWLEDGE_SOURCE.to_string(),
             knowledge_version: REPAIR_KNOWLEDGE_VERSION.to_string(),
             options: vec![
-                RepairOption {
-                    option_id: REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW.to_string(),
-                    action: RepairAction::ReinstallManagerViaHomebrew,
-                    title: "Repair Homebrew install".to_string(),
-                    description:
-                        "Run the manager install flow via Homebrew so binaries and metadata are aligned."
-                            .to_string(),
-                    recommended: true,
-                    requires_confirmation: false,
-                    automation_level: RepairAutomationLevel::Automatic,
-                },
-                RepairOption {
-                    option_id: REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY.to_string(),
-                    action: RepairAction::RemoveStalePackageEntry,
-                    title: "Remove stale package metadata".to_string(),
-                    description:
-                        "Uninstall the stale Homebrew package entry when you do not want this manager managed via Homebrew."
-                            .to_string(),
-                    recommended: false,
-                    requires_confirmation: true,
-                    automation_level: RepairAutomationLevel::NeedsConfirmation,
-                },
+                registered_option(
+                    RepairAction::ReinstallManagerViaHomebrew,
+                    "Repair Homebrew install",
+                    "Run the manager install flow via Homebrew so binaries and metadata are aligned.",
+                    true,
+                ),
+                registered_option(
+                    RepairAction::RemoveStalePackageEntry,
+                    "Remove stale package metadata",
+                    "Uninstall the stale Homebrew package entry when you do not want this manager managed via Homebrew.",
+                    false,
+                ),
             ],
         });
     }
@@ -135,17 +261,12 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
             fingerprint: finding.fingerprint.clone(),
             knowledge_source: REPAIR_KNOWLEDGE_SOURCE.to_string(),
             knowledge_version: REPAIR_KNOWLEDGE_VERSION.to_string(),
-            options: vec![RepairOption {
-                option_id: REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS.to_string(),
-                action: RepairAction::ApplyPostInstallSetupDefaults,
-                title: "Apply recommended setup".to_string(),
-                description:
-                    "Apply Helm's safe default shell setup block for this manager, then verify setup."
-                        .to_string(),
-                recommended: true,
-                requires_confirmation: true,
-                automation_level: RepairAutomationLevel::NeedsConfirmation,
-            }],
+            options: vec![registered_option(
+                RepairAction::ApplyPostInstallSetupDefaults,
+                "Apply recommended setup",
+                "Apply Helm's safe default shell setup block for this manager, then verify setup.",
+                true,
+            )],
         });
     }
 
@@ -161,17 +282,12 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
             fingerprint: finding.fingerprint.clone(),
             knowledge_source: REPAIR_KNOWLEDGE_SOURCE.to_string(),
             knowledge_version: REPAIR_KNOWLEDGE_VERSION.to_string(),
-            options: vec![RepairOption {
-                option_id: REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE.to_string(),
-                action: RepairAction::ClearSelectedExecutableOverride,
-                title: "Clear selected executable override".to_string(),
-                description:
-                    "Remove the saved executable override so Helm can fall back to normal executable discovery."
-                        .to_string(),
-                recommended: true,
-                requires_confirmation: false,
-                automation_level: RepairAutomationLevel::Automatic,
-            }],
+            options: vec![registered_option(
+                RepairAction::ClearSelectedExecutableOverride,
+                "Clear selected executable override",
+                "Remove the saved executable override so Helm can fall back to normal executable discovery.",
+                true,
+            )],
         });
     }
 
@@ -246,7 +362,7 @@ pub fn plan_for_issue(
 pub fn resolve_option<'a>(plan: &'a RepairPlan, option_id: &str) -> Option<&'a RepairOption> {
     plan.options
         .iter()
-        .find(|option| option.option_id == option_id)
+        .find(|option| option.option_id == option_id && option_satisfies_registry(plan, option))
 }
 
 #[cfg(test)]
@@ -296,6 +412,90 @@ mod tests {
         let option = resolve_option(&plan, REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY)
             .expect("expected stale-entry option");
         assert_eq!(option.action, RepairAction::RemoveStalePackageEntry);
+        assert_eq!(
+            option.action.as_str(),
+            REPAIR_ACTION_HOMEBREW_UNINSTALL_FORMULA
+        );
+    }
+
+    #[test]
+    fn compiled_registry_preserves_option_bindings_and_typed_action_ids() {
+        let expected = [
+            (
+                REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW,
+                REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA,
+            ),
+            (
+                REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY,
+                REPAIR_ACTION_HOMEBREW_UNINSTALL_FORMULA,
+            ),
+            (
+                REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS,
+                REPAIR_ACTION_APPLY_POST_INSTALL_SETUP_DEFAULTS,
+            ),
+            (
+                REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE,
+                REPAIR_ACTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE,
+            ),
+        ];
+
+        for (option_id, action_id) in expected {
+            let action = validate_knowledge_binding(option_id, action_id)
+                .expect("compiled protected binding should validate");
+            assert_eq!(action.as_str(), action_id);
+        }
+    }
+
+    #[test]
+    fn registry_rejects_unknown_actions_and_protected_option_rebinding() {
+        assert_eq!(
+            validate_knowledge_binding("future_option", "shell.execute"),
+            Err(RepairRegistryError::UnknownAction)
+        );
+        assert_eq!(
+            validate_knowledge_binding(
+                REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY,
+                REPAIR_ACTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE,
+            ),
+            Err(RepairRegistryError::ProtectedOptionRebinding)
+        );
+    }
+
+    #[test]
+    fn resolver_rejects_policy_weakening_and_wrong_finding_classes() {
+        let mut metadata_plan = plan_for_issue(
+            ManagerId::Rustup,
+            ManagerId::HomebrewFormula,
+            "rustup",
+            ISSUE_CODE_METADATA_ONLY_INSTALL,
+        )
+        .expect("expected metadata plan");
+        let destructive = metadata_plan
+            .options
+            .iter_mut()
+            .find(|option| option.option_id == REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY)
+            .expect("expected destructive option");
+        destructive.requires_confirmation = false;
+        destructive.automation_level = RepairAutomationLevel::Automatic;
+        assert!(
+            resolve_option(&metadata_plan, REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY,).is_none()
+        );
+
+        let mut wrong_finding_plan = plan_for_issue(
+            ManagerId::Rustup,
+            ManagerId::HomebrewFormula,
+            "rustup",
+            ISSUE_CODE_METADATA_ONLY_INSTALL,
+        )
+        .expect("expected metadata plan");
+        wrong_finding_plan.finding_code = FINDING_CODE_POST_INSTALL_SETUP_REQUIRED.to_string();
+        assert!(
+            resolve_option(
+                &wrong_finding_plan,
+                REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW,
+            )
+            .is_none()
+        );
     }
 
     #[test]
