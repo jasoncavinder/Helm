@@ -2997,18 +2997,22 @@ private struct InspectorManagerDetailView: View {
                     secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
                 )
             case let .repair(issue, option):
-                let titleText = option.contentKeys != nil ? Text(LocalizedStringKey(option.contentKeys!.title)) : Text(option.title)
-                var messageText = option.contentKeys != nil ? Text(LocalizedStringKey(option.contentKeys!.description)) : Text(option.description)
-                
+                let titleText: Text
+                var messageText: Text
                 if let keys = option.contentKeys {
+                    titleText = Text(LocalizedStringKey(keys.title))
+                    messageText = Text(LocalizedStringKey(keys.description))
                     if let impact = keys.impact {
                         messageText = messageText + Text("\n\n") + Text(LocalizedStringKey(impact))
                     }
                     if let guidance = keys.guidance {
                         messageText = messageText + Text("\n\n") + Text(LocalizedStringKey(guidance))
                     }
+                } else {
+                    titleText = Text(option.title)
+                    messageText = Text(option.description)
                 }
-                
+
                 return Alert(
                     title: titleText,
                     message: messageText,

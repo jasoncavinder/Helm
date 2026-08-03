@@ -2818,15 +2818,33 @@ fn validate_advisory_cache_record(record: &AdvisoryCacheRecord) -> rusqlite::Res
     .into_iter()
     .all(|value| !value.trim().is_empty());
 
-    let has_control_chars = [
+    let has_identifier_control_chars = [
+        record.cache_key.as_str(),
         record.advisory_id.as_str(),
+        record.ecosystem.as_str(),
         record.package_name.as_str(),
-        record.summary.as_str(),
+        record.source_provider.as_str(),
     ]
     .into_iter()
     .any(crate::security_advisory::contains_control_chars)
-        || record.ecosystem.chars().any(|c| c.is_control())
-        || record.source_provider.chars().any(|c| c.is_control());
+        || record
+            .scope
+            .as_deref()
+            .is_some_and(crate::security_advisory::contains_control_chars)
+        || record
+            .source_feed
+            .as_deref()
+            .is_some_and(crate::security_advisory::contains_control_chars)
+        || record
+            .fixed_version
+            .as_deref()
+            .is_some_and(crate::security_advisory::contains_control_chars);
+    let has_prose_control_chars =
+        crate::security_advisory::contains_forbidden_prose_control_chars(record.summary.as_str())
+            || record
+                .description
+                .as_deref()
+                .is_some_and(crate::security_advisory::contains_forbidden_prose_control_chars);
 
     let valid_severity = matches!(
         record.severity.as_str(),
@@ -2835,28 +2853,30 @@ fn validate_advisory_cache_record(record: &AdvisoryCacheRecord) -> rusqlite::Res
     let valid_range = serde_json::from_str::<crate::security_advisory::AffectedRange>(
         record.affected_range_json.as_str(),
     )
-    .is_ok();
+    .is_ok_and(|range| crate::security_advisory::affected_range_is_canonical(&range));
     let valid_timestamps =
         record.fetched_at_epoch_ms > 0 && record.expires_at_epoch_ms > record.fetched_at_epoch_ms;
     let valid_score = record
         .cvss_score
         .is_none_or(|score| score.is_finite() && (0.0..=10.0).contains(&score));
 
-    // Ensure noncanonical records are rejected
-    let is_canonical = record.ecosystem
-        == crate::security_advisory::normalize_ecosystem(&record.ecosystem)
+    let is_canonical = record.advisory_id
+        == crate::security_advisory::normalize_advisory_id(&record.advisory_id)
+        && record.ecosystem == crate::security_advisory::normalize_ecosystem(&record.ecosystem)
         && record.package_name
             == crate::security_advisory::normalize_package_name(&record.package_name)
         && record.source_provider
             == crate::security_advisory::normalize_source_provider(&record.source_provider)
-        && record
-            .scope
-            .as_ref()
-            .is_none_or(|s| s == &crate::security_advisory::normalize_package_name(s))
-        && record
-            .source_feed
-            .as_ref()
-            .is_none_or(|f| f == &crate::security_advisory::normalize_source_provider(f));
+        && record.scope.as_ref().is_none_or(|s| {
+            !s.is_empty() && s == &crate::security_advisory::normalize_package_name(s)
+        })
+        && record.source_feed.as_ref().is_none_or(|f| {
+            !f.is_empty() && f == &crate::security_advisory::normalize_source_provider(f)
+        })
+        && record.fixed_version.as_ref().is_none_or(|version| {
+            !version.is_empty()
+                && version == &crate::security_advisory::AdvisoryFixedVersion::new(version).version
+        });
 
     let expected_source_key = if let Some(feed) = &record.source_feed {
         format!("{}:{}", record.source_provider, feed)
@@ -2868,7 +2888,8 @@ fn validate_advisory_cache_record(record: &AdvisoryCacheRecord) -> rusqlite::Res
     let cache_key_matches = record.cache_key == expected_cache_key;
 
     if has_required_text
-        && !has_control_chars
+        && !has_identifier_control_chars
+        && !has_prose_control_chars
         && valid_severity
         && valid_range
         && valid_timestamps
@@ -3084,9 +3105,9 @@ fn persist_knowledge_entry(
     transaction.execute(
         "INSERT INTO repair_knowledge_entries (
             source_key, knowledge_entry_id, revision, state, selector_json,
-            option_id, action_id, policy_json, parameter_bindings_json,
-            content_keys_json, entry_checksum
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            option_id, action_id, recommendation_rank, policy_json,
+            parameter_bindings_json, content_keys_json, entry_checksum
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             source_key,
             entry.knowledge_entry_id,
@@ -3095,6 +3116,7 @@ fn persist_knowledge_entry(
             selector_json,
             entry.option_id,
             entry.action_id,
+            entry.recommendation_rank,
             policy_json,
             bindings_json,
             content_json,
@@ -3155,16 +3177,17 @@ fn knowledge_entry_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Knowled
         selector: parse_stored_json(row.get::<_, String>(3)?.as_str(), "selector")?,
         option_id: row.get(4)?,
         action_id: row.get(5)?,
+        recommendation_rank: row.get(6)?,
         policy: row
-            .get::<_, Option<String>>(6)?
+            .get::<_, Option<String>>(7)?
             .map(|json| parse_stored_json(json.as_str(), "policy"))
             .transpose()?,
         parameter_bindings: row
-            .get::<_, Option<String>>(7)?
+            .get::<_, Option<String>>(8)?
             .map(|json| parse_stored_json(json.as_str(), "parameter bindings"))
             .transpose()?,
         content_keys: row
-            .get::<_, Option<String>>(8)?
+            .get::<_, Option<String>>(9)?
             .map(|json| parse_stored_json(json.as_str(), "content keys"))
             .transpose()?,
     })
@@ -3610,19 +3633,33 @@ impl DoctorStore for SqliteStore {
         self.with_connection("export_knowledge", |connection| {
             ensure_schema_ready(connection)?;
 
-            let (declared_source_id, latest_revision, generated_at_unix, signature_json):
-                (String, i64, i64, Option<String>) = connection.query_row(
+            let (declared_source_id, latest_revision, generated_at_unix, signature_json): (
+                String,
+                i64,
+                i64,
+                Option<String>,
+            ) = connection.query_row(
                 "SELECT declared_source_id, latest_revision, generated_at_unix, signature_json
                  FROM repair_knowledge_sources WHERE source_key = ?1",
                 params![source_key],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )?;
 
             let mut stmt = connection.prepare(
-                "SELECT knowledge_entry_id, revision, state, selector_json, option_id, action_id, policy_json, parameter_bindings_json, content_keys_json
-                 FROM repair_knowledge_entries
-                 WHERE source_key = ?1
-                 ORDER BY knowledge_entry_id ASC, revision ASC"
+                "SELECT e.knowledge_entry_id, e.revision, e.state, e.selector_json,
+                        e.option_id, e.action_id, e.recommendation_rank, e.policy_json,
+                        e.parameter_bindings_json, e.content_keys_json
+                 FROM repair_knowledge_entries e
+                 JOIN (
+                    SELECT source_key, knowledge_entry_id, MAX(revision) AS revision
+                    FROM repair_knowledge_entries
+                    WHERE source_key = ?1
+                    GROUP BY source_key, knowledge_entry_id
+                 ) latest ON latest.source_key = e.source_key
+                    AND latest.knowledge_entry_id = e.knowledge_entry_id
+                    AND latest.revision = e.revision
+                 WHERE e.source_key = ?1
+                 ORDER BY e.knowledge_entry_id ASC",
             )?;
             let entries = stmt
                 .query_map(params![source_key], knowledge_entry_from_row)?
@@ -3662,7 +3699,7 @@ impl DoctorStore for SqliteStore {
             let mut stmt = connection.prepare(
                 "SELECT e.source_key, s.trust_level, e.knowledge_entry_id, e.revision,
                         e.state, e.selector_json, e.option_id, e.action_id,
-                        e.policy_json, e.content_keys_json,
+                        e.recommendation_rank, e.policy_json, e.content_keys_json,
                         COALESCE(o.disabled, 0)
                  FROM repair_knowledge_entries e
                  JOIN repair_knowledge_sources s ON s.source_key = e.source_key
@@ -3687,9 +3724,10 @@ impl DoctorStore for SqliteStore {
                     row.get::<_, String>(5)?,
                     row.get::<_, Option<String>>(6)?,
                     row.get::<_, Option<String>>(7)?,
-                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, Option<u32>>(8)?,
                     row.get::<_, Option<String>>(9)?,
-                    row.get::<_, i64>(10)?,
+                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, i64>(11)?,
                 ))
             })?;
             for row in rows {
@@ -3702,6 +3740,7 @@ impl DoctorStore for SqliteStore {
                     selector_json,
                     option_id,
                     action_id,
+                    recommendation_rank,
                     policy_json,
                     content_json,
                     disabled,
@@ -3732,6 +3771,7 @@ impl DoctorStore for SqliteStore {
                         .map_err(|_| storage_error_sqlite("stored entry revision is invalid"))?,
                     option_id,
                     action_id,
+                    recommendation_rank,
                     policy: parse_stored_json(&policy_json, "policy")?,
                     content_keys: parse_stored_json(&content_json, "content keys")?,
                 });

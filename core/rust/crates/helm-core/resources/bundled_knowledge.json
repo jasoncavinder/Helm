@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "declared_source_id": "helm_bundled_knowledge",
-  "source_revision": 1,
+  "source_revision": 2,
   "generated_at_unix": 1720000000,
   "entries": [
     {
       "knowledge_entry_id": "repair.executable_override.clear",
-      "revision": 1,
+      "revision": 2,
       "state": "active",
       "selector": {
         "finding_code": "selected_executable_path_stale"
       },
       "option_id": "clear_selected_executable_override",
       "action_id": "manager.clear_selected_executable_override",
+      "recommendation_rank": 0,
       "policy": {
         "requires_confirmation": false,
         "automation_level": "automatic"
@@ -24,13 +25,14 @@
     },
     {
       "knowledge_entry_id": "repair.homebrew.metadata_only.reinstall",
-      "revision": 1,
+      "revision": 2,
       "state": "active",
       "selector": {
         "finding_code": "homebrew_metadata_only_install"
       },
       "option_id": "reinstall_manager_via_homebrew",
       "action_id": "homebrew.reinstall_formula",
+      "recommendation_rank": 0,
       "policy": {
         "requires_confirmation": false,
         "automation_level": "automatic"
@@ -42,13 +44,14 @@
     },
     {
       "knowledge_entry_id": "repair.homebrew.metadata_only.remove",
-      "revision": 1,
+      "revision": 2,
       "state": "active",
       "selector": {
         "finding_code": "homebrew_metadata_only_install"
       },
       "option_id": "remove_stale_package_entry",
       "action_id": "homebrew.uninstall_formula",
+      "recommendation_rank": 1,
       "policy": {
         "requires_confirmation": true,
         "automation_level": "needs_confirmation"
@@ -60,13 +63,14 @@
     },
     {
       "knowledge_entry_id": "repair.post_install.setup_defaults",
-      "revision": 1,
+      "revision": 2,
       "state": "active",
       "selector": {
         "finding_code": "post_install_setup_required"
       },
       "option_id": "apply_post_install_setup_defaults",
       "action_id": "manager.apply_post_install_setup_defaults",
+      "recommendation_rank": 0,
       "policy": {
         "requires_confirmation": true,
         "automation_level": "needs_confirmation"
@@ -79,6 +83,6 @@
   ],
   "integrity": {
     "algorithm": "sha256",
-    "value": "1247fadb4e444d37fbb2f75a43840508cd20600654780b0f4eb364afe2f8956a"
+    "value": "dc81ec2377535ed2ab53d2c3bb1fe2671eb35848567d22eb959b008d865e61de"
   }
 }

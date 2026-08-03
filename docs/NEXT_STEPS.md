@@ -27,14 +27,14 @@ Focus:
 - keep the agent-agnostic operating model current (lean `AGENTS`, isolated task worktrees under `.worktrees/` via `agent-worktree-isolation`, `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, notify logging to `dev/logs/agent-runs.ndjson`, and `scripts/agents/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
-- `0.18.x` internal groundwork is implemented on `dev`: migrations 17 and 18 persist doctor/repair and advisory cache state; strict canonical knowledge envelopes seed and resolve bundled typed repairs; CLI and FFI doctor scans persist scoped generations; FFI repair tasks record verification outcomes; advisory records have deterministic normalization, validation, ordering, freshness, and transactional SQLite cache behavior.
+- `0.18.x` internal groundwork is implemented on `dev`: migrations 17-19 persist doctor/repair, ranked repair knowledge, and advisory cache state; strict canonical knowledge envelopes seed and resolve bundled typed repairs; CLI and FFI doctor scans persist scoped generations; CLI and FFI repair tasks record verification outcomes; advisory records have deterministic normalization, validation, ordering, freshness, and transactional SQLite cache behavior.
 - `v0.17.12` is the current stable release on `main`; current-scope manager adapter completion, final stable-line hardening, and package workflow hardening are now published:
   - bulk and scoped upgrade phase coordination now resides in Rust/FFI/XPC. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
   - all current manager adapters are considered complete for Helm's intended scope
   - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
-    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and transitional embedded repair knowledge-provider scaffolding pending the `0.18.x` SQLite-backed knowledge contract
+    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, SQLite-backed repair knowledge, and a storeless compatibility fallback constrained by the typed-action registry
     - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
     - added repair-apply execution path through FFI + XPC (`helm_apply_manager_package_state_issue_repair`) and migrated GUI metadata-only repair actions to that subsystem
     - CLI doctor scaffolding now includes `helm doctor scan` and `helm doctor repair plan|apply` for local-first health/repair flows

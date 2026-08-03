@@ -80,6 +80,8 @@ pub struct KnowledgeEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommendation_rank: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub policy: Option<KnowledgePolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parameter_bindings: Option<BTreeMap<String, String>>,
@@ -225,6 +227,7 @@ fn validate_entry(entry: &KnowledgeEntry) -> Result<(), KnowledgeEnvelopeError> 
         "tombstone" => {
             if entry.option_id.is_some()
                 || entry.action_id.is_some()
+                || entry.recommendation_rank.is_some()
                 || entry.policy.is_some()
                 || entry.parameter_bindings.is_some()
                 || entry.content_keys.is_some()

@@ -8,6 +8,7 @@ use helm_core::persistence::doctor_persistence::{
     DoctorScanScope, DoctorStore, KnowledgeTrustLevel, PersistedDoctorFinding, RepairHistoryRecord,
 };
 use helm_core::persistence::repair_knowledge::{KnowledgeEnvelope, sha256_hex};
+use helm_core::repair::plan_for_finding_with_knowledge;
 use helm_core::sqlite::{BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY, SqliteStore, current_schema_version};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -332,6 +333,41 @@ fn bundled_import_is_idempotent_and_export_is_deterministic() {
 }
 
 #[test]
+fn bundled_upgrade_exports_only_latest_entry_revisions() {
+    let store = create_store("bundled-upgrade");
+    let current = bundled_envelope();
+    let mut previous = current.clone();
+    previous.source_revision = 1;
+    for entry in &mut previous.entries {
+        entry.revision = 1;
+        entry.recommendation_rank = None;
+    }
+    resign(&mut previous);
+
+    store
+        .import_knowledge(
+            BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY,
+            &previous,
+            KnowledgeTrustLevel::Bundled,
+        )
+        .unwrap();
+    store
+        .import_knowledge(
+            BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY,
+            &current,
+            KnowledgeTrustLevel::Bundled,
+        )
+        .unwrap();
+
+    assert_eq!(
+        store
+            .export_knowledge(BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY)
+            .unwrap(),
+        current
+    );
+}
+
+#[test]
 fn source_and_entry_equivocation_are_rejected_transactionally() {
     let store = create_store("equivocation");
     let envelope = bundled_envelope();
@@ -412,4 +448,27 @@ fn effective_knowledge_matches_normalized_finding_selectors() {
     assert_eq!(effective.len(), 2);
     assert!(options.contains(&"reinstall_manager_via_homebrew"));
     assert!(options.contains(&"remove_stale_package_entry"));
+    assert_eq!(
+        effective
+            .iter()
+            .find(|entry| entry.option_id == "reinstall_manager_via_homebrew")
+            .unwrap()
+            .recommendation_rank,
+        Some(0)
+    );
+    let plan = plan_for_finding_with_knowledge(&doctor_finding, &effective).unwrap();
+    assert_eq!(
+        plan.options
+            .iter()
+            .filter(|option| option.recommended)
+            .count(),
+        1
+    );
+    let recommended = plan
+        .options
+        .iter()
+        .find(|option| option.recommended)
+        .unwrap();
+    assert_eq!(recommended.option_id, "reinstall_manager_via_homebrew");
+    assert_eq!(recommended.title, "Repair Homebrew install");
 }

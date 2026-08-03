@@ -96,29 +96,64 @@ fn advisory_cache_rejects_adversarial_records_transactionally() {
     let store = store("adversarial-validation");
     let valid = cache_record("OSV-1", 1_000, 2_000);
 
-    // Mismatched cache key
     let mut bad_key = cache_record("OSV-2", 1_000, 2_000);
     bad_key.cache_key = "advisory:osv:cve-other".to_string();
     assert!(store.upsert_advisories(&[valid.clone(), bad_key]).is_err());
     assert_eq!(store.count().unwrap(), 0);
 
-    // Noncanonical ecosystem
     let mut bad_eco = cache_record("OSV-3", 1_000, 2_000);
     bad_eco.ecosystem = "  cargo  ".to_string();
     assert!(store.upsert_advisories(&[valid.clone(), bad_eco]).is_err());
     assert_eq!(store.count().unwrap(), 0);
 
-    // Noncanonical source provider
     let mut bad_prov = cache_record("OSV-4", 1_000, 2_000);
     bad_prov.source_provider = "OSV".to_string();
     assert!(store.upsert_advisories(&[valid.clone(), bad_prov]).is_err());
     assert_eq!(store.count().unwrap(), 0);
 
-    // Control character
     let mut bad_ctrl = cache_record("OSV-5", 1_000, 2_000);
     bad_ctrl.summary = "bad\u{001b}summary".to_string();
     assert!(store.upsert_advisories(&[valid.clone(), bad_ctrl]).is_err());
     assert_eq!(store.count().unwrap(), 0);
+
+    let mut bad_id = cache_record("OSV-6", 1_000, 2_000);
+    bad_id.advisory_id = "OSV-6\nforged".to_string();
+    assert!(store.upsert_advisories(&[valid.clone(), bad_id]).is_err());
+
+    let mut bad_scope = cache_record("OSV-7", 1_000, 2_000);
+    bad_scope.scope = Some("scope\tname".to_string());
+    assert!(
+        store
+            .upsert_advisories(&[valid.clone(), bad_scope])
+            .is_err()
+    );
+
+    let mut bad_feed = cache_record("OSV-8", 1_000, 2_000);
+    bad_feed.source_feed = Some("feed\nname".to_string());
+    assert!(store.upsert_advisories(&[valid.clone(), bad_feed]).is_err());
+
+    let mut bad_range = cache_record("OSV-9", 1_000, 2_000);
+    bad_range.affected_range_json =
+        serde_json::to_string(&AffectedRange::exact("1.0\nforged")).unwrap();
+    assert!(
+        store
+            .upsert_advisories(&[valid.clone(), bad_range])
+            .is_err()
+    );
+
+    let mut bad_fixed = cache_record("OSV-10", 1_000, 2_000);
+    bad_fixed.fixed_version = Some("2.0\tforged".to_string());
+    assert!(
+        store
+            .upsert_advisories(&[valid.clone(), bad_fixed])
+            .is_err()
+    );
+    assert_eq!(store.count().unwrap(), 0);
+
+    let mut formatted_prose = valid;
+    formatted_prose.summary = "First line\nSecond line".to_string();
+    formatted_prose.description = Some("Details:\n\titem".to_string());
+    assert_eq!(store.upsert_advisories(&[formatted_prose]).unwrap(), 1);
 }
 
 #[test]
@@ -128,20 +163,14 @@ fn advisory_cache_normalized_queries() {
     let mut record = cache_record("OSV-1", 1_000, 2_000);
     record.ecosystem = "cargo".to_string();
     record.package_name = "café".to_string();
-    // Wait, the cache key has to be recomputed if we change package_name, but cache_key for advisory record depends only on source_provider, source_feed, and advisory_id!
-    // It doesn't depend on package_name. Let's verify.
-    // Yes: advisory:<source>:<id>
-
     store.upsert_advisories(&[record]).unwrap();
 
-    // Query with unnormalized inputs (whitespace + case)
     let records = store
         .get_advisories_for_package("  Cargo  ", "  café  ")
         .unwrap();
     assert_eq!(records.len(), 1);
 
-    // Query with NFD unicode string
-    let nfd_name = "cafe\u{0301}"; // e + combining acute accent
+    let nfd_name = "cafe\u{0301}";
     let records_nfd = store.get_advisories_for_package("cargo", nfd_name).unwrap();
     assert_eq!(records_nfd.len(), 1);
 

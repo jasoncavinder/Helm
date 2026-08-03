@@ -87,6 +87,7 @@ pub struct EffectiveKnowledge {
     pub revision: u64,
     pub option_id: String,
     pub action_id: String,
+    pub recommendation_rank: Option<u32>,
     pub policy: KnowledgePolicy,
     pub content_keys: KnowledgeContentKeys,
 }

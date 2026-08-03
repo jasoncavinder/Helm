@@ -922,7 +922,18 @@ DROP TABLE IF EXISTS security_advisories;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 18] = [
+const MIGRATION_0019: SqliteMigration = SqliteMigration {
+    version: 19,
+    name: "add_repair_knowledge_recommendation_rank",
+    up_sql: r#"
+ALTER TABLE repair_knowledge_entries ADD COLUMN recommendation_rank INTEGER;
+"#,
+    down_sql: r#"
+ALTER TABLE repair_knowledge_entries DROP COLUMN recommendation_rank;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 19] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -941,6 +952,7 @@ const MIGRATIONS: [SqliteMigration; 18] = [
     MIGRATION_0016,
     MIGRATION_0017,
     MIGRATION_0018,
+    MIGRATION_0019,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

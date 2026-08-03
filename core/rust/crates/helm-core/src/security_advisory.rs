@@ -192,13 +192,13 @@ pub enum AffectedRange {
 impl AffectedRange {
     pub fn exact(version: impl Into<String>) -> Self {
         Self::Exact {
-            version: version.into(),
+            version: normalize_external_value(&version.into()),
         }
     }
 
     pub fn range_gte(lower: impl Into<String>) -> Self {
         Self::Range {
-            lower: lower.into(),
+            lower: normalize_external_value(&lower.into()),
             lower_inclusive: true,
             upper: None,
             upper_inclusive: false,
@@ -207,9 +207,9 @@ impl AffectedRange {
 
     pub fn range(lower: impl Into<String>, upper: impl Into<String>) -> Self {
         Self::Range {
-            lower: lower.into(),
+            lower: normalize_external_value(&lower.into()),
             lower_inclusive: true,
-            upper: Some(upper.into()),
+            upper: Some(normalize_external_value(&upper.into())),
             upper_inclusive: false,
         }
     }
@@ -263,7 +263,7 @@ pub struct AdvisoryFixedVersion {
 impl AdvisoryFixedVersion {
     pub fn new(version: impl Into<String>) -> Self {
         Self {
-            version: version.into(),
+            version: normalize_external_value(&version.into()),
             verification_url: None,
         }
     }
@@ -344,7 +344,7 @@ impl AdvisoryRecord {
     ) -> Self {
         Self {
             schema_version: ADVISORY_SCHEMA_VERSION,
-            advisory_id: advisory_id.into(),
+            advisory_id: normalize_advisory_id(&advisory_id.into()),
             package,
             affected_range,
             severity,
@@ -385,9 +385,40 @@ pub fn normalize_source_provider(provider: &str) -> String {
         .to_ascii_lowercase()
 }
 
+pub fn normalize_advisory_id(advisory_id: &str) -> String {
+    normalize_external_value(advisory_id)
+}
+
+fn normalize_external_value(value: &str) -> String {
+    value
+        .trim_matches(|c: char| c.is_ascii_whitespace())
+        .nfc()
+        .collect()
+}
+
 pub fn contains_control_chars(s: &str) -> bool {
+    s.chars().any(char::is_control)
+}
+
+pub fn contains_forbidden_prose_control_chars(s: &str) -> bool {
     s.chars()
-        .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+        .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+}
+
+pub fn affected_range_is_canonical(range: &AffectedRange) -> bool {
+    let valid_value = |value: &str| {
+        !value.trim().is_empty()
+            && value == normalize_external_value(value)
+            && !contains_control_chars(value)
+    };
+    match range {
+        AffectedRange::Exact { version } => valid_value(version),
+        AffectedRange::Range { lower, upper, .. } => {
+            valid_value(lower) && upper.as_deref().is_none_or(valid_value)
+        }
+        AffectedRange::Raw { expression } => valid_value(expression),
+        AffectedRange::All => true,
+    }
 }
 
 /// Validate that an advisory record has the required fields populated.
@@ -403,6 +434,7 @@ pub enum AdvisoryValidationError {
     InvalidCvssScore,
     EmptySummary,
     EmptySourceProvider,
+    NonCanonicalAdvisoryId,
     NonCanonicalEcosystem,
     NonCanonicalPackageName,
     NonCanonicalScope,
@@ -411,6 +443,8 @@ pub enum AdvisoryValidationError {
     ControlCharacterPresent,
     InvalidAffectedRange,
     InvalidFixedVersion,
+    InvalidSourceMetadata,
+    InvalidReference,
 }
 
 impl fmt::Display for AdvisoryValidationError {
@@ -426,6 +460,7 @@ impl fmt::Display for AdvisoryValidationError {
             Self::InvalidCvssScore => write!(f, "cvss_score must be finite and between 0 and 10"),
             Self::EmptySummary => write!(f, "summary is empty"),
             Self::EmptySourceProvider => write!(f, "source provider is empty"),
+            Self::NonCanonicalAdvisoryId => write!(f, "advisory ID is not canonical"),
             Self::NonCanonicalEcosystem => write!(f, "ecosystem is not canonical"),
             Self::NonCanonicalPackageName => write!(f, "package name is not canonical"),
             Self::NonCanonicalScope => write!(f, "scope is not canonical"),
@@ -434,6 +469,8 @@ impl fmt::Display for AdvisoryValidationError {
             Self::ControlCharacterPresent => write!(f, "control character present in text field"),
             Self::InvalidAffectedRange => write!(f, "affected range is invalid or empty"),
             Self::InvalidFixedVersion => write!(f, "fixed version is invalid or empty"),
+            Self::InvalidSourceMetadata => write!(f, "source metadata is invalid or empty"),
+            Self::InvalidReference => write!(f, "advisory reference is invalid or empty"),
         }
     }
 }
@@ -444,6 +481,9 @@ impl std::error::Error for AdvisoryValidationError {}
 pub fn validate_advisory(record: &AdvisoryRecord) -> Result<(), AdvisoryValidationError> {
     if record.advisory_id.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptyAdvisoryId);
+    }
+    if record.advisory_id != normalize_advisory_id(&record.advisory_id) {
+        return Err(AdvisoryValidationError::NonCanonicalAdvisoryId);
     }
     if contains_control_chars(&record.advisory_id) {
         return Err(AdvisoryValidationError::ControlCharacterPresent);
@@ -465,9 +505,12 @@ pub fn validate_advisory(record: &AdvisoryRecord) -> Result<(), AdvisoryValidati
     if record.package.ecosystem != normalize_ecosystem(&record.package.ecosystem) {
         return Err(AdvisoryValidationError::NonCanonicalEcosystem);
     }
+    if contains_control_chars(&record.package.ecosystem) {
+        return Err(AdvisoryValidationError::ControlCharacterPresent);
+    }
 
     if let Some(ref scope) = record.package.scope {
-        if scope != &normalize_package_name(scope) {
+        if scope.is_empty() || scope != &normalize_package_name(scope) {
             return Err(AdvisoryValidationError::NonCanonicalScope);
         }
         if contains_control_chars(scope) {
@@ -478,13 +521,13 @@ pub fn validate_advisory(record: &AdvisoryRecord) -> Result<(), AdvisoryValidati
     if record.summary.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptySummary);
     }
-    if contains_control_chars(&record.summary) {
+    if contains_forbidden_prose_control_chars(&record.summary) {
         return Err(AdvisoryValidationError::ControlCharacterPresent);
     }
     if record
         .description
         .as_ref()
-        .is_some_and(|desc| contains_control_chars(desc))
+        .is_some_and(|desc| contains_forbidden_prose_control_chars(desc))
     {
         return Err(AdvisoryValidationError::ControlCharacterPresent);
     }
@@ -495,47 +538,48 @@ pub fn validate_advisory(record: &AdvisoryRecord) -> Result<(), AdvisoryValidati
     if record.source.provider != normalize_source_provider(&record.source.provider) {
         return Err(AdvisoryValidationError::NonCanonicalSourceProvider);
     }
+    if contains_control_chars(&record.source.provider) {
+        return Err(AdvisoryValidationError::ControlCharacterPresent);
+    }
 
+    if let Some(feed) = record.source.feed.as_ref() {
+        if feed.is_empty() || feed != &normalize_source_provider(feed) {
+            return Err(AdvisoryValidationError::NonCanonicalSourceFeed);
+        }
+        if contains_control_chars(feed) {
+            return Err(AdvisoryValidationError::ControlCharacterPresent);
+        }
+    }
     if record
         .source
-        .feed
+        .schema_version
         .as_ref()
-        .is_some_and(|feed| feed != &normalize_source_provider(feed))
+        .is_some_and(|version| version.trim().is_empty() || contains_control_chars(version))
     {
-        return Err(AdvisoryValidationError::NonCanonicalSourceFeed);
+        return Err(AdvisoryValidationError::InvalidSourceMetadata);
     }
 
-    match &record.affected_range {
-        AffectedRange::Exact { version } => {
-            if version.trim().is_empty() || contains_control_chars(version) {
-                return Err(AdvisoryValidationError::InvalidAffectedRange);
-            }
-        }
-        AffectedRange::Range { lower, upper, .. } => {
-            if lower.trim().is_empty() || contains_control_chars(lower) {
-                return Err(AdvisoryValidationError::InvalidAffectedRange);
-            }
-            if upper
+    if !affected_range_is_canonical(&record.affected_range) {
+        return Err(AdvisoryValidationError::InvalidAffectedRange);
+    }
+
+    if let Some(fixed) = record.fixed_version.as_ref()
+        && (fixed.version.trim().is_empty()
+            || fixed.version != normalize_external_value(&fixed.version)
+            || contains_control_chars(&fixed.version)
+            || fixed
+                .verification_url
                 .as_ref()
-                .is_some_and(|up| up.trim().is_empty() || contains_control_chars(up))
-            {
-                return Err(AdvisoryValidationError::InvalidAffectedRange);
-            }
-        }
-        AffectedRange::Raw { expression } => {
-            if expression.trim().is_empty() || contains_control_chars(expression) {
-                return Err(AdvisoryValidationError::InvalidAffectedRange);
-            }
-        }
-        AffectedRange::All => {}
-    }
-
-    if record
-        .fixed_version
-        .as_ref()
-        .is_some_and(|fv| fv.version.trim().is_empty() || contains_control_chars(&fv.version))
+                .is_some_and(|url| url.trim().is_empty() || contains_control_chars(url)))
     {
         return Err(AdvisoryValidationError::InvalidFixedVersion);
+    }
+    if record
+        .references
+        .iter()
+        .any(|reference| reference.trim().is_empty() || contains_control_chars(reference))
+    {
+        return Err(AdvisoryValidationError::InvalidReference);
     }
     if record.schema_version != ADVISORY_SCHEMA_VERSION {
         return Err(AdvisoryValidationError::InvalidSchemaVersion);
@@ -1058,6 +1102,24 @@ mod tests {
         assert_eq!(normalize_source_provider("OSV"), "osv");
     }
 
+    #[test]
+    fn constructors_normalize_external_identity_fields() {
+        let record = AdvisoryRecord::new(
+            "  OSV-1  ",
+            PackageCoordinates::with_scope(" NPM ", " @types ", " node "),
+            AffectedRange::exact(" 1.0.0 "),
+            AdvisorySeverity::High,
+            "summary",
+            AdvisorySource::with_feed(" OSV ", " PRIMARY "),
+            1_000,
+            2_000,
+        );
+        assert_eq!(record.advisory_id, "OSV-1");
+        assert_eq!(record.package.canonical_id(), "npm:@types/node");
+        assert_eq!(record.source.source_key(), "osv:primary");
+        assert_eq!(record.affected_range, AffectedRange::exact("1.0.0"));
+    }
+
     // --- Validation ---
 
     #[test]
@@ -1116,6 +1178,28 @@ mod tests {
             validate_advisory(&record).unwrap_err(),
             AdvisoryValidationError::NegativeTimestamps
         );
+    }
+
+    #[test]
+    fn validate_rejects_controls_in_identity_and_allows_formatted_prose() {
+        let mut record = make_test_advisory("CVE-2024-0001", "serde");
+        record.advisory_id = "CVE-2024-0001\nforged".to_string();
+        assert_eq!(
+            validate_advisory(&record).unwrap_err(),
+            AdvisoryValidationError::ControlCharacterPresent
+        );
+
+        let mut record = make_test_advisory("CVE-2024-0001", "serde");
+        record.package.scope = Some("scope\tforged".to_string());
+        assert_eq!(
+            validate_advisory(&record).unwrap_err(),
+            AdvisoryValidationError::ControlCharacterPresent
+        );
+
+        let mut record = make_test_advisory("CVE-2024-0001", "serde");
+        record.summary = "First line\nSecond line".to_string();
+        record.description = Some("Details:\n\titem".to_string());
+        assert!(validate_advisory(&record).is_ok());
     }
 
     #[test]

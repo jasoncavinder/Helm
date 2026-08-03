@@ -449,7 +449,7 @@ Stage 0 (`<=0.16.x`):
 - No implemented security advisory logic
 
 Stage 1 (`0.18.x`):
-- Implemented internal local-only groundwork for vulnerability data handling: normalized domain records, deterministic cache keys/order, freshness and task-hook contracts, and migration 18 SQLite cache persistence
+- Implemented internal local-only groundwork for vulnerability data handling: normalized domain records and query inputs, canonical cache-key validation, control-character hardening, deterministic order, freshness and task-hook contracts, and migration 18 SQLite cache persistence
 - No public feature exposure
 - No Pro gating
 - No centralized backend

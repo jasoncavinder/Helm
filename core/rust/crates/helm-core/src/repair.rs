@@ -74,6 +74,8 @@ pub struct RepairActionDefinition {
     pub protected_option_id: &'static str,
     pub finding_code: &'static str,
     pub issue_code: &'static str,
+    pub fallback_title: &'static str,
+    pub fallback_description: &'static str,
     pub requires_confirmation: bool,
     pub minimum_automation_level: RepairAutomationLevel,
 }
@@ -91,6 +93,8 @@ const REPAIR_ACTION_DEFINITIONS: [RepairActionDefinition; 4] = [
         protected_option_id: REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW,
         finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL,
         issue_code: ISSUE_CODE_METADATA_ONLY_INSTALL,
+        fallback_title: "Repair Homebrew install",
+        fallback_description: "Run the manager install flow via Homebrew so binaries and metadata are aligned.",
         requires_confirmation: false,
         minimum_automation_level: RepairAutomationLevel::Automatic,
     },
@@ -100,6 +104,8 @@ const REPAIR_ACTION_DEFINITIONS: [RepairActionDefinition; 4] = [
         protected_option_id: REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY,
         finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL,
         issue_code: ISSUE_CODE_METADATA_ONLY_INSTALL,
+        fallback_title: "Remove stale package metadata",
+        fallback_description: "Uninstall the stale Homebrew package entry when you do not want this manager managed via Homebrew.",
         requires_confirmation: true,
         minimum_automation_level: RepairAutomationLevel::NeedsConfirmation,
     },
@@ -109,6 +115,8 @@ const REPAIR_ACTION_DEFINITIONS: [RepairActionDefinition; 4] = [
         protected_option_id: REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS,
         finding_code: FINDING_CODE_POST_INSTALL_SETUP_REQUIRED,
         issue_code: ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED,
+        fallback_title: "Apply recommended setup",
+        fallback_description: "Apply Helm's safe default shell setup block for this manager, then verify setup.",
         requires_confirmation: true,
         minimum_automation_level: RepairAutomationLevel::NeedsConfirmation,
     },
@@ -118,6 +126,8 @@ const REPAIR_ACTION_DEFINITIONS: [RepairActionDefinition; 4] = [
         protected_option_id: REPAIR_OPTION_CLEAR_SELECTED_EXECUTABLE_OVERRIDE,
         finding_code: FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE,
         issue_code: ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE,
+        fallback_title: "Clear selected executable override",
+        fallback_description: "Remove the saved executable override so Helm can fall back to normal executable discovery.",
         requires_confirmation: false,
         minimum_automation_level: RepairAutomationLevel::Automatic,
     },
@@ -174,18 +184,13 @@ fn option_satisfies_registry(plan: &RepairPlan, option: &RepairOption) -> bool {
             >= automation_restrictiveness(definition.minimum_automation_level)
 }
 
-fn registered_option(
-    action: RepairAction,
-    title: &str,
-    description: &str,
-    recommended: bool,
-) -> RepairOption {
+fn registered_option(action: RepairAction, recommended: bool) -> RepairOption {
     let definition = repair_action_definition(action);
     RepairOption {
         option_id: definition.protected_option_id.to_string(),
         action,
-        title: title.to_string(),
-        description: description.to_string(),
+        title: definition.fallback_title.to_string(),
+        description: definition.fallback_description.to_string(),
         content_keys: None,
         recommended,
         requires_confirmation: definition.requires_confirmation,
@@ -225,8 +230,7 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
     if finding.finding_code == FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL
         && finding.issue_code == ISSUE_CODE_METADATA_ONLY_INSTALL
     {
-        // TODO(doctor-repair): replace this embedded map with remote fingerprint
-        // lookup once the Shared Brain endpoint is available.
+        // Storeless compatibility fallback; runtime surfaces resolve SQLite knowledge.
         return Some(RepairPlan {
             manager_id: finding.manager_id.clone(),
             source_manager_id: finding.source_manager_id.clone(),
@@ -237,18 +241,8 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
             knowledge_source: REPAIR_KNOWLEDGE_SOURCE.to_string(),
             knowledge_version: REPAIR_KNOWLEDGE_VERSION.to_string(),
             options: vec![
-                registered_option(
-                    RepairAction::ReinstallManagerViaHomebrew,
-                    "Repair Homebrew install",
-                    "Run the manager install flow via Homebrew so binaries and metadata are aligned.",
-                    true,
-                ),
-                registered_option(
-                    RepairAction::RemoveStalePackageEntry,
-                    "Remove stale package metadata",
-                    "Uninstall the stale Homebrew package entry when you do not want this manager managed via Homebrew.",
-                    false,
-                ),
+                registered_option(RepairAction::ReinstallManagerViaHomebrew, true),
+                registered_option(RepairAction::RemoveStalePackageEntry, false),
             ],
         });
     }
@@ -267,8 +261,6 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
             knowledge_version: REPAIR_KNOWLEDGE_VERSION.to_string(),
             options: vec![registered_option(
                 RepairAction::ApplyPostInstallSetupDefaults,
-                "Apply recommended setup",
-                "Apply Helm's safe default shell setup block for this manager, then verify setup.",
                 true,
             )],
         });
@@ -288,8 +280,6 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
             knowledge_version: REPAIR_KNOWLEDGE_VERSION.to_string(),
             options: vec![registered_option(
                 RepairAction::ClearSelectedExecutableOverride,
-                "Clear selected executable override",
-                "Remove the saved executable override so Helm can fall back to normal executable discovery.",
                 true,
             )],
         });
@@ -306,7 +296,7 @@ pub fn plan_for_finding_with_knowledge(
         return None;
     }
 
-    let mut options = Vec::new();
+    let mut ranked_options = Vec::new();
     for entry in knowledge {
         let Ok(action) = validate_knowledge_binding(&entry.option_id, &entry.action_id) else {
             continue;
@@ -334,21 +324,32 @@ pub fn plan_for_finding_with_knowledge(
             continue;
         }
 
-        options.push(RepairOption {
-            option_id: entry.option_id.clone(),
-            action,
-            title: entry.content_keys.title.clone(),
-            description: entry.content_keys.description.clone(),
-            content_keys: Some(entry.content_keys.clone()),
-            recommended: entry.policy.enabled.unwrap_or(true),
-            requires_confirmation: entry.policy.requires_confirmation,
-            automation_level,
-        });
+        ranked_options.push((
+            entry.recommendation_rank,
+            RepairOption {
+                option_id: entry.option_id.clone(),
+                action,
+                title: definition.fallback_title.to_string(),
+                description: definition.fallback_description.to_string(),
+                content_keys: Some(entry.content_keys.clone()),
+                recommended: false,
+                requires_confirmation: entry.policy.requires_confirmation,
+                automation_level,
+            },
+        ));
     }
 
-    if options.is_empty() {
+    if ranked_options.is_empty() {
         return None;
     }
+    let preferred_rank = ranked_options.iter().filter_map(|(rank, _)| *rank).min();
+    let options = ranked_options
+        .into_iter()
+        .map(|(rank, mut option)| {
+            option.recommended = preferred_rank.is_some_and(|preferred| rank == Some(preferred));
+            option
+        })
+        .collect();
 
     let knowledge_version = knowledge
         .iter()
@@ -653,6 +654,7 @@ mod tests {
             revision: 1,
             option_id: REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW.to_string(),
             action_id: REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA.to_string(),
+            recommendation_rank: Some(0),
             policy: KnowledgePolicy {
                 requires_confirmation: true,               // Requires confirmation
                 automation_level: "automatic".to_string(), // Keep automatic
@@ -673,8 +675,13 @@ mod tests {
             option.option_id,
             REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW
         );
-        assert_eq!(option.title, "app.repair.test.title");
-        assert_eq!(option.requires_confirmation, true);
+        assert_eq!(option.title, "Repair Homebrew install");
+        assert_eq!(
+            option.content_keys.as_ref().unwrap().title,
+            "app.repair.test.title"
+        );
+        assert!(option.recommended);
+        assert!(option.requires_confirmation);
     }
 
     #[test]
@@ -692,7 +699,7 @@ mod tests {
             evidence_secondary: None,
         };
 
-        let mut knowledge = vec![
+        let knowledge = vec![
             EffectiveKnowledge {
                 // Incompatible finding code
                 source_key: "sqlite".to_string(),
@@ -701,6 +708,7 @@ mod tests {
                 revision: 1,
                 option_id: REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS.to_string(),
                 action_id: REPAIR_ACTION_APPLY_POST_INSTALL_SETUP_DEFAULTS.to_string(),
+                recommendation_rank: Some(0),
                 policy: KnowledgePolicy {
                     requires_confirmation: true,
                     automation_level: "needs_confirmation".to_string(),
@@ -721,6 +729,7 @@ mod tests {
                 revision: 1,
                 option_id: REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY.to_string(),
                 action_id: REPAIR_ACTION_HOMEBREW_UNINSTALL_FORMULA.to_string(),
+                recommendation_rank: Some(1),
                 policy: KnowledgePolicy {
                     requires_confirmation: false, // Trying to bypass confirmation
                     automation_level: "automatic".to_string(), // Trying to bypass automation level
@@ -741,6 +750,7 @@ mod tests {
                 revision: 1,
                 option_id: REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW.to_string(),
                 action_id: REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA.to_string(),
+                recommendation_rank: Some(0),
                 policy: KnowledgePolicy {
                     requires_confirmation: false,
                     automation_level: "read_only".to_string(),
