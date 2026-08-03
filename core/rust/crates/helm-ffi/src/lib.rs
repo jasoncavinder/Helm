@@ -718,11 +718,24 @@ struct FfiManagerPackageStateIssue {
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
+struct FfiKnowledgeContentKeys {
+    title: String,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    impact: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guidance: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct FfiManagerIssueRepairOption {
     option_id: String,
     action: String,
     title: String,
     description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_keys: Option<FfiKnowledgeContentKeys>,
     recommended: bool,
     requires_confirmation: bool,
     automation_level: String,
@@ -2075,6 +2088,14 @@ fn manager_package_state_issues(
                             action: option.action.as_str().to_string(),
                             title: option.title.clone(),
                             description: option.description.clone(),
+                            content_keys: option.content_keys.as_ref().map(|k| {
+                                FfiKnowledgeContentKeys {
+                                    title: k.title.clone(),
+                                    description: k.description.clone(),
+                                    impact: k.impact.clone(),
+                                    guidance: k.guidance.clone(),
+                                }
+                            }),
                             recommended: option.recommended,
                             requires_confirmation: option.requires_confirmation,
                             automation_level: option.automation_level.as_str().to_string(),
@@ -14250,5 +14271,64 @@ mod tests {
             restart_required: false,
             runtime_state: Default::default(),
         }
+    }
+
+    #[test]
+    fn repair_option_content_keys_cross_ffi_boundary() {
+        use crate::{FfiKnowledgeContentKeys, FfiManagerIssueRepairOption};
+        use helm_core::repair::{RepairAction, RepairAutomationLevel, RepairOption};
+
+        let core_option = RepairOption {
+            option_id: "test_option".to_string(),
+            action: RepairAction::ReinstallManagerViaHomebrew,
+            title: "fallback title".to_string(),
+            description: "fallback desc".to_string(),
+            content_keys: Some(
+                helm_core::persistence::repair_knowledge::KnowledgeContentKeys {
+                    title: "app.repair.test.title".to_string(),
+                    description: "app.repair.test.desc".to_string(),
+                    impact: Some("app.repair.test.impact".to_string()),
+                    guidance: Some("app.repair.test.guidance".to_string()),
+                },
+            ),
+            recommended: true,
+            requires_confirmation: true,
+            automation_level: RepairAutomationLevel::Automatic,
+        };
+
+        let ffi_option = FfiManagerIssueRepairOption {
+            option_id: core_option.option_id.clone(),
+            action: core_option.action.as_str().to_string(),
+            title: core_option.title.clone(),
+            description: core_option.description.clone(),
+            content_keys: core_option
+                .content_keys
+                .as_ref()
+                .map(|k| FfiKnowledgeContentKeys {
+                    title: k.title.clone(),
+                    description: k.description.clone(),
+                    impact: k.impact.clone(),
+                    guidance: k.guidance.clone(),
+                }),
+            recommended: core_option.recommended,
+            requires_confirmation: core_option.requires_confirmation,
+            automation_level: core_option.automation_level.as_str().to_string(),
+        };
+
+        assert_eq!(ffi_option.title, "fallback title");
+        assert_eq!(
+            ffi_option.content_keys.as_ref().unwrap().title,
+            "app.repair.test.title"
+        );
+        assert_eq!(
+            ffi_option
+                .content_keys
+                .as_ref()
+                .unwrap()
+                .impact
+                .as_deref()
+                .unwrap(),
+            "app.repair.test.impact"
+        );
     }
 }

@@ -1847,7 +1847,7 @@ private extension InspectorManagerDetailView {
             if let repairOptions = issue.repairOptions, !repairOptions.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(repairOptions, id: \.optionId) { option in
-                        Button(option.title) {
+                        Button {
                             if option.requiresConfirmation {
                                 confirmAction = .repair(issue: issue, option: option)
                             } else {
@@ -1859,6 +1859,12 @@ private extension InspectorManagerDetailView {
                                     optionId: option.optionId,
                                     confirmed: false
                                 )
+                            }
+                        } label: {
+                            if let keys = option.contentKeys {
+                                Text(LocalizedStringKey(keys.title))
+                            } else {
+                                Text(option.title)
                             }
                         }
                         .buttonStyle(HelmSecondaryButtonStyle())
@@ -2991,9 +2997,21 @@ private struct InspectorManagerDetailView: View {
                     secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
                 )
             case let .repair(issue, option):
+                let titleText = option.contentKeys != nil ? Text(LocalizedStringKey(option.contentKeys!.title)) : Text(option.title)
+                var messageText = option.contentKeys != nil ? Text(LocalizedStringKey(option.contentKeys!.description)) : Text(option.description)
+                
+                if let keys = option.contentKeys {
+                    if let impact = keys.impact {
+                        messageText = messageText + Text("\n\n") + Text(LocalizedStringKey(impact))
+                    }
+                    if let guidance = keys.guidance {
+                        messageText = messageText + Text("\n\n") + Text(LocalizedStringKey(guidance))
+                    }
+                }
+                
                 return Alert(
-                    title: Text(option.title),
-                    message: Text(option.description),
+                    title: titleText,
+                    message: messageText,
                     primaryButton: .default(Text(L10n.Common.continue.localized)) {
                         core.applyManagerPackageStateIssueRepair(
                             managerId: manager.id,

@@ -186,6 +186,7 @@ fn registered_option(
         action,
         title: title.to_string(),
         description: description.to_string(),
+        content_keys: None,
         recommended,
         requires_confirmation: definition.requires_confirmation,
         automation_level: definition.minimum_automation_level,
@@ -199,6 +200,8 @@ pub struct RepairOption {
     pub action: RepairAction,
     pub title: String,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_keys: Option<crate::persistence::repair_knowledge::KnowledgeContentKeys>,
     pub recommended: bool,
     pub requires_confirmation: bool,
     pub automation_level: RepairAutomationLevel,
@@ -299,39 +302,71 @@ pub fn plan_for_finding_with_knowledge(
     finding: &DoctorFinding,
     knowledge: &[EffectiveKnowledge],
 ) -> Option<RepairPlan> {
-    let mut plan = plan_for_finding(finding)?;
-    plan.options.retain_mut(|option| {
-        let Some(effective) = knowledge.iter().find(|entry| {
-            entry.option_id == option.option_id && entry.action_id == option.action.as_str()
-        }) else {
-            return false;
-        };
-        let Some(automation_level) = effective.policy.automation_level() else {
-            return false;
-        };
-        if automation_level == RepairAutomationLevel::ReadOnly {
-            return false;
-        }
-        option.requires_confirmation |= effective.policy.requires_confirmation;
-        option.automation_level = if automation_restrictiveness(automation_level)
-            > automation_restrictiveness(option.automation_level)
-        {
-            automation_level
-        } else {
-            option.automation_level
-        };
-        true
-    });
-    if plan.options.is_empty() {
+    if knowledge.is_empty() {
         return None;
     }
-    plan.knowledge_source = "sqlite_local".to_string();
-    plan.knowledge_version = knowledge
+
+    let mut options = Vec::new();
+    for entry in knowledge {
+        let Ok(action) = validate_knowledge_binding(&entry.option_id, &entry.action_id) else {
+            continue;
+        };
+
+        let definition = repair_action_definition(action);
+        if definition.finding_code != finding.finding_code
+            || definition.issue_code != finding.issue_code
+        {
+            continue;
+        }
+
+        let Some(automation_level) = entry.policy.automation_level() else {
+            continue;
+        };
+
+        if automation_level == RepairAutomationLevel::ReadOnly {
+            continue;
+        }
+
+        if (definition.requires_confirmation && !entry.policy.requires_confirmation)
+            || automation_restrictiveness(automation_level)
+                < automation_restrictiveness(definition.minimum_automation_level)
+        {
+            continue;
+        }
+
+        options.push(RepairOption {
+            option_id: entry.option_id.clone(),
+            action,
+            title: entry.content_keys.title.clone(),
+            description: entry.content_keys.description.clone(),
+            content_keys: Some(entry.content_keys.clone()),
+            recommended: entry.policy.enabled.unwrap_or(true),
+            requires_confirmation: entry.policy.requires_confirmation,
+            automation_level,
+        });
+    }
+
+    if options.is_empty() {
+        return None;
+    }
+
+    let knowledge_version = knowledge
         .iter()
         .map(|entry| format!("{}@{}", entry.knowledge_entry_id, entry.revision))
         .collect::<Vec<_>>()
         .join(",");
-    Some(plan)
+
+    Some(RepairPlan {
+        manager_id: finding.manager_id.clone(),
+        source_manager_id: finding.source_manager_id.clone(),
+        package_name: finding.package_name.clone(),
+        issue_code: finding.issue_code.clone(),
+        finding_code: finding.finding_code.clone(),
+        fingerprint: finding.fingerprint.clone(),
+        knowledge_source: "sqlite_local".to_string(),
+        knowledge_version,
+        options,
+    })
 }
 
 pub fn plan_for_issue(
@@ -414,6 +449,9 @@ mod tests {
         DoctorFinding, DoctorFindingSeverity, FINDING_CODE_POST_INSTALL_SETUP_REQUIRED,
         ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED, ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE,
     };
+
+    use crate::persistence::doctor_persistence::{EffectiveKnowledge, KnowledgeTrustLevel};
+    use crate::persistence::repair_knowledge::{KnowledgeContentKeys, KnowledgePolicy};
 
     #[test]
     fn metadata_only_finding_returns_embedded_repair_plan() {
@@ -591,5 +629,133 @@ mod tests {
             plan.options[0].action,
             RepairAction::ClearSelectedExecutableOverride
         );
+    }
+
+    #[test]
+    fn knowledge_directly_creates_plan() {
+        let finding = DoctorFinding {
+            finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL.to_string(),
+            issue_code: ISSUE_CODE_METADATA_ONLY_INSTALL.to_string(),
+            fingerprint: "fingerprint".to_string(),
+            manager_id: ManagerId::Rustup.as_str().to_string(),
+            source_manager_id: Some(ManagerId::HomebrewFormula.as_str().to_string()),
+            package_name: Some("rustup".to_string()),
+            severity: DoctorFindingSeverity::Warning,
+            summary: "summary".to_string(),
+            evidence_primary: None,
+            evidence_secondary: None,
+        };
+
+        let knowledge = vec![EffectiveKnowledge {
+            source_key: "sqlite".to_string(),
+            trust_level: KnowledgeTrustLevel::Bundled,
+            knowledge_entry_id: "homebrew_reinstall".to_string(),
+            revision: 1,
+            option_id: REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW.to_string(),
+            action_id: REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA.to_string(),
+            policy: KnowledgePolicy {
+                requires_confirmation: true,               // Requires confirmation
+                automation_level: "automatic".to_string(), // Keep automatic
+                enabled: Some(true),
+            },
+            content_keys: KnowledgeContentKeys {
+                title: "app.repair.test.title".to_string(),
+                description: "app.repair.test.desc".to_string(),
+                impact: None,
+                guidance: None,
+            },
+        }];
+
+        let plan = plan_for_finding_with_knowledge(&finding, &knowledge).expect("expected plan");
+        assert_eq!(plan.options.len(), 1);
+        let option = &plan.options[0];
+        assert_eq!(
+            option.option_id,
+            REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW
+        );
+        assert_eq!(option.title, "app.repair.test.title");
+        assert_eq!(option.requires_confirmation, true);
+    }
+
+    #[test]
+    fn knowledge_rejects_incompatible_weakening_and_read_only() {
+        let finding = DoctorFinding {
+            finding_code: FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL.to_string(),
+            issue_code: ISSUE_CODE_METADATA_ONLY_INSTALL.to_string(),
+            fingerprint: "fingerprint".to_string(),
+            manager_id: ManagerId::Rustup.as_str().to_string(),
+            source_manager_id: Some(ManagerId::HomebrewFormula.as_str().to_string()),
+            package_name: Some("rustup".to_string()),
+            severity: DoctorFindingSeverity::Warning,
+            summary: "summary".to_string(),
+            evidence_primary: None,
+            evidence_secondary: None,
+        };
+
+        let mut knowledge = vec![
+            EffectiveKnowledge {
+                // Incompatible finding code
+                source_key: "sqlite".to_string(),
+                trust_level: KnowledgeTrustLevel::Bundled,
+                knowledge_entry_id: "incompatible".to_string(),
+                revision: 1,
+                option_id: REPAIR_OPTION_APPLY_POST_INSTALL_SETUP_DEFAULTS.to_string(),
+                action_id: REPAIR_ACTION_APPLY_POST_INSTALL_SETUP_DEFAULTS.to_string(),
+                policy: KnowledgePolicy {
+                    requires_confirmation: true,
+                    automation_level: "needs_confirmation".to_string(),
+                    enabled: Some(true),
+                },
+                content_keys: KnowledgeContentKeys {
+                    title: "app.repair.test.title".to_string(),
+                    description: "app.repair.test.desc".to_string(),
+                    impact: None,
+                    guidance: None,
+                },
+            },
+            EffectiveKnowledge {
+                // Weaken registry (needs confirmation -> automatic)
+                source_key: "sqlite".to_string(),
+                trust_level: KnowledgeTrustLevel::Bundled,
+                knowledge_entry_id: "weaken".to_string(),
+                revision: 1,
+                option_id: REPAIR_OPTION_REMOVE_STALE_PACKAGE_ENTRY.to_string(),
+                action_id: REPAIR_ACTION_HOMEBREW_UNINSTALL_FORMULA.to_string(),
+                policy: KnowledgePolicy {
+                    requires_confirmation: false, // Trying to bypass confirmation
+                    automation_level: "automatic".to_string(), // Trying to bypass automation level
+                    enabled: Some(true),
+                },
+                content_keys: KnowledgeContentKeys {
+                    title: "app.repair.test.title".to_string(),
+                    description: "app.repair.test.desc".to_string(),
+                    impact: None,
+                    guidance: None,
+                },
+            },
+            EffectiveKnowledge {
+                // Read only
+                source_key: "sqlite".to_string(),
+                trust_level: KnowledgeTrustLevel::Bundled,
+                knowledge_entry_id: "readonly".to_string(),
+                revision: 1,
+                option_id: REPAIR_OPTION_REINSTALL_MANAGER_VIA_HOMEBREW.to_string(),
+                action_id: REPAIR_ACTION_HOMEBREW_REINSTALL_FORMULA.to_string(),
+                policy: KnowledgePolicy {
+                    requires_confirmation: false,
+                    automation_level: "read_only".to_string(),
+                    enabled: Some(true),
+                },
+                content_keys: KnowledgeContentKeys {
+                    title: "app.repair.test.title".to_string(),
+                    description: "app.repair.test.desc".to_string(),
+                    impact: None,
+                    guidance: None,
+                },
+            },
+        ];
+
+        let plan = plan_for_finding_with_knowledge(&finding, &knowledge);
+        assert!(plan.is_none());
     }
 }
