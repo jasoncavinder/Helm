@@ -5,6 +5,24 @@
   "generated_at_unix": 1720000000,
   "entries": [
     {
+      "knowledge_entry_id": "repair.executable_override.clear",
+      "revision": 1,
+      "state": "active",
+      "selector": {
+        "finding_code": "selected_executable_path_stale"
+      },
+      "option_id": "clear_selected_executable_override",
+      "action_id": "manager.clear_selected_executable_override",
+      "policy": {
+        "requires_confirmation": false,
+        "automation_level": "automatic"
+      },
+      "content_keys": {
+        "title": "Clear selected executable override",
+        "description": "Remove the saved executable override so Helm can fall back to normal executable discovery."
+      }
+    },
+    {
       "knowledge_entry_id": "repair.homebrew.metadata_only.reinstall",
       "revision": 1,
       "state": "active",
@@ -57,28 +75,10 @@
         "title": "Apply recommended setup",
         "description": "Apply Helm's safe default shell setup block for this manager, then verify setup."
       }
-    },
-    {
-      "knowledge_entry_id": "repair.executable_override.clear",
-      "revision": 1,
-      "state": "active",
-      "selector": {
-        "finding_code": "selected_executable_path_stale"
-      },
-      "option_id": "clear_selected_executable_override",
-      "action_id": "manager.clear_selected_executable_override",
-      "policy": {
-        "requires_confirmation": false,
-        "automation_level": "automatic"
-      },
-      "content_keys": {
-        "title": "Clear selected executable override",
-        "description": "Remove the saved executable override so Helm can fall back to normal executable discovery."
-      }
     }
   ],
   "integrity": {
     "algorithm": "sha256",
-    "value": "3a7d1366f3ebe634b8f60ea41de5697a3afb5df8e734de41243ee82f62ed6bf0"
+    "value": "1b6c46b402ea1cad175b23654c4035d8b9e23fe17d243d19709ec1cac306f5c4"
   }
 }

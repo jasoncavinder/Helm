@@ -2822,29 +2822,60 @@ impl DoctorStore for SqliteStore {
         self.with_connection("import_knowledge", |connection| {
             crate::sqlite::store::ensure_schema_ready(connection)?;
 
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+            // Check protected namespace rules
+            if trust_level == "user_imported" && envelope.declared_source_id.starts_with("helm_") {
+                return Err(crate::sqlite::store::storage_error_sqlite("Unauthorized Helm namespace claim"));
+            }
+
+            // Check option rebinding restrictions
+            for entry in &envelope.entries {
+                if let Some(opt_id) = &entry.option_id {
+                    let action = match opt_id.as_str() {
+                        "reinstall_manager_via_homebrew" => Some("homebrew.reinstall_formula"),
+                        "remove_stale_package_entry" => Some("homebrew.uninstall_formula"),
+                        "apply_post_install_setup_defaults" => Some("manager.apply_post_install_setup_defaults"),
+                        "clear_selected_executable_override" => Some("manager.clear_selected_executable_override"),
+                        _ => None,
+                    };
+                    if let Some(expected_action) = action {
+                        if let Some(act_id) = &entry.action_id {
+                            if act_id != expected_action {
+                                return Err(crate::sqlite::store::storage_error_sqlite("Attempt to rebind protected option ID"));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
 
             let tx = connection.transaction()?;
 
-            // Check for idempotency / equivocation
-            let existing: Option<String> = tx.query_row(
-                "SELECT envelope_checksum FROM repair_knowledge_sources WHERE source_key = ?1 AND latest_revision = ?2",
-                params![source_key, envelope.source_revision],
-                |row| row.get(0)
+            // Check for idempotency / equivocation / downgrade
+            let existing: Option<(u64, String)> = tx.query_row(
+                "SELECT latest_revision, envelope_checksum FROM repair_knowledge_sources WHERE source_key = ?1",
+                rusqlite::params![source_key],
+                |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?))
             ).optional()?;
 
             let checksum = envelope.integrity.value.clone();
 
-            if let Some(existing_checksum) = existing {
-                if existing_checksum == checksum {
-                    return Ok(()); // Idempotent
-                } else {
-                    return Err(crate::sqlite::store::storage_error_sqlite("Equivocation detected: same revision but different checksum"));
+            if let Some((existing_rev, existing_checksum)) = existing {
+                if envelope.source_revision < existing_rev {
+                    return Err(crate::sqlite::store::storage_error_sqlite("Downgrades are rejected"));
+                } else if envelope.source_revision == existing_rev {
+                    if existing_checksum == checksum {
+                        return Ok(()); // Idempotent
+                    } else {
+                        return Err(crate::sqlite::store::storage_error_sqlite("Equivocation detected: same revision but different checksum"));
+                    }
                 }
             }
 
             // Upsert source
-            // Note: I need to add envelope_checksum to repair_knowledge_sources in MIGRATION_0017
             tx.execute(
                 "INSERT INTO repair_knowledge_sources (source_key, declared_source_id, latest_revision, trust_level, imported_at_unix, envelope_checksum)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -2855,16 +2886,16 @@ impl DoctorStore for SqliteStore {
                  imported_at_unix = excluded.imported_at_unix,
                  envelope_checksum = excluded.envelope_checksum
                  WHERE excluded.latest_revision > latest_revision",
-                params![source_key, envelope.declared_source_id, envelope.source_revision, trust_level, now, checksum],
+                rusqlite::params![source_key, envelope.declared_source_id, envelope.source_revision, trust_level, now, checksum],
             )?;
 
             for entry in &envelope.entries {
                 tx.execute(
-                    "INSERT INTO repair_knowledge_entries (
+                    "INSERT OR IGNORE INTO repair_knowledge_entries (
                         source_key, knowledge_entry_id, revision, state, selector_json,
                         option_id, action_id, policy_json, parameter_bindings_json, content_keys_json
                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                    params![
+                    rusqlite::params![
                         source_key,
                         entry.knowledge_entry_id,
                         entry.revision,
@@ -2908,7 +2939,7 @@ impl DoctorStore for SqliteStore {
                     knowledge_entry_id: row.get(0)?,
                     revision: row.get::<_, i64>(1)? as u64,
                     state: row.get(2)?,
-                    selector: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or(serde_json::Value::Null),
+                    selector: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or_else(|_| crate::persistence::repair_knowledge::KnowledgeSelector { fingerprint: None, finding_code: None, issue_code: None, manager_id: None, source_manager_id: None, subject_kind: None, subject_value: None, package_name: None }),
                     option_id: row.get(4)?,
                     action_id: row.get(5)?,
                     policy: row.get::<_, Option<String>>(6)?.map(|s| serde_json::from_str(&s).unwrap()),

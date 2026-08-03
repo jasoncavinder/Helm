@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -15,16 +14,62 @@ pub struct KnowledgeEnvelope {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct KnowledgeSelector {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finding_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manager_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_manager_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgePolicy {
+    pub requires_confirmation: bool,
+    pub automation_level: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeContentKeys {
+    pub title: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub impact: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guidance: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KnowledgeEntry {
     pub knowledge_entry_id: String,
     pub revision: u64,
     pub state: String,
-    pub selector: Value,
+    pub selector: KnowledgeSelector,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub option_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub action_id: Option<String>,
-    pub policy: Option<Value>,
-    pub parameter_bindings: Option<Value>,
-    pub content_keys: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy: Option<KnowledgePolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameter_bindings: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_keys: Option<KnowledgeContentKeys>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -33,7 +78,7 @@ pub struct KnowledgeIntegrity {
     pub algorithm: String,
     pub value: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<Value>,
+    pub signature: Option<serde_json::Value>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -75,16 +120,44 @@ impl KnowledgeEnvelope {
         }
 
         let mut seen = std::collections::HashSet::new();
+        let mut last_id_rev: Option<(&String, u64)> = None;
+
         for entry in &envelope.entries {
             if entry.state != "active" && entry.state != "tombstone" {
                 return Err(KnowledgeEnvelopeError::InvalidState(entry.state.clone()));
             }
+            if entry.state == "tombstone" {
+                if entry.option_id.is_some()
+                    || entry.action_id.is_some()
+                    || entry.policy.is_some()
+                    || entry.parameter_bindings.is_some()
+                    || entry.content_keys.is_some()
+                {
+                    return Err(KnowledgeEnvelopeError::FormatError(
+                        "Tombstone cannot contain executable or content fields".into(),
+                    ));
+                }
+            }
             if !seen.insert((entry.knowledge_entry_id.clone(), entry.revision)) {
                 return Err(KnowledgeEnvelopeError::DuplicateEntryRevision);
             }
+
+            // Check sorting
+            if let Some((last_id, last_rev)) = last_id_rev {
+                if entry.knowledge_entry_id < *last_id {
+                    return Err(KnowledgeEnvelopeError::FormatError(
+                        "Entries not sorted by knowledge_entry_id".into(),
+                    ));
+                } else if entry.knowledge_entry_id == *last_id && entry.revision <= last_rev {
+                    return Err(KnowledgeEnvelopeError::FormatError(
+                        "Entries not sorted by revision".into(),
+                    ));
+                }
+            }
+            last_id_rev = Some((&entry.knowledge_entry_id, entry.revision));
         }
 
-        let mut json_val: Value = serde_json::from_str(json)
+        let mut json_val: serde_json::Value = serde_json::from_str(json)
             .map_err(|e| KnowledgeEnvelopeError::FormatError(e.to_string()))?;
         if let Some(obj) = json_val.as_object_mut() {
             obj.remove("integrity");
