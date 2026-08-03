@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "declared_source_id": "helm_bundled_knowledge",
+  "source_revision": 1,
+  "generated_at_unix": 1720000000,
+  "entries": [
+    {
+      "knowledge_entry_id": "repair.homebrew.metadata_only.reinstall",
+      "revision": 1,
+      "state": "active",
+      "selector": {
+        "finding_code": "homebrew_metadata_only_install"
+      },
+      "option_id": "reinstall_manager_via_homebrew",
+      "action_id": "homebrew.reinstall_formula",
+      "policy": {
+        "requires_confirmation": false,
+        "automation_level": "automatic"
+      },
+      "content_keys": {
+        "title": "Repair Homebrew install",
+        "description": "Run the manager install flow via Homebrew so binaries and metadata are aligned."
+      }
+    },
+    {
+      "knowledge_entry_id": "repair.homebrew.metadata_only.remove",
+      "revision": 1,
+      "state": "active",
+      "selector": {
+        "finding_code": "homebrew_metadata_only_install"
+      },
+      "option_id": "remove_stale_package_entry",
+      "action_id": "homebrew.uninstall_formula",
+      "policy": {
+        "requires_confirmation": true,
+        "automation_level": "needs_confirmation"
+      },
+      "content_keys": {
+        "title": "Remove stale package metadata",
+        "description": "Uninstall the stale Homebrew package entry when you do not want this manager managed via Homebrew."
+      }
+    },
+    {
+      "knowledge_entry_id": "repair.post_install.setup_defaults",
+      "revision": 1,
+      "state": "active",
+      "selector": {
+        "finding_code": "post_install_setup_required"
+      },
+      "option_id": "apply_post_install_setup_defaults",
+      "action_id": "manager.apply_post_install_setup_defaults",
+      "policy": {
+        "requires_confirmation": true,
+        "automation_level": "needs_confirmation"
+      },
+      "content_keys": {
+        "title": "Apply recommended setup",
+        "description": "Apply Helm's safe default shell setup block for this manager, then verify setup."
+      }
+    },
+    {
+      "knowledge_entry_id": "repair.executable_override.clear",
+      "revision": 1,
+      "state": "active",
+      "selector": {
+        "finding_code": "selected_executable_path_stale"
+      },
+      "option_id": "clear_selected_executable_override",
+      "action_id": "manager.clear_selected_executable_override",
+      "policy": {
+        "requires_confirmation": false,
+        "automation_level": "automatic"
+      },
+      "content_keys": {
+        "title": "Clear selected executable override",
+        "description": "Remove the saved executable override so Helm can fall back to normal executable discovery."
+      }
+    }
+  ],
+  "integrity": {
+    "algorithm": "sha256",
+    "value": "3a7d1366f3ebe634b8f60ea41de5697a3afb5df8e734de41243ee82f62ed6bf0"
+  }
+}

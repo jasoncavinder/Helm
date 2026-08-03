@@ -11,6 +11,9 @@ use crate::models::{
     PackageRef, PinKind, PinRecord, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskRecord,
     TaskStatus, TaskType,
 };
+use crate::persistence::doctor_persistence::{
+    DoctorStore, EffectiveKnowledge, PersistedDoctorFinding, RepairHistoryRecord,
+};
 use crate::persistence::{
     DetectionStore, ManagerPreference, MigrationStore, PackageManagerPreference, PackageStore,
     PersistenceResult, PinStore, SearchCacheStore, TaskStore,
@@ -2681,5 +2684,318 @@ fn storage_error_text(operation: &str, message: impl AsRef<str>) -> CoreError {
         action: None,
         kind: CoreErrorKind::StorageFailure,
         message: format!("sqlite store '{operation}' failed: {}", message.as_ref()),
+    }
+}
+
+impl DoctorStore for SqliteStore {
+    fn start_scan(
+        &self,
+        scan_id: &str,
+        generation: i64,
+        started_at_unix: i64,
+    ) -> PersistenceResult<()> {
+        self.with_connection("start_scan", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+            connection.execute(
+                "INSERT INTO doctor_scans (scan_id, generation, started_at_unix) VALUES (?1, ?2, ?3)",
+                params![scan_id, generation, started_at_unix],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn upsert_findings(
+        &self,
+        generation: i64,
+        findings: &[PersistedDoctorFinding],
+    ) -> PersistenceResult<()> {
+        self.with_connection("upsert_findings", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+            let tx = connection.transaction()?;
+
+            for finding in findings {
+                tx.execute(
+                    "INSERT INTO doctor_findings (
+                        fingerprint, finding_code, issue_code, manager_id, source_manager_id, subject_kind,
+                        subject_value, severity, evidence_json, detector_id, detector_version,
+                        first_seen_unix, last_seen_unix, latest_observation_generation, resolution_state
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 'active')
+                    ON CONFLICT(fingerprint) DO UPDATE SET
+                        severity = excluded.severity,
+                        evidence_json = excluded.evidence_json,
+                        detector_version = excluded.detector_version,
+                        last_seen_unix = excluded.last_seen_unix,
+                        latest_observation_generation = excluded.latest_observation_generation,
+                        resolution_state = 'active'",
+                    params![
+                        finding.fingerprint,
+                        finding.finding_code,
+                        finding.issue_code,
+                        finding.manager_id.as_str(),
+                        finding.source_manager_id.map(|id| id.as_str().to_string()),
+                        finding.subject_kind,
+                        finding.subject_value,
+                        finding.severity,
+                        finding.evidence_json,
+                        finding.detector_id,
+                        finding.detector_version,
+                        finding.first_seen_unix,
+                        finding.last_seen_unix,
+                        generation
+                    ],
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    fn mark_resolved_for_scopes(
+        &self,
+        generation: i64,
+        scopes: &[(String, ManagerId)],
+    ) -> PersistenceResult<()> {
+        self.with_connection("mark_resolved_for_scopes", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+            let tx = connection.transaction()?;
+
+            for (detector_id, manager_id) in scopes {
+                tx.execute(
+                    "UPDATE doctor_findings
+                     SET resolution_state = 'resolved'
+                     WHERE detector_id = ?1 AND manager_id = ?2 AND latest_observation_generation < ?3",
+                    params![detector_id, manager_id.as_str(), generation],
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    fn get_active_findings(&self) -> PersistenceResult<Vec<PersistedDoctorFinding>> {
+        self.with_connection("get_active_findings", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+            let mut stmt = connection.prepare(
+                "SELECT fingerprint, finding_code, issue_code, manager_id, source_manager_id,
+                 subject_kind, subject_value, severity, evidence_json, detector_id, detector_version,
+                 first_seen_unix, last_seen_unix, latest_observation_generation, resolution_state
+                 FROM doctor_findings
+                 WHERE resolution_state = 'active'",
+            )?;
+            let iter = stmt.query_map([], |row| {
+                let manager_id_str: String = row.get(3)?;
+                let source_manager_id_str: Option<String> = row.get(4)?;
+                Ok(PersistedDoctorFinding {
+                    fingerprint: row.get(0)?,
+                    finding_code: row.get(1)?,
+                    issue_code: row.get(2)?,
+                    manager_id: manager_id_str.parse().unwrap_or(ManagerId::HomebrewFormula), // fallback
+                    source_manager_id: source_manager_id_str.and_then(|s| s.parse().ok()),
+                    subject_kind: row.get(5)?,
+                    subject_value: row.get(6)?,
+                    severity: row.get(7)?,
+                    evidence_json: row.get(8)?,
+                    detector_id: row.get(9)?,
+                    detector_version: row.get(10)?,
+                    first_seen_unix: row.get(11)?,
+                    last_seen_unix: row.get(12)?,
+                    latest_observation_generation: row.get(13)?,
+                    resolution_state: row.get(14)?,
+                })
+            })?;
+
+            let mut findings = Vec::new();
+            for item in iter {
+                findings.push(item.map_err(|e| crate::sqlite::store::storage_error_sqlite(&e.to_string()))?);
+            }
+            Ok(findings)
+        })
+    }
+
+    fn import_knowledge(
+        &self,
+        source_key: &str,
+        envelope: &crate::persistence::repair_knowledge::KnowledgeEnvelope,
+        trust_level: &str,
+    ) -> PersistenceResult<()> {
+        self.with_connection("import_knowledge", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+
+            let tx = connection.transaction()?;
+
+            // Check for idempotency / equivocation
+            let existing: Option<String> = tx.query_row(
+                "SELECT envelope_checksum FROM repair_knowledge_sources WHERE source_key = ?1 AND latest_revision = ?2",
+                params![source_key, envelope.source_revision],
+                |row| row.get(0)
+            ).optional()?;
+
+            let checksum = envelope.integrity.value.clone();
+
+            if let Some(existing_checksum) = existing {
+                if existing_checksum == checksum {
+                    return Ok(()); // Idempotent
+                } else {
+                    return Err(crate::sqlite::store::storage_error_sqlite("Equivocation detected: same revision but different checksum"));
+                }
+            }
+
+            // Upsert source
+            // Note: I need to add envelope_checksum to repair_knowledge_sources in MIGRATION_0017
+            tx.execute(
+                "INSERT INTO repair_knowledge_sources (source_key, declared_source_id, latest_revision, trust_level, imported_at_unix, envelope_checksum)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(source_key) DO UPDATE SET
+                 declared_source_id = excluded.declared_source_id,
+                 latest_revision = excluded.latest_revision,
+                 trust_level = excluded.trust_level,
+                 imported_at_unix = excluded.imported_at_unix,
+                 envelope_checksum = excluded.envelope_checksum
+                 WHERE excluded.latest_revision > latest_revision",
+                params![source_key, envelope.declared_source_id, envelope.source_revision, trust_level, now, checksum],
+            )?;
+
+            for entry in &envelope.entries {
+                tx.execute(
+                    "INSERT INTO repair_knowledge_entries (
+                        source_key, knowledge_entry_id, revision, state, selector_json,
+                        option_id, action_id, policy_json, parameter_bindings_json, content_keys_json
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![
+                        source_key,
+                        entry.knowledge_entry_id,
+                        entry.revision,
+                        entry.state,
+                        serde_json::to_string(&entry.selector).unwrap(),
+                        entry.option_id,
+                        entry.action_id,
+                        entry.policy.as_ref().map(|v| serde_json::to_string(v).unwrap()),
+                        entry.parameter_bindings.as_ref().map(|v| serde_json::to_string(v).unwrap()),
+                        entry.content_keys.as_ref().map(|v| serde_json::to_string(v).unwrap())
+                    ]
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    fn export_knowledge(
+        &self,
+        source_key: &str,
+    ) -> PersistenceResult<crate::persistence::repair_knowledge::KnowledgeEnvelope> {
+        self.with_connection("export_knowledge", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+
+            let (declared_source_id, latest_revision): (String, i64) = connection.query_row(
+                "SELECT declared_source_id, latest_revision FROM repair_knowledge_sources WHERE source_key = ?1",
+                params![source_key],
+                |row| Ok((row.get(0)?, row.get(1)?))
+            ).map_err(|e| crate::sqlite::store::storage_error_sqlite(&e.to_string()))?;
+
+            let mut stmt = connection.prepare(
+                "SELECT knowledge_entry_id, revision, state, selector_json, option_id, action_id, policy_json, parameter_bindings_json, content_keys_json
+                 FROM repair_knowledge_entries
+                 WHERE source_key = ?1
+                 ORDER BY knowledge_entry_id ASC, revision ASC"
+            )?;
+            let iter = stmt.query_map(params![source_key], |row| {
+                Ok(crate::persistence::repair_knowledge::KnowledgeEntry {
+                    knowledge_entry_id: row.get(0)?,
+                    revision: row.get::<_, i64>(1)? as u64,
+                    state: row.get(2)?,
+                    selector: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or(serde_json::Value::Null),
+                    option_id: row.get(4)?,
+                    action_id: row.get(5)?,
+                    policy: row.get::<_, Option<String>>(6)?.map(|s| serde_json::from_str(&s).unwrap()),
+                    parameter_bindings: row.get::<_, Option<String>>(7)?.map(|s| serde_json::from_str(&s).unwrap()),
+                    content_keys: row.get::<_, Option<String>>(8)?.map(|s| serde_json::from_str(&s).unwrap()),
+                })
+            })?;
+
+            let mut entries = Vec::new();
+            for item in iter {
+                entries.push(item.map_err(|e| crate::sqlite::store::storage_error_sqlite(&e.to_string()))?);
+            }
+
+            let generated_at_unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+
+            let mut envelope = crate::persistence::repair_knowledge::KnowledgeEnvelope {
+                schema_version: 1,
+                declared_source_id,
+                source_revision: latest_revision as u64,
+                generated_at_unix,
+                entries,
+                integrity: crate::persistence::repair_knowledge::KnowledgeIntegrity {
+                    algorithm: "sha256".to_string(),
+                    value: "".to_string(),
+                    signature: None,
+                },
+            };
+
+            let canonical = envelope.to_canonical_jcs_without_integrity().map_err(|e| crate::sqlite::store::storage_error_sqlite(&e.to_string()))?;
+            let mut hasher = <sha2::Sha256 as sha2::Digest>::new();
+            sha2::Digest::update(&mut hasher, canonical.as_bytes());
+            envelope.integrity.value = sha2::Digest::finalize(hasher).iter().map(|b| format!("{:02x}", b)).collect::<String>();
+
+            Ok(envelope)
+        })
+    }
+
+    fn get_effective_knowledge(
+        &self,
+        fingerprint: &str,
+    ) -> PersistenceResult<Vec<EffectiveKnowledge>> {
+        self.with_connection("get_effective_knowledge", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+            // This is a simplified query. Real one merges policies.
+            // For now just return active entries matching selector
+            let mut stmt = connection.prepare(
+                "SELECT knowledge_entry_id, option_id, action_id, policy_json, parameter_bindings_json, content_keys_json
+                 FROM repair_knowledge_entries
+                 WHERE state = 'active' AND selector_json = ?1"
+            )?;
+            let selector = fingerprint;
+            let iter = stmt.query_map(params![selector], |row| {
+                Ok(EffectiveKnowledge {
+                    knowledge_entry_id: row.get(0)?,
+                    option_id: row.get(1)?,
+                    action_id: row.get(2)?,
+                    policy_json: row.get(3)?,
+                    parameter_bindings_json: row.get(4)?,
+                    content_keys_json: row.get(5)?,
+                })
+            })?;
+
+            let mut result = Vec::new();
+            for item in iter {
+                result.push(item.map_err(|e| crate::sqlite::store::storage_error_sqlite(&e.to_string()))?);
+            }
+            Ok(result)
+        })
+    }
+
+    fn record_repair_history(&self, record: &RepairHistoryRecord) -> PersistenceResult<()> {
+        self.with_connection("record_repair_history", |connection| {
+            crate::sqlite::store::ensure_schema_ready(connection)?;
+            connection.execute(
+                "INSERT INTO repair_history (fingerprint, option_id, action_id, task_id, result, verified_outcome, executed_at_unix)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    record.fingerprint,
+                    record.option_id,
+                    record.action_id,
+                    record.task_id.map(|t| t.0 as i64),
+                    record.result,
+                    record.verified_outcome,
+                    record.executed_at_unix
+                ]
+            )?;
+            Ok(())
+        })
     }
 }

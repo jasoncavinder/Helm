@@ -1,4 +1,6 @@
 pub mod detection_store;
+pub mod doctor_persistence;
+pub mod repair_knowledge;
 
 use crate::models::{
     CachedSearchResult, CoreError, InstalledPackage, ManagerId, OutdatedPackage, PackageRef,
