@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
+use unicode_normalization::UnicodeNormalization;
 
 /// Canonical advisory module schema version for serialization compatibility.
 pub const ADVISORY_SCHEMA_VERSION: u32 = 1;
@@ -322,6 +323,7 @@ fn default_schema_version() -> u32 {
 }
 
 impl AdvisoryRecord {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         advisory_id: impl Into<String>,
         package: PackageCoordinates,
@@ -358,23 +360,21 @@ impl AdvisoryRecord {
 /// Unicode NFC. Does not apply locale-dependent case conversion.
 pub fn normalize_package_name(name: &str) -> String {
     let trimmed = name.trim_matches(|c: char| c.is_ascii_whitespace());
-    // Use unicode-normalization if available; for now NFC is handled at
-    // ingestion time. This function provides the deterministic contract.
-    trimmed.to_string()
+    trimmed.nfc().collect()
 }
 
 /// Normalize an ecosystem identifier to lowercase ASCII.
 pub fn normalize_ecosystem(ecosystem: &str) -> String {
     ecosystem
         .trim_matches(|c: char| c.is_ascii_whitespace())
-        .to_lowercase()
+        .to_ascii_lowercase()
 }
 
 /// Normalize a source provider identifier to lowercase ASCII.
 pub fn normalize_source_provider(provider: &str) -> String {
     provider
         .trim_matches(|c: char| c.is_ascii_whitespace())
-        .to_lowercase()
+        .to_ascii_lowercase()
 }
 
 /// Validate that an advisory record has the required fields populated.
@@ -386,6 +386,10 @@ pub enum AdvisoryValidationError {
     InvalidSchemaVersion,
     MissingTimestamps,
     NegativeTimestamps,
+    InvalidTimestampOrder,
+    InvalidCvssScore,
+    EmptySummary,
+    EmptySourceProvider,
 }
 
 impl fmt::Display for AdvisoryValidationError {
@@ -397,6 +401,10 @@ impl fmt::Display for AdvisoryValidationError {
             Self::InvalidSchemaVersion => write!(f, "unsupported schema_version"),
             Self::MissingTimestamps => write!(f, "fetched_at or expires_at is zero"),
             Self::NegativeTimestamps => write!(f, "timestamp is negative"),
+            Self::InvalidTimestampOrder => write!(f, "expires_at must be after fetched_at"),
+            Self::InvalidCvssScore => write!(f, "cvss_score must be finite and between 0 and 10"),
+            Self::EmptySummary => write!(f, "summary is empty"),
+            Self::EmptySourceProvider => write!(f, "source provider is empty"),
         }
     }
 }
@@ -414,6 +422,12 @@ pub fn validate_advisory(record: &AdvisoryRecord) -> Result<(), AdvisoryValidati
     if record.package.ecosystem.trim().is_empty() {
         return Err(AdvisoryValidationError::EmptyEcosystem);
     }
+    if record.summary.trim().is_empty() {
+        return Err(AdvisoryValidationError::EmptySummary);
+    }
+    if record.source.provider.trim().is_empty() {
+        return Err(AdvisoryValidationError::EmptySourceProvider);
+    }
     if record.schema_version != ADVISORY_SCHEMA_VERSION {
         return Err(AdvisoryValidationError::InvalidSchemaVersion);
     }
@@ -422,6 +436,15 @@ pub fn validate_advisory(record: &AdvisoryRecord) -> Result<(), AdvisoryValidati
     }
     if record.fetched_at_epoch_ms < 0 || record.expires_at_epoch_ms < 0 {
         return Err(AdvisoryValidationError::NegativeTimestamps);
+    }
+    if record.expires_at_epoch_ms <= record.fetched_at_epoch_ms {
+        return Err(AdvisoryValidationError::InvalidTimestampOrder);
+    }
+    if record
+        .cvss_score
+        .is_some_and(|score| !score.is_finite() || !(0.0..=10.0).contains(&score))
+    {
+        return Err(AdvisoryValidationError::InvalidCvssScore);
     }
     Ok(())
 }

@@ -57,6 +57,9 @@ use helm_core::models::{
     StrategyKind, TaskId, TaskLogLevel, TaskRecord, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState, CancellationMode};
+use helm_core::persistence::doctor_persistence::{
+    DoctorStore, begin_local_doctor_scan, complete_local_doctor_scan,
+};
 use helm_core::persistence::{DetectionStore, PackageStore, PinStore, SearchCacheStore, TaskStore};
 use helm_core::registry;
 use helm_core::sqlite::SqliteStore;
@@ -7915,14 +7918,28 @@ fn collect_doctor_report(store: &SqliteStore) -> Result<helm_core::doctor::Docto
     }
     let executable_states = build_manager_executable_doctor_states(&detection_map, &preference_map);
     let recent_failure_diagnostics = collect_recent_doctor_failure_diagnostics(store);
-    Ok(helm_core::doctor::scan_package_state_report(
+    let scan_time = SystemTime::now();
+    let started_at_unix = scan_time
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_err(|_| "system clock is before Unix epoch".to_string())?
+        .as_secs()
+        .try_into()
+        .map_err(|_| "system clock timestamp is too large".to_string())?;
+    let scan = begin_local_doctor_scan(store, started_at_unix)
+        .map_err(|error| format!("failed to start doctor scan: {error}"))?;
+    let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
         &executable_states,
         recent_failure_diagnostics.as_slice(),
-        SystemTime::now(),
-    ))
+        scan_time,
+    );
+    if let Err(error) = complete_local_doctor_scan(store, &scan, &report, started_at_unix) {
+        let _ = store.fail_scan(scan.scan_id.as_str(), started_at_unix);
+        return Err(format!("failed to persist doctor scan: {error}"));
+    }
+    Ok(report)
 }
 
 fn active_repair_plan(
@@ -7954,12 +7971,17 @@ fn active_repair_plan(
             )
         })?;
 
-    helm_core::repair::plan_for_finding(finding).ok_or_else(|| {
-        format!(
-            "no repair plan available for active finding '{}'",
-            finding.fingerprint
-        )
-    })
+    let knowledge = store
+        .get_effective_knowledge(finding)
+        .map_err(|error| format!("failed to resolve repair knowledge: {error}"))?;
+    helm_core::repair::plan_for_finding_with_knowledge(finding, knowledge.as_slice()).ok_or_else(
+        || {
+            format!(
+                "no repair plan available for active finding '{}'",
+                finding.fingerprint
+            )
+        },
+    )
 }
 
 fn cmd_doctor_scan(store: &SqliteStore, options: GlobalOptions) -> Result<(), String> {

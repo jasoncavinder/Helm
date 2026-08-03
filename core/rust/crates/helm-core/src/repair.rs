@@ -6,6 +6,7 @@ use crate::doctor::{
     fingerprint_for_post_install_setup_required, fingerprint_for_selected_executable_path_stale,
 };
 use crate::models::ManagerId;
+use crate::persistence::doctor_persistence::EffectiveKnowledge;
 use serde::{Deserialize, Serialize};
 
 pub const REPAIR_KNOWLEDGE_SOURCE: &str = "embedded_local";
@@ -294,6 +295,45 @@ pub fn plan_for_finding(finding: &DoctorFinding) -> Option<RepairPlan> {
     None
 }
 
+pub fn plan_for_finding_with_knowledge(
+    finding: &DoctorFinding,
+    knowledge: &[EffectiveKnowledge],
+) -> Option<RepairPlan> {
+    let mut plan = plan_for_finding(finding)?;
+    plan.options.retain_mut(|option| {
+        let Some(effective) = knowledge.iter().find(|entry| {
+            entry.option_id == option.option_id && entry.action_id == option.action.as_str()
+        }) else {
+            return false;
+        };
+        let Some(automation_level) = effective.policy.automation_level() else {
+            return false;
+        };
+        if automation_level == RepairAutomationLevel::ReadOnly {
+            return false;
+        }
+        option.requires_confirmation |= effective.policy.requires_confirmation;
+        option.automation_level = if automation_restrictiveness(automation_level)
+            > automation_restrictiveness(option.automation_level)
+        {
+            automation_level
+        } else {
+            option.automation_level
+        };
+        true
+    });
+    if plan.options.is_empty() {
+        return None;
+    }
+    plan.knowledge_source = "sqlite_local".to_string();
+    plan.knowledge_version = knowledge
+        .iter()
+        .map(|entry| format!("{}@{}", entry.knowledge_entry_id, entry.revision))
+        .collect::<Vec<_>>()
+        .join(",");
+    Some(plan)
+}
+
 pub fn plan_for_issue(
     manager: ManagerId,
     source_manager: ManagerId,
@@ -360,9 +400,11 @@ pub fn plan_for_issue(
 }
 
 pub fn resolve_option<'a>(plan: &'a RepairPlan, option_id: &str) -> Option<&'a RepairOption> {
-    plan.options
-        .iter()
-        .find(|option| option.option_id == option_id && option_satisfies_registry(plan, option))
+    plan.options.iter().find(|option| {
+        option.option_id == option_id
+            && option.automation_level != RepairAutomationLevel::ReadOnly
+            && option_satisfies_registry(plan, option)
+    })
 }
 
 #[cfg(test)]

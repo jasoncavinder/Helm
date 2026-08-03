@@ -1,8 +1,9 @@
 use helm_core::persistence::MigrationStore;
-use helm_core::persistence::doctor_persistence::DoctorStore;
-use helm_core::persistence::repair_knowledge::{KnowledgeEnvelope, KnowledgeEnvelopeError};
+use helm_core::persistence::doctor_persistence::{DoctorStore, KnowledgeTrustLevel};
+use helm_core::persistence::repair_knowledge::{
+    KnowledgeEnvelope, KnowledgeEnvelopeError, KnowledgeSignature, sha256_hex,
+};
 use helm_core::sqlite::{SqliteStore, current_schema_version};
-use sha2::Digest;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -15,260 +16,202 @@ fn test_db_path(test_name: &str) -> PathBuf {
 }
 
 fn create_store(name: &str) -> SqliteStore {
-    let path = test_db_path(name);
-    let store = SqliteStore::new(&path);
+    let store = SqliteStore::new(test_db_path(name));
     store.apply_migration(current_schema_version()).unwrap();
     store
 }
 
-#[test]
-fn test_strict_unknown_field_rejection() {
-    let raw_json = r#"{
-      "schema_version": 1,
-      "declared_source_id": "test",
-      "source_revision": 1,
-      "generated_at_unix": 1720000000,
-      "unknown_field": "bad",
-      "entries": [],
-      "integrity": {
-        "algorithm": "sha256",
-        "value": "fake"
-      }
-    }"#;
-    let res = KnowledgeEnvelope::parse_and_validate(raw_json);
-    assert!(
-        matches!(res, Err(KnowledgeEnvelopeError::FormatError(msg)) if msg.contains("unknown field"))
-    );
+fn user_envelope(revision: u64) -> KnowledgeEnvelope {
+    let mut envelope =
+        KnowledgeEnvelope::parse_and_validate(include_str!("../resources/bundled_knowledge.json"))
+            .unwrap();
+    envelope.declared_source_id = "community_test".to_string();
+    envelope.source_revision = revision;
+    resign(&mut envelope);
+    envelope
+}
+
+fn resign(envelope: &mut KnowledgeEnvelope) {
+    let canonical = envelope.to_canonical_jcs_without_integrity().unwrap();
+    envelope.integrity.value = sha256_hex(canonical.as_bytes());
 }
 
 #[test]
-fn test_malformed_tombstone_rejection() {
-    let raw_json = r#"{
-      "schema_version": 1,
-      "declared_source_id": "test",
-      "source_revision": 1,
-      "generated_at_unix": 1720000000,
-      "entries": [
-        {
-          "knowledge_entry_id": "tombstone.1",
-          "revision": 2,
-          "state": "tombstone",
-          "selector": {},
-          "action_id": "manager.apply_post_install_setup_defaults"
-        }
-      ],
-      "integrity": {
-        "algorithm": "sha256",
-        "value": "fake"
-      }
-    }"#;
-    let res = KnowledgeEnvelope::parse_and_validate(raw_json);
-    assert!(
-        matches!(res, Err(KnowledgeEnvelopeError::FormatError(msg)) if msg.contains("Tombstone cannot contain executable"))
+fn unknown_fields_are_rejected_at_every_closed_schema_level() {
+    let top_level = include_str!("../resources/bundled_knowledge.json").replacen(
+        "\"entries\": [",
+        "\"unexpected\": true, \"entries\": [",
+        1,
     );
-}
-
-#[test]
-fn test_duplicate_tuple_rejection() {
-    let raw_json = r#"{
-      "schema_version": 1,
-      "declared_source_id": "test",
-      "source_revision": 1,
-      "generated_at_unix": 1720000000,
-      "entries": [
-        {
-          "knowledge_entry_id": "dup.1",
-          "revision": 1,
-          "state": "active",
-          "selector": {}
-        },
-        {
-          "knowledge_entry_id": "dup.1",
-          "revision": 1,
-          "state": "tombstone",
-          "selector": {}
-        }
-      ],
-      "integrity": {
-        "algorithm": "sha256",
-        "value": "fake"
-      }
-    }"#;
-    let res = KnowledgeEnvelope::parse_and_validate(raw_json);
     assert!(matches!(
-        res,
-        Err(KnowledgeEnvelopeError::DuplicateEntryRevision)
+        KnowledgeEnvelope::parse_and_validate(&top_level),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("unknown field")
+    ));
+
+    let selector = include_str!("../resources/bundled_knowledge.json").replacen(
+        "\"finding_code\": \"selected_executable_path_stale\"",
+        "\"finding_code\": \"selected_executable_path_stale\", \"command\": \"rm\"",
+        1,
+    );
+    assert!(matches!(
+        KnowledgeEnvelope::parse_and_validate(&selector),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("unknown field")
+    ));
+
+    let mut signed = user_envelope(1);
+    signed.integrity.signature = Some(KnowledgeSignature {
+        algorithm: "ed25519".to_string(),
+        key_id: "test".to_string(),
+        value: "signature".to_string(),
+    });
+    resign(&mut signed);
+    let mut signature = serde_json::to_value(signed).unwrap();
+    signature["integrity"]["signature"]["command"] = serde_json::json!("rm");
+    assert!(matches!(
+        KnowledgeEnvelope::parse_and_validate(&serde_json::to_string(&signature).unwrap()),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("unknown field")
     ));
 }
 
 #[test]
-fn test_unsupported_schema_and_algorithm() {
-    let raw_json = r#"{
-      "schema_version": 2,
-      "declared_source_id": "test",
-      "source_revision": 1,
-      "generated_at_unix": 1720000000,
-      "entries": [],
-      "integrity": {
-        "algorithm": "sha256",
-        "value": "fake"
-      }
-    }"#;
-    let res = KnowledgeEnvelope::parse_and_validate(raw_json);
+fn malformed_tombstones_and_incomplete_active_entries_fail_closed() {
+    let mut tombstone = user_envelope(1);
+    tombstone.entries[0].state = "tombstone".to_string();
+    resign(&mut tombstone);
     assert!(matches!(
-        res,
+        tombstone.validate(),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("tombstone")
+    ));
+
+    let mut active = user_envelope(1);
+    active.entries[0].action_id = None;
+    resign(&mut active);
+    assert!(matches!(
+        active.validate(),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("action_id")
+    ));
+}
+
+#[test]
+fn duplicate_entry_revisions_and_unsorted_entries_are_rejected() {
+    let mut duplicate = user_envelope(1);
+    duplicate.entries.insert(1, duplicate.entries[0].clone());
+    resign(&mut duplicate);
+    assert!(matches!(
+        duplicate.validate(),
+        Err(KnowledgeEnvelopeError::DuplicateEntryRevision)
+    ));
+
+    let mut unsorted = user_envelope(1);
+    unsorted.entries.swap(0, 1);
+    resign(&mut unsorted);
+    assert!(matches!(
+        unsorted.validate(),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("sorted")
+    ));
+}
+
+#[test]
+fn unknown_actions_rebinding_policy_weakening_and_literal_bindings_are_rejected() {
+    let mut unknown = user_envelope(1);
+    unknown.entries[0].action_id = Some("malicious.action".to_string());
+    resign(&mut unknown);
+    assert!(matches!(
+        unknown.validate(),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("action binding")
+    ));
+
+    let mut rebound = user_envelope(1);
+    rebound.entries[0].action_id = Some("homebrew.reinstall_formula".to_string());
+    resign(&mut rebound);
+    assert!(matches!(
+        rebound.validate(),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("action binding")
+    ));
+
+    let mut weakened = user_envelope(1);
+    let destructive = weakened
+        .entries
+        .iter_mut()
+        .find(|entry| entry.option_id.as_deref() == Some("remove_stale_package_entry"))
+        .unwrap();
+    destructive.policy.as_mut().unwrap().requires_confirmation = false;
+    destructive.policy.as_mut().unwrap().automation_level = "automatic".to_string();
+    resign(&mut weakened);
+    assert!(matches!(
+        weakened.validate(),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("weakens")
+    ));
+
+    let mut literal_binding = user_envelope(1);
+    literal_binding.entries[0]
+        .parameter_bindings
+        .get_or_insert_default()
+        .insert("manager_id".to_string(), "/bin/sh".to_string());
+    resign(&mut literal_binding);
+    assert!(matches!(
+        literal_binding.validate(),
+        Err(KnowledgeEnvelopeError::FormatError(message)) if message.contains("parameter_bindings")
+    ));
+}
+
+#[test]
+fn unsupported_schema_algorithm_and_checksum_are_rejected() {
+    let mut schema = user_envelope(1);
+    schema.schema_version = 2;
+    resign(&mut schema);
+    assert!(matches!(
+        schema.validate(),
         Err(KnowledgeEnvelopeError::UnsupportedSchemaVersion(2))
     ));
 
-    let raw_json2 = r#"{
-      "schema_version": 1,
-      "declared_source_id": "test",
-      "source_revision": 1,
-      "generated_at_unix": 1720000000,
-      "entries": [],
-      "integrity": {
-        "algorithm": "md5",
-        "value": "fake"
-      }
-    }"#;
-    let res2 = KnowledgeEnvelope::parse_and_validate(raw_json2);
-    assert!(matches!(res2, Err(KnowledgeEnvelopeError::UnsupportedAlgorithm(alg)) if alg == "md5"));
+    let mut algorithm = user_envelope(1);
+    algorithm.integrity.algorithm = "md5".to_string();
+    assert!(matches!(
+        algorithm.validate(),
+        Err(KnowledgeEnvelopeError::UnsupportedAlgorithm(value)) if value == "md5"
+    ));
+
+    let mut checksum = user_envelope(1);
+    checksum.entries[0].revision += 1;
+    assert!(matches!(
+        checksum.validate(),
+        Err(KnowledgeEnvelopeError::IntegrityMismatch { .. })
+    ));
 }
 
 #[test]
-fn test_downgrade_rejection() {
-    let store = create_store("downgrade_rejection");
-
-    let mut envelope = KnowledgeEnvelope {
-        schema_version: 1,
-        declared_source_id: "test_source".to_string(),
-        source_revision: 2,
-        generated_at_unix: 0,
-        entries: vec![],
-        integrity: helm_core::persistence::repair_knowledge::KnowledgeIntegrity {
-            algorithm: "sha256".to_string(),
-            value: "".to_string(),
-            signature: None,
-        },
-    };
-
-    let canonical = envelope.to_canonical_jcs_without_integrity().unwrap();
-    let mut hasher = sha2::Sha256::new();
-    sha2::Digest::update(&mut hasher, canonical.as_bytes());
-    envelope.integrity.value = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect();
-
+fn source_downgrade_protected_namespace_and_trust_escalation_are_rejected() {
+    let store = create_store("source-policy");
+    let revision_two = user_envelope(2);
     store
-        .import_knowledge("user_imported", &envelope, "user_imported")
+        .import_knowledge(
+            "user:test",
+            &revision_two,
+            KnowledgeTrustLevel::UserImported,
+        )
         .unwrap();
 
-    // Attempt downgrade
-    let mut downgrade = envelope.clone();
-    downgrade.source_revision = 1;
-    let canonical = downgrade.to_canonical_jcs_without_integrity().unwrap();
-    let mut hasher = sha2::Sha256::new();
-    sha2::Digest::update(&mut hasher, canonical.as_bytes());
-    downgrade.integrity.value = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect();
-
-    let err = store
-        .import_knowledge("user_imported", &downgrade, "user_imported")
+    let downgrade = user_envelope(1);
+    let error = store
+        .import_knowledge("user:test", &downgrade, KnowledgeTrustLevel::UserImported)
         .unwrap_err();
-    assert!(err.to_string().contains("Downgrades are rejected"));
-}
+    assert!(error.to_string().contains("downgrade"));
 
-#[test]
-fn test_protected_helm_namespace_rejection() {
-    let store = create_store("namespace_rejection");
-
-    let mut envelope = KnowledgeEnvelope {
-        schema_version: 1,
-        declared_source_id: "helm_evil".to_string(), // starts with helm_
-        source_revision: 1,
-        generated_at_unix: 0,
-        entries: vec![],
-        integrity: helm_core::persistence::repair_knowledge::KnowledgeIntegrity {
-            algorithm: "sha256".to_string(),
-            value: "".to_string(),
-            signature: None,
-        },
-    };
-
-    // Valid checksum
-    let canonical = envelope.to_canonical_jcs_without_integrity().unwrap();
-    let mut hasher = sha2::Sha256::new();
-    sha2::Digest::update(&mut hasher, canonical.as_bytes());
-    envelope.integrity.value = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect();
-
-    let err = store
-        .import_knowledge("user_imported_123", &envelope, "user_imported")
+    let mut protected = user_envelope(3);
+    protected.declared_source_id = "helm_evil".to_string();
+    resign(&mut protected);
+    let error = store
+        .import_knowledge("user:evil", &protected, KnowledgeTrustLevel::UserImported)
         .unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("Unauthorized Helm namespace claim")
-    );
-}
+    assert!(error.to_string().contains("protected source namespace"));
 
-#[test]
-fn test_protected_option_rebinding_rejection() {
-    let store = create_store("option_rebinding");
-
-    let mut envelope = KnowledgeEnvelope {
-        schema_version: 1,
-        declared_source_id: "test".to_string(),
-        source_revision: 1,
-        generated_at_unix: 0,
-        entries: vec![helm_core::persistence::repair_knowledge::KnowledgeEntry {
-            knowledge_entry_id: "entry.1".to_string(),
-            revision: 1,
-            state: "active".to_string(),
-            selector: helm_core::persistence::repair_knowledge::KnowledgeSelector {
-                fingerprint: None,
-                finding_code: None,
-                issue_code: None,
-                manager_id: None,
-                source_manager_id: None,
-                subject_kind: None,
-                subject_value: None,
-                package_name: None,
-            },
-            option_id: Some("reinstall_manager_via_homebrew".to_string()),
-            action_id: Some("malicious.action".to_string()), // Rebinding to malicious action
-            policy: None,
-            parameter_bindings: None,
-            content_keys: None,
-        }],
-        integrity: helm_core::persistence::repair_knowledge::KnowledgeIntegrity {
-            algorithm: "sha256".to_string(),
-            value: "".to_string(),
-            signature: None,
-        },
-    };
-
-    let canonical = envelope.to_canonical_jcs_without_integrity().unwrap();
-    let mut hasher = sha2::Sha256::new();
-    sha2::Digest::update(&mut hasher, canonical.as_bytes());
-    envelope.integrity.value = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect();
-
-    let err = store
-        .import_knowledge("verified_signed", &envelope, "verified_signed")
+    let error = store
+        .import_knowledge(
+            "verified:test",
+            &user_envelope(1),
+            KnowledgeTrustLevel::VerifiedSigned,
+        )
         .unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("Attempt to rebind protected option ID")
-    );
+    assert!(error.to_string().contains("configured local verifier"));
 }

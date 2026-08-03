@@ -18,8 +18,8 @@
         "automation_level": "automatic"
       },
       "content_keys": {
-        "title": "Clear selected executable override",
-        "description": "Remove the saved executable override so Helm can fall back to normal executable discovery."
+        "title": "app.repair.clear_executable_override.title",
+        "description": "app.repair.clear_executable_override.description"
       }
     },
     {
@@ -36,8 +36,8 @@
         "automation_level": "automatic"
       },
       "content_keys": {
-        "title": "Repair Homebrew install",
-        "description": "Run the manager install flow via Homebrew so binaries and metadata are aligned."
+        "title": "app.repair.homebrew_reinstall.title",
+        "description": "app.repair.homebrew_reinstall.description"
       }
     },
     {
@@ -54,8 +54,8 @@
         "automation_level": "needs_confirmation"
       },
       "content_keys": {
-        "title": "Remove stale package metadata",
-        "description": "Uninstall the stale Homebrew package entry when you do not want this manager managed via Homebrew."
+        "title": "app.repair.homebrew_remove_stale.title",
+        "description": "app.repair.homebrew_remove_stale.description"
       }
     },
     {
@@ -72,13 +72,13 @@
         "automation_level": "needs_confirmation"
       },
       "content_keys": {
-        "title": "Apply recommended setup",
-        "description": "Apply Helm's safe default shell setup block for this manager, then verify setup."
+        "title": "app.repair.post_install_setup.title",
+        "description": "app.repair.post_install_setup.description"
       }
     }
   ],
   "integrity": {
     "algorithm": "sha256",
-    "value": "1b6c46b402ea1cad175b23654c4035d8b9e23fe17d243d19709ec1cac306f5c4"
+    "value": "1247fadb4e444d37fbb2f75a43840508cd20600654780b0f4eb364afe2f8956a"
   }
 }

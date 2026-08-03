@@ -391,7 +391,7 @@ Canonical finding, knowledge, persistence, and execution contract:
 docs/architecture/DOCTOR_REPAIR_KNOWLEDGE.md
 ```
 
-Current implementation note: the `0.17.x` scaffold uses a transitional embedded repair map. The `0.18.x` work replaces that map with the SQLite-backed contract above.
+Current implementation note: `0.18.x` imports bundled repair knowledge into SQLite at store initialization and resolves repair plans through that persisted data plus the compiled typed-action registry. The embedded definitions remain only as trusted executable capability metadata and a storeless unit-test fallback, not as runtime knowledge authority.
 
 ---
 
@@ -449,7 +449,7 @@ Stage 0 (`<=0.16.x`):
 - No implemented security advisory logic
 
 Stage 1 (`0.18.x`):
-- Internal local-only groundwork for vulnerability data handling
+- Implemented internal local-only groundwork for vulnerability data handling: normalized domain records, deterministic cache keys/order, freshness and task-hook contracts, and migration 18 SQLite cache persistence
 - No public feature exposure
 - No Pro gating
 - No centralized backend

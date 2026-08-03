@@ -90,9 +90,9 @@ The advisory cache uses a TTL-based freshness model with three states:
 
 1. **Evaluate**: Always reads from cache first. If cache is `fresh` or `stale`, returns cached results. If `missing` and `allow_stale` is false, returns empty results.
 
-2. **Refresh**: Fetches new data from sources, upserts to cache. Does not invalidate existing cache during fetch. On success, replaces matching records. On failure, leaves existing cache untouched.
+2. **Refresh**: A future provider coordinator fetches new data and transactionally upserts it. The v0.18 store does not invalidate existing cache during a failed batch and rejects stale writes over newer records.
 
-3. **Prune**: Expired records (`expires_at_epoch_ms < now`) are candidates for removal. Pruning runs periodically or on coordinator startup.
+3. **Prune**: Expired records (`expires_at_epoch_ms <= now`) are candidates for removal. The v0.18 store exposes deterministic pruning; periodic scheduling remains deferred.
 
 ### Offline Safety
 
@@ -111,7 +111,7 @@ Advisory records and doctor findings are separate domain models with separate st
 |---------------------|----------------------------|-------------------------|
 | Purpose             | Package vulnerability data | System health issues    |
 | Source              | External feeds (OSV, NVD) | Local system inspection |
-| Store               | `advisories` table (m18)   | `task_logs` table       |
+| Store               | `security_advisories` (m18) | doctor persistence tables (m17) |
 | TTL                 | 24-hour default            | No TTL                  |
 | Schema Version      | Yes (`ADVISORY_SCHEMA_V`)  | No                      |
 | Cache Key           | `advisory:{src}:{id}`      | N/A                     |
@@ -119,14 +119,14 @@ Advisory records and doctor findings are separate domain models with separate st
 
 The coordinator may reference advisory data when generating doctor findings, but the data models remain distinct. An advisory finding in the doctor report contains a reference to the advisory ID, not the advisory record itself.
 
-## Future Integration Points
+## Integration Points
 
 ### SQLite Migration 18
 
-The `AdvisoryCacheStore` trait defines the storage interface. Codex implements the concrete SQLite backend. The expected table schema:
+The `AdvisoryCacheStore` trait defines the storage interface. Migration 18 and `SqliteStore` implement the transactional local backend:
 
 ```sql
-CREATE TABLE advisories (
+CREATE TABLE security_advisories (
     cache_key TEXT PRIMARY KEY,
     advisory_id TEXT NOT NULL,
     ecosystem TEXT NOT NULL,
@@ -144,9 +144,9 @@ CREATE TABLE advisories (
     expires_at_epoch_ms INTEGER NOT NULL
 );
 
-CREATE INDEX idx_advisories_package ON advisories(ecosystem, package_name);
-CREATE INDEX idx_advisories_source ON advisories(source_provider);
-CREATE INDEX idx_advisories_expiry ON advisories(expires_at_epoch_ms);
+CREATE INDEX idx_security_advisories_package ON security_advisories(ecosystem, package_name, cache_key);
+CREATE INDEX idx_security_advisories_source ON security_advisories(source_provider, cache_key);
+CREATE INDEX idx_security_advisories_expiry ON security_advisories(expires_at_epoch_ms);
 ```
 
 ### Orchestration Hooks
@@ -167,7 +167,6 @@ The following are explicitly out of scope for v0.18:
 - **Telemetry**: No analytics, no upload
 - **Pro entitlements**: No gating, no licensing
 - **Doctor integration**: Advisory data is not yet connected to doctor findings
-- **SQLite implementation**: Only the trait is defined; migration 18 is pending
 - **Orchestration wiring**: Task hooks are defined but not connected to the scheduler
 - **Central backend**: No cloud service, no aggregation server
 
@@ -178,15 +177,15 @@ The following are explicitly out of scope for v0.18:
 - Deterministic cache key generation
 - TTL-based freshness evaluation with offline-safe semantics
 - Storage-facing `AdvisoryCacheStore` trait
+- Migration 18 and transactional `SqliteStore` cache implementation with deterministic query order, stale-write protection, pruning, and clear/count operations
 - Future refresh/evaluation request/result/task-hook contracts
 - 50+ focused unit tests covering normalization, serialization, cache identity, ordering, dedup, TTL boundaries, invalid data, and deterministic output
 - Architecture documentation (this file)
 
 ## Next Steps (post-v0.18)
 
-1. **Codex lane**: SQLite migration 18, `AdvisoryCacheStore` implementation
-2. **Provider lane**: OSV and GitHub Advisory Database fetchers
-3. **Orchestration lane**: Task hook integration with scheduler
-4. **CLI lane**: `helm advisory check` command
-5. **GUI lane**: Security panel in SwiftUI
-6. **Doctor lane**: Advisory findings in doctor reports
+1. **Provider lane**: OSV and GitHub Advisory Database fetchers
+2. **Orchestration lane**: Task hook integration with scheduler
+3. **CLI lane**: `helm advisory check` command
+4. **GUI lane**: Security panel in SwiftUI
+5. **Doctor lane**: Advisory findings in doctor reports

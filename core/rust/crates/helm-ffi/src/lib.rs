@@ -170,6 +170,9 @@ use helm_core::models::{
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
+use helm_core::persistence::doctor_persistence::{
+    DoctorStore, RepairHistoryRecord, begin_local_doctor_scan, complete_local_doctor_scan,
+};
 use helm_core::persistence::{
     DetectionStore, ManagerPreference, MigrationStore, PackageStore, PinStore, SearchCacheStore,
     TaskStore,
@@ -1545,15 +1548,27 @@ fn collect_doctor_report(
         .collect();
     let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
     let recent_failure_diagnostics = collect_recent_doctor_failure_diagnostics(store);
-
-    Ok(helm_core::doctor::scan_package_state_report(
+    let scan_time = SystemTime::now();
+    let started_at_unix = scan_time
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+        .ok_or(SERVICE_ERROR_STORAGE_FAILURE)?;
+    let scan = begin_local_doctor_scan(store, started_at_unix)
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    let report = helm_core::doctor::scan_package_state_report(
         ManagerId::ALL,
         &instances_by_manager,
         installed_packages.as_slice(),
         &executable_states,
         recent_failure_diagnostics.as_slice(),
-        SystemTime::now(),
-    ))
+        scan_time,
+    );
+    if complete_local_doctor_scan(store, &scan, &report, started_at_unix).is_err() {
+        let _ = store.fail_scan(scan.scan_id.as_str(), started_at_unix);
+        return Err(SERVICE_ERROR_STORAGE_FAILURE);
+    }
+    Ok(report)
 }
 
 fn collect_manager_executable_paths(
@@ -1941,6 +1956,7 @@ fn build_manager_statuses(
                 &homebrew_installed_formulas,
                 manager_executable_doctor_states.get(&id),
                 diagnostics_by_manager.get(&id).map(Vec::as_slice),
+                store,
             );
             let setup_required = package_state_issues.iter().any(|issue| {
                 issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED
@@ -2015,6 +2031,7 @@ fn manager_package_state_issues(
     homebrew_installed_formulas: &std::collections::HashSet<String>,
     executable_state: Option<&helm_core::doctor::ManagerExecutableDoctorState>,
     recent_failure_diagnostics: Option<&[helm_core::doctor::RecentTaskFailureDiagnostic]>,
+    store: Option<&SqliteStore>,
 ) -> Vec<FfiManagerPackageStateIssue> {
     let mut findings = helm_core::doctor::scan_manager_package_state_issues(
         helm_core::doctor::ManagerPackageStateScanInput {
@@ -2034,7 +2051,20 @@ fn manager_package_state_issues(
     findings
         .into_iter()
         .map(|finding| {
-            let repair_plan = helm_core::repair::plan_for_finding(&finding);
+            let repair_plan = store
+                .and_then(|store| store.get_effective_knowledge(&finding).ok())
+                .and_then(|knowledge| {
+                    helm_core::repair::plan_for_finding_with_knowledge(
+                        &finding,
+                        knowledge.as_slice(),
+                    )
+                })
+                .or_else(|| {
+                    store
+                        .is_none()
+                        .then(|| helm_core::repair::plan_for_finding(&finding))
+                        .flatten()
+                });
             let repair_options = repair_plan
                 .as_ref()
                 .map(|plan| {
@@ -2681,6 +2711,7 @@ fn manager_has_setup_required_issue(
         manager,
         install_instances_by_manager.get(&manager),
         homebrew_installed_formulas,
+        None,
         None,
         None,
     )
@@ -6715,6 +6746,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         &mut pref_map,
     );
     sync_manager_executable_overrides(&detection_map, &pref_map);
+    let _ = collect_doctor_report(state.store.as_ref());
 
     let statuses = build_manager_statuses(
         Some(state.runtime.as_ref()),
@@ -10363,6 +10395,110 @@ fn repair_confirmation_satisfied(
     !option.requires_confirmation || confirmed
 }
 
+fn track_repair_task(
+    store: Arc<SqliteStore>,
+    task_id: i64,
+    fingerprint: String,
+    option_id: String,
+    action_id: String,
+) {
+    if task_id < 0 {
+        let _ = record_repair_history(
+            store.as_ref(),
+            &fingerprint,
+            &option_id,
+            &action_id,
+            None,
+            "failed",
+            Some("not_verified"),
+        );
+        return;
+    }
+    let task_id = TaskId(task_id as u64);
+    thread::spawn(move || {
+        const MAX_POLLS: usize = 57_600;
+        for _ in 0..MAX_POLLS {
+            let task = store
+                .list_recent_tasks(500)
+                .ok()
+                .and_then(|tasks| tasks.into_iter().find(|task| task.id == task_id));
+            if let Some(task) = task
+                && matches!(
+                    task.status,
+                    TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+                )
+            {
+                let result = match task.status {
+                    TaskStatus::Completed => "succeeded",
+                    TaskStatus::Failed => "failed",
+                    TaskStatus::Cancelled => "cancelled",
+                    TaskStatus::Queued | TaskStatus::Running => unreachable!(),
+                };
+                let verified_outcome = if task.status == TaskStatus::Completed {
+                    collect_doctor_report(store.as_ref()).ok().map(|report| {
+                        if report
+                            .findings
+                            .iter()
+                            .any(|finding| finding.fingerprint == fingerprint)
+                        {
+                            "not_repaired"
+                        } else {
+                            "repaired"
+                        }
+                    })
+                } else {
+                    Some("not_verified")
+                };
+                let _ = record_repair_history(
+                    store.as_ref(),
+                    &fingerprint,
+                    &option_id,
+                    &action_id,
+                    Some(task_id),
+                    result,
+                    verified_outcome,
+                );
+                return;
+            }
+            thread::sleep(Duration::from_millis(250));
+        }
+        let _ = record_repair_history(
+            store.as_ref(),
+            &fingerprint,
+            &option_id,
+            &action_id,
+            Some(task_id),
+            "timeout",
+            Some("not_verified"),
+        );
+    });
+}
+
+fn record_repair_history(
+    store: &SqliteStore,
+    fingerprint: &str,
+    option_id: &str,
+    action_id: &str,
+    task_id: Option<TaskId>,
+    result: &str,
+    verified_outcome: Option<&str>,
+) -> Result<(), helm_core::models::CoreError> {
+    let executed_at_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+        .unwrap_or(0);
+    store.record_repair_history(&RepairHistoryRecord {
+        fingerprint: fingerprint.to_string(),
+        option_id: option_id.to_string(),
+        action_id: action_id.to_string(),
+        task_id,
+        result: result.to_string(),
+        verified_outcome: verified_outcome.map(str::to_string),
+        executed_at_unix,
+    })
+}
+
 /// Apply a manager package-state repair option and queue the corresponding task.
 ///
 /// The current scaffold supports metadata-only Homebrew manager installs by routing one of:
@@ -10461,7 +10597,14 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
         Some(finding) => finding,
         None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
-    let plan = match helm_core::repair::plan_for_finding(active_finding) {
+    let effective_knowledge = match validation_store.get_effective_knowledge(active_finding) {
+        Ok(knowledge) => knowledge,
+        Err(_) => return return_error_i64(SERVICE_ERROR_STORAGE_FAILURE),
+    };
+    let plan = match helm_core::repair::plan_for_finding_with_knowledge(
+        active_finding,
+        effective_knowledge.as_slice(),
+    ) {
         Some(plan) => plan,
         None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
@@ -10473,7 +10616,11 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
         return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
 
-    match option.action {
+    let repair_fingerprint = active_finding.fingerprint.clone();
+    let repair_option_id = option.option_id.clone();
+    let repair_action_id = option.action.as_str().to_string();
+
+    let task_id = match option.action {
         helm_core::repair::RepairAction::ReinstallManagerViaHomebrew => {
             let manager_c = match CString::new(manager.as_str()) {
                 Ok(value) => value,
@@ -10589,7 +10736,15 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
 
             task_id.0 as i64
         }
-    }
+    };
+    track_repair_task(
+        validation_store,
+        task_id,
+        repair_fingerprint,
+        repair_option_id,
+        repair_action_id,
+    );
+    task_id
 }
 
 /// Install a manager tool. Returns the task ID, or -1 on error.
