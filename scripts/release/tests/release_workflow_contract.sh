@@ -65,5 +65,7 @@ done
 
 expect_pattern 'branches: \[dev, main\]' "$WEB_BUILD_WORKFLOW" "web build must cover dev and main integration branches"
 expect_pattern '"web/\*\*"' "$WEB_BUILD_WORKFLOW" "web build must filter for web paths"
+expect_pattern 'actions/workflows/\$\{wf\}' "$PREFLIGHT_SCRIPT" "release preflight must query required workflow state"
+expect_pattern 'required workflow is not active' "$PREFLIGHT_SCRIPT" "release preflight must reject disabled required workflows"
 
 printf '[release-workflow-contract] passed\n'

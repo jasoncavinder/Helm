@@ -47,6 +47,9 @@ jobs:
       - name: Validate release workflow safety contracts
         run: scripts/release/tests/release_workflow_contract.sh
 
+      - name: Validate post-publication preflight contract
+        run: scripts/release/tests/preflight_post_publish_contract.sh
+
       - name: Validate release provenance manifest contracts
         run: scripts/release/tests/provenance_manifest_contract.sh
 

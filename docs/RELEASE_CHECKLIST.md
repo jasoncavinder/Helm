@@ -62,7 +62,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.18.0 (Stable Release Gate, Pending)
+## v0.18.0 (Stable Release Gate, Completed)
 
 ### Scope
 
@@ -76,12 +76,12 @@ This checklist is required before creating a release tag on `main`.
 
 - [x] Doctor/repair and advisory persistence suites cover deterministic lifecycle, hostile imports, stale completion, normalization, and transactional rejection behavior.
 - [x] Run the full repository quality gate, documentation sync, Sparkle checklist, and non-mutating release rehearsal from the release-preparation branch.
-- [ ] Merge release preparation through `dev` and the protected `dev` to `main` path.
-- [ ] Run rehearsal and preflight from a clean, current `main` checkout.
-- [ ] Run a fresh successful `Release macOS Canary` on `macos-26` after the final release changes.
-- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after explicit maintainer approval.
-- [ ] Obtain explicit maintainer approval before tag creation and publication.
-- [ ] Complete release publication and post-publication metadata verification.
+- [x] Merge release preparation through `dev` and the protected `dev` to `main` path.
+- [x] Run rehearsal and preflight from a clean, current `main` checkout.
+- [x] Run a fresh successful `Release macOS Canary` on `macos-26` after the final release changes.
+- [x] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after explicit maintainer approval.
+- [x] Obtain explicit maintainer approval before tag creation and publication.
+- [x] Complete release publication and post-publication metadata verification.
 
 ## v0.17.12 (Stable Patch Release Gate, Completed)
 

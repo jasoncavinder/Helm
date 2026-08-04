@@ -56,6 +56,8 @@ After explicit maintainer approval:
    scripts/release/runbook.sh verify --tag vX.Y.Z
    ```
 
+   The verify command uses an explicit post-publication preflight mode that permits stable metadata to equal the released tag. Standalone preflight and tag preparation remain strict and reject that state.
+
 7. Confirm public `https://helmapp.dev/updates/appcast.xml` and `https://helmapp.dev/updates/cli/latest.json` reference the released version.
 
 ## Recovery Rules
@@ -65,6 +67,7 @@ After explicit maintainer approval:
 - If neither credential can create the publish branch/PR, retrieve the generated metadata from the workflow artifact, open the documented `chore/publish-*` PR manually, merge it, then run `verify_only`. Do not regenerate or replace release artifacts.
 - If a workflow/runtime upgrade fails the canary, update the runner label, expected Xcode major, and immutable action pin together in a dedicated workflow-maintenance PR before the next tag.
 - Record recurring friction in `TMP_RELEASE_FRICTION` and promote it to durable docs or contracts before the next release.
+- Preflight requires every release and drift-monitor workflow to report GitHub state `active`; re-enable workflows that GitHub marks `disabled_inactivity`, then run the affected monitor before release sign-off.
 
 ## Credential Ownership
 
