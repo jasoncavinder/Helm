@@ -559,9 +559,9 @@ Exit Criteria:
 
 ---
 
-## 0.18.x — Doctor & Repair Foundation - Released on `main`
+## 0.18.x — Doctor & Repair Foundation - Corrective release in progress
 
-Release status: published in the `v0.18.0` stable release.
+Release status: `v0.18.0` was withdrawn because of a critical SQLite migration defect; `v0.18.1` remediation is in progress while `v0.17.12` remains public stable.
 
 Goal:
 
@@ -626,9 +626,9 @@ Stage 3 (`1.4.x`) — Shared Brain:
 
 ---
 
-## 0.18.x — Local Security Groundwork (second slice) - Released on `main`
+## 0.18.x — Local Security Groundwork (second slice) - Corrective release in progress
 
-Release status: published in the `v0.18.0` stable release.
+Release status: implemented on `main`; public distribution resumes with `v0.18.1` after migration remediation and recovery validation.
 
 Goal:
 

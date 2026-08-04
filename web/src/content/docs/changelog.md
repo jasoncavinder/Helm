@@ -13,6 +13,8 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ## 0.18.0 — 2026-08-03
 
+> **Withdrawn:** `v0.18.0` was removed from public distribution after discovery of a critical SQLite migration defect. `v0.17.12` remains the current stable release while `v0.18.1` is prepared. Users who installed `v0.18.0` should avoid further use and preserve their Helm data until recovery guidance is published.
+
 Helm `0.18.0` publishes the local doctor/repair foundation and internal security-advisory cache groundwork.
 
 ### Added

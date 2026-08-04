@@ -17,7 +17,7 @@ Helm is planned as two product lifecycles: **Helm (Consumer)** and **Helm Busine
 
 ## What it does today
 
-Helm `v0.18.0` supports twenty-eight managers:
+Helm's current implementation supports twenty-eight managers:
 
 | Category | Managers |
 |---------|----------|
@@ -45,7 +45,7 @@ Key features:
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, `ja`, and `hu` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with scoped execution and failure-attribution visibility
 
-> **Current Track:** `v0.18.0` is the latest stable release on `main`; `v0.19.x` stability and pre-1.0 hardening is next. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Release notice:** `v0.18.0` has been withdrawn because of a critical SQLite migration defect. Use `v0.17.12` while `v0.18.1` is prepared. If you installed `v0.18.0`, avoid further use and preserve your Helm data until recovery guidance is published.
 
 ## How it works
 
