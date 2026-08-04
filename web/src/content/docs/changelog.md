@@ -11,6 +11,23 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.18.0 — 2026-08-03
+
+Helm `0.18.0` publishes the local doctor/repair foundation and internal security-advisory cache groundwork.
+
+### Added
+- SQLite-backed doctor scan generations, finding lifecycle, repair knowledge, local overrides, provenance, and repair history.
+- Deterministic finding fingerprints and scoped scan completion semantics across CLI and FFI/XPC paths.
+- Internal advisory records and cache persistence with normalized identity, freshness evaluation, deterministic ordering, and pruning.
+
+### Changed
+- Repair planning resolves persisted, integrity-checked knowledge through a compiled allowlist of typed actions.
+- Repair execution revalidates active findings, records history, and verifies outcomes with follow-up scans.
+
+### Security
+- Knowledge imports reject forged trust, policy weakening, equivocation, protected rebinding, unknown actions, and executable payload content.
+- Advisory providers, scheduler integration, doctor advisory findings, and public advisory UI/CLI surfaces remain deferred beyond `0.18.x`.
+
 ## 0.17.12 — 2026-07-29
 
 Patch `0.17.12` moves bulk and scoped upgrade workflow sequencing into the Rust execution boundary.
