@@ -766,7 +766,174 @@ CREATE INDEX IF NOT EXISTS idx_search_cache_query_time
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 16] = [
+const MIGRATION_0017: SqliteMigration = SqliteMigration {
+    version: 17,
+    name: "add_doctor_and_repair_persistence",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS doctor_scans (
+    scan_id TEXT PRIMARY KEY,
+    generation INTEGER NOT NULL UNIQUE,
+    started_at_unix INTEGER NOT NULL,
+    completed_at_unix INTEGER,
+    completion_state TEXT NOT NULL DEFAULT 'running'
+);
+
+CREATE TABLE IF NOT EXISTS doctor_scan_scopes (
+    scan_id TEXT NOT NULL,
+    detector_id TEXT NOT NULL,
+    manager_id TEXT NOT NULL,
+    completion_state TEXT NOT NULL DEFAULT 'pending',
+    PRIMARY KEY (scan_id, detector_id, manager_id)
+);
+
+CREATE TABLE IF NOT EXISTS doctor_findings (
+    fingerprint TEXT PRIMARY KEY,
+    finding_code TEXT NOT NULL,
+    issue_code TEXT NOT NULL,
+    manager_id TEXT NOT NULL,
+    source_manager_id TEXT,
+    subject_kind TEXT NOT NULL,
+    subject_value TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    detector_id TEXT NOT NULL,
+    detector_version TEXT NOT NULL,
+    first_seen_unix INTEGER NOT NULL,
+    last_seen_unix INTEGER NOT NULL,
+    latest_observation_generation INTEGER NOT NULL,
+    resolution_state TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS doctor_finding_aliases (
+    legacy_id TEXT PRIMARY KEY,
+    v2_fingerprint TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS repair_knowledge_sources (
+    source_key TEXT PRIMARY KEY,
+    declared_source_id TEXT NOT NULL,
+    latest_revision INTEGER NOT NULL,
+    trust_level TEXT NOT NULL,
+    imported_at_unix INTEGER NOT NULL,
+    envelope_checksum TEXT NOT NULL,
+    generated_at_unix INTEGER NOT NULL,
+    signature_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS repair_knowledge_imports (
+    import_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key TEXT NOT NULL,
+    source_revision INTEGER NOT NULL,
+    envelope_checksum TEXT NOT NULL,
+    trust_level TEXT NOT NULL,
+    imported_at_unix INTEGER NOT NULL,
+    result TEXT NOT NULL,
+    diagnostic TEXT
+);
+
+CREATE TABLE IF NOT EXISTS repair_knowledge_entries (
+    source_key TEXT NOT NULL,
+    knowledge_entry_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    selector_json TEXT NOT NULL,
+    option_id TEXT,
+    action_id TEXT,
+    policy_json TEXT,
+    parameter_bindings_json TEXT,
+    content_keys_json TEXT,
+    entry_checksum TEXT NOT NULL,
+    PRIMARY KEY (source_key, knowledge_entry_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS repair_knowledge_overrides (
+    option_id TEXT PRIMARY KEY,
+    disabled INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS repair_history (
+    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fingerprint TEXT NOT NULL,
+    option_id TEXT NOT NULL,
+    action_id TEXT NOT NULL,
+    task_id INTEGER,
+    result TEXT NOT NULL,
+    verified_outcome TEXT,
+    executed_at_unix INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_doctor_findings_active_scope
+    ON doctor_findings (resolution_state, detector_id, manager_id);
+CREATE INDEX IF NOT EXISTS idx_repair_knowledge_entries_effective
+    ON repair_knowledge_entries (source_key, knowledge_entry_id, revision DESC);
+CREATE INDEX IF NOT EXISTS idx_repair_knowledge_imports_source
+    ON repair_knowledge_imports (source_key, source_revision DESC);
+"#,
+    down_sql: r#"
+DROP INDEX IF EXISTS idx_repair_knowledge_imports_source;
+DROP INDEX IF EXISTS idx_repair_knowledge_entries_effective;
+DROP INDEX IF EXISTS idx_doctor_findings_active_scope;
+DROP TABLE IF EXISTS repair_history;
+DROP TABLE IF EXISTS repair_knowledge_overrides;
+DROP TABLE IF EXISTS repair_knowledge_entries;
+DROP TABLE IF EXISTS repair_knowledge_imports;
+DROP TABLE IF EXISTS repair_knowledge_sources;
+DROP TABLE IF EXISTS doctor_finding_aliases;
+DROP TABLE IF EXISTS doctor_findings;
+DROP TABLE IF EXISTS doctor_scan_scopes;
+DROP TABLE IF EXISTS doctor_scans;
+"#,
+};
+
+const MIGRATION_0018: SqliteMigration = SqliteMigration {
+    version: 18,
+    name: "add_security_advisory_cache",
+    up_sql: r#"
+CREATE TABLE IF NOT EXISTS security_advisories (
+    cache_key TEXT PRIMARY KEY,
+    advisory_id TEXT NOT NULL,
+    ecosystem TEXT NOT NULL,
+    scope TEXT,
+    package_name TEXT NOT NULL,
+    affected_range_json TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    cvss_score REAL,
+    summary TEXT NOT NULL,
+    description TEXT,
+    fixed_version TEXT,
+    source_provider TEXT NOT NULL,
+    source_feed TEXT,
+    fetched_at_epoch_ms INTEGER NOT NULL,
+    expires_at_epoch_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_security_advisories_package
+    ON security_advisories (ecosystem, package_name, cache_key);
+CREATE INDEX IF NOT EXISTS idx_security_advisories_source
+    ON security_advisories (source_provider, cache_key);
+CREATE INDEX IF NOT EXISTS idx_security_advisories_expiry
+    ON security_advisories (expires_at_epoch_ms);
+"#,
+    down_sql: r#"
+DROP INDEX IF EXISTS idx_security_advisories_expiry;
+DROP INDEX IF EXISTS idx_security_advisories_source;
+DROP INDEX IF EXISTS idx_security_advisories_package;
+DROP TABLE IF EXISTS security_advisories;
+"#,
+};
+
+const MIGRATION_0019: SqliteMigration = SqliteMigration {
+    version: 19,
+    name: "add_repair_knowledge_recommendation_rank",
+    up_sql: r#"
+ALTER TABLE repair_knowledge_entries ADD COLUMN recommendation_rank INTEGER;
+"#,
+    down_sql: r#"
+ALTER TABLE repair_knowledge_entries DROP COLUMN recommendation_rank;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 19] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -783,6 +950,9 @@ const MIGRATIONS: [SqliteMigration; 16] = [
     MIGRATION_0014,
     MIGRATION_0015,
     MIGRATION_0016,
+    MIGRATION_0017,
+    MIGRATION_0018,
+    MIGRATION_0019,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

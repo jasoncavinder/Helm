@@ -6,9 +6,11 @@ use crate::post_install_setup::{
     ManagerPostInstallSetupReport, evaluate_manager_post_install_setup,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use unicode_normalization::UnicodeNormalization;
 
 pub const ISSUE_CODE_METADATA_ONLY_INSTALL: &str = "metadata_only_install";
 pub const FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL: &str = "homebrew_metadata_only_install";
@@ -22,7 +24,13 @@ const TASK_FAILURE_DIAGNOSTIC_PREFIX: &str = "[diagnostic.v1] ";
 const TASK_FAILURE_DIAGNOSTIC_SCHEMA: &str = "helm.task.failure_diagnostic";
 pub const HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY: &str = "homebrew.cellar_lock_conflict";
 const RECENT_TASK_FAILURE_MAX_AGE: Duration = Duration::from_secs(60 * 60);
-const FINGERPRINT_VERSION: u8 = 1;
+const FINGERPRINT_NAMESPACE: &str = "helm.doctor.finding";
+const FINGERPRINT_VERSION: &str = "v2";
+const SUBJECT_KIND_PACKAGE: &str = "package";
+const SUBJECT_KIND_REQUIREMENT_SET: &str = "requirement_set";
+const SUBJECT_KIND_MANAGER_CONFIGURATION: &str = "manager_configuration";
+const SUBJECT_KIND_PACKAGE_OPERATION: &str = "package_operation";
+const SUBJECT_SELECTED_EXECUTABLE_PATH: &str = "selected_executable_path";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -130,18 +138,104 @@ pub struct ManagerPackageStateScanInput<'a> {
     pub executable_state: Option<&'a ManagerExecutableDoctorState>,
 }
 
+impl DoctorFinding {
+    pub fn matches_repair_reference(
+        &self,
+        manager: ManagerId,
+        source_manager: ManagerId,
+        package_name: &str,
+        issue_code: &str,
+    ) -> bool {
+        if self.manager_id != manager.as_str()
+            || self.source_manager_id.as_deref() != Some(source_manager.as_str())
+            || self.issue_code != issue_code
+        {
+            return false;
+        }
+
+        self.package_name.as_deref().is_none_or(|active_package| {
+            normalize_homebrew_identity(active_package) == normalize_homebrew_identity(package_name)
+        })
+    }
+}
+
+fn append_netstring(output: &mut Vec<u8>, value: &[u8]) {
+    output.extend_from_slice(value.len().to_string().as_bytes());
+    output.push(b':');
+    output.extend_from_slice(value);
+    output.push(b',');
+}
+
+fn fingerprint_v2(
+    finding_code: &str,
+    issue_code: &str,
+    manager_id: &str,
+    source_manager_id: Option<&str>,
+    subject_kind: &str,
+    subject_value: &[u8],
+) -> String {
+    let mut preimage = Vec::new();
+    for field in [
+        FINGERPRINT_NAMESPACE.as_bytes(),
+        FINGERPRINT_VERSION.as_bytes(),
+        finding_code.as_bytes(),
+        issue_code.as_bytes(),
+        manager_id.as_bytes(),
+        source_manager_id.unwrap_or_default().as_bytes(),
+        subject_kind.as_bytes(),
+        subject_value,
+    ] {
+        append_netstring(&mut preimage, field);
+    }
+
+    let digest = Sha256::digest(preimage);
+    let mut hexadecimal = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(&mut hexadecimal, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    format!("helm-doctor:{FINGERPRINT_VERSION}:sha256:{hexadecimal}")
+}
+
+fn trim_ascii_whitespace(value: &str) -> &str {
+    value.trim_matches(|character: char| character.is_ascii_whitespace())
+}
+
+fn normalize_homebrew_identity(value: &str) -> String {
+    let mut normalized = trim_ascii_whitespace(value).nfc().collect::<String>();
+    normalized.make_ascii_lowercase();
+    normalized
+}
+
+fn encode_identifier_set(values: &[&str]) -> Vec<u8> {
+    let mut normalized = values
+        .iter()
+        .map(|value| trim_ascii_whitespace(value).to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+    normalized.dedup();
+
+    let mut encoded = Vec::new();
+    for value in normalized {
+        append_netstring(&mut encoded, value.as_bytes());
+    }
+    encoded
+}
+
 pub fn fingerprint_for_metadata_only_install(
     manager: ManagerId,
     source_manager: ManagerId,
     package_name: &str,
 ) -> String {
-    let normalized_package = package_name.trim().to_ascii_lowercase();
-    format!(
-        "v{FINGERPRINT_VERSION}:manager:{}:issue:{}:source:{}:package:{}",
-        manager.as_str(),
+    let normalized_package = normalize_homebrew_identity(package_name);
+    fingerprint_v2(
+        FINDING_CODE_HOMEBREW_METADATA_ONLY_INSTALL,
         ISSUE_CODE_METADATA_ONLY_INSTALL,
-        source_manager.as_str(),
-        normalized_package
+        manager.as_str(),
+        Some(source_manager.as_str()),
+        SUBJECT_KIND_PACKAGE,
+        normalized_package.as_bytes(),
     )
 }
 
@@ -149,32 +243,57 @@ pub fn fingerprint_for_post_install_setup_required(
     manager: ManagerId,
     unmet_requirement_ids: &[&str],
 ) -> String {
-    let mut requirement_ids = unmet_requirement_ids
-        .iter()
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    requirement_ids.sort();
-    requirement_ids.dedup();
-    let encoded_requirements = requirement_ids.join(",");
-    format!(
-        "v{FINGERPRINT_VERSION}:manager:{}:issue:{}:requirements:{}",
-        manager.as_str(),
+    let encoded_requirements = encode_identifier_set(unmet_requirement_ids);
+    fingerprint_v2(
+        FINDING_CODE_POST_INSTALL_SETUP_REQUIRED,
         ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED,
-        encoded_requirements
+        manager.as_str(),
+        Some(manager.as_str()),
+        SUBJECT_KIND_REQUIREMENT_SET,
+        encoded_requirements.as_slice(),
     )
 }
 
 pub fn fingerprint_for_selected_executable_path_stale(
     manager: ManagerId,
-    selected_path: &str,
+    _selected_path: &str,
 ) -> String {
-    let normalized_path = selected_path.trim().to_ascii_lowercase();
-    format!(
-        "v{FINGERPRINT_VERSION}:manager:{}:issue:{}:selected_path:{}",
-        manager.as_str(),
+    fingerprint_v2(
+        FINDING_CODE_SELECTED_EXECUTABLE_PATH_STALE,
         ISSUE_CODE_SELECTED_EXECUTABLE_PATH_STALE,
-        normalized_path
+        manager.as_str(),
+        Some(manager.as_str()),
+        SUBJECT_KIND_MANAGER_CONFIGURATION,
+        SUBJECT_SELECTED_EXECUTABLE_PATH.as_bytes(),
+    )
+}
+
+pub fn fingerprint_for_homebrew_lock_conflict(manager: ManagerId, command: Option<&str>) -> String {
+    let (operation, package_identity) = parse_homebrew_operation(command, manager)
+        .map(|parsed| {
+            (
+                parsed.operation,
+                parsed.package_identity.unwrap_or_default(),
+            )
+        })
+        .unwrap_or_else(|| ("other", String::new()));
+    let package_kind = if manager == ManagerId::HomebrewCask {
+        "cask"
+    } else {
+        "formula"
+    };
+    let mut subject = Vec::new();
+    append_netstring(&mut subject, operation.as_bytes());
+    append_netstring(&mut subject, package_kind.as_bytes());
+    append_netstring(&mut subject, package_identity.as_bytes());
+
+    fingerprint_v2(
+        FINDING_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT,
+        ISSUE_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT,
+        manager.as_str(),
+        Some(manager.as_str()),
+        SUBJECT_KIND_PACKAGE_OPERATION,
+        subject.as_slice(),
     )
 }
 
@@ -263,9 +382,6 @@ pub fn scan_recent_task_failure_issues(
         if age > RECENT_TASK_FAILURE_MAX_AGE {
             continue;
         }
-        if !seen.insert(diagnostic.fingerprint.clone()) {
-            continue;
-        }
         if diagnostic.issue_key != HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY {
             continue;
         }
@@ -273,6 +389,11 @@ pub fn scan_recent_task_failure_issues(
             ManagerId::HomebrewFormula | ManagerId::HomebrewCask => diagnostic.manager,
             _ => continue,
         };
+        let fingerprint =
+            fingerprint_for_homebrew_lock_conflict(source_manager, diagnostic.command.as_deref());
+        if !seen.insert(fingerprint.clone()) {
+            continue;
+        }
         let package_name =
             parse_homebrew_target_from_command(diagnostic.command.as_deref(), source_manager);
         let summary = package_name
@@ -306,7 +427,7 @@ pub fn scan_recent_task_failure_issues(
         findings.push(DoctorFinding {
             finding_code: FINDING_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT.to_string(),
             issue_code: ISSUE_CODE_HOMEBREW_CELLAR_LOCK_CONFLICT.to_string(),
-            fingerprint: diagnostic.fingerprint.clone(),
+            fingerprint,
             manager_id: source_manager.as_str().to_string(),
             source_manager_id: Some(source_manager.as_str().to_string()),
             package_name,
@@ -430,7 +551,22 @@ pub fn scan_manager_package_state_issues(
     findings
 }
 
-fn parse_homebrew_target_from_command(command: Option<&str>, manager: ManagerId) -> Option<String> {
+struct ParsedHomebrewOperation {
+    operation: &'static str,
+    package_identity: Option<String>,
+}
+
+fn parse_homebrew_operation(
+    command: Option<&str>,
+    manager: ManagerId,
+) -> Option<ParsedHomebrewOperation> {
+    if !matches!(
+        manager,
+        ManagerId::HomebrewFormula | ManagerId::HomebrewCask
+    ) {
+        return None;
+    }
+
     let command = command?.trim();
     if command.is_empty() {
         return None;
@@ -441,30 +577,47 @@ fn parse_homebrew_target_from_command(command: Option<&str>, manager: ManagerId)
         return None;
     }
 
-    let action_index = tokens
-        .iter()
-        .position(|token| matches!(*token, "upgrade" | "install" | "uninstall" | "reinstall"))?;
-    let candidate = tokens[action_index + 1..]
+    let action_index = tokens.iter().position(|token| {
+        matches!(
+            *token,
+            "upgrade" | "install" | "uninstall" | "reinstall" | "cleanup"
+        )
+    })?;
+    let operation = match tokens[action_index] {
+        "upgrade" => "upgrade",
+        "install" => "install",
+        "uninstall" => "uninstall",
+        "reinstall" => "reinstall",
+        "cleanup" => "cleanup",
+        _ => "other",
+    };
+    let package_identity = tokens[action_index + 1..]
         .iter()
         .rev()
         .find(|token| !token.starts_with('-'))
-        .copied()?;
+        .copied()
+        .map(normalize_homebrew_identity)
+        .filter(|candidate| is_valid_homebrew_package_identity(candidate));
 
-    let candidate = candidate.rsplit('/').next().unwrap_or(candidate).trim();
-    if !is_valid_homebrew_lock_package_name(candidate) {
-        return None;
-    }
-
-    match manager {
-        ManagerId::HomebrewFormula | ManagerId::HomebrewCask => Some(candidate.to_string()),
-        _ => None,
-    }
+    Some(ParsedHomebrewOperation {
+        operation,
+        package_identity,
+    })
 }
 
-fn is_valid_homebrew_lock_package_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '@' | '+' | '.' | '_' | '-')
+fn parse_homebrew_target_from_command(command: Option<&str>, manager: ManagerId) -> Option<String> {
+    parse_homebrew_operation(command, manager)?.package_identity
+}
+
+fn is_valid_homebrew_package_identity(value: &str) -> bool {
+    let parts = value.split('/').collect::<Vec<_>>();
+    matches!(parts.len(), 1 | 3)
+        && parts.iter().all(|part| {
+            !part.is_empty()
+                && part.chars().all(|character| {
+                    character.is_ascii_alphanumeric()
+                        || matches!(character, '@' | '+' | '.' | '_' | '-')
+                })
         })
 }
 
@@ -604,6 +757,93 @@ mod tests {
     }
 
     #[test]
+    fn fingerprint_v2_matches_normative_golden_vectors() {
+        assert_eq!(
+            fingerprint_for_metadata_only_install(
+                ManagerId::Rustup,
+                ManagerId::HomebrewFormula,
+                "rustup",
+            ),
+            "helm-doctor:v2:sha256:4043881e7469e0316b86c5f86c43f56c9b04995a95e393f806ddb76de61e9c14"
+        );
+        assert_eq!(
+            fingerprint_for_post_install_setup_required(ManagerId::Mise, &["mise_activate"]),
+            "helm-doctor:v2:sha256:7cc56535a887459d3555d1fd7304a9736f3b08cb2311a74f1f9cbf2e33360c58"
+        );
+        assert_eq!(
+            fingerprint_for_selected_executable_path_stale(
+                ManagerId::Rustup,
+                "/Users/example/.cargo/bin/rustup",
+            ),
+            "helm-doctor:v2:sha256:771a5b1c26fdab9e9221521f3227e1536d5f1a80c307ae525338ffd9534ac65e"
+        );
+        assert_eq!(
+            fingerprint_for_homebrew_lock_conflict(
+                ManagerId::HomebrewFormula,
+                Some("brew upgrade --formula fd"),
+            ),
+            "helm-doctor:v2:sha256:c675dec7de83e1c75d7c496851f4f26f842369ebe679f31da91eda2415d0aa9f"
+        );
+        assert_eq!(
+            fingerprint_for_homebrew_lock_conflict(ManagerId::HomebrewCask, None),
+            "helm-doctor:v2:sha256:f02fb46e796b94d64f1bbf1a214e8a8ffea54e04577202d41f4d38cec42b9291"
+        );
+    }
+
+    #[test]
+    fn fingerprint_v2_normalizes_sets_and_excludes_local_evidence() {
+        assert_eq!(
+            fingerprint_for_post_install_setup_required(
+                ManagerId::Mise,
+                &[
+                    " path_ready ",
+                    "MISE_ACTIVATE",
+                    "mise_activate",
+                    "path_ready"
+                ],
+            ),
+            fingerprint_for_post_install_setup_required(
+                ManagerId::Mise,
+                &["mise_activate", "path_ready"],
+            )
+        );
+        assert_eq!(
+            fingerprint_for_selected_executable_path_stale(
+                ManagerId::Rustup,
+                "/Users/alice/.cargo/bin/rustup",
+            ),
+            fingerprint_for_selected_executable_path_stale(
+                ManagerId::Rustup,
+                "/Users/bob/.cargo/bin/rustup",
+            )
+        );
+        assert_eq!(
+            fingerprint_for_metadata_only_install(
+                ManagerId::Rustup,
+                ManagerId::HomebrewFormula,
+                "Owner/Tap/RUSTUP",
+            ),
+            fingerprint_for_metadata_only_install(
+                ManagerId::Rustup,
+                ManagerId::HomebrewFormula,
+                "owner/tap/rustup",
+            )
+        );
+    }
+
+    #[test]
+    fn fingerprint_v2_normalizes_unicode_to_nfc_without_locale_case_folding() {
+        assert_eq!(
+            normalize_homebrew_identity("cafe\u{301}"),
+            normalize_homebrew_identity("caf\u{e9}")
+        );
+        assert_ne!(
+            normalize_homebrew_identity("caf\u{e9}"),
+            normalize_homebrew_identity("CAF\u{c9}")
+        );
+    }
+
+    #[test]
     fn metadata_only_issue_detected_when_formula_installed_without_homebrew_instance() {
         let formulas = HashSet::from([String::from("rustup")]);
         let findings = scan_manager_package_state_issues(ManagerPackageStateScanInput {
@@ -626,6 +866,18 @@ mod tests {
                 "rustup"
             )
         );
+        assert!(finding.matches_repair_reference(
+            ManagerId::Rustup,
+            ManagerId::HomebrewFormula,
+            "RUSTUP",
+            ISSUE_CODE_METADATA_ONLY_INSTALL,
+        ));
+        assert!(!finding.matches_repair_reference(
+            ManagerId::Rustup,
+            ManagerId::HomebrewFormula,
+            "mise",
+            ISSUE_CODE_METADATA_ONLY_INSTALL,
+        ));
     }
 
     #[test]
@@ -789,9 +1041,39 @@ mod tests {
         assert_eq!(finding.package_name.as_deref(), Some("fd"));
         assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
         assert_eq!(
+            finding.fingerprint,
+            fingerprint_for_homebrew_lock_conflict(
+                ManagerId::HomebrewFormula,
+                Some("brew upgrade --formula fd"),
+            )
+        );
+        assert_eq!(
             finding.evidence_secondary.as_deref(),
             Some("brew upgrade --formula fd")
         );
+    }
+
+    #[test]
+    fn recent_task_failure_scan_deduplicates_equivalent_legacy_failures_by_v2_identity() {
+        let diagnostics = ["failure-v1-first", "failure-v1-second"].map(|fingerprint| {
+            RecentTaskFailureDiagnostic {
+                fingerprint: fingerprint.to_string(),
+                manager: ManagerId::HomebrewFormula,
+                issue_key: HOME_BREW_LOCK_DIAGNOSTIC_ISSUE_KEY.to_string(),
+                command: Some("brew upgrade owner/tap/fd".to_string()),
+                issue_summary: None,
+                error_excerpt: None,
+                created_at: UNIX_EPOCH,
+            }
+        });
+
+        let findings = scan_recent_task_failure_issues(
+            diagnostics.as_slice(),
+            UNIX_EPOCH + Duration::from_secs(60),
+        );
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].package_name.as_deref(), Some("owner/tap/fd"));
     }
 
     #[test]
