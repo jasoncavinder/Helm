@@ -32,9 +32,9 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.15.x | Advanced Upgrade Transparency — richer execution-plan visibility, failure isolation, and operator controls (`v0.15.0` released) |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration for direct Developer ID channel, signed verification (`v0.16.x` stable, latest patch `v0.16.2`) |
 | 0.17.x | Diagnostics & Logging + Release Hardening — task log viewer, structured diagnostics export, manager-detection diagnostics, onboarding/detection hardening, manager-selection controls, and stable release follow-up fixes (`v0.17.0` stable, latest patch `v0.17.12`) |
-| 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge and internal advisory cache foundation (`v0.18.0` withdrawn; `v0.18.1` remediation in progress) |
+| 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge and internal advisory cache foundation (`v0.18.1` corrective stable release; `v0.18.0` withdrawn) |
 
-> **Current Track:** `v0.17.12` remains public stable after the `v0.18.0` withdrawal. `v0.18.1` migration remediation and recovery validation is in progress. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Current Track:** `v0.18.1` is stable on `main`; `v0.18.0` remains withdrawn, and `v0.19.x` stability and pre-1.0 hardening is next. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Planned
 

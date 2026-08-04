@@ -51,18 +51,18 @@ This checklist is required before creating a release tag on `main`.
 
 ## Release Publication Verification (All Releases)
 
-- [ ] Review release workflow summary output for both release workflows:
+- [x] Review release workflow summary output for both release workflows:
   - `Artifacts uploaded: yes`
   - `Publish PR opened: yes/no`
   - `Main metadata synced: yes/no`
-- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and run workflow_dispatch with `verify_only=true` for the corresponding release workflow to verify `Main metadata synced: yes` without rebuilding artifacts.
-- [ ] Confirm release publication verification status is green after publish PR merge:
+- [x] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and run workflow_dispatch with `verify_only=true` for the corresponding release workflow to verify `Main metadata synced: yes` without rebuilding artifacts.
+- [x] Confirm release publication verification status is green after publish PR merge:
   - `Release Publish Verify`
   - `Appcast Drift Guard`
   - `CLI Update Metadata Drift Guard`
-- [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
+- [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.18.1 (Corrective Release Gate, In Progress)
+## v0.18.1 (Corrective Release Gate, Completed)
 
 ### Required Remediation
 
@@ -79,11 +79,11 @@ This checklist is required before creating a release tag on `main`.
 - [x] Merge the hotfix through the protected branch path and run rehearsal/preflight from a clean, current `main` checkout.
 - [x] Run a fresh successful `Release macOS Canary` on `macos-26`.
 - [x] Obtain explicit maintainer approval before tag creation and publication.
-- [ ] Complete the full rehearsal, preflight, canary, signing, notarization, publication, and post-publication verification gates.
+- [x] Complete the full rehearsal, preflight, canary, signing, notarization, publication, and post-publication verification gates.
 
 ## v0.18.0 (Withdrawn)
 
-`v0.18.0` was published on 2026-08-03 and withdrawn after discovery of a critical SQLite migration defect. The immutable tag is retained for auditability; `v0.17.12` remains the public stable line until `v0.18.1` is ready.
+`v0.18.0` was published on 2026-08-03 and withdrawn after discovery of a critical SQLite migration defect. The immutable tag is retained for auditability; `v0.18.1` is the corrective public stable successor.
 
 ### Scope
 

@@ -1,5 +1,5 @@
 ---
-const globalBanner = `<strong>Helm v0.17.12 is live. v0.18.0 has been withdrawn.</strong> Use v0.17.12 while v0.18.1 is prepared. If you installed v0.18.0, avoid further use and preserve your Helm data until recovery guidance is published. Follow updates on <a href="https://github.com/jasoncavinder/Helm/issues" target="_blank" rel="noreferrer">GitHub</a>.`;
+const globalBanner = `<strong>Helm v0.18.1 is live.</strong> v0.18.0 remains withdrawn; users of v0.18.0 should update to v0.18.1 before further use. Report issues on <a href="https://github.com/jasoncavinder/Helm/issues/new/choose" target="_blank" rel="noreferrer">GitHub</a>.`;
 const pageBanner = Astro.locals.starlightRoute.entry.data.banner?.content;
 const banners = [globalBanner, pageBanner].filter(Boolean);
 ---
