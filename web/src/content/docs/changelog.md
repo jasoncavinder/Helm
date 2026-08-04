@@ -11,9 +11,18 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.18.1 — 2026-08-04
+
+Patch `0.18.1` is the corrective stable successor to withdrawn `v0.18.0`.
+
+### Fixed
+- SQLite startup now reconciles the known development migration `17` collision before applying the released doctor/repair schema, preserving existing user data.
+- Already-current databases no longer replay destructive historical DDL during startup, preserving package identifiers and making repeated migration initialization idempotent.
+- Rust service initialization now succeeds for affected databases, restoring Refresh task submission and Helm CLI installation after updating to `v0.18.0`.
+
 ## 0.18.0 — 2026-08-03
 
-> **Withdrawn:** `v0.18.0` was removed from public distribution after discovery of a critical SQLite migration defect. `v0.17.12` remains the current stable release while `v0.18.1` is prepared. Users who installed `v0.18.0` should avoid further use and preserve their Helm data until recovery guidance is published.
+> **Withdrawn:** `v0.18.0` was removed from public distribution after discovery of a critical SQLite migration defect. Its immutable release record remains for auditability; `v0.18.1` is the corrective stable successor. Users of `v0.18.0` should update to `v0.18.1` before further use.
 
 Helm `0.18.0` publishes the local doctor/repair foundation and internal security-advisory cache groundwork.
 

@@ -6,7 +6,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
-## [0.18.1] - 2026-08-03
+## [0.18.1] - 2026-08-04
 
 ### Fixed
 - SQLite startup now reconciles the known development migration `17` collision before applying the released doctor/repair schema, preserving existing user data.

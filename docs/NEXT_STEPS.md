@@ -11,15 +11,13 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.18.1 critical migration remediation and recovery release
+v0.19.x stability and pre-1.0 hardening (post-v0.18.1 corrective release)
 ```
 
 Focus:
-- complete and review the `v0.18.1` SQLite migration remediation, including affected-database recovery behavior
-- keep `v0.17.12` as the only public stable update target until the corrective release passes every gate
-- validate fresh installs, `v0.17.12 -> v0.18.1` upgrades, and recovery from databases touched by `v0.18.0`
-- complete the migration-recovery regression checks, quality gates, release rehearsal, preflight, and explicit approval checkpoints before tagging
-- resume the `v0.19.x` stability and pre-1.0 hardening track only after the corrective release is complete
+- begin the `v0.19.x` stability and pre-1.0 hardening track with stress, crash-recovery, and memory audits
+- maintain release-process hardening guardrails now that `v0.18.1` publication is complete
+- preserve the released `v0.18.1` migration-reconciliation behavior and its affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
@@ -30,9 +28,9 @@ Focus:
 - keep the agent-agnostic operating model current (lean `AGENTS`, isolated task worktrees under `.worktrees/` via `agent-worktree-isolation`, `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, notify logging to `dev/logs/agent-runs.ndjson`, and `scripts/agents/` workflows) so recurring AI workflows remain deterministic and low-friction
 
 Current checkpoint:
-- `0.18.x` internal groundwork remains implemented on `main`, but `v0.18.0` was withdrawn because of a critical SQLite migration defect and must not be distributed.
-- a previously recorded development migration `17` (`add_advisory_cache`) can collide with the released doctor/repair migration at the same version, preventing Rust service initialization; `v0.18.1` reconciles that known collision transactionally before dependent migrations run.
-- `v0.17.12` is the current public stable release while `v0.18.1` remediation and recovery validation is completed; the withdrawn `v0.18.0` implementation included:
+- `0.18.x` internal groundwork is released on `main` through `v0.18.1`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
+- `v0.18.1` transactionally reconciles the migration `17` collision, avoids historical DDL replay, and passed fresh-install, `v0.17.12` upgrade, and affected-`v0.18.0` recovery validation.
+- `v0.18.1` is the current public stable release; doctor/repair, local security groundwork, migration recovery, and package workflow hardening are now published:
   - bulk and scoped upgrade phase coordination now resides in Rust/FFI/XPC. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
   - all current manager adapters are considered complete for Helm's intended scope
   - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
@@ -361,7 +359,7 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.12`; `v0.18.0` is withdrawn and `v0.18.1` is in remediation
+- latest stable release on `main`: `v0.18.1`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -379,7 +377,6 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.18.1` — SQLite migration-recovery hotfix (validation in progress)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 - `v1.0.0` — Stable control plane release
 
@@ -1276,4 +1273,4 @@ Delivered:
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
 - 0.17.12 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, `v0.17.10`, `v0.17.11`, and `v0.17.12`.
-- 0.18.0 release execution completed but the release was withdrawn because of a critical SQLite migration defect; doctor/repair persistence and local-security groundwork will return through `v0.18.1` after recovery validation.
+- 0.18.1 corrective release execution is complete on `main`; `v0.18.0` remains withdrawn, while doctor/repair persistence, local-security groundwork, and migration recovery are publicly distributed through `v0.18.1`.
