@@ -559,7 +559,9 @@ Exit Criteria:
 
 ---
 
-## 0.18.x — Doctor & Repair Foundation (rc) - Completed on `dev`
+## 0.18.x — Doctor & Repair Foundation - Completed on `dev`
+
+Release status: included in the `v0.18.0` stable release validation.
 
 Goal:
 
@@ -624,7 +626,9 @@ Stage 3 (`1.4.x`) — Shared Brain:
 
 ---
 
-## 0.18.x — Local Security Groundwork (rc, second slice) - Completed on `dev`
+## 0.18.x — Local Security Groundwork (second slice) - Completed on `dev`
+
+Release status: included in the `v0.18.0` stable release validation.
 
 Goal:
 

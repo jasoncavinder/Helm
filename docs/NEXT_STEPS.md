@@ -11,11 +11,11 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x consolidation on `dev` (post-v0.17.12 stable release)
+v0.18.0 release validation on `dev` (post-v0.17.12 stable release)
 ```
 
 Focus:
-- keep `main`/`dev` release-state docs and version markers aligned now that `v0.17.12` is published
+- complete the `v0.18.0` release rehearsal, quality gates, fresh macOS canary, publish-auth probe, and explicit approval checkpoints before tagging
 - maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
 - consolidate and review the delivered SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
@@ -375,7 +375,7 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.18.x` — Local security groundwork (internal-only implementation complete; release integration pending)
+- `v0.18.x` — Doctor/repair and local security groundwork (implementation complete; `v0.18.0` release validation in progress)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 
 ## Historical v0.17.x Delivery Tracker (0.17.3 Checkpoint)
