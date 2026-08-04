@@ -2380,6 +2380,7 @@ fn reconcile_replaced_migrations(
 
     let transaction = connection.transaction()?;
     execute_batch_tolerant(&transaction, expected.up_sql)?;
+    transaction.execute("DROP TABLE IF EXISTS advisory_cache", [])?;
     transaction.execute(
         &format!(
             "UPDATE {MIGRATIONS_TABLE}

@@ -231,6 +231,7 @@ fn affected_v0180_schema_recovers_idempotently_without_data_loss() {
         )
         .unwrap();
     assert_eq!(migration_17_name, migration(17).unwrap().name);
+    assert!(!table_exists(&connection, "advisory_cache"));
     let bundled_entries: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM repair_knowledge_entries WHERE source_key = 'bundled:helm'",
@@ -239,6 +240,29 @@ fn affected_v0180_schema_recovers_idempotently_without_data_loss() {
         )
         .unwrap();
     assert!(bundled_entries > 0);
+}
+
+#[test]
+fn recovered_schema_rolls_back_cleanly_and_can_be_reinitialized() {
+    let store = SqliteStore::new(temp_database("migration-v0180-reset"));
+
+    store.apply_migration(16).unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    connection.execute_batch(AFFECTED_V0180_OVERLAY).unwrap();
+    drop(connection);
+
+    store.migrate_to_latest().unwrap();
+    store.apply_migration(0).unwrap();
+
+    assert_eq!(store.current_version().unwrap(), 0);
+    let connection = Connection::open(store.database_path()).unwrap();
+    assert!(!table_exists(&connection, "advisory_cache"));
+    assert!(!table_exists(&connection, "app_settings"));
+    assert!(!table_exists(&connection, "repair_knowledge_entries"));
+    drop(connection);
+
+    store.migrate_to_latest().unwrap();
+    assert_eq!(store.current_version().unwrap(), current_schema_version());
 }
 
 #[test]
