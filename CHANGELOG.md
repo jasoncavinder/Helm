@@ -10,6 +10,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ### Fixed
 - SQLite startup now reconciles the known development migration `17` collision before applying the released doctor/repair schema, preserving existing user data.
+- Already-current databases no longer replay destructive historical DDL during startup, preserving package identifiers and making repeated migration initialization idempotent.
 - Rust service initialization now succeeds for affected databases, restoring Refresh task submission and Helm CLI installation after updating to `v0.18.0`.
 
 ## [0.18.0] - 2026-08-03

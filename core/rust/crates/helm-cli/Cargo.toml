@@ -20,3 +20,6 @@ ureq = "2.10"
 ratatui = "0.30"
 crossterm = "0.28"
 libc = "0.2"
+
+[dev-dependencies]
+rusqlite = { version = "0.33", features = ["bundled"] }
