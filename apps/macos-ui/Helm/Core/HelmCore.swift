@@ -434,11 +434,19 @@ struct ManagerPackageStateIssue: Codable {
     let repairOptions: [ManagerPackageStateIssueRepairOption]?
 }
 
+struct RepairOptionContentKeys: Codable {
+    let title: String
+    let description: String
+    let impact: String?
+    let guidance: String?
+}
+
 struct ManagerPackageStateIssueRepairOption: Codable {
     let optionId: String
     let action: String
     let title: String
     let description: String
+    let contentKeys: RepairOptionContentKeys?
     let recommended: Bool
     let requiresConfirmation: Bool
     let automationLevel: String

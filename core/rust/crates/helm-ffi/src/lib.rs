@@ -170,6 +170,9 @@ use helm_core::models::{
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
+use helm_core::persistence::doctor_persistence::{
+    DoctorStore, RepairHistoryRecord, begin_local_doctor_scan, complete_local_doctor_scan,
+};
 use helm_core::persistence::{
     DetectionStore, ManagerPreference, MigrationStore, PackageStore, PinStore, SearchCacheStore,
     TaskStore,
@@ -715,11 +718,24 @@ struct FfiManagerPackageStateIssue {
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
+struct FfiKnowledgeContentKeys {
+    title: String,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    impact: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guidance: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct FfiManagerIssueRepairOption {
     option_id: String,
     action: String,
     title: String,
     description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_keys: Option<FfiKnowledgeContentKeys>,
     recommended: bool,
     requires_confirmation: bool,
     automation_level: String,
@@ -1513,6 +1529,61 @@ fn group_recent_doctor_failure_diagnostics_by_manager(
     grouped
 }
 
+fn collect_doctor_report(
+    store: &SqliteStore,
+) -> Result<helm_core::doctor::DoctorReport, &'static str> {
+    let installed_packages = store
+        .list_installed()
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    let instances = store
+        .list_install_instances(None)
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    let mut instances_by_manager: std::collections::HashMap<
+        ManagerId,
+        Vec<ManagerInstallInstance>,
+    > = std::collections::HashMap::new();
+    for instance in instances {
+        instances_by_manager
+            .entry(instance.manager)
+            .or_default()
+            .push(instance);
+    }
+    let detection_map: std::collections::HashMap<_, _> = store
+        .list_detections()
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?
+        .into_iter()
+        .collect();
+    let pref_map: std::collections::HashMap<_, _> = store
+        .list_manager_preferences()
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?
+        .into_iter()
+        .map(|pref| (pref.manager, pref))
+        .collect();
+    let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
+    let recent_failure_diagnostics = collect_recent_doctor_failure_diagnostics(store);
+    let scan_time = SystemTime::now();
+    let started_at_unix = scan_time
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+        .ok_or(SERVICE_ERROR_STORAGE_FAILURE)?;
+    let scan = begin_local_doctor_scan(store, started_at_unix)
+        .map_err(|_| SERVICE_ERROR_STORAGE_FAILURE)?;
+    let report = helm_core::doctor::scan_package_state_report(
+        ManagerId::ALL,
+        &instances_by_manager,
+        installed_packages.as_slice(),
+        &executable_states,
+        recent_failure_diagnostics.as_slice(),
+        scan_time,
+    );
+    if complete_local_doctor_scan(store, &scan, &report, started_at_unix).is_err() {
+        let _ = store.fail_scan(scan.scan_id.as_str(), started_at_unix);
+        return Err(SERVICE_ERROR_STORAGE_FAILURE);
+    }
+    Ok(report)
+}
+
 fn collect_manager_executable_paths(
     id: ManagerId,
     active_path: Option<&std::path::Path>,
@@ -1898,6 +1969,7 @@ fn build_manager_statuses(
                 &homebrew_installed_formulas,
                 manager_executable_doctor_states.get(&id),
                 diagnostics_by_manager.get(&id).map(Vec::as_slice),
+                store,
             );
             let setup_required = package_state_issues.iter().any(|issue| {
                 issue.issue_code == helm_core::doctor::ISSUE_CODE_POST_INSTALL_SETUP_REQUIRED
@@ -1972,6 +2044,7 @@ fn manager_package_state_issues(
     homebrew_installed_formulas: &std::collections::HashSet<String>,
     executable_state: Option<&helm_core::doctor::ManagerExecutableDoctorState>,
     recent_failure_diagnostics: Option<&[helm_core::doctor::RecentTaskFailureDiagnostic]>,
+    store: Option<&SqliteStore>,
 ) -> Vec<FfiManagerPackageStateIssue> {
     let mut findings = helm_core::doctor::scan_manager_package_state_issues(
         helm_core::doctor::ManagerPackageStateScanInput {
@@ -1991,7 +2064,20 @@ fn manager_package_state_issues(
     findings
         .into_iter()
         .map(|finding| {
-            let repair_plan = helm_core::repair::plan_for_finding(&finding);
+            let repair_plan = store
+                .and_then(|store| store.get_effective_knowledge(&finding).ok())
+                .and_then(|knowledge| {
+                    helm_core::repair::plan_for_finding_with_knowledge(
+                        &finding,
+                        knowledge.as_slice(),
+                    )
+                })
+                .or_else(|| {
+                    store
+                        .is_none()
+                        .then(|| helm_core::repair::plan_for_finding(&finding))
+                        .flatten()
+                });
             let repair_options = repair_plan
                 .as_ref()
                 .map(|plan| {
@@ -2002,6 +2088,14 @@ fn manager_package_state_issues(
                             action: option.action.as_str().to_string(),
                             title: option.title.clone(),
                             description: option.description.clone(),
+                            content_keys: option.content_keys.as_ref().map(|k| {
+                                FfiKnowledgeContentKeys {
+                                    title: k.title.clone(),
+                                    description: k.description.clone(),
+                                    impact: k.impact.clone(),
+                                    guidance: k.guidance.clone(),
+                                }
+                            }),
                             recommended: option.recommended,
                             requires_confirmation: option.requires_confirmation,
                             automation_level: option.automation_level.as_str().to_string(),
@@ -2638,6 +2732,7 @@ fn manager_has_setup_required_issue(
         manager,
         install_instances_by_manager.get(&manager),
         homebrew_installed_formulas,
+        None,
         None,
         None,
     )
@@ -6672,6 +6767,7 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
         &mut pref_map,
     );
     sync_manager_executable_overrides(&detection_map, &pref_map);
+    let _ = collect_doctor_report(state.store.as_ref());
 
     let statuses = build_manager_statuses(
         Some(state.runtime.as_ref()),
@@ -6703,68 +6799,23 @@ pub extern "C" fn helm_list_manager_status() -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_doctor_scan() -> *mut c_char {
     clear_last_error_key();
-    let guard = lock_or_recover(&STATE, "state");
-    let state = match guard.as_ref() {
-        Some(s) => s,
-        None => {
-            set_last_error_key(SERVICE_ERROR_INTERNAL);
+    let store = {
+        let guard = lock_or_recover(&STATE, "state");
+        match guard.as_ref() {
+            Some(state) => state.store.clone(),
+            None => {
+                set_last_error_key(SERVICE_ERROR_INTERNAL);
+                return std::ptr::null_mut();
+            }
+        }
+    };
+    let report = match collect_doctor_report(store.as_ref()) {
+        Ok(report) => report,
+        Err(error_key) => {
+            set_last_error_key(error_key);
             return std::ptr::null_mut();
         }
     };
-
-    let installed_packages = match state.store.list_installed() {
-        Ok(packages) => packages,
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let instances = match state.store.list_install_instances(None) {
-        Ok(instances) => instances,
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let mut instances_by_manager: std::collections::HashMap<
-        ManagerId,
-        Vec<ManagerInstallInstance>,
-    > = std::collections::HashMap::new();
-    for instance in instances {
-        instances_by_manager
-            .entry(instance.manager)
-            .or_default()
-            .push(instance);
-    }
-    let detection_map: std::collections::HashMap<_, _> = match state.store.list_detections() {
-        Ok(entries) => entries.into_iter().collect(),
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let pref_map: std::collections::HashMap<_, _> = match state.store.list_manager_preferences() {
-        Ok(entries) => entries
-            .into_iter()
-            .map(|pref| (pref.manager, pref))
-            .collect(),
-        Err(_) => {
-            set_last_error_key(SERVICE_ERROR_STORAGE_FAILURE);
-            return std::ptr::null_mut();
-        }
-    };
-    let executable_states = build_manager_executable_doctor_states(&detection_map, &pref_map);
-    let recent_failure_diagnostics =
-        collect_recent_doctor_failure_diagnostics(state.store.as_ref());
-
-    let report = helm_core::doctor::scan_package_state_report(
-        ManagerId::ALL,
-        &instances_by_manager,
-        installed_packages.as_slice(),
-        &executable_states,
-        recent_failure_diagnostics.as_slice(),
-        SystemTime::now(),
-    );
     let json = match serde_json::to_string(&report) {
         Ok(json) => json,
         Err(_) => {
@@ -10358,12 +10409,126 @@ fn spawn_post_install_setup_task(
     Ok(task_id)
 }
 
+fn repair_confirmation_satisfied(
+    option: &helm_core::repair::RepairOption,
+    confirmed: bool,
+) -> bool {
+    !option.requires_confirmation || confirmed
+}
+
+fn track_repair_task(
+    store: Arc<SqliteStore>,
+    task_id: i64,
+    fingerprint: String,
+    option_id: String,
+    action_id: String,
+) {
+    if task_id < 0 {
+        let _ = record_repair_history(
+            store.as_ref(),
+            &fingerprint,
+            &option_id,
+            &action_id,
+            None,
+            "failed",
+            Some("not_verified"),
+        );
+        return;
+    }
+    let task_id = TaskId(task_id as u64);
+    thread::spawn(move || {
+        const MAX_POLLS: usize = 57_600;
+        for _ in 0..MAX_POLLS {
+            let task = store
+                .list_recent_tasks(500)
+                .ok()
+                .and_then(|tasks| tasks.into_iter().find(|task| task.id == task_id));
+            if let Some(task) = task
+                && matches!(
+                    task.status,
+                    TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+                )
+            {
+                let result = match task.status {
+                    TaskStatus::Completed => "succeeded",
+                    TaskStatus::Failed => "failed",
+                    TaskStatus::Cancelled => "cancelled",
+                    TaskStatus::Queued | TaskStatus::Running => unreachable!(),
+                };
+                let verified_outcome = if task.status == TaskStatus::Completed {
+                    collect_doctor_report(store.as_ref()).ok().map(|report| {
+                        if report
+                            .findings
+                            .iter()
+                            .any(|finding| finding.fingerprint == fingerprint)
+                        {
+                            "not_repaired"
+                        } else {
+                            "repaired"
+                        }
+                    })
+                } else {
+                    Some("not_verified")
+                };
+                let _ = record_repair_history(
+                    store.as_ref(),
+                    &fingerprint,
+                    &option_id,
+                    &action_id,
+                    Some(task_id),
+                    result,
+                    verified_outcome,
+                );
+                return;
+            }
+            thread::sleep(Duration::from_millis(250));
+        }
+        let _ = record_repair_history(
+            store.as_ref(),
+            &fingerprint,
+            &option_id,
+            &action_id,
+            Some(task_id),
+            "timeout",
+            Some("not_verified"),
+        );
+    });
+}
+
+fn record_repair_history(
+    store: &SqliteStore,
+    fingerprint: &str,
+    option_id: &str,
+    action_id: &str,
+    task_id: Option<TaskId>,
+    result: &str,
+    verified_outcome: Option<&str>,
+) -> Result<(), helm_core::models::CoreError> {
+    let executed_at_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+        .unwrap_or(0);
+    store.record_repair_history(&RepairHistoryRecord {
+        fingerprint: fingerprint.to_string(),
+        option_id: option_id.to_string(),
+        action_id: action_id.to_string(),
+        task_id,
+        result: result.to_string(),
+        verified_outcome: verified_outcome.map(str::to_string),
+        executed_at_unix,
+    })
+}
+
 /// Apply a manager package-state repair option and queue the corresponding task.
 ///
 /// The current scaffold supports metadata-only Homebrew manager installs by routing one of:
 /// - `reinstall_manager_via_homebrew`
 /// - `remove_stale_package_entry`
 /// - `clear_selected_executable_override`
+///
+/// Options whose registry policy requires confirmation are rejected unless
+/// `confirmed` is true.
 ///
 /// # Safety
 ///
@@ -10375,6 +10540,7 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
     package_name: *const c_char,
     issue_code: *const c_char,
     option_id: *const c_char,
+    confirmed: bool,
 ) -> i64 {
     clear_last_error_key();
     if manager_id.is_null()
@@ -10430,11 +10596,35 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
         }
     };
 
-    let plan = match helm_core::repair::plan_for_issue(
-        manager,
-        source_manager,
-        package_name.as_str(),
-        issue_code.as_str(),
+    let validation_store = {
+        let guard = lock_or_recover(&STATE, "state");
+        match guard.as_ref() {
+            Some(state) => state.store.clone(),
+            None => return return_error_i64(SERVICE_ERROR_INTERNAL),
+        }
+    };
+    let current_report = match collect_doctor_report(validation_store.as_ref()) {
+        Ok(report) => report,
+        Err(error_key) => return return_error_i64(error_key),
+    };
+    let active_finding = match current_report.findings.iter().find(|finding| {
+        finding.matches_repair_reference(
+            manager,
+            source_manager,
+            package_name.as_str(),
+            issue_code.as_str(),
+        )
+    }) {
+        Some(finding) => finding,
+        None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
+    };
+    let effective_knowledge = match validation_store.get_effective_knowledge(active_finding) {
+        Ok(knowledge) => knowledge,
+        Err(_) => return return_error_i64(SERVICE_ERROR_STORAGE_FAILURE),
+    };
+    let plan = match helm_core::repair::plan_for_finding_with_knowledge(
+        active_finding,
+        effective_knowledge.as_slice(),
     ) {
         Some(plan) => plan,
         None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
@@ -10443,8 +10633,15 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
         Some(option) => option,
         None => return return_error_i64(SERVICE_ERROR_INVALID_INPUT),
     };
+    if !repair_confirmation_satisfied(option, confirmed) {
+        return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
+    }
 
-    match option.action {
+    let repair_fingerprint = active_finding.fingerprint.clone();
+    let repair_option_id = option.option_id.clone();
+    let repair_action_id = option.action.as_str().to_string();
+
+    let task_id = match option.action {
         helm_core::repair::RepairAction::ReinstallManagerViaHomebrew => {
             let manager_c = match CString::new(manager.as_str()) {
                 Ok(value) => value,
@@ -10560,7 +10757,15 @@ pub unsafe extern "C" fn helm_apply_manager_package_state_issue_repair(
 
             task_id.0 as i64
         }
-    }
+    };
+    track_repair_task(
+        validation_store,
+        task_id,
+        repair_fingerprint,
+        repair_option_id,
+        repair_action_id,
+    );
+    task_id
 }
 
 /// Install a manager tool. Returns the task ID, or -1 on error.
@@ -11226,11 +11431,12 @@ mod tests {
         manager_authority_key, manager_participates_in_catalog_sync,
         manager_participates_in_package_search, manager_uninstall_label_for_route,
         parse_homebrew_config_version, prune_expired_upgrade_workflow_reservations,
-        push_upgrade_plan_step, resolve_homebrew_manager_update_strategy,
-        resolve_rustup_uninstall_strategy, run_external_updates_workflow_steps,
-        rustup_probe_candidates, scoped_upgrade_workflow_steps, search_label_args,
-        search_label_key_for_query, search_task_type_for_query, upgrade_plan_step_id,
-        upgrade_reason_label_for, upgrade_task_label_for,
+        push_upgrade_plan_step, repair_confirmation_satisfied,
+        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
+        run_external_updates_workflow_steps, rustup_probe_candidates,
+        scoped_upgrade_workflow_steps, search_label_args, search_label_key_for_query,
+        search_task_type_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
+        upgrade_task_label_for,
     };
     use helm_core::adapters::{
         AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, UninstallRequest,
@@ -14023,6 +14229,25 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn repair_confirmation_policy_is_enforced_at_the_ffi_boundary() {
+        let plan = helm_core::repair::plan_for_issue(
+            ManagerId::Rustup,
+            ManagerId::HomebrewFormula,
+            "rustup",
+            helm_core::doctor::ISSUE_CODE_METADATA_ONLY_INSTALL,
+        )
+        .expect("metadata-only finding should have a repair plan");
+        let reinstall = helm_core::repair::resolve_option(&plan, "reinstall_manager_via_homebrew")
+            .expect("reinstall option should exist");
+        let remove = helm_core::repair::resolve_option(&plan, "remove_stale_package_entry")
+            .expect("remove option should exist");
+
+        assert!(repair_confirmation_satisfied(reinstall, false));
+        assert!(!repair_confirmation_satisfied(remove, false));
+        assert!(repair_confirmation_satisfied(remove, true));
+    }
+
     fn status_for(
         statuses: &[super::FfiManagerStatus],
         manager_id: ManagerId,
@@ -14046,5 +14271,64 @@ mod tests {
             restart_required: false,
             runtime_state: Default::default(),
         }
+    }
+
+    #[test]
+    fn repair_option_content_keys_cross_ffi_boundary() {
+        use crate::{FfiKnowledgeContentKeys, FfiManagerIssueRepairOption};
+        use helm_core::repair::{RepairAction, RepairAutomationLevel, RepairOption};
+
+        let core_option = RepairOption {
+            option_id: "test_option".to_string(),
+            action: RepairAction::ReinstallManagerViaHomebrew,
+            title: "fallback title".to_string(),
+            description: "fallback desc".to_string(),
+            content_keys: Some(
+                helm_core::persistence::repair_knowledge::KnowledgeContentKeys {
+                    title: "app.repair.test.title".to_string(),
+                    description: "app.repair.test.desc".to_string(),
+                    impact: Some("app.repair.test.impact".to_string()),
+                    guidance: Some("app.repair.test.guidance".to_string()),
+                },
+            ),
+            recommended: true,
+            requires_confirmation: true,
+            automation_level: RepairAutomationLevel::Automatic,
+        };
+
+        let ffi_option = FfiManagerIssueRepairOption {
+            option_id: core_option.option_id.clone(),
+            action: core_option.action.as_str().to_string(),
+            title: core_option.title.clone(),
+            description: core_option.description.clone(),
+            content_keys: core_option
+                .content_keys
+                .as_ref()
+                .map(|k| FfiKnowledgeContentKeys {
+                    title: k.title.clone(),
+                    description: k.description.clone(),
+                    impact: k.impact.clone(),
+                    guidance: k.guidance.clone(),
+                }),
+            recommended: core_option.recommended,
+            requires_confirmation: core_option.requires_confirmation,
+            automation_level: core_option.automation_level.as_str().to_string(),
+        };
+
+        assert_eq!(ffi_option.title, "fallback title");
+        assert_eq!(
+            ffi_option.content_keys.as_ref().unwrap().title,
+            "app.repair.test.title"
+        );
+        assert_eq!(
+            ffi_option
+                .content_keys
+                .as_ref()
+                .unwrap()
+                .impact
+                .as_deref()
+                .unwrap(),
+            "app.repair.test.impact"
+        );
     }
 }

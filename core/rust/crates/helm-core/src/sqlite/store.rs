@@ -11,14 +11,23 @@ use crate::models::{
     PackageRef, PinKind, PinRecord, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskRecord,
     TaskStatus, TaskType,
 };
+use crate::persistence::doctor_persistence::{
+    DoctorScanScope, DoctorStore, EffectiveKnowledge, KnowledgeTrustLevel, PersistedDoctorFinding,
+    RepairHistoryRecord,
+};
+use crate::persistence::repair_knowledge::{
+    KnowledgeEntry, KnowledgeEnvelope, KnowledgeSelector, sha256_hex,
+};
 use crate::persistence::{
     DetectionStore, ManagerPreference, MigrationStore, PackageManagerPreference, PackageStore,
     PersistenceResult, PinStore, SearchCacheStore, TaskStore,
 };
+use crate::security_advisory::{AdvisoryCacheRecord, AdvisoryCacheStore};
 use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
 use crate::versioning::normalize_package_family_key;
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
+pub const BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY: &str = "bundled:helm";
 
 pub struct SqliteStore {
     database_path: PathBuf,
@@ -43,7 +52,8 @@ impl SqliteStore {
     }
 
     pub fn migrate_to_latest(&self) -> PersistenceResult<()> {
-        self.apply_migration(current_schema_version())
+        self.apply_migration(current_schema_version())?;
+        self.ensure_bundled_repair_knowledge()
     }
 
     fn with_connection<T>(
@@ -68,6 +78,18 @@ impl SqliteStore {
                 |row| row.get::<_, Option<i64>>(0),
             )
         })
+    }
+
+    pub fn ensure_bundled_repair_knowledge(&self) -> PersistenceResult<()> {
+        let envelope = KnowledgeEnvelope::parse_and_validate(include_str!(
+            "../../resources/bundled_knowledge.json"
+        ))
+        .map_err(|error| storage_error_text("parse_bundled_repair_knowledge", error.to_string()))?;
+        self.import_knowledge(
+            BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY,
+            &envelope,
+            KnowledgeTrustLevel::Bundled,
+        )
     }
 }
 
@@ -2396,72 +2418,6 @@ fn storage_error_sqlite(message: &str) -> rusqlite::Error {
     rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(message.to_string())))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::SqliteStore;
-    use crate::models::{
-        ManagerId, NewTaskLogRecord, TaskId, TaskLogLevel, TaskRecord, TaskStatus, TaskType,
-    };
-    use crate::persistence::TaskStore;
-    use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn temp_store(test_name: &str) -> SqliteStore {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("helm-sqlite-store-{test_name}-{nanos}.db"));
-        SqliteStore::new(path)
-    }
-
-    #[test]
-    fn update_task_with_log_is_atomic_when_task_row_is_missing() {
-        let store = temp_store("task-update-with-log-atomic");
-        store
-            .migrate_to_latest()
-            .expect("sqlite migrations should apply");
-
-        let task = TaskRecord {
-            id: TaskId(42),
-            manager: ManagerId::Rustup,
-            task_type: TaskType::Refresh,
-            status: TaskStatus::Cancelled,
-            created_at: SystemTime::now(),
-        };
-        let log = NewTaskLogRecord {
-            task_id: task.id,
-            manager: task.manager,
-            task_type: task.task_type,
-            status: Some(task.status),
-            level: TaskLogLevel::Warn,
-            message: "terminal transition".to_string(),
-            created_at: SystemTime::now(),
-        };
-
-        let result = store.update_task_with_log(&task, &log);
-        assert!(result.is_err(), "missing task row should fail atomically");
-
-        let logs = store
-            .list_task_logs(task.id, 10)
-            .expect("task log listing should succeed");
-        assert!(
-            logs.is_empty(),
-            "task log should not be written when the task update fails"
-        );
-
-        let tasks = store
-            .list_recent_tasks(10)
-            .expect("task listing should succeed");
-        assert!(
-            tasks.is_empty(),
-            "missing task update should not create a phantom task row"
-        );
-
-        let _ = fs::remove_file(store.database_path());
-    }
-}
-
 fn parse_manager_id(raw: &str) -> rusqlite::Result<ManagerId> {
     raw.parse::<ManagerId>().map_err(|_| {
         storage_error_sqlite(&format!(
@@ -2681,5 +2637,1250 @@ fn storage_error_text(operation: &str, message: impl AsRef<str>) -> CoreError {
         action: None,
         kind: CoreErrorKind::StorageFailure,
         message: format!("sqlite store '{operation}' failed: {}", message.as_ref()),
+    }
+}
+
+impl AdvisoryCacheStore for SqliteStore {
+    fn upsert_advisories(&self, records: &[AdvisoryCacheRecord]) -> Result<usize, String> {
+        self.with_connection("upsert_advisories", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            let mut changed = 0usize;
+            {
+                let mut statement = transaction.prepare(
+                    "INSERT INTO security_advisories (
+                        cache_key, advisory_id, ecosystem, scope, package_name,
+                        affected_range_json, severity, cvss_score, summary, description,
+                        fixed_version, source_provider, source_feed, fetched_at_epoch_ms,
+                        expires_at_epoch_ms
+                    ) VALUES (
+                        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+                    )
+                    ON CONFLICT(cache_key) DO UPDATE SET
+                        advisory_id = excluded.advisory_id,
+                        ecosystem = excluded.ecosystem,
+                        scope = excluded.scope,
+                        package_name = excluded.package_name,
+                        affected_range_json = excluded.affected_range_json,
+                        severity = excluded.severity,
+                        cvss_score = excluded.cvss_score,
+                        summary = excluded.summary,
+                        description = excluded.description,
+                        fixed_version = excluded.fixed_version,
+                        source_provider = excluded.source_provider,
+                        source_feed = excluded.source_feed,
+                        fetched_at_epoch_ms = excluded.fetched_at_epoch_ms,
+                        expires_at_epoch_ms = excluded.expires_at_epoch_ms
+                    WHERE excluded.fetched_at_epoch_ms >= security_advisories.fetched_at_epoch_ms",
+                )?;
+
+                for record in records {
+                    validate_advisory_cache_record(record)?;
+                    changed += statement.execute(params![
+                        record.cache_key,
+                        record.advisory_id,
+                        record.ecosystem,
+                        record.scope,
+                        record.package_name,
+                        record.affected_range_json,
+                        record.severity,
+                        record.cvss_score,
+                        record.summary,
+                        record.description,
+                        record.fixed_version,
+                        record.source_provider,
+                        record.source_feed,
+                        record.fetched_at_epoch_ms,
+                        record.expires_at_epoch_ms,
+                    ])?;
+                }
+            }
+            transaction.commit()?;
+            Ok(changed)
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn get_advisories_for_package(
+        &self,
+        ecosystem: &str,
+        package_name: &str,
+    ) -> Result<Vec<AdvisoryCacheRecord>, String> {
+        let ecosystem_norm = crate::security_advisory::normalize_ecosystem(ecosystem);
+        let package_norm = crate::security_advisory::normalize_package_name(package_name);
+        self.query_advisory_records(
+            "get_advisories_for_package",
+            "WHERE ecosystem = ?1 AND package_name = ?2 ORDER BY cache_key ASC",
+            params![ecosystem_norm, package_norm],
+        )
+    }
+
+    fn get_advisories_by_source(
+        &self,
+        source_provider: &str,
+    ) -> Result<Vec<AdvisoryCacheRecord>, String> {
+        let provider_norm = crate::security_advisory::normalize_source_provider(source_provider);
+        self.query_advisory_records(
+            "get_advisories_by_source",
+            "WHERE source_provider = ?1 ORDER BY cache_key ASC",
+            params![provider_norm],
+        )
+    }
+
+    fn prune_expired(&self, before_epoch_ms: i64) -> Result<usize, String> {
+        self.with_connection("prune_expired_advisories", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute(
+                "DELETE FROM security_advisories WHERE expires_at_epoch_ms <= ?1",
+                [before_epoch_ms],
+            )
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn clear_all(&self) -> Result<(), String> {
+        self.with_connection("clear_all_advisories", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.execute("DELETE FROM security_advisories", [])?;
+            Ok(())
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn count(&self) -> Result<usize, String> {
+        self.with_connection("count_advisories", |connection| {
+            ensure_schema_ready(connection)?;
+            connection.query_row("SELECT COUNT(*) FROM security_advisories", [], |row| {
+                row.get(0)
+            })
+        })
+        .map_err(|error| error.to_string())
+    }
+}
+
+impl SqliteStore {
+    fn query_advisory_records<P>(
+        &self,
+        operation: &str,
+        clause: &str,
+        parameters: P,
+    ) -> Result<Vec<AdvisoryCacheRecord>, String>
+    where
+        P: rusqlite::Params,
+    {
+        self.with_connection(operation, |connection| {
+            ensure_schema_ready(connection)?;
+            let sql = format!(
+                "SELECT cache_key, advisory_id, ecosystem, scope, package_name,
+                    affected_range_json, severity, cvss_score, summary, description,
+                    fixed_version, source_provider, source_feed, fetched_at_epoch_ms,
+                    expires_at_epoch_ms FROM security_advisories {clause}"
+            );
+            let mut statement = connection.prepare(sql.as_str())?;
+            let rows = statement.query_map(parameters, advisory_cache_record_from_row)?;
+            rows.collect()
+        })
+        .map_err(|error| error.to_string())
+    }
+}
+
+fn advisory_cache_record_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<AdvisoryCacheRecord> {
+    Ok(AdvisoryCacheRecord {
+        cache_key: row.get(0)?,
+        advisory_id: row.get(1)?,
+        ecosystem: row.get(2)?,
+        scope: row.get(3)?,
+        package_name: row.get(4)?,
+        affected_range_json: row.get(5)?,
+        severity: row.get(6)?,
+        cvss_score: row.get(7)?,
+        summary: row.get(8)?,
+        description: row.get(9)?,
+        fixed_version: row.get(10)?,
+        source_provider: row.get(11)?,
+        source_feed: row.get(12)?,
+        fetched_at_epoch_ms: row.get(13)?,
+        expires_at_epoch_ms: row.get(14)?,
+    })
+}
+
+fn validate_advisory_cache_record(record: &AdvisoryCacheRecord) -> rusqlite::Result<()> {
+    let has_required_text = [
+        record.cache_key.as_str(),
+        record.advisory_id.as_str(),
+        record.ecosystem.as_str(),
+        record.package_name.as_str(),
+        record.summary.as_str(),
+        record.source_provider.as_str(),
+    ]
+    .into_iter()
+    .all(|value| !value.trim().is_empty());
+
+    let has_identifier_control_chars = [
+        record.cache_key.as_str(),
+        record.advisory_id.as_str(),
+        record.ecosystem.as_str(),
+        record.package_name.as_str(),
+        record.source_provider.as_str(),
+    ]
+    .into_iter()
+    .any(crate::security_advisory::contains_control_chars)
+        || record
+            .scope
+            .as_deref()
+            .is_some_and(crate::security_advisory::contains_control_chars)
+        || record
+            .source_feed
+            .as_deref()
+            .is_some_and(crate::security_advisory::contains_control_chars)
+        || record
+            .fixed_version
+            .as_deref()
+            .is_some_and(crate::security_advisory::contains_control_chars);
+    let has_prose_control_chars =
+        crate::security_advisory::contains_forbidden_prose_control_chars(record.summary.as_str())
+            || record
+                .description
+                .as_deref()
+                .is_some_and(crate::security_advisory::contains_forbidden_prose_control_chars);
+
+    let valid_severity = matches!(
+        record.severity.as_str(),
+        "low" | "medium" | "high" | "critical"
+    );
+    let valid_range = serde_json::from_str::<crate::security_advisory::AffectedRange>(
+        record.affected_range_json.as_str(),
+    )
+    .is_ok_and(|range| crate::security_advisory::affected_range_is_canonical(&range));
+    let valid_timestamps =
+        record.fetched_at_epoch_ms > 0 && record.expires_at_epoch_ms > record.fetched_at_epoch_ms;
+    let valid_score = record
+        .cvss_score
+        .is_none_or(|score| score.is_finite() && (0.0..=10.0).contains(&score));
+
+    let is_canonical = record.advisory_id
+        == crate::security_advisory::normalize_advisory_id(&record.advisory_id)
+        && record.ecosystem == crate::security_advisory::normalize_ecosystem(&record.ecosystem)
+        && record.package_name
+            == crate::security_advisory::normalize_package_name(&record.package_name)
+        && record.source_provider
+            == crate::security_advisory::normalize_source_provider(&record.source_provider)
+        && record.scope.as_ref().is_none_or(|s| {
+            !s.is_empty() && s == &crate::security_advisory::normalize_package_name(s)
+        })
+        && record.source_feed.as_ref().is_none_or(|f| {
+            !f.is_empty() && f == &crate::security_advisory::normalize_source_provider(f)
+        })
+        && record.fixed_version.as_ref().is_none_or(|version| {
+            !version.is_empty()
+                && version == &crate::security_advisory::AdvisoryFixedVersion::new(version).version
+        });
+
+    let expected_source_key = if let Some(feed) = &record.source_feed {
+        format!("{}:{}", record.source_provider, feed)
+    } else {
+        record.source_provider.clone()
+    };
+    let expected_cache_key =
+        format!("advisory:{}:{}", expected_source_key, record.advisory_id).to_lowercase();
+    let cache_key_matches = record.cache_key == expected_cache_key;
+
+    if has_required_text
+        && !has_identifier_control_chars
+        && !has_prose_control_chars
+        && valid_severity
+        && valid_range
+        && valid_timestamps
+        && valid_score
+        && is_canonical
+        && cache_key_matches
+    {
+        Ok(())
+    } else {
+        Err(storage_error_sqlite("invalid advisory cache record"))
+    }
+}
+
+impl SqliteStore {
+    fn record_failed_knowledge_import(
+        &self,
+        source_key: &str,
+        envelope: &KnowledgeEnvelope,
+        trust_level: KnowledgeTrustLevel,
+        imported_at_unix: i64,
+        diagnostic: &str,
+    ) -> PersistenceResult<()> {
+        self.with_connection("record_failed_knowledge_import", |connection| {
+            ensure_schema_ready(connection)?;
+            insert_knowledge_import_audit(
+                connection,
+                source_key,
+                envelope,
+                trust_level,
+                imported_at_unix,
+                "rejected",
+                Some(diagnostic),
+            )
+        })
+    }
+}
+
+fn current_unix_seconds() -> PersistenceResult<i64> {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| storage_error_text("system_time", "clock is before Unix epoch"))?
+        .as_secs();
+    i64::try_from(seconds)
+        .map_err(|_| storage_error_text("system_time", "Unix timestamp is too large"))
+}
+
+fn validate_persisted_doctor_finding(finding: &PersistedDoctorFinding) -> rusqlite::Result<()> {
+    let valid_fingerprint = finding
+        .fingerprint
+        .strip_prefix("helm-doctor:v2:sha256:")
+        .is_some_and(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+        });
+    let valid_text = [
+        finding.finding_code.as_str(),
+        finding.issue_code.as_str(),
+        finding.subject_kind.as_str(),
+        finding.subject_value.as_str(),
+        finding.severity.as_str(),
+        finding.detector_id.as_str(),
+        finding.detector_version.as_str(),
+    ]
+    .into_iter()
+    .all(|value| !value.trim().is_empty());
+    let valid_evidence =
+        serde_json::from_str::<serde_json::Value>(finding.evidence_json.as_str()).is_ok();
+    if valid_fingerprint
+        && valid_text
+        && valid_evidence
+        && finding.first_seen_unix >= 0
+        && finding.last_seen_unix >= finding.first_seen_unix
+    {
+        Ok(())
+    } else {
+        Err(storage_error_sqlite("invalid persisted doctor finding"))
+    }
+}
+
+fn persisted_doctor_finding_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<PersistedDoctorFinding> {
+    let manager_id = parse_stored_manager(row.get::<_, String>(3)?.as_str(), 3)?;
+    let source_manager_id = row
+        .get::<_, Option<String>>(4)?
+        .map(|value| parse_stored_manager(value.as_str(), 4))
+        .transpose()?;
+    Ok(PersistedDoctorFinding {
+        fingerprint: row.get(0)?,
+        finding_code: row.get(1)?,
+        issue_code: row.get(2)?,
+        manager_id,
+        source_manager_id,
+        subject_kind: row.get(5)?,
+        subject_value: row.get(6)?,
+        severity: row.get(7)?,
+        evidence_json: row.get(8)?,
+        detector_id: row.get(9)?,
+        detector_version: row.get(10)?,
+        first_seen_unix: row.get(11)?,
+        last_seen_unix: row.get(12)?,
+        latest_observation_generation: row.get(13)?,
+        resolution_state: row.get(14)?,
+    })
+}
+
+fn parse_stored_manager(value: &str, column: usize) -> rusqlite::Result<ManagerId> {
+    value.parse::<ManagerId>().map_err(|_| {
+        rusqlite::Error::FromSqlConversionFailure(
+            column,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("unknown stored manager id '{value}'"),
+            )),
+        )
+    })
+}
+
+fn validate_knowledge_source_binding(
+    source_key: &str,
+    envelope: &KnowledgeEnvelope,
+    trust_level: KnowledgeTrustLevel,
+) -> Result<(), &'static str> {
+    let valid_source_key = !source_key.is_empty()
+        && source_key.bytes().all(|byte| {
+            byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || matches!(byte, b':' | b'.' | b'_' | b'-')
+        });
+    if !valid_source_key {
+        return Err("source_key is malformed");
+    }
+    let protected_claim = envelope.declared_source_id.starts_with("helm_")
+        || envelope.declared_source_id.starts_with("helm.")
+        || envelope.declared_source_id.starts_with("helm-");
+    match trust_level {
+        KnowledgeTrustLevel::Bundled
+            if source_key == BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY
+                && envelope.declared_source_id == "helm_bundled_knowledge"
+                && envelope.integrity.signature.is_none() =>
+        {
+            Ok(())
+        }
+        KnowledgeTrustLevel::Bundled => Err("bundled source identity is invalid"),
+        KnowledgeTrustLevel::UserImported
+            if source_key.starts_with("user:") && !protected_claim =>
+        {
+            Ok(())
+        }
+        KnowledgeTrustLevel::UserImported => {
+            Err("user import cannot claim a protected source namespace")
+        }
+        KnowledgeTrustLevel::VerifiedSigned => {
+            Err("verified signed imports require a configured local verifier")
+        }
+    }
+}
+
+fn persist_knowledge_entry(
+    transaction: &rusqlite::Transaction<'_>,
+    source_key: &str,
+    entry: &KnowledgeEntry,
+) -> rusqlite::Result<()> {
+    let revision = i64::try_from(entry.revision)
+        .map_err(|_| storage_error_sqlite("knowledge entry revision is too large"))?;
+    let canonical = serde_jcs::to_vec(entry)
+        .map_err(|_| storage_error_sqlite("failed to canonicalize knowledge entry"))?;
+    let entry_checksum = sha256_hex(canonical.as_slice());
+    let existing_checksum: Option<String> = transaction
+        .query_row(
+            "SELECT entry_checksum FROM repair_knowledge_entries
+             WHERE source_key = ?1 AND knowledge_entry_id = ?2 AND revision = ?3",
+            params![source_key, entry.knowledge_entry_id, revision],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(existing_checksum) = existing_checksum {
+        if existing_checksum == entry_checksum {
+            return Ok(());
+        }
+        return Err(storage_error_sqlite(
+            "knowledge entry equivocation detected",
+        ));
+    }
+    let latest_revision: Option<i64> = transaction.query_row(
+        "SELECT MAX(revision) FROM repair_knowledge_entries
+         WHERE source_key = ?1 AND knowledge_entry_id = ?2",
+        params![source_key, entry.knowledge_entry_id],
+        |row| row.get(0),
+    )?;
+    if latest_revision.is_some_and(|latest| revision < latest) {
+        return Err(storage_error_sqlite("knowledge entry downgrade rejected"));
+    }
+    let selector_json = serialize_stored_json(&entry.selector, "selector")?;
+    let policy_json = entry
+        .policy
+        .as_ref()
+        .map(|value| serialize_stored_json(value, "policy"))
+        .transpose()?;
+    let bindings_json = entry
+        .parameter_bindings
+        .as_ref()
+        .map(|value| serialize_stored_json(value, "parameter bindings"))
+        .transpose()?;
+    let content_json = entry
+        .content_keys
+        .as_ref()
+        .map(|value| serialize_stored_json(value, "content keys"))
+        .transpose()?;
+    transaction.execute(
+        "INSERT INTO repair_knowledge_entries (
+            source_key, knowledge_entry_id, revision, state, selector_json,
+            option_id, action_id, recommendation_rank, policy_json,
+            parameter_bindings_json, content_keys_json, entry_checksum
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            source_key,
+            entry.knowledge_entry_id,
+            revision,
+            entry.state,
+            selector_json,
+            entry.option_id,
+            entry.action_id,
+            entry.recommendation_rank,
+            policy_json,
+            bindings_json,
+            content_json,
+            entry_checksum,
+        ],
+    )?;
+    Ok(())
+}
+
+fn insert_knowledge_import_audit(
+    connection: &Connection,
+    source_key: &str,
+    envelope: &KnowledgeEnvelope,
+    trust_level: KnowledgeTrustLevel,
+    imported_at_unix: i64,
+    result: &str,
+    diagnostic: Option<&str>,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "INSERT INTO repair_knowledge_imports (
+            source_key, source_revision, envelope_checksum, trust_level,
+            imported_at_unix, result, diagnostic
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            source_key,
+            i64::try_from(envelope.source_revision)
+                .map_err(|_| storage_error_sqlite("source revision is too large"))?,
+            envelope.integrity.value,
+            trust_level.as_str(),
+            imported_at_unix,
+            result,
+            diagnostic,
+        ],
+    )?;
+    Ok(())
+}
+
+fn serialize_stored_json<T: serde::Serialize>(value: &T, field: &str) -> rusqlite::Result<String> {
+    serde_json::to_string(value)
+        .map_err(|_| storage_error_sqlite(format!("failed to serialize {field}").as_str()))
+}
+
+fn parse_stored_json<T: serde::de::DeserializeOwned>(
+    value: &str,
+    field: &str,
+) -> rusqlite::Result<T> {
+    serde_json::from_str(value)
+        .map_err(|_| storage_error_sqlite(format!("stored {field} is malformed").as_str()))
+}
+
+fn knowledge_entry_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeEntry> {
+    let revision = row.get::<_, i64>(1)?;
+    Ok(KnowledgeEntry {
+        knowledge_entry_id: row.get(0)?,
+        revision: u64::try_from(revision)
+            .map_err(|_| storage_error_sqlite("stored entry revision is invalid"))?,
+        state: row.get(2)?,
+        selector: parse_stored_json(row.get::<_, String>(3)?.as_str(), "selector")?,
+        option_id: row.get(4)?,
+        action_id: row.get(5)?,
+        recommendation_rank: row.get(6)?,
+        policy: row
+            .get::<_, Option<String>>(7)?
+            .map(|json| parse_stored_json(json.as_str(), "policy"))
+            .transpose()?,
+        parameter_bindings: row
+            .get::<_, Option<String>>(8)?
+            .map(|json| parse_stored_json(json.as_str(), "parameter bindings"))
+            .transpose()?,
+        content_keys: row
+            .get::<_, Option<String>>(9)?
+            .map(|json| parse_stored_json(json.as_str(), "content keys"))
+            .transpose()?,
+    })
+}
+
+fn knowledge_selector_matches(
+    selector: &KnowledgeSelector,
+    finding: &crate::doctor::DoctorFinding,
+) -> bool {
+    if let Some(fingerprint) = selector.fingerprint.as_deref() {
+        return fingerprint == finding.fingerprint;
+    }
+    let source_manager = finding.source_manager_id.as_deref();
+    let (subject_kind, subject_value) = doctor_finding_subject(finding);
+    selector
+        .finding_code
+        .as_deref()
+        .is_none_or(|value| value == finding.finding_code)
+        && selector
+            .issue_code
+            .as_deref()
+            .is_none_or(|value| value == finding.issue_code)
+        && selector
+            .manager_id
+            .as_deref()
+            .is_none_or(|value| value == finding.manager_id)
+        && selector
+            .source_manager_id
+            .as_deref()
+            .is_none_or(|value| Some(value) == source_manager)
+        && selector
+            .package_name
+            .as_deref()
+            .is_none_or(|value| finding.package_name.as_deref() == Some(value))
+        && selector
+            .subject_kind
+            .as_deref()
+            .is_none_or(|value| value == subject_kind)
+        && selector
+            .subject_value
+            .as_deref()
+            .is_none_or(|value| value == subject_value)
+}
+
+fn doctor_finding_subject(finding: &crate::doctor::DoctorFinding) -> (&'static str, &str) {
+    if let Some(package_name) = finding.package_name.as_deref() {
+        ("package", package_name)
+    } else {
+        ("manager", finding.manager_id.as_str())
+    }
+}
+
+fn resolve_effective_knowledge(mut candidates: Vec<EffectiveKnowledge>) -> Vec<EffectiveKnowledge> {
+    candidates.sort_by(|left, right| {
+        right
+            .trust_level
+            .authority_rank()
+            .cmp(&left.trust_level.authority_rank())
+            .then_with(|| right.revision.cmp(&left.revision))
+            .then_with(|| left.source_key.cmp(&right.source_key))
+            .then_with(|| left.knowledge_entry_id.cmp(&right.knowledge_entry_id))
+    });
+    let mut by_option: std::collections::BTreeMap<String, Vec<EffectiveKnowledge>> =
+        std::collections::BTreeMap::new();
+    for candidate in candidates {
+        by_option
+            .entry(candidate.option_id.clone())
+            .or_default()
+            .push(candidate);
+    }
+
+    let mut resolved = Vec::new();
+    for (_, group) in by_option {
+        let Some(mut selected) = group.first().cloned() else {
+            continue;
+        };
+        let highest_authority = selected.trust_level.authority_rank();
+        let conflicting_high_authority = group.iter().any(|candidate| {
+            candidate.trust_level.authority_rank() == highest_authority
+                && candidate.action_id != selected.action_id
+        });
+        if conflicting_high_authority {
+            continue;
+        }
+        let matching = group
+            .iter()
+            .filter(|candidate| candidate.action_id == selected.action_id)
+            .collect::<Vec<_>>();
+        selected.policy.requires_confirmation = matching
+            .iter()
+            .any(|candidate| candidate.policy.requires_confirmation);
+        selected.policy.enabled = Some(
+            matching
+                .iter()
+                .all(|candidate| candidate.policy.enabled.unwrap_or(true)),
+        );
+        selected.policy.automation_level = matching
+            .iter()
+            .filter_map(|candidate| candidate.policy.automation_level())
+            .max_by_key(|level| repair_automation_rank(*level))
+            .map(|level| level.as_str().to_string())
+            .unwrap_or_else(|| "read_only".to_string());
+        if selected.policy.enabled == Some(true) {
+            resolved.push(selected);
+        }
+    }
+    resolved
+}
+
+fn repair_automation_rank(level: crate::repair::RepairAutomationLevel) -> u8 {
+    match level {
+        crate::repair::RepairAutomationLevel::Automatic => 0,
+        crate::repair::RepairAutomationLevel::NeedsConfirmation => 1,
+        crate::repair::RepairAutomationLevel::ReadOnly => 2,
+    }
+}
+
+impl SqliteStore {
+    fn finish_incomplete_doctor_scan(
+        &self,
+        scan_id: &str,
+        completed_at_unix: i64,
+        terminal_state: &'static str,
+    ) -> PersistenceResult<()> {
+        let operation = match terminal_state {
+            "failed" => "fail_scan",
+            "cancelled" => "cancel_scan",
+            _ => return Err(storage_error_text("finish_scan", "invalid terminal state")),
+        };
+        self.with_connection(operation, |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            transaction.execute(
+                "UPDATE doctor_scan_scopes SET completion_state = ?2
+                 WHERE scan_id = ?1 AND completion_state = 'pending'",
+                params![scan_id, terminal_state],
+            )?;
+            let changed = transaction.execute(
+                "UPDATE doctor_scans SET completed_at_unix = ?2, completion_state = ?3
+                 WHERE scan_id = ?1 AND completion_state = 'running'",
+                params![scan_id, completed_at_unix, terminal_state],
+            )?;
+            if changed != 1 {
+                return Err(storage_error_sqlite(
+                    "doctor scan is missing or already terminal",
+                ));
+            }
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+}
+
+impl DoctorStore for SqliteStore {
+    fn start_scan(
+        &self,
+        scan_id: &str,
+        started_at_unix: i64,
+        scopes: &[DoctorScanScope],
+    ) -> PersistenceResult<i64> {
+        if scan_id.trim().is_empty() || started_at_unix < 0 || scopes.is_empty() {
+            return Err(storage_error_text("start_scan", "invalid scan metadata"));
+        }
+        self.with_connection("start_scan", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            let generation = transaction.query_row(
+                "SELECT COALESCE(MAX(generation), 0) + 1 FROM doctor_scans",
+                [],
+                |row| row.get::<_, i64>(0),
+            )?;
+            transaction.execute(
+                "INSERT INTO doctor_scans (
+                    scan_id, generation, started_at_unix, completion_state
+                 ) VALUES (?1, ?2, ?3, 'running')",
+                params![scan_id, generation, started_at_unix],
+            )?;
+            let mut seen = std::collections::HashSet::new();
+            for scope in scopes {
+                if scope.detector_id.trim().is_empty()
+                    || !seen.insert((scope.detector_id.as_str(), scope.manager_id))
+                {
+                    return Err(storage_error_sqlite(
+                        "invalid or duplicate doctor scan scope",
+                    ));
+                }
+                transaction.execute(
+                    "INSERT INTO doctor_scan_scopes (
+                        scan_id, detector_id, manager_id, completion_state
+                     ) VALUES (?1, ?2, ?3, 'pending')",
+                    params![scan_id, scope.detector_id, scope.manager_id.as_str()],
+                )?;
+            }
+            transaction.commit()?;
+            Ok(generation)
+        })
+    }
+
+    fn complete_scan(
+        &self,
+        scan_id: &str,
+        generation: i64,
+        findings: &[PersistedDoctorFinding],
+        successful_scopes: &[DoctorScanScope],
+        completed_at_unix: i64,
+    ) -> PersistenceResult<()> {
+        self.with_connection("complete_scan", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            let scan_state: Option<String> = transaction
+                .query_row(
+                    "SELECT completion_state FROM doctor_scans
+                     WHERE scan_id = ?1 AND generation = ?2",
+                    params![scan_id, generation],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if scan_state.as_deref() != Some("running") {
+                return Err(storage_error_sqlite("doctor scan is missing or already terminal"));
+            }
+
+            let mut successful_scope_keys = std::collections::HashSet::new();
+            for scope in successful_scopes {
+                if !successful_scope_keys.insert((scope.detector_id.as_str(), scope.manager_id)) {
+                    return Err(storage_error_sqlite("duplicate successful doctor scope"));
+                }
+            }
+
+            for finding in findings {
+                validate_persisted_doctor_finding(finding)?;
+                if !successful_scope_keys
+                    .contains(&(finding.detector_id.as_str(), finding.manager_id))
+                {
+                    return Err(storage_error_sqlite(
+                        "doctor finding belongs to a scope that did not succeed",
+                    ));
+                }
+                transaction.execute(
+                    "INSERT INTO doctor_findings (
+                        fingerprint, finding_code, issue_code, manager_id, source_manager_id, subject_kind,
+                        subject_value, severity, evidence_json, detector_id, detector_version,
+                        first_seen_unix, last_seen_unix, latest_observation_generation, resolution_state
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 'active')
+                    ON CONFLICT(fingerprint) DO UPDATE SET
+                        severity = excluded.severity,
+                        evidence_json = excluded.evidence_json,
+                        detector_version = excluded.detector_version,
+                        last_seen_unix = excluded.last_seen_unix,
+                        latest_observation_generation = excluded.latest_observation_generation,
+                        resolution_state = 'active'
+                    WHERE excluded.latest_observation_generation > doctor_findings.latest_observation_generation",
+                    params![
+                        finding.fingerprint,
+                        finding.finding_code,
+                        finding.issue_code,
+                        finding.manager_id.as_str(),
+                        finding.source_manager_id.map(|id| id.as_str().to_string()),
+                        finding.subject_kind,
+                        finding.subject_value,
+                        finding.severity,
+                        finding.evidence_json,
+                        finding.detector_id,
+                        finding.detector_version,
+                        finding.first_seen_unix,
+                        finding.last_seen_unix,
+                        generation
+                    ],
+                )?;
+            }
+
+            for scope in successful_scopes {
+                let changed = transaction.execute(
+                    "UPDATE doctor_scan_scopes SET completion_state = 'succeeded'
+                     WHERE scan_id = ?1 AND detector_id = ?2 AND manager_id = ?3
+                       AND completion_state = 'pending'",
+                    params![scan_id, scope.detector_id, scope.manager_id.as_str()],
+                )?;
+                if changed != 1 {
+                    return Err(storage_error_sqlite("successful scope was not declared by scan"));
+                }
+                transaction.execute(
+                    "UPDATE doctor_findings
+                     SET resolution_state = 'resolved'
+                     WHERE detector_id = ?1 AND manager_id = ?2 AND latest_observation_generation < ?3",
+                    params![scope.detector_id, scope.manager_id.as_str(), generation],
+                )?;
+            }
+
+            transaction.execute(
+                "UPDATE doctor_scan_scopes SET completion_state = 'skipped'
+                 WHERE scan_id = ?1 AND completion_state = 'pending'",
+                [scan_id],
+            )?;
+            transaction.execute(
+                "UPDATE doctor_scans
+                 SET completed_at_unix = ?2, completion_state = ?3
+                 WHERE scan_id = ?1",
+                params![
+                    scan_id,
+                    completed_at_unix,
+                    if successful_scopes.is_empty() {
+                        "failed"
+                    } else {
+                        "completed"
+                    }
+                ],
+            )?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn fail_scan(&self, scan_id: &str, completed_at_unix: i64) -> PersistenceResult<()> {
+        self.finish_incomplete_doctor_scan(scan_id, completed_at_unix, "failed")
+    }
+
+    fn cancel_scan(&self, scan_id: &str, completed_at_unix: i64) -> PersistenceResult<()> {
+        self.finish_incomplete_doctor_scan(scan_id, completed_at_unix, "cancelled")
+    }
+
+    fn get_active_findings(&self) -> PersistenceResult<Vec<PersistedDoctorFinding>> {
+        self.with_connection("get_active_findings", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut stmt = connection.prepare(
+                "SELECT fingerprint, finding_code, issue_code, manager_id, source_manager_id,
+                 subject_kind, subject_value, severity, evidence_json, detector_id, detector_version,
+                 first_seen_unix, last_seen_unix, latest_observation_generation, resolution_state
+                 FROM doctor_findings
+                 WHERE resolution_state = 'active'
+                 ORDER BY fingerprint ASC",
+            )?;
+            let findings = stmt.query_map([], persisted_doctor_finding_from_row)?;
+            findings.collect()
+        })
+    }
+
+    fn import_knowledge(
+        &self,
+        source_key: &str,
+        envelope: &KnowledgeEnvelope,
+        trust_level: KnowledgeTrustLevel,
+    ) -> PersistenceResult<()> {
+        envelope
+            .validate()
+            .map_err(|error| storage_error_text("import_knowledge", error.to_string()))?;
+        validate_knowledge_source_binding(source_key, envelope, trust_level)
+            .map_err(|message| storage_error_text("import_knowledge", message))?;
+        let now = current_unix_seconds()?;
+        let result = self.with_connection("import_knowledge", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction = connection.transaction()?;
+            let existing: Option<(i64, String, String, String)> = transaction
+                .query_row(
+                    "SELECT latest_revision, envelope_checksum, trust_level, declared_source_id
+                     FROM repair_knowledge_sources WHERE source_key = ?1",
+                    [source_key],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()?;
+            if let Some((revision, checksum, stored_trust, declared_source)) = existing {
+                if stored_trust != trust_level.as_str()
+                    || declared_source != envelope.declared_source_id
+                {
+                    return Err(storage_error_sqlite(
+                        "source identity or trust cannot change",
+                    ));
+                }
+                let revision = u64::try_from(revision)
+                    .map_err(|_| storage_error_sqlite("stored source revision is invalid"))?;
+                if envelope.source_revision < revision {
+                    return Err(storage_error_sqlite("knowledge source downgrade rejected"));
+                }
+                if envelope.source_revision == revision {
+                    if checksum != envelope.integrity.value {
+                        return Err(storage_error_sqlite(
+                            "knowledge source equivocation detected",
+                        ));
+                    }
+                    transaction.commit()?;
+                    return Ok(());
+                }
+            }
+
+            for entry in &envelope.entries {
+                persist_knowledge_entry(&transaction, source_key, entry)?;
+            }
+            let signature_json = envelope
+                .integrity
+                .signature
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .map_err(|_| storage_error_sqlite("failed to serialize signature metadata"))?;
+            transaction.execute(
+                "INSERT INTO repair_knowledge_sources (
+                    source_key, declared_source_id, latest_revision, trust_level,
+                    imported_at_unix, envelope_checksum, generated_at_unix, signature_json
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(source_key) DO UPDATE SET
+                    latest_revision = excluded.latest_revision,
+                    imported_at_unix = excluded.imported_at_unix,
+                    envelope_checksum = excluded.envelope_checksum,
+                    generated_at_unix = excluded.generated_at_unix,
+                    signature_json = excluded.signature_json",
+                params![
+                    source_key,
+                    envelope.declared_source_id,
+                    i64::try_from(envelope.source_revision)
+                        .map_err(|_| storage_error_sqlite("source revision is too large"))?,
+                    trust_level.as_str(),
+                    now,
+                    envelope.integrity.value,
+                    i64::try_from(envelope.generated_at_unix)
+                        .map_err(|_| storage_error_sqlite("generated timestamp is too large"))?,
+                    signature_json,
+                ],
+            )?;
+            insert_knowledge_import_audit(
+                &transaction,
+                source_key,
+                envelope,
+                trust_level,
+                now,
+                "imported",
+                None,
+            )?;
+            transaction.commit()?;
+            Ok(())
+        });
+        if let Err(error) = result.as_ref() {
+            let _ = self.record_failed_knowledge_import(
+                source_key,
+                envelope,
+                trust_level,
+                now,
+                error.message.as_str(),
+            );
+        }
+        result
+    }
+
+    fn export_knowledge(&self, source_key: &str) -> PersistenceResult<KnowledgeEnvelope> {
+        self.with_connection("export_knowledge", |connection| {
+            ensure_schema_ready(connection)?;
+
+            let (declared_source_id, latest_revision, generated_at_unix, signature_json): (
+                String,
+                i64,
+                i64,
+                Option<String>,
+            ) = connection.query_row(
+                "SELECT declared_source_id, latest_revision, generated_at_unix, signature_json
+                 FROM repair_knowledge_sources WHERE source_key = ?1",
+                params![source_key],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+
+            let mut stmt = connection.prepare(
+                "SELECT e.knowledge_entry_id, e.revision, e.state, e.selector_json,
+                        e.option_id, e.action_id, e.recommendation_rank, e.policy_json,
+                        e.parameter_bindings_json, e.content_keys_json
+                 FROM repair_knowledge_entries e
+                 JOIN (
+                    SELECT source_key, knowledge_entry_id, MAX(revision) AS revision
+                    FROM repair_knowledge_entries
+                    WHERE source_key = ?1
+                    GROUP BY source_key, knowledge_entry_id
+                 ) latest ON latest.source_key = e.source_key
+                    AND latest.knowledge_entry_id = e.knowledge_entry_id
+                    AND latest.revision = e.revision
+                 WHERE e.source_key = ?1
+                 ORDER BY e.knowledge_entry_id ASC",
+            )?;
+            let entries = stmt
+                .query_map(params![source_key], knowledge_entry_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let signature = signature_json
+                .map(|json| serde_json::from_str(json.as_str()))
+                .transpose()
+                .map_err(|_| storage_error_sqlite("stored signature metadata is malformed"))?;
+            let mut envelope = KnowledgeEnvelope {
+                schema_version: 1,
+                declared_source_id,
+                source_revision: u64::try_from(latest_revision)
+                    .map_err(|_| storage_error_sqlite("stored source revision is invalid"))?,
+                generated_at_unix: u64::try_from(generated_at_unix)
+                    .map_err(|_| storage_error_sqlite("stored generated timestamp is invalid"))?,
+                entries,
+                integrity: crate::persistence::repair_knowledge::KnowledgeIntegrity {
+                    algorithm: "sha256".to_string(),
+                    value: String::new(),
+                    signature,
+                },
+            };
+            let canonical = envelope
+                .to_canonical_jcs_without_integrity()
+                .map_err(|error| storage_error_sqlite(error.to_string().as_str()))?;
+            envelope.integrity.value = sha256_hex(canonical.as_bytes());
+            Ok(envelope)
+        })
+    }
+
+    fn get_effective_knowledge(
+        &self,
+        finding: &crate::doctor::DoctorFinding,
+    ) -> PersistenceResult<Vec<EffectiveKnowledge>> {
+        self.with_connection("get_effective_knowledge", |connection| {
+            ensure_schema_ready(connection)?;
+            let mut stmt = connection.prepare(
+                "SELECT e.source_key, s.trust_level, e.knowledge_entry_id, e.revision,
+                        e.state, e.selector_json, e.option_id, e.action_id,
+                        e.recommendation_rank, e.policy_json, e.content_keys_json,
+                        COALESCE(o.disabled, 0)
+                 FROM repair_knowledge_entries e
+                 JOIN repair_knowledge_sources s ON s.source_key = e.source_key
+                 JOIN (
+                    SELECT source_key, knowledge_entry_id, MAX(revision) AS revision
+                    FROM repair_knowledge_entries
+                    GROUP BY source_key, knowledge_entry_id
+                 ) latest ON latest.source_key = e.source_key
+                    AND latest.knowledge_entry_id = e.knowledge_entry_id
+                    AND latest.revision = e.revision
+                 LEFT JOIN repair_knowledge_overrides o ON o.option_id = e.option_id
+                 ORDER BY e.source_key ASC, e.knowledge_entry_id ASC",
+            )?;
+            let mut candidates = Vec::new();
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<u32>>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, i64>(11)?,
+                ))
+            })?;
+            for row in rows {
+                let (
+                    source_key,
+                    trust,
+                    entry_id,
+                    revision,
+                    state,
+                    selector_json,
+                    option_id,
+                    action_id,
+                    recommendation_rank,
+                    policy_json,
+                    content_json,
+                    disabled,
+                ) = row?;
+                if state != "active" || disabled != 0 {
+                    continue;
+                }
+                let selector: KnowledgeSelector = parse_stored_json(&selector_json, "selector")?;
+                if !knowledge_selector_matches(&selector, finding) {
+                    continue;
+                }
+                let Some(option_id) = option_id else { continue };
+                let Some(action_id) = action_id else { continue };
+                let Some(policy_json) = policy_json else {
+                    continue;
+                };
+                let Some(content_json) = content_json else {
+                    continue;
+                };
+                let trust_level = trust
+                    .parse::<KnowledgeTrustLevel>()
+                    .map_err(|_| storage_error_sqlite("stored trust level is invalid"))?;
+                candidates.push(EffectiveKnowledge {
+                    source_key,
+                    trust_level,
+                    knowledge_entry_id: entry_id,
+                    revision: u64::try_from(revision)
+                        .map_err(|_| storage_error_sqlite("stored entry revision is invalid"))?,
+                    option_id,
+                    action_id,
+                    recommendation_rank,
+                    policy: parse_stored_json(&policy_json, "policy")?,
+                    content_keys: parse_stored_json(&content_json, "content keys")?,
+                });
+            }
+            Ok(resolve_effective_knowledge(candidates))
+        })
+    }
+
+    fn record_repair_history(&self, record: &RepairHistoryRecord) -> PersistenceResult<()> {
+        self.with_connection("record_repair_history", |connection| {
+            ensure_schema_ready(connection)?;
+            if record.fingerprint.trim().is_empty()
+                || record.option_id.trim().is_empty()
+                || record.action_id.trim().is_empty()
+                || record.result.trim().is_empty()
+                || record.executed_at_unix < 0
+                || crate::repair::validate_knowledge_binding(
+                    record.option_id.as_str(),
+                    record.action_id.as_str(),
+                )
+                .is_err()
+            {
+                return Err(storage_error_sqlite("invalid repair history record"));
+            }
+            let task_id = record
+                .task_id
+                .map(|task| i64::try_from(task.0))
+                .transpose()
+                .map_err(|_| storage_error_sqlite("task id is too large"))?;
+            connection.execute(
+                "INSERT INTO repair_history (fingerprint, option_id, action_id, task_id, result, verified_outcome, executed_at_unix)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    record.fingerprint,
+                    record.option_id,
+                    record.action_id,
+                    task_id,
+                    record.result,
+                    record.verified_outcome,
+                    record.executed_at_unix
+                ]
+            )?;
+            Ok(())
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SqliteStore;
+    use crate::models::{
+        ManagerId, NewTaskLogRecord, TaskId, TaskLogLevel, TaskRecord, TaskStatus, TaskType,
+    };
+    use crate::persistence::TaskStore;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_store(test_name: &str) -> SqliteStore {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("helm-sqlite-store-{test_name}-{nanos}.db"));
+        SqliteStore::new(path)
+    }
+
+    #[test]
+    fn update_task_with_log_is_atomic_when_task_row_is_missing() {
+        let store = temp_store("task-update-with-log-atomic");
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        let task = TaskRecord {
+            id: TaskId(42),
+            manager: ManagerId::Rustup,
+            task_type: TaskType::Refresh,
+            status: TaskStatus::Cancelled,
+            created_at: SystemTime::now(),
+        };
+        let log = NewTaskLogRecord {
+            task_id: task.id,
+            manager: task.manager,
+            task_type: task.task_type,
+            status: Some(task.status),
+            level: TaskLogLevel::Warn,
+            message: "terminal transition".to_string(),
+            created_at: SystemTime::now(),
+        };
+
+        let result = store.update_task_with_log(&task, &log);
+        assert!(result.is_err(), "missing task row should fail atomically");
+
+        let logs = store
+            .list_task_logs(task.id, 10)
+            .expect("task log listing should succeed");
+        assert!(
+            logs.is_empty(),
+            "task log should not be written when the task update fails"
+        );
+
+        let tasks = store
+            .list_recent_tasks(10)
+            .expect("task listing should succeed");
+        assert!(
+            tasks.is_empty(),
+            "missing task update should not create a phantom task row"
+        );
+
+        let _ = fs::remove_file(store.database_path());
     }
 }

@@ -188,7 +188,7 @@ The `0.18.x` doctor/repair contract additionally makes SQLite the canonical stor
 - Task history must persist across restarts.
 - Cache corruption must not crash the UI; it must degrade safely (e.g., rebuild cache).
 
-### 5.4 Doctor/Repair Persistence Contract (`0.18.x` Target)
+### 5.4 Doctor/Repair Persistence Contract (`0.18.x`, Implemented)
 
 - Equivalent normalized findings use one deterministic, versioned fingerprint across installations.
 - Local occurrence state (`first_seen`, `last_seen`, resolution) is separate from shareable fingerprint identity.
