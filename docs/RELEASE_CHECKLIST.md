@@ -62,7 +62,19 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.18.0 (Stable Release Gate, Completed)
+## v0.18.1 (Corrective Release Gate, In Progress)
+
+### Required Remediation
+
+- [ ] Resolve and review every Critical and High issue identified after the `v0.18.0` withdrawal.
+- [ ] Verify fresh database creation and migration from the `v0.17.12` schema.
+- [ ] Verify safe recovery for databases already touched by `v0.18.0`.
+- [ ] Verify migration atomicity, idempotency, failure rollback, and data preservation.
+- [ ] Complete the full rehearsal, preflight, canary, signing, notarization, publication, and post-publication verification gates.
+
+## v0.18.0 (Withdrawn)
+
+`v0.18.0` was published on 2026-08-03 and withdrawn after discovery of a critical SQLite migration defect. The immutable tag is retained for auditability; `v0.17.12` remains the public stable line until `v0.18.1` is ready.
 
 ### Scope
 

@@ -9,7 +9,7 @@
   <br>
   A macOS control center and CLI for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.18.0</strong>
+  <strong>Pre-1.0 &middot; v0.17.12</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development with stable `v0.18.0` on `main` and `v0.19.x` stability and pre-1.0 hardening next.
+> **Release notice:** Active pre-1.0 development continues with stable `v0.17.12` on `main`. `v0.18.0` has been withdrawn because of a critical SQLite migration defect while `v0.18.1` is prepared.
 >
-> **Testing:** Please test `v0.18.0` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.17.12`. If you installed `v0.18.0`, avoid further use and preserve your Helm data until recovery guidance is published. Report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -191,7 +191,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.16.1 | Documentation, Milestone Restructure & Security Staging Clarification | Completed (documentation-only) |
 | 0.16.2 | Sparkle Connectivity + Platform Baseline Alignment — network-client entitlement, feed diagnostics, macOS 11 deployment target enforcement | Completed |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Completed (`v0.17.x` stable, latest patch `v0.17.12`) |
-| 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge and internal advisory cache foundation (no public advisory feature surface) | Completed (`v0.18.0`) |
+| 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge and internal advisory cache foundation (no public advisory feature surface) | `v0.18.0` withdrawn; `v0.18.1` remediation in progress |
 | 0.19.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Next |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
 
