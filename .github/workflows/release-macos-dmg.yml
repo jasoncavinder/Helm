@@ -165,6 +165,7 @@ jobs:
         if: ${{ env.VERIFY_ONLY != 'true' }}
         run: |
           set -euo pipefail
+          scripts/ci/check_sqlite_migration_compatibility.sh
           cd core/rust
           cargo test --workspace -- --test-threads=1
 

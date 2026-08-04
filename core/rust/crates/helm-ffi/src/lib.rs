@@ -5463,8 +5463,9 @@ fn adapter_response_to_coordinator_payload(
 /// `db_path` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
+    clear_last_error_key();
     if db_path.is_null() {
-        return false;
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
     // If already initialized, return true
@@ -5475,7 +5476,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let c_str = unsafe { CStr::from_ptr(db_path) };
     let path_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return false,
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
     // Initialize logging
@@ -5489,7 +5490,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("Failed to create Tokio runtime: {}", e);
-            return false;
+            return return_error_bool(SERVICE_ERROR_INTERNAL);
         }
     };
 
@@ -5497,7 +5498,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     let store = Arc::new(SqliteStore::new(path_str));
     if let Err(e) = store.migrate_to_latest() {
         eprintln!("Failed to migrate DB: {}", e);
-        return false;
+        return return_error_bool(core_error_service_key(&e));
     }
 
     // Initialize Adapters
@@ -5612,7 +5613,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         Ok(rt) => Arc::new(rt),
         Err(e) => {
             eprintln!("Failed to create adapter runtime: {}", e);
-            return false;
+            return return_error_bool(core_error_service_key(&e));
         }
     };
 
@@ -11454,12 +11455,12 @@ mod tests {
     use helm_core::persistence::{
         DetectionStore, ManagerPreference, MigrationStore, PackageStore, TaskStore,
     };
-    use helm_core::sqlite::SqliteStore;
+    use helm_core::sqlite::{SqliteStore, current_schema_version};
     use helm_core::uninstall_preview::{
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD, ManagerUninstallPreviewContext,
     };
     use std::collections::HashMap;
-    use std::ffi::{CString, OsString};
+    use std::ffi::{CStr, CString, OsString};
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -14380,7 +14381,7 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        assert_eq!(store.current_version().unwrap(), 19);
+        assert_eq!(store.current_version().unwrap(), current_schema_version());
         let connection = rusqlite::Connection::open(&path).unwrap();
         let migration_17_name: String = connection
             .query_row(
@@ -14390,5 +14391,60 @@ mod tests {
             )
             .unwrap();
         assert_eq!(migration_17_name, "add_doctor_and_repair_persistence");
+    }
+
+    #[test]
+    fn ffi_init_failure_exposes_storage_error() {
+        const CHILD_ENV: &str = "HELM_TEST_FFI_MIGRATION_FAILURE_CHILD";
+        const DATABASE_ENV: &str = "HELM_TEST_FFI_MIGRATION_FAILURE_DB";
+
+        if std::env::var_os(CHILD_ENV).is_some() {
+            let database_path = std::env::var(DATABASE_ENV).unwrap();
+            let database_path = CString::new(database_path).unwrap();
+            assert!(!unsafe { super::helm_init(database_path.as_ptr()) });
+            let error_pointer = super::helm_take_last_error_key();
+            assert!(!error_pointer.is_null());
+            let error_key = unsafe { CStr::from_ptr(error_pointer) }
+                .to_str()
+                .unwrap()
+                .to_string();
+            unsafe { super::helm_free_string(error_pointer) };
+            assert_eq!(error_key, super::SERVICE_ERROR_STORAGE_FAILURE);
+            return;
+        }
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("helm-ffi-failure-{nanos}.sqlite3"));
+        let store = SqliteStore::new(path.clone());
+        store.apply_migration(16).unwrap();
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute(
+                "INSERT INTO helm_schema_migrations (version, name, applied_at_unix)
+                 VALUES (17, 'unknown_development_schema', 1785514652)",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::ffi_init_failure_exposes_storage_error",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .env(DATABASE_ENV, &path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "FFI child failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }

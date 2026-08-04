@@ -1,0 +1,106 @@
+{
+  "schema": "helm.sqlite-migration-manifest",
+  "schema_version": 1,
+  "migrations": [
+    {
+      "version": 1,
+      "name": "initial_core_schema",
+      "definition_sha256": "f92f6cdffbd48dc577a849e6691c15cf54dddf3fbce4cfd9ca5fc5db3bca47c1"
+    },
+    {
+      "version": 2,
+      "name": "add_manager_detection_and_preferences",
+      "definition_sha256": "9921f0f952d8643d15aebce92d23b80fed71bdb6f5a36ddd1973b993cc137f4a"
+    },
+    {
+      "version": 3,
+      "name": "add_restart_required_to_outdated",
+      "definition_sha256": "733addafe81def2f18ab870cf30d4aa68afd974cb769d842a3bd4427b60a4697"
+    },
+    {
+      "version": 4,
+      "name": "add_app_settings",
+      "definition_sha256": "da97fc9f00600882ae8273fc922e1dff58396413e1538f19a11417ca6cd41a60"
+    },
+    {
+      "version": 5,
+      "name": "add_homebrew_keg_policy_overrides",
+      "definition_sha256": "c61029b95e21853fa6945acfb9bad9ef0b97c222ac855ac21a6ffe1b9cee3f16"
+    },
+    {
+      "version": 6,
+      "name": "add_task_log_records",
+      "definition_sha256": "a7b0130dd545e5ef0776867fb658b3acbbdb58d9976b40afda58e8b2cccf169e"
+    },
+    {
+      "version": 7,
+      "name": "add_manager_selection_preferences",
+      "definition_sha256": "243e8bcea3234b656b825316a6f3afe799b000bc51bd7a9f06c3780851a39a36"
+    },
+    {
+      "version": 8,
+      "name": "add_manager_timeout_preferences",
+      "definition_sha256": "0f77451be07529df6dde5a27db5032c81f1225a0a519a33f3c62f05b5006f710"
+    },
+    {
+      "version": 9,
+      "name": "add_manager_install_instances",
+      "definition_sha256": "52f1723d5fc1917a32ee64c1ba96afc8ff8a06f1d1048549781fca653586e64e"
+    },
+    {
+      "version": 10,
+      "name": "add_install_instance_decision_margin",
+      "definition_sha256": "f6d7654d408e741ad95d6fb653a57bd5f5aadee7b2e833e209ee068c23b8a98d"
+    },
+    {
+      "version": 11,
+      "name": "add_manager_multi_instance_ack",
+      "definition_sha256": "0665b4400598068510fb592c9fd4f87246c5d3a5391c9908bc77ebca8c3d0ff3"
+    },
+    {
+      "version": 12,
+      "name": "add_package_manager_preferences",
+      "definition_sha256": "00369f96c6d079f625f01a5634fcd8099f611b481100fd9b2a144ddf1d9ce203"
+    },
+    {
+      "version": 13,
+      "name": "add_installed_package_versions",
+      "definition_sha256": "8579998f652354fe22e66bd1ebb265fc826b2b9f8303116ce6e31956baa9d9c5"
+    },
+    {
+      "version": 14,
+      "name": "add_package_runtime_state_flags",
+      "definition_sha256": "5f78c900ed0cb514375f494fea122b483d7cdc419198060db9b177146bd925d9"
+    },
+    {
+      "version": 15,
+      "name": "make_pin_records_version_scoped",
+      "definition_sha256": "a46f710f7c994c89833abc7729f9af7bc46c0b0949e6bea602ef71b2deba5329"
+    },
+    {
+      "version": 16,
+      "name": "add_package_external_identifiers",
+      "definition_sha256": "9cb26e3c4d2af3141944f6964a83456521f2089f2020ecf4a1a721cf61a191cf"
+    },
+    {
+      "version": 17,
+      "name": "add_doctor_and_repair_persistence",
+      "definition_sha256": "9898f26249c17fc04de03fe09060f05eae15752d19e4f1922ddbd6a500768c77"
+    },
+    {
+      "version": 18,
+      "name": "add_security_advisory_cache",
+      "definition_sha256": "b111e6dae804d1de60a41f7c495a1468899e233cba21711879a95aa12ba80732"
+    },
+    {
+      "version": 19,
+      "name": "add_repair_knowledge_recommendation_rank",
+      "definition_sha256": "e768b25ad0cdb7796269db993b6692853334cda55d3637e197332ea177b525d4"
+    },
+    {
+      "version": 20,
+      "name": "add_migration_definition_checksums",
+      "definition_sha256": "5f8e9945c9335f53b70295ab77926c2c724936013ef0923fb89fa8f811d51e3e"
+    }
+  ]
+}

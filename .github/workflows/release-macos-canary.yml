@@ -43,6 +43,9 @@ jobs:
           toolchain: 1.93.1
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
+      - name: Run SQLite migration compatibility gate
+        run: scripts/ci/check_sqlite_migration_compatibility.sh
+
       - name: Run serialized Rust release gate
         run: cargo test --workspace --manifest-path core/rust/Cargo.toml -- --test-threads=1
 

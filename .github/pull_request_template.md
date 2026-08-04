@@ -38,3 +38,9 @@ Accepted source categories for PRs into `main`:
 
 - [ ] No release impact.
 - [ ] Release impact exists and checklist/docs were updated (`docs/RELEASE_CHECKLIST.md`, `docs/CURRENT_STATE.md`, `docs/NEXT_STEPS.md`).
+
+## SQLite Migration Safety
+
+- [ ] This PR does not change SQLite migrations or migration behavior.
+- [ ] If it does, the change only appends a new migration and manifest entry; frozen origin fixtures and preservation/rollback/reset tests were updated.
+- [ ] If it does, `scripts/ci/check_sqlite_migration_compatibility.sh` passed and the migration safety changes received independent review.

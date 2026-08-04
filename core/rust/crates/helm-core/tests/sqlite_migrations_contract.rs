@@ -1,8 +1,9 @@
 use helm_core::persistence::MigrationStore;
 use helm_core::sqlite::SqliteStore;
+use helm_core::sqlite::migrations::validate_migration_manifest;
 use helm_core::sqlite::{current_schema_version, migration, migrations};
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const AFFECTED_V0180_OVERLAY: &str = include_str!("fixtures/sqlite/v0.18.0-affected-overlay.sql");
@@ -119,6 +120,57 @@ fn table_exists(connection: &Connection, table: &str) -> bool {
         .unwrap()
 }
 
+fn column_exists(connection: &Connection, table: &str, column: &str) -> bool {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .unwrap();
+    statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap()
+        .iter()
+        .any(|candidate| candidate == column)
+}
+
+fn remove_checksum_column_from_ledger(connection: &Connection) {
+    connection
+        .execute_batch(
+            r#"
+ALTER TABLE helm_schema_migrations RENAME TO helm_schema_migrations_with_checksums;
+CREATE TABLE helm_schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at_unix INTEGER NOT NULL
+);
+INSERT INTO helm_schema_migrations (version, name, applied_at_unix)
+SELECT version, name, applied_at_unix
+FROM helm_schema_migrations_with_checksums;
+DROP TABLE helm_schema_migrations_with_checksums;
+"#,
+        )
+        .unwrap();
+}
+
+fn migration_backup_paths(database_path: &Path) -> Vec<PathBuf> {
+    let parent = database_path.parent().unwrap();
+    let prefix = format!(
+        "{}.pre-migration-",
+        database_path.file_name().unwrap().to_string_lossy()
+    );
+    let mut paths = std::fs::read_dir(parent)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(&prefix))
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths
+}
+
 #[test]
 fn migration_versions_are_strictly_increasing() {
     let entries = migrations();
@@ -147,6 +199,11 @@ fn migration_sql_is_defined_for_up_and_down_paths() {
             "down sql must not be empty"
         );
     }
+}
+
+#[test]
+fn migration_definitions_match_immutable_manifest() {
+    validate_migration_manifest().unwrap();
 }
 
 #[test]
@@ -369,4 +426,222 @@ END;
     assert_eq!(legacy_entries, 1);
     assert!(!table_exists(&connection, "repair_knowledge_entries"));
     assert!(!table_exists(&connection, "doctor_scans"));
+}
+
+#[test]
+fn latest_schema_records_every_migration_checksum() {
+    let store = SqliteStore::new(temp_database("migration-checksums"));
+    store.migrate_to_latest().unwrap();
+
+    let connection = Connection::open(store.database_path()).unwrap();
+    let checksum_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM helm_schema_migrations
+             WHERE definition_checksum IS NOT NULL
+               AND length(definition_checksum) = 64",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(checksum_count, current_schema_version());
+}
+
+#[test]
+fn legacy_ledger_is_upgraded_with_checksums() {
+    let store = SqliteStore::new(temp_database("migration-legacy-ledger"));
+    store.apply_migration(19).unwrap();
+
+    let connection = Connection::open(store.database_path()).unwrap();
+    remove_checksum_column_from_ledger(&connection);
+    drop(connection);
+
+    store.migrate_to_latest().unwrap();
+
+    let connection = Connection::open(store.database_path()).unwrap();
+    assert!(column_exists(
+        &connection,
+        "helm_schema_migrations",
+        "definition_checksum"
+    ));
+    let checksum_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM helm_schema_migrations
+             WHERE definition_checksum IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(checksum_count, current_schema_version());
+}
+
+#[test]
+fn migration_name_tampering_fails_closed() {
+    let store = SqliteStore::new(temp_database("migration-name-tamper"));
+    store.migrate_to_latest().unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    connection
+        .execute(
+            "UPDATE helm_schema_migrations SET name = 'tampered' WHERE version = 5",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let error = store.migrate_to_latest().unwrap_err();
+    assert!(error.message.contains("unexpected migration identity"));
+}
+
+#[test]
+fn migration_checksum_tampering_fails_closed() {
+    let store = SqliteStore::new(temp_database("migration-checksum-tamper"));
+    store.migrate_to_latest().unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    connection
+        .execute(
+            "UPDATE helm_schema_migrations
+             SET definition_checksum = 'tampered'
+             WHERE version = 5",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let error = store.migrate_to_latest().unwrap_err();
+    assert!(error.message.contains("unexpected migration checksum"));
+}
+
+#[test]
+fn missing_checksum_on_checksum_aware_ledger_fails_closed() {
+    let store = SqliteStore::new(temp_database("migration-checksum-missing"));
+    store.migrate_to_latest().unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    connection
+        .execute(
+            "UPDATE helm_schema_migrations
+             SET definition_checksum = NULL
+             WHERE version = 5",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let error = store.migrate_to_latest().unwrap_err();
+    assert!(error.message.contains("missing migration checksum"));
+}
+
+#[test]
+fn migration_ledger_gap_fails_closed() {
+    let store = SqliteStore::new(temp_database("migration-ledger-gap"));
+    store.migrate_to_latest().unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    connection
+        .execute("DELETE FROM helm_schema_migrations WHERE version = 5", [])
+        .unwrap();
+    drop(connection);
+
+    let error = store.migrate_to_latest().unwrap_err();
+    assert!(error.message.contains("ledger is not contiguous"));
+}
+
+#[test]
+fn checksum_ledger_upgrade_rolls_back_atomically() {
+    let store = SqliteStore::new(temp_database("migration-checksum-rollback"));
+    store.apply_migration(19).unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    remove_checksum_column_from_ledger(&connection);
+    connection
+        .execute_batch(
+            r#"
+CREATE TRIGGER reject_checksum_backfill
+BEFORE UPDATE ON helm_schema_migrations
+BEGIN
+    SELECT RAISE(FAIL, 'forced checksum backfill failure');
+END;
+"#,
+        )
+        .unwrap();
+    drop(connection);
+
+    let error = store.migrate_to_latest().unwrap_err();
+    assert!(error.message.contains("forced checksum backfill failure"));
+    assert_eq!(store.current_version().unwrap(), 19);
+
+    let connection = Connection::open(store.database_path()).unwrap();
+    assert!(!column_exists(
+        &connection,
+        "helm_schema_migrations",
+        "definition_checksum"
+    ));
+}
+
+#[test]
+fn forward_migration_creates_one_verified_data_preserving_backup() {
+    let database_path = temp_database("migration-backup");
+    let store = SqliteStore::new(database_path.clone());
+    store.apply_migration(16).unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    seed_v01712_data(&connection);
+    drop(connection);
+
+    store.migrate_to_latest().unwrap();
+    let backup_paths = migration_backup_paths(&database_path);
+    assert_eq!(backup_paths.len(), 1);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&backup_paths[0])
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    let backup = Connection::open(&backup_paths[0]).unwrap();
+    let integrity: String = backup
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(integrity, "ok");
+    let backup_version: i64 = backup
+        .query_row(
+            "SELECT MAX(version) FROM helm_schema_migrations",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(backup_version, 16);
+    assert_v01712_data_preserved(&backup);
+    drop(backup);
+
+    store.migrate_to_latest().unwrap();
+    store.apply_migration(0).unwrap();
+    assert!(migration_backup_paths(&database_path).is_empty());
+    store.migrate_to_latest().unwrap();
+    assert!(migration_backup_paths(&database_path).is_empty());
+}
+
+#[test]
+fn migration_backup_retention_is_bounded() {
+    let database_path = temp_database("migration-backup-retention");
+    let store = SqliteStore::new(database_path.clone());
+    store.apply_migration(16).unwrap();
+
+    for version in 17..=current_schema_version() {
+        store.apply_migration(version).unwrap();
+    }
+
+    let backups = migration_backup_paths(&database_path);
+    assert_eq!(backups.len(), 3);
+    let names = backups
+        .iter()
+        .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    assert!(names.iter().all(|name| {
+        name.contains("pre-migration-v17-")
+            || name.contains("pre-migration-v18-")
+            || name.contains("pre-migration-v19-")
+    }));
 }

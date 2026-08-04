@@ -49,6 +49,8 @@ If behavior or policy changes, update the source-of-truth docs that changed real
 - Do not auto-publish releases/appcasts/website deploys.
 - Release and appcast work must remain dry-run/checklist-first unless user explicitly confirms mutation.
 - Before any release tag, publication, workflow dispatch, or release recovery, read `docs/operations/RELEASE_FLOW.md` and `docs/RELEASE_CHECKLIST.md`; run the required rehearsal and preflight gates, and obtain explicit user confirmation before a mutating step.
+- Treat SQLite migrations as append-only once shared. Never reuse or edit an existing version, name, or SQL definition; follow `docs/architecture/SQLITE_MIGRATION_SAFETY.md` and run `scripts/ci/check_sqlite_migration_compatibility.sh` for persistence changes.
+- Development builds must use the development database namespace or an explicit isolated `HELM_DB_PATH`; never point automated or agent-run development work at the stable user database.
 
 Branch and worktree safety:
 
