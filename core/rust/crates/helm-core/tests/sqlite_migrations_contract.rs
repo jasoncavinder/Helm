@@ -318,3 +318,55 @@ fn replaced_migration_reconciliation_rolls_back_on_schema_failure() {
     assert!(!table_exists(&connection, "repair_knowledge_entries"));
     assert!(!table_exists(&connection, "doctor_scans"));
 }
+
+#[test]
+fn replaced_migration_reconciliation_restores_legacy_table_after_late_failure() {
+    let store = SqliteStore::new(temp_database("migration-v0180-late-rollback"));
+
+    store.apply_migration(16).unwrap();
+    let connection = Connection::open(store.database_path()).unwrap();
+    connection.execute_batch(AFFECTED_V0180_OVERLAY).unwrap();
+    connection
+        .execute_batch(
+            r#"
+INSERT INTO advisory_cache (
+    manager_id, package_name, affected_versions, severity, summary,
+    fixed_version, source, fetched_at_epoch_ms, expires_at_epoch_ms
+) VALUES (
+    'homebrew', 'fixture', '*', 'high', 'preserve on rollback',
+    NULL, 'fixture', 1785000000000, 1786000000000
+);
+CREATE TRIGGER reject_migration_17_identity_update
+BEFORE UPDATE OF name ON helm_schema_migrations
+WHEN OLD.version = 17
+BEGIN
+    SELECT RAISE(FAIL, 'forced migration identity update failure');
+END;
+"#,
+        )
+        .unwrap();
+    drop(connection);
+
+    let error = store.migrate_to_latest().unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("forced migration identity update failure")
+    );
+
+    let connection = Connection::open(store.database_path()).unwrap();
+    let migration_17_name: String = connection
+        .query_row(
+            "SELECT name FROM helm_schema_migrations WHERE version = 17",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(migration_17_name, "add_advisory_cache");
+    let legacy_entries: i64 = connection
+        .query_row("SELECT COUNT(*) FROM advisory_cache", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(legacy_entries, 1);
+    assert!(!table_exists(&connection, "repair_knowledge_entries"));
+    assert!(!table_exists(&connection, "doctor_scans"));
+}
