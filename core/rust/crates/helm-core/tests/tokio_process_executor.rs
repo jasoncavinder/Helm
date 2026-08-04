@@ -182,7 +182,9 @@ async fn hard_timeout_extends_for_active_install_process() {
             "for i in 1 2 3 4 5 6 7 8 9 10; do echo tick; sleep 0.2; done",
         ]),
     )
-    .timeout(Duration::from_millis(1500))
+    // The command must cross the base deadline while retaining CI scheduling
+    // margin before the active-install extension expires.
+    .timeout(Duration::from_millis(1900))
     .idle_timeout(Duration::from_secs(5));
 
     let handle = spawn_validated(&executor, request).expect("spawn should succeed");
