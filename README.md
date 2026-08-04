@@ -23,7 +23,7 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Release notice:** Active pre-1.0 development continues with stable `v0.17.12` on `main`. `v0.18.0` has been withdrawn because of a critical SQLite migration defect while `v0.18.1` is prepared.
+> **Release notice:** Active pre-1.0 development continues with stable `v0.17.12` on `main`. `v0.18.0` has been withdrawn because of a critical SQLite migration defect while the `v0.18.1` corrective release is validated.
 >
 > **Testing:** Please test `v0.17.12`. If you installed `v0.18.0`, avoid further use and preserve your Helm data until recovery guidance is published. Report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 

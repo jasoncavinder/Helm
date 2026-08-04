@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-08-03
+
+### Fixed
+- SQLite startup now reconciles the known development migration `17` collision before applying the released doctor/repair schema, preserving existing user data.
+- Rust service initialization now succeeds for affected databases, restoring Refresh task submission and Helm CLI installation after updating to `v0.18.0`.
+
 ## [0.18.0] - 2026-08-03
 
 ### Added

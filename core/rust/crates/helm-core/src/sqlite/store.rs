@@ -119,6 +119,7 @@ impl MigrationStore for SqliteStore {
         self.with_connection("apply_migration", |connection| {
             ensure_migrations_table(connection)?;
             let current_version = read_current_version(connection)?;
+            reconcile_replaced_migrations(connection, current_version, target_version)?;
 
             if target_version == current_version {
                 // Re-apply all DDL to handle corrupted state where migration
@@ -2350,6 +2351,49 @@ fn read_current_version(connection: &Connection) -> rusqlite::Result<i64> {
         [],
         |row| row.get(0),
     )
+}
+
+fn reconcile_replaced_migrations(
+    connection: &mut Connection,
+    current_version: i64,
+    target_version: i64,
+) -> rusqlite::Result<()> {
+    // A development build used version 17 for add_advisory_cache before the
+    // released schema assigned it to doctor/repair persistence. Repair that
+    // known collision before later migrations depend on the released tables.
+    const REPLACED_MIGRATION_VERSION: i64 = 17;
+    if current_version < REPLACED_MIGRATION_VERSION || target_version < REPLACED_MIGRATION_VERSION {
+        return Ok(());
+    }
+
+    let expected = migration(REPLACED_MIGRATION_VERSION)
+        .expect("replaced migration version must remain defined");
+    let recorded_name: Option<String> = connection
+        .query_row(
+            &format!("SELECT name FROM {MIGRATIONS_TABLE} WHERE version = ?1"),
+            [REPLACED_MIGRATION_VERSION],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if recorded_name
+        .as_deref()
+        .is_none_or(|name| name == expected.name)
+    {
+        return Ok(());
+    }
+
+    let transaction = connection.transaction()?;
+    execute_batch_tolerant(&transaction, expected.up_sql)?;
+    transaction.execute(
+        &format!(
+            "UPDATE {MIGRATIONS_TABLE}
+             SET name = ?2, applied_at_unix = strftime('%s', 'now')
+             WHERE version = ?1"
+        ),
+        (REPLACED_MIGRATION_VERSION, expected.name),
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn apply_up_migration(
