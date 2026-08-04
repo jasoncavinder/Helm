@@ -18,6 +18,7 @@ Focus:
 - complete and review the `v0.18.1` SQLite migration remediation, including affected-database recovery behavior
 - keep `v0.17.12` as the only public stable update target until the corrective release passes every gate
 - validate fresh installs, `v0.17.12 -> v0.18.1` upgrades, and recovery from databases touched by `v0.18.0`
+- complete the migration-recovery regression checks, quality gates, release rehearsal, preflight, and explicit approval checkpoints before tagging
 - resume the `v0.19.x` stability and pre-1.0 hardening track only after the corrective release is complete
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
@@ -30,6 +31,7 @@ Focus:
 
 Current checkpoint:
 - `0.18.x` internal groundwork remains implemented on `main`, but `v0.18.0` was withdrawn because of a critical SQLite migration defect and must not be distributed.
+- a previously recorded development migration `17` (`add_advisory_cache`) can collide with the released doctor/repair migration at the same version, preventing Rust service initialization; `v0.18.1` reconciles that known collision transactionally before dependent migrations run.
 - `v0.17.12` is the current public stable release while `v0.18.1` remediation and recovery validation is completed; the withdrawn `v0.18.0` implementation included:
   - bulk and scoped upgrade phase coordination now resides in Rust/FFI/XPC. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
   - all current manager adapters are considered complete for Helm's intended scope
@@ -377,6 +379,7 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
+- `v0.18.1` — SQLite migration-recovery hotfix (validation in progress)
 - `v0.19.x` — Stability & Pre-1.0 hardening
 - `v1.0.0` — Stable control plane release
 

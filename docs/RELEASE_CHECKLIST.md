@@ -66,10 +66,19 @@ This checklist is required before creating a release tag on `main`.
 
 ### Required Remediation
 
-- [ ] Resolve and review every Critical and High issue identified after the `v0.18.0` withdrawal.
-- [ ] Verify fresh database creation and migration from the `v0.17.12` schema.
-- [ ] Verify safe recovery for databases already touched by `v0.18.0`.
-- [ ] Verify migration atomicity, idempotency, failure rollback, and data preservation.
+- [x] Resolve the critical migration `17` collision identified after the `v0.18.0` withdrawal.
+- [x] Detect the known development migration identity before applying dependent released migrations.
+- [x] Verify the fix against a temporary backup of the affected production database without modifying the live store.
+- [x] Verify fresh database creation and migration from the `v0.17.12` schema.
+- [x] Verify safe recovery for databases already touched by `v0.18.0`.
+- [x] Verify migration atomicity, idempotency, failure rollback, and data preservation.
+- [x] Verify affected-database startup through a CLI subprocess and Refresh acceptance through an isolated FFI process.
+- [ ] Verify Refresh and CLI installation through the final signed app/XPC service boundary against recovered database copies.
+- [x] Run targeted SQLite, doctor/repair, Rust workspace, macOS UI/service, documentation, web, and release-contract checks after rebasing onto withdrawal-complete `main`.
+- [x] Run the non-mutating `v0.18.1` release rehearsal.
+- [ ] Merge the hotfix through the protected branch path and run rehearsal/preflight from a clean, current `main` checkout.
+- [ ] Run a fresh successful `Release macOS Canary` on `macos-26`.
+- [ ] Obtain explicit maintainer approval before tag creation and publication.
 - [ ] Complete the full rehearsal, preflight, canary, signing, notarization, publication, and post-publication verification gates.
 
 ## v0.18.0 (Withdrawn)

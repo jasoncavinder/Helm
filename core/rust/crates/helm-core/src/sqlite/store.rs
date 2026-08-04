@@ -119,17 +119,9 @@ impl MigrationStore for SqliteStore {
         self.with_connection("apply_migration", |connection| {
             ensure_migrations_table(connection)?;
             let current_version = read_current_version(connection)?;
+            reconcile_replaced_migrations(connection, current_version, target_version)?;
 
             if target_version == current_version {
-                // Re-apply all DDL to handle corrupted state where migration
-                // version was recorded but tables are missing. All DDL uses
-                // CREATE TABLE/INDEX IF NOT EXISTS, so this is idempotent.
-                // ALTER TABLE ADD COLUMN is NOT idempotent in SQLite, so we
-                // tolerate "duplicate column name" errors.
-                for version in 1..=target_version {
-                    let m = migration(version).expect("validated migration version must exist");
-                    execute_batch_tolerant(connection, m.up_sql)?;
-                }
                 return Ok(());
             }
 
@@ -2352,6 +2344,55 @@ fn read_current_version(connection: &Connection) -> rusqlite::Result<i64> {
     )
 }
 
+fn reconcile_replaced_migrations(
+    connection: &mut Connection,
+    current_version: i64,
+    target_version: i64,
+) -> rusqlite::Result<()> {
+    // A development build used version 17 for add_advisory_cache before the
+    // released schema assigned it to doctor/repair persistence. Repair that
+    // known collision before later migrations depend on the released tables.
+    const REPLACED_MIGRATION_VERSION: i64 = 17;
+    const REPLACED_MIGRATION_NAME: &str = "add_advisory_cache";
+    if current_version < REPLACED_MIGRATION_VERSION || target_version < REPLACED_MIGRATION_VERSION {
+        return Ok(());
+    }
+
+    let expected = migration(REPLACED_MIGRATION_VERSION)
+        .expect("replaced migration version must remain defined");
+    let recorded_name: Option<String> = connection
+        .query_row(
+            &format!("SELECT name FROM {MIGRATIONS_TABLE} WHERE version = ?1"),
+            [REPLACED_MIGRATION_VERSION],
+            |row| row.get(0),
+        )
+        .optional()?;
+    match recorded_name.as_deref() {
+        None => return Ok(()),
+        Some(name) if name == expected.name => return Ok(()),
+        Some(REPLACED_MIGRATION_NAME) => {}
+        Some(name) => {
+            return Err(storage_error_sqlite(&format!(
+                "unexpected migration identity for version {REPLACED_MIGRATION_VERSION}: '{name}'"
+            )));
+        }
+    }
+
+    let transaction = connection.transaction()?;
+    execute_batch_tolerant(&transaction, expected.up_sql)?;
+    transaction.execute("DROP TABLE IF EXISTS advisory_cache", [])?;
+    transaction.execute(
+        &format!(
+            "UPDATE {MIGRATIONS_TABLE}
+             SET name = ?2, applied_at_unix = strftime('%s', 'now')
+             WHERE version = ?1"
+        ),
+        (REPLACED_MIGRATION_VERSION, expected.name),
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
 fn apply_up_migration(
     connection: &mut Connection,
     migration: &SqliteMigration,
@@ -2374,20 +2415,18 @@ fn apply_up_migration(
 ///
 /// # Design rationale
 ///
-/// SQLite's `ALTER TABLE ADD COLUMN` does not support `IF NOT EXISTS`. When
-/// migrations are replayed idempotently (e.g., to repair a state where the
-/// migration version was recorded but tables are missing), the `ADD COLUMN`
-/// statement fails with "duplicate column name: \<column\>".
+/// SQLite's `ALTER TABLE ADD COLUMN` does not support `IF NOT EXISTS`. When a
+/// forward migration encounters a column already restored by a targeted
+/// schema repair, the statement fails with "duplicate column name: \<column\>".
 ///
-/// This function deliberately swallows that specific error class to allow
-/// idempotent migration replay. The scope of error tolerance is narrow:
+/// This function deliberately swallows that specific error class. The scope
+/// of error tolerance is narrow:
 ///
 /// - **Tolerated**: errors whose message contains "duplicate column name"
 /// - **Propagated**: all other `rusqlite::Error` variants (syntax errors,
 ///   constraint violations, I/O failures, etc.)
 ///
-/// Called from `apply_up_migration()` (normal forward migration within a
-/// transaction) and idempotent DDL replay when the version matches current.
+/// Called from normal forward migrations and targeted migration reconciliation.
 fn execute_batch_tolerant(connection: &Connection, sql: &str) -> rusqlite::Result<()> {
     match connection.execute_batch(sql) {
         Ok(()) => Ok(()),

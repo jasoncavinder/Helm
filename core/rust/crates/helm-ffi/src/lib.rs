@@ -11451,17 +11451,20 @@ mod tests {
         TaskLogRecord, TaskRecord, TaskStatus, TaskType,
     };
     use helm_core::orchestration::adapter_runtime::AdapterRuntime;
-    use helm_core::persistence::{DetectionStore, ManagerPreference, PackageStore, TaskStore};
+    use helm_core::persistence::{
+        DetectionStore, ManagerPreference, MigrationStore, PackageStore, TaskStore,
+    };
     use helm_core::sqlite::SqliteStore;
     use helm_core::uninstall_preview::{
         DEFAULT_MANAGER_UNINSTALL_SAFE_BLAST_RADIUS_THRESHOLD, ManagerUninstallPreviewContext,
     };
     use std::collections::HashMap;
-    use std::ffi::OsString;
+    use std::ffi::{CString, OsString};
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::Path;
+    use std::process::Command;
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -14330,5 +14333,62 @@ mod tests {
                 .unwrap(),
             "app.repair.test.impact"
         );
+    }
+
+    #[test]
+    fn ffi_init_recovers_affected_database_and_accepts_refresh() {
+        const CHILD_ENV: &str = "HELM_TEST_FFI_MIGRATION_RECOVERY_CHILD";
+        const DATABASE_ENV: &str = "HELM_TEST_FFI_MIGRATION_RECOVERY_DB";
+
+        if std::env::var_os(CHILD_ENV).is_some() {
+            let database_path = std::env::var(DATABASE_ENV).unwrap();
+            let database_path = CString::new(database_path).unwrap();
+            assert!(unsafe { super::helm_init(database_path.as_ptr()) });
+            assert!(super::helm_trigger_refresh());
+            return;
+        }
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("helm-ffi-recovery-{nanos}.sqlite3"));
+        let store = SqliteStore::new(path.clone());
+        store.apply_migration(16).unwrap();
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch(include_str!(
+                "../../helm-core/tests/fixtures/sqlite/v0.18.0-affected-overlay.sql"
+            ))
+            .unwrap();
+        drop(connection);
+
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::ffi_init_recovers_affected_database_and_accepts_refresh",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .env(DATABASE_ENV, &path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "FFI child failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert_eq!(store.current_version().unwrap(), 19);
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        let migration_17_name: String = connection
+            .query_row(
+                "SELECT name FROM helm_schema_migrations WHERE version = 17",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(migration_17_name, "add_doctor_and_repair_persistence");
     }
 }
