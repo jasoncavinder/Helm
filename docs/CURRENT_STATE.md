@@ -8,15 +8,16 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.12 stable released on `main`**; the internal `0.18.x` groundwork is implemented on `dev` and remains unreleased.
+Current documentation baseline: **0.17.12 stable released on `main`**; `v0.18.0` implementation is complete on `dev` and is in release validation.
 
-Implementation baseline: **0.18.x local groundwork implemented on `dev`** after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, current-scope manager adapter completion, and local doctor/repair follow-up for executable-path drift.
+Implementation baseline: **0.18.x doctor/repair and local security groundwork implemented on `dev`** after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, current-scope manager adapter completion, and local doctor/repair follow-up for executable-path drift.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.17.12** (released on 2026-07-29)
+- `v0.18.0` stable release preparation is in progress on `dev`; public update metadata remains pinned to `v0.17.12` until release publication succeeds.
 - `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - delivered on `dev` for **0.18.x**: SQLite-backed doctor finding lifecycle and repair knowledge, deterministic cross-installation fingerprints, guarded bundled/imported knowledge, repair verification history, and the local security-advisory domain/cache groundwork; provider fetchers and user-facing advisory features remain deferred to the staged advisory release.
 - repository operations follow-up on `dev`: agent-agnostic operating model with policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, and structured local notify logging to `dev/logs/agent-runs.ndjson`.
