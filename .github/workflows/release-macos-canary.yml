@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           MACOS_VERSION="$(sw_vers -productVersion)"
-          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2; exit}')"
+          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2}')"
           XCODE_MAJOR="${XCODE_VERSION%%.*}"
 
           if [ -z "$XCODE_VERSION" ] || [ "$XCODE_MAJOR" != "$EXPECTED_XCODE_MAJOR" ]; then

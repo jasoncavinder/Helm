@@ -48,6 +48,7 @@ done
 
 expect_pattern 'runs-on: macos-26' "$CANARY_WORKFLOW" "release canary must use the supported macOS runner"
 expect_pattern 'EXPECTED_XCODE_MAJOR: "26"' "$CANARY_WORKFLOW" "release canary must pin the expected Xcode major"
+reject_pattern 'xcodebuild -version.*awk.*exit' "$CANARY_WORKFLOW" "release canary must not close the xcodebuild version pipe early"
 expect_pattern 'cargo test --workspace --manifest-path core/rust/Cargo.toml -- --test-threads=1' "$CANARY_WORKFLOW" "release canary must run the serialized Rust release gate"
 expect_pattern 'Build unsigned universal release app' "$CANARY_WORKFLOW" "release canary must build an unsigned universal app"
 
