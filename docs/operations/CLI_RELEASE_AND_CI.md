@@ -447,6 +447,11 @@ Promotion path after each release:
    - operator/runbook/checklist updates -> this file and `docs/RELEASE_CHECKLIST.md`
 4. link the fixing PR/commit in the promoted entry and close the temporary friction item
 
+`v0.18.1` closeout identified two follow-up items:
+
+- `scripts/release/runbook.sh tag` requires a branch named `main`, while agent policy requires release work in an isolated linked worktree and reserves the primary `main` checkout for coordination. Add a worktree-safe tag path that requires a clean `HEAD` exactly equal to `origin/main` before mutation ([#333](https://github.com/jasoncavinder/Helm/issues/333)).
+- The direct CLI and DMG workflows successfully uploaded artifacts and opened publish PRs, but their immediate metadata checks still concluded as failures while `main` intentionally remained behind those PRs. Align the workflow result and publication summary with the documented non-red follow-up-required state; hard failures must remain unchanged for build, signing, notarization, verification, upload, or PR-creation faults ([#332](https://github.com/jasoncavinder/Helm/issues/332)).
+
 ---
 
 ## 6. Install Script CI Responsibilities

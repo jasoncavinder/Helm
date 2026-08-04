@@ -48,6 +48,7 @@ done
 
 expect_pattern 'runs-on: macos-26' "$CANARY_WORKFLOW" "release canary must use the supported macOS runner"
 expect_pattern 'EXPECTED_XCODE_MAJOR: "26"' "$CANARY_WORKFLOW" "release canary must pin the expected Xcode major"
+reject_pattern 'xcodebuild -version.*awk.*exit' "$CANARY_WORKFLOW" "release canary must not close the xcodebuild version pipe early"
 expect_pattern 'cargo test --workspace --manifest-path core/rust/Cargo.toml -- --test-threads=1' "$CANARY_WORKFLOW" "release canary must run the serialized Rust release gate"
 expect_pattern 'Build unsigned universal release app' "$CANARY_WORKFLOW" "release canary must build an unsigned universal app"
 
@@ -65,5 +66,7 @@ done
 
 expect_pattern 'branches: \[dev, main\]' "$WEB_BUILD_WORKFLOW" "web build must cover dev and main integration branches"
 expect_pattern '"web/\*\*"' "$WEB_BUILD_WORKFLOW" "web build must filter for web paths"
+expect_pattern 'actions/workflows/\$\{wf\}' "$PREFLIGHT_SCRIPT" "release preflight must query required workflow state"
+expect_pattern 'required workflow is not active' "$PREFLIGHT_SCRIPT" "release preflight must reject disabled required workflows"
 
 printf '[release-workflow-contract] passed\n'

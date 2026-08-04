@@ -231,7 +231,7 @@ cmd_verify() {
   local missing=""
 
   phase_info "preflight" "running release preflight for ${tag}"
-  "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main --allow-dirty --skip-secrets --skip-workflows --allow-existing-tag
+  "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main --allow-dirty --skip-secrets --skip-workflows --allow-existing-tag --allow-published-metadata
 
   if ! gh release view "$tag" >/dev/null 2>&1; then
     fail "GitHub release not found for ${tag}"

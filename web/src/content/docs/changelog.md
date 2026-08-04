@@ -11,6 +11,34 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.18.1 — 2026-08-04
+
+Patch `0.18.1` is the corrective stable successor to withdrawn `v0.18.0`.
+
+### Fixed
+- SQLite startup now reconciles the known development migration `17` collision before applying the released doctor/repair schema, preserving existing user data.
+- Already-current databases no longer replay destructive historical DDL during startup, preserving package identifiers and making repeated migration initialization idempotent.
+- Rust service initialization now succeeds for affected databases, restoring Refresh task submission and Helm CLI installation after updating to `v0.18.0`.
+
+## 0.18.0 — 2026-08-03
+
+> **Withdrawn:** `v0.18.0` was removed from public distribution after discovery of a critical SQLite migration defect. Its immutable release record remains for auditability; `v0.18.1` is the corrective stable successor. Users of `v0.18.0` should update to `v0.18.1` before further use.
+
+Helm `0.18.0` publishes the local doctor/repair foundation and internal security-advisory cache groundwork.
+
+### Added
+- SQLite-backed doctor scan generations, finding lifecycle, repair knowledge, local overrides, provenance, and repair history.
+- Deterministic finding fingerprints and scoped scan completion semantics across CLI and FFI/XPC paths.
+- Internal advisory records and cache persistence with normalized identity, freshness evaluation, deterministic ordering, and pruning.
+
+### Changed
+- Repair planning resolves persisted, integrity-checked knowledge through a compiled allowlist of typed actions.
+- Repair execution revalidates active findings, records history, and verifies outcomes with follow-up scans.
+
+### Security
+- Knowledge imports reject forged trust, policy weakening, equivocation, protected rebinding, unknown actions, and executable payload content.
+- Advisory providers, scheduler integration, doctor advisory findings, and public advisory UI/CLI surfaces remain deferred beyond `0.18.x`.
+
 ## 0.17.12 — 2026-07-29
 
 Patch `0.17.12` moves bulk and scoped upgrade workflow sequencing into the Rust execution boundary.

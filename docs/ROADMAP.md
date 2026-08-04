@@ -543,7 +543,7 @@ Exit Criteria:
 
 ---
 
-## v0.17.12 — Upgrade Workflow Authority Correction (pending patch)
+## v0.17.12 — Upgrade Workflow Authority Correction (released)
 
 Goal:
 
@@ -559,9 +559,9 @@ Exit Criteria:
 
 ---
 
-## 0.18.x — Doctor & Repair Foundation - Completed on `dev`
+## 0.18.x — Doctor & Repair Foundation - Released on `main`
 
-Release status: included in the `v0.18.0` stable release validation.
+Release status: published through corrective `v0.18.1`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
 
 Goal:
 
@@ -626,9 +626,9 @@ Stage 3 (`1.4.x`) — Shared Brain:
 
 ---
 
-## 0.18.x — Local Security Groundwork (second slice) - Completed on `dev`
+## 0.18.x — Local Security Groundwork (second slice) - Released on `main`
 
-Release status: included in the `v0.18.0` stable release validation.
+Release status: published through `v0.18.1` after migration remediation and recovery validation.
 
 Goal:
 

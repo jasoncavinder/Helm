@@ -8,23 +8,25 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.17.12 stable released on `main`**; `v0.18.0` implementation is complete on `dev` and is in release validation.
+Current documentation baseline: **0.18.1 is the latest public stable release**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect, and `v0.19.x` stability and pre-1.0 hardening is next.
 
-Implementation baseline: **0.18.x doctor/repair and local security groundwork implemented on `dev`** after diagnostics/logging delivery, package workflow hardening, manager-selection/enablement and onboarding/detection hardening, release-process hardening phases 1-5, current-scope manager adapter completion, and local doctor/repair follow-up for executable-path drift.
+Implementation baseline: **0.18.x doctor/repair and local security groundwork is released on `main` through corrective `v0.18.1`**; `v0.18.0` remains withdrawn.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
-- latest stable release currently published on `main`: **0.17.12** (released on 2026-07-29)
-- `v0.18.0` stable release preparation is in progress on `dev`; public update metadata remains pinned to `v0.17.12` until release publication succeeds.
+- latest stable release currently published on `main`: **0.18.1**
+- `v0.18.0` was published on 2026-08-03 and then withdrawn after discovery of a critical SQLite migration defect; its immutable tag is retained for auditability while its release is not publicly distributed.
+- public GUI and CLI update metadata points to the signed `v0.18.1` artifacts.
+- delivered in `v0.18.1`: reconciliation of the known development migration `17` collision before released doctor/repair migrations run, plus prevention of historical DDL replay for already-current databases, preserving package identifiers and user data.
 - `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
-- delivered on `dev` for **0.18.x**: SQLite-backed doctor finding lifecycle and repair knowledge, deterministic cross-installation fingerprints, guarded bundled/imported knowledge, repair verification history, and the local security-advisory domain/cache groundwork; provider fetchers and user-facing advisory features remain deferred to the staged advisory release.
-- repository operations follow-up on `dev`: agent-agnostic operating model with policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, and structured local notify logging to `dev/logs/agent-runs.ndjson`.
-- latest stable publication cut completed for `v0.17.12`:
-  - workspace, docs, website, appcast, and CLI metadata now reflect the published `0.17.12` stable line.
-  - release automation follow-through and publish verification completed on `main`.
-  - post-release rustup refresh correction: `rustup check` exit code `100` now represents detected toolchain updates rather than a failed refresh, and current lowercase output grammar is parsed into outdated toolchains.
+- delivered on `main` for **0.18.x**: SQLite-backed doctor finding lifecycle and repair knowledge, deterministic cross-installation fingerprints, guarded bundled/imported knowledge, repair verification history, and the local security-advisory domain/cache groundwork; provider fetchers and user-facing advisory features remain deferred to the staged advisory release.
+- repository operations follow-up on `main`: agent-agnostic operating model with policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, and structured local notify logging to `dev/logs/agent-runs.ndjson`.
+- withdrawn release record for `v0.18.0`:
+  - signed/notarized DMG and direct CLI artifacts passed release canary, publish-auth, provenance, metadata convergence, and drift-guard verification before the migration defect was discovered.
+  - the public release and update pointers were withdrawn without deleting or retagging the immutable release history.
+  - `v0.18.1` completed clean-upgrade validation from `v0.17.12` and recovery validation for affected `v0.18.0` databases before publication.
 - 0.17.x — Diagnostics & Logging (**stable released on `main`**, RC lineage `v0.17.0-rc.1` through `v0.17.0-rc.5`)
   - delivered: `feat/v0.17-log-foundation` (SQLite-backed task lifecycle logs + retrieval plumbing)
   - delivered: `feat/v0.17-task-log-viewer` (inspector diagnostics logs tab with level/status filters + load-more pagination)
@@ -101,10 +103,14 @@ Active milestone:
   - delivered for `v0.17.11`: task terminal transitions and request/response persistence now preserve final results deterministically; Homebrew formula and cask work share one execution lease; XPC connections reuse one service runtime; system-manager helper paths are canonicalized before selection; release, cancellation, MacPorts, and XPC hardening close the release line.
   - `v0.17.12` stable release execution status: released on `main` with tag, notarized DMG and CLI assets, published appcast and CLI metadata, and post-publication verification complete.
   - delivered for `v0.17.12`: bulk and scoped upgrade workflow sequencing is backend-owned, authority phases wait for submitted tasks to become terminal, and scoped cancellation prevents later-phase submission.
+  - `v0.18.0` release execution status: published with notarized DMG and CLI assets, then withdrawn because of a critical SQLite migration defect; `v0.18.1` is its public stable successor.
+  - delivered for `v0.18.0`: persisted doctor/repair lifecycle, guarded repair knowledge, repair verification history, and deterministic local security-advisory cache groundwork without a public advisory surface.
+  - `v0.18.1` corrective release execution status: released on `main` with tag, notarized DMG and CLI assets, published appcast and CLI metadata, and post-publication verification complete.
+  - delivered for `v0.18.1`: migration-collision recovery, idempotent initialization for current databases, and restored service/Refresh/CLI operation for affected stores.
 
 Security rollout staging status:
 - Stage 0 (`<=0.16.x`): planning/docs only (active in `0.16.1`)
-- Stage 1 (`0.18.x`): local security groundwork implemented on `dev` (normalized advisory domain records and queries, canonical cache identity validation, control-character hardening, deterministic order, freshness contracts, task hooks, and migration 18 SQLite cache persistence)
+- Stage 1 (`0.18.x`): local security groundwork released on `main` (normalized advisory domain records and queries, canonical cache identity validation, control-character hardening, deterministic order, freshness contracts, task hooks, and migration 18 SQLite cache persistence)
 - Stage 2 (`1.3.x`): Security Advisory System (Pro, planned)
 - Stage 3 (`1.4.x`): Shared Brain infrastructure (planned)
 - Current behavior: no package/fingerprint data is sent to any Helm-operated shared backend; the `0.18.x` advisory groundwork has no network provider or user-facing feature path.
@@ -1018,4 +1024,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.17.12 stable checkpoints are complete on `main`; `v0.17.0-rc.1` through `v0.17.0-rc.5` served as the completed RC validation path into stable `0.17.0`, followed by stable patch releases `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, `v0.17.10`, `v0.17.11`, and `v0.17.12`.
+0.13.x through 0.18.1 stable checkpoints are complete on `main`; `v0.18.0` remains withdrawn, and `v0.18.1` is the corrective stable release for the doctor/repair and local-security groundwork.

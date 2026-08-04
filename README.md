@@ -9,7 +9,7 @@
   <br>
   A macOS control center and CLI for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.17.12</strong>
+  <strong>Pre-1.0 &middot; v0.18.1</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Status:** Active pre-1.0 development with stable `v0.17.12` on `main` and `v0.18.0` release validation on `dev`.
+> **Release notice:** Active pre-1.0 development continues with stable `v0.18.1` on `main`. `v0.18.0` remains withdrawn because of a critical SQLite migration defect; `v0.19.x` stability and pre-1.0 hardening is next.
 >
-> **Testing:** Please test `v0.17.12` and report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.18.1`. If you installed `v0.18.0`, update to `v0.18.1` before further use. Report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -191,8 +191,8 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.16.1 | Documentation, Milestone Restructure & Security Staging Clarification | Completed (documentation-only) |
 | 0.16.2 | Sparkle Connectivity + Platform Baseline Alignment — network-client entitlement, feed diagnostics, macOS 11 deployment target enforcement | Completed |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Completed (`v0.17.x` stable, latest patch `v0.17.12`) |
-| 0.18.x | Doctor & Repair + Local Security Groundwork — implementation complete; `v0.18.0` release validation in progress (no public advisory feature surface) | Release validation |
-| 0.19.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Planned |
+| 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge and internal advisory cache foundation (no public advisory feature surface) | Completed (`v0.18.1` corrective release; `v0.18.0` withdrawn) |
+| 0.19.x | Stability & Pre-1.0 Hardening — stress tests, crash recovery, memory audit | Next |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
@@ -249,7 +249,7 @@ The `1.4.x` Shared Brain milestone is planned as **Postgres-first** and **provid
 - Durable Objects / D1 are not the Shared Brain system-of-record.
 - Large artifacts (if introduced later) should live in S3-compatible object storage; Postgres stores references/metadata.
 
-Current releases (`<=0.17.x`) do **not** send package/fingerprint data to a shared backend. Security-advisory value remains local-first until the `1.4.x` Shared Brain milestone.
+Current releases (through `v0.18.1`) do **not** send package/fingerprint data to a shared backend. Security-advisory value remains local-first until the `1.4.x` Shared Brain milestone.
 
 ## Repository Layout
 
