@@ -1823,9 +1823,17 @@ fn database_path() -> Result<String, String> {
     let path = PathBuf::from(home)
         .join("Library")
         .join("Application Support")
-        .join("Helm")
+        .join(database_directory_name(cfg!(debug_assertions)))
         .join("helm.db");
     Ok(path.to_string_lossy().into_owned())
+}
+
+fn database_directory_name(is_development_build: bool) -> &'static str {
+    if is_development_build {
+        "Helm-Development"
+    } else {
+        "Helm"
+    }
 }
 
 fn cmd_status(store: &SqliteStore, options: GlobalOptions) -> Result<(), String> {
@@ -16502,7 +16510,7 @@ mod tests {
         apply_manager_enablement_self_heal, build_json_payload_lines, classify_failure_class,
         cmd_updates_run, command_bypasses_cli_onboarding, command_help_topic_exists,
         coordinator_transport_for_cancel, coordinator_transport_for_submit,
-        coordinator_transport_for_workflow, count_upgrade_step_failures,
+        coordinator_transport_for_workflow, count_upgrade_step_failures, database_directory_name,
         ensure_cli_onboarding_completed, ensure_repair_execution_mode, exit_code_for_error,
         failure_class_hint, list_managers, manager_operation_failure_error, mark_exit_code,
         parse_args, parse_args_with_tty, parse_homebrew_keg_policy_arg, parse_manager_id,
@@ -16523,6 +16531,7 @@ mod tests {
     use helm_core::persistence::DetectionStore;
     use helm_core::sqlite::SqliteStore;
     use serde_json::json;
+
     use std::fs;
     use std::io::Cursor;
     #[cfg(unix)]
@@ -16533,6 +16542,12 @@ mod tests {
 
     const COORDINATOR_TRANSPORT_INVARIANTS_DOC: &str =
         "../../../../docs/architecture/CLI_COORDINATOR_TRANSPORT_INVARIANTS.md";
+
+    #[test]
+    fn database_directory_separates_development_and_release_builds() {
+        assert_eq!(database_directory_name(true), "Helm-Development");
+        assert_eq!(database_directory_name(false), "Helm");
+    }
 
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now()

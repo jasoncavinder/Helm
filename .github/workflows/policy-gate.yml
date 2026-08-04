@@ -118,3 +118,8 @@ jobs:
           fi
 
           echo "Policy gate passed for ${HEAD_REF} -> ${BASE_REF}."
+
+      - name: Enforce immutable SQLite migration history
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/ci/check_sqlite_migration_manifest.py --base-ref "$BASE_SHA"

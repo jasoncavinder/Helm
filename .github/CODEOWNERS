@@ -1,0 +1,8 @@
+# Persistence and release-safety changes require explicit maintainer visibility.
+/core/rust/crates/helm-core/src/sqlite/ @jasoncavinder
+/core/rust/crates/helm-core/resources/sqlite_migration_manifest.json @jasoncavinder
+/core/rust/crates/helm-core/tests/fixtures/sqlite/ @jasoncavinder
+/core/rust/crates/helm-core/tests/sqlite_migrations_contract.rs @jasoncavinder
+/scripts/ci/check_sqlite_migration_* @jasoncavinder
+/.github/workflows/policy-gate.yml @jasoncavinder
+/.github/workflows/release-*.yml @jasoncavinder
