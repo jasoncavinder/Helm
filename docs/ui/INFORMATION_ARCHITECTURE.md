@@ -1,5 +1,7 @@
 # Helm Information Architecture
 
+Status: Current integrated baseline, subject to validation and revision through `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`.
+
 ## IA Goal
 
 Organize Helm around operational decisions, not manager internals. Users start with risk posture, then drill into the specific manager/package/task causing that posture.

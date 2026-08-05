@@ -11,11 +11,11 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.x stability and pre-1.0 hardening (post-v0.18.1 corrective release)
+post-v0.18.1 design-definition closure, then v0.19.x native-experience foundation and first-run value
 ```
 
 Focus:
-- begin the `v0.19.x` stability and pre-1.0 hardening track with stress, crash-recovery, and memory audits
+- complete the remaining planning-only `0.18.x` Project WOW and Native Mac Experience definition artifacts before beginning production `v0.19.x` UI or first-run implementation
 - maintain release-process hardening guardrails now that `v0.18.1` publication is complete
 - preserve the released `v0.18.1` migration-reconciliation behavior and its affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
@@ -23,9 +23,40 @@ Focus:
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
 - retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs
 - preserve the internal-only `0.18.x` advisory domain/cache foundation; provider fetchers, task-scheduler wiring, doctor advisory findings, and public CLI/GUI surfaces remain post-`0.18.x`
+- close the remaining Project WOW `0.18.x` definition/prototype work immediately after `v0.18.1`, then deliver its base Environment Brief -> reviewed plan -> verified improvement -> Action Receipt loop across `0.19.x`-`0.21.x`
+- keep Project WOW as internal design terminology only; allocate resulting features among the existing Helm, Helm Pro, and Helm Fleet plans
+- keep first-run value/safety/transparency/recovery in base Helm; allocate advanced personal intelligence to Helm Pro and organization policy/deployment/drift/audit to Helm Fleet
+- close the remaining Native Mac Experience `0.18.x` research/prototype work immediately after `v0.18.1`, then deliver native foundations in `0.19.x`, redesign core workflows in `0.20.x`, close accessibility/system-integration gaps in `0.21.x`, and complete design validation/hardening in `0.22.x`
+- treat the earlier visual-only app redesign proposal and `docs/ui/` artifacts as the current baseline and research input, not constraints that prohibit information-architecture, layout, or interaction changes
+- prefer native macOS windows, menus, toolbars, Settings, navigation, lists/tables, focus, selection, and commands before custom controls while preserving the presentation-only SwiftUI boundary
+- design Helm Fleet integrations to coexist with current business management authority through vendor-neutral PKG, managed configuration, CLI/inventory/compliance, and audit contracts before bespoke vendor APIs
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
 - keep the agent-agnostic operating model current (lean `AGENTS`, isolated task worktrees under `.worktrees/` via `agent-worktree-isolation`, `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, notify logging to `dev/logs/agent-runs.ndjson`, and `scripts/agents/` workflows) so recurring AI workflows remain deterministic and low-friction
+
+Remaining `0.18.x` design-definition closure is planning/prototype work only. It does not reopen the published `v0.18.1` runtime scope or require a `v0.18.2` release:
+
+- Project WOW contracts: Environment Brief, setup session, recommendation/plan, Action Receipt, and redaction schemas; discovery/consent classification; bootstrap feasibility and typed-action boundaries; offline/failure/recovery semantics; CLI/TUI interaction contract; local metrics event definitions; first-run usability/accessibility protocol; Fleet managed-configuration boundary
+- Native Mac Experience artifacts: current-experience screenshot audit; custom-versus-native component inventory; user-research plan and baseline task protocol; information-architecture options and decision; menu bar, Control Center, Settings, and Project WOW prototypes; complete state matrix; accessibility and perceived-performance budgets; incremental production migration map
+- joint closure gate: prototypes and contracts use one compatible navigation/state model, intentional departures from macOS conventions are recorded, unresolved implementation questions are converted into scoped `0.19.x` backlog items, and no production redesign implementation begins in this closure
+
+Project WOW planning source:
+
+- `docs/app-design/PROJECT_WOW.md`
+- base delivery targets: value-reveal foundation in `0.19.x`, verified improvement in `0.20.x`, recovery/accessibility in `0.21.x`, validation in `0.22.x`, and final inclusion in the `1.0.0` quality gate
+- resulting features allocated to post-1.0 Helm Pro: Advanced Conflict Radar, personal Blueprints, advanced insights/history, and advisory/Shared Brain enrichment
+- resulting features allocated to post-1.0 Helm Fleet: managed zero-touch first run, Environment/Compliance Brief, organization baselines, policy/drift, certified Jamf Pro/Intune/Kandji/Munki workflows, rollout/approvals, and audit export
+- Fleet does not replace MDM or software distribution; external enrollment, scope, deployment, OS-update, and compliance authority remains controlling
+
+Native Mac Experience planning source:
+
+- `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`
+- `0.18.x`: experience audit, component inventory, user-research baseline, information-architecture options, state matrix, prototypes, and accessibility/performance budgets
+- `0.19.x`: native app shell, menu/toolbar/Settings/selection/focus foundations, window behavior, component semantics, and Project WOW Environment Brief foundation
+- `0.20.x`: health, updates, packages, tasks, managers, search, inspector, diagnostics, content, and menu-bar workflow redesign
+- `0.21.x`: keyboard, VoiceOver, system accessibility preferences, localization/text expansion, notifications, offline/interruption/recovery, and Project WOW Action Receipt integration
+- `0.22.x`: perceived performance, motion/transition polish, consistency audits, state/screenshot fixtures, multi-display/failure validation, moderated usability, and UI lock
+- `1.0.0`: native experience and Project WOW release gates must both pass on the production app
 
 Current checkpoint:
 - `0.18.x` internal groundwork is released on `main` through `v0.18.1`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
@@ -377,7 +408,10 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.19.x` — Stability & Pre-1.0 hardening
+- `v0.19.x` — Native experience foundation & first-run value
+- `v0.20.x` — Core workflow & information architecture redesign
+- `v0.21.x` — Accessibility, system integration & resilience
+- `v0.22.x` — Fit, finish & pre-1.0 hardening
 - `v1.0.0` — Stable control plane release
 
 ## Historical v0.17.x Delivery Tracker (0.17.3 Checkpoint)

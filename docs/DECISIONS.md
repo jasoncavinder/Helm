@@ -828,6 +828,85 @@ Migrate the repository from Codex-specific tooling to an agent-agnostic model us
 - Preserves all workflow logic while making it platform-agnostic
 
 ---
+## Decision 041 — Internal Project WOW Feature Allocation and Fleet Coexistence
+
+**Decision:**
+Use Project WOW solely as an internal name for Helm's first-run value design initiative. It is not a product, edition, entitlement, or pricing tier.
+
+Preserve one shared local-first first-run experience contract, then allocate resulting capabilities among the existing Helm, Helm Pro, and planned Helm Fleet product plans.
+
+The base experience follows:
+
+`Environment Brief -> reviewed plan -> approved typed action -> verification -> Action Receipt`
+
+**Product/tier feature allocation:**
+
+- Base Helm owns the first-run value reveal, safety-critical findings, conservative defaults, plan transparency, failure recovery, honest rollback, offline behavior, accessibility, and redacted local summary.
+- Helm Pro may add advanced personal optimization, history, reusable personal Blueprints, advisory enrichment, and optional Shared Brain enrichment.
+- Helm Fleet owns managed bootstrap, organization baselines, policy/drift/compliance, rollout, approvals, and audit capabilities.
+- Pro and Fleet gates must never hide information required for safe execution or weaken the base first-run experience.
+
+**Fleet coexistence policy:**
+
+- Helm Fleet complements rather than replaces MDM and software-distribution systems.
+- External management authority retains ownership of enrollment, assignment/scope, PKG/app delivery, configuration profiles, OS update enforcement, self-service presentation, and enterprise compliance systems of record.
+- Helm Fleet owns deterministic local package/tool observation, policy evaluation, provenance-aware planning, typed execution, verification, and explainability.
+- Effective managed state uses the most restrictive applicable policy; Apple/MDM enforcement and Helm core safety minimums cannot be weakened by Helm Fleet policy.
+- Build vendor-neutral signed PKG, managed configuration, CLI machine-output, inventory/compliance, and audit-export contracts before relying on vendor-specific APIs or agent commands.
+- Initial compatibility validation targets Jamf Pro, Microsoft Intune, Kandji, and Munki; their assignment, rollout, and distribution semantics remain authoritative.
+
+**Rationale:**
+
+- Helm's first-run experience cannot serve as an adoption engine if its core value is paywalled.
+- Safety and recovery are product integrity requirements rather than premium differentiators.
+- Advanced individual intelligence and reusable workflows provide a natural Pro boundary without degrading base Helm.
+- Businesses already operate mature enrollment, distribution, policy, and inventory systems; competing with those authorities would create races, duplicated policy, and adoption friction.
+- Vendor-neutral integration contracts keep Fleet portable while allowing certified workflows for the tools customers already use.
+
+Canonical detail: `docs/app-design/PROJECT_WOW.md`.
+
+---
+## Decision 042 — Native macOS Experience Is a Pre-1.0 Product Gate
+
+**Decision:**
+Treat whole-app macOS design maturation as an internal pre-1.0 product initiative rather than a final visual-polish task.
+
+The initiative may revise information architecture, layout, workflows, window behavior, menus, toolbars, Settings, controls, content, motion, accessibility, and perceived performance. Prefer native macOS patterns and system controls where they express Helm's behavior clearly. Custom presentation remains appropriate only when it adds domain-specific value and preserves expected macOS input and accessibility behavior.
+
+Deliver the work incrementally:
+
+- `0.18.x` planning closure immediately after `v0.18.1`: research, audit, state matrix, design decisions, prototypes, and budgets; no runtime-scope reopening or additional `0.18.x` publication
+- `0.19.x`: native application foundation and first-run value foundation
+- `0.20.x`: core workflow and information-architecture redesign
+- `0.21.x`: accessibility, system integration, resilience, and first-run recovery/receipt completion
+- `0.22.x`: fit, finish, perceived performance, validation, and UI lock
+- `1.0.0`: production native-experience release gate
+
+**Architecture boundary:**
+
+- SwiftUI and AppKit remain presentation and platform-integration layers.
+- Business rules, policy, planning, orchestration, and execution remain in service/core.
+- AppKit bridges are permitted for native behavior SwiftUI cannot provide reliably, including the existing keyboard key-view-loop gap.
+- The current macOS 11+ baseline remains unless a separate compatibility decision changes it; newer system appearance is adopted through availability-aware enhancement rather than imitation.
+
+**Relationship to existing design work:**
+
+- Project WOW remains the internal first-run value initiative; the Native Mac Experience initiative owns the quality of its macOS presentation.
+- The earlier app redesign and `docs/ui/` artifacts remain the implemented baseline and research input.
+- Earlier restrictions that limited redesign to visual changes or prohibited layout/interaction changes no longer constrain pre-1.0 design work.
+- This decision supersedes Decision 023 only where that historical schedule placed all general pre-1.0 hardening in `0.19.x`; final hardening now closes in `0.22.x` after the staged design milestones.
+- Helm's brand system supports native behavior and accessibility rather than overriding them.
+
+**Rationale:**
+
+- Incremental custom styling improved consistency but cannot by itself create familiar macOS window, command, input, navigation, and Settings behavior.
+- Deferring workflow, accessibility, and platform integration until final polish would make meaningful redesign too risky near 1.0.
+- Staged milestones let Helm validate structure with users before migrating every production surface.
+- A native foundation reduces future component drift and gives Helm Pro and Helm Fleet surfaces a coherent platform model.
+
+Canonical detail: `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`.
+
+---
 ## Summary
 
 Helm prioritizes:

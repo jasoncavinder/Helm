@@ -1,5 +1,7 @@
 # Helm User Flows
 
+Status: Current integrated baseline. Project WOW and the native macOS experience initiative supersede the first-run flow and may revise the remaining workflows before 1.0.
+
 ## Flow 1: Checking System Status
 
 Goal:

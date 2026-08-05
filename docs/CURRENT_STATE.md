@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.18.1 is the latest public stable release**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect, and `v0.19.x` stability and pre-1.0 hardening is next.
+Current documentation baseline: **0.18.1 is the latest public stable release**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect, the remaining `0.18.x` design-definition work is planning-only closure, and `v0.19.x` native-experience foundation and first-run value is the next implementation milestone.
 
 Implementation baseline: **0.18.x doctor/repair and local security groundwork is released on `main` through corrective `v0.18.1`**; `v0.18.0` remains withdrawn.
 
@@ -20,6 +20,8 @@ Active milestone:
 - `v0.18.0` was published on 2026-08-03 and then withdrawn after discovery of a critical SQLite migration defect; its immutable tag is retained for auditability while its release is not publicly distributed.
 - public GUI and CLI update metadata points to the signed `v0.18.1` artifacts.
 - delivered in `v0.18.1`: reconciliation of the known development migration `17` collision before released doctor/repair migrations run, plus prevention of historical DDL replay for already-current databases, preserving package identifiers and user data.
+- approved internal product-design planning track: **Project WOW** defines the base Helm first-run value loop and documents how resulting features map onto the existing Helm, Helm Pro, and Helm Fleet plans at `docs/app-design/PROJECT_WOW.md`; it is not a product or edition, its `0.18.x` definition/prototype closure remains planning-only after the corrective `v0.18.1` release, staged implementation/validation follows in `0.19.x`-`0.22.x`, and no related behavior is implemented by this documentation checkpoint
+- approved internal whole-app design planning track: the **Native Mac Experience initiative** expands the earlier visual-only refinement into pre-1.0 information architecture, workflow, macOS application-model, interaction, visual, content, accessibility, localization, motion, perceived-performance, and design-QA work at `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`; its `0.18.x` definition/prototype closure remains planning-only after `v0.18.1`, staged implementation follows in `0.19.x`-`0.22.x`, and no related behavior is implemented by this documentation checkpoint
 - `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - delivered on `main` for **0.18.x**: SQLite-backed doctor finding lifecycle and repair knowledge, deterministic cross-installation fingerprints, guarded bundled/imported knowledge, repair verification history, and the local security-advisory domain/cache groundwork; provider fetchers and user-facing advisory features remain deferred to the staged advisory release.
 - repository operations follow-up on `main`: agent-agnostic operating model with policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, and structured local notify logging to `dev/logs/agent-runs.ndjson`.
