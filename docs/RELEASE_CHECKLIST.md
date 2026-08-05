@@ -62,7 +62,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.18.2 (Final v0.18 Containment Release Gate, Pending)
+## v0.18.2 (Final v0.18 Containment Release Gate, Completed)
 
 ### Scope
 
@@ -80,13 +80,13 @@ This checklist is required before creating a release tag on `main`.
 
 - [x] Stateful v0.17.12 upgrade, affected-v0.18.0 recovery, rollback, tampering, backup, CLI, and FFI migration suites pass on the merged implementation.
 - [x] Run the full repository quality gate, documentation sync, Sparkle checklist, and non-mutating `v0.18.2` release rehearsal from the release-preparation branch.
-- [ ] Merge release preparation through `dev` and the protected `dev` to `main` path.
-- [ ] Run rehearsal and preflight from a clean, current `main` checkout.
-- [ ] Confirm a fresh successful `Release macOS Canary` on `macos-26` after the final release changes.
-- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` under the maintainer's release authorization.
-- [ ] Create and push annotated tag `v0.18.2` from the verified `main` revision.
-- [ ] Complete signed/notarized GUI and direct CLI artifact publication.
-- [ ] Merge generated metadata PRs if required and complete post-publication verification and drift guards.
+- [x] Merge release preparation through `dev` and the protected `dev` to `main` path.
+- [x] Run rehearsal and preflight from a clean, current `main` checkout.
+- [x] Confirm a fresh successful `Release macOS Canary` on `macos-26` after the final release changes.
+- [x] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` under the maintainer's release authorization.
+- [x] Create and push annotated tag `v0.18.2` from the verified `main` revision.
+- [x] Complete signed/notarized GUI and direct CLI artifact publication.
+- [x] Merge generated metadata PRs if required and complete post-publication verification and drift guards.
 
 ## v0.18.1 (Corrective Release Gate, Completed)
 

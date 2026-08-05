@@ -11,6 +11,25 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.18.2 — 2026-08-04
+
+Patch `0.18.2` is the final v0.18 containment release before production v0.19 native-experience and first-run implementation.
+
+### Added
+- An append-only SQLite migration identity manifest records released migration versions, names, up/down SQL, and SHA-256 definition checksums.
+- Migration `20` persists and backfills migration-definition checksums, with verified private pre-migration backups providing bounded recovery points.
+- Project WOW first-run contracts and the Native Mac Experience audit, information architecture, prototypes, state matrix, quality budgets, research protocol, and migration map form the closed v0.18 design baseline.
+
+### Changed
+- SQLite initialization validates ledger continuity and immutable migration identity, separates default debug databases from release data, and propagates failures through CLI, FFI, XPC, and Service Health paths.
+- Release CI exercises persisted SQLite upgrade, rollback, tampering, backup, CLI, and FFI boundaries through the shared migration-compatibility gate.
+- Pre-1.0 planning targets Health, Updates, Packages, Activity, and Sources, with separate Settings, contextual diagnostics, command-based search, and explicit Helm, Helm Pro, and Helm Fleet boundaries.
+
+### Security
+- Unknown, missing, reordered, renamed, or checksum-mismatched migration ledger entries fail closed.
+
+The design artifacts are planning contracts only; this release does not add the planned first-run or redesigned UI behavior.
+
 ## 0.18.1 — 2026-08-04
 
 Patch `0.18.1` is the corrective stable successor to withdrawn `v0.18.0`.

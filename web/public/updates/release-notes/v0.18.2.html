@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Helm 0.18.2 Release Notes</title>
+  <link rel="canonical" href="https://helmapp.dev/updates/release-notes/v0.18.2.html">
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      line-height: 1.55;
+      background: #f7f8fa;
+      color: #111827;
+    }
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    article {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 24px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 1.6rem;
+      line-height: 1.3;
+    }
+    h2 {
+      margin: 24px 0 8px;
+      font-size: 1.1rem;
+    }
+    p, ul {
+      margin: 8px 0;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    .meta {
+      color: #4b5563;
+      font-size: 0.95rem;
+      margin: 0 0 12px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.92em;
+    }
+    footer {
+      margin-top: 16px;
+      color: #6b7280;
+      font-size: 0.9rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #0b1220;
+        color: #e5e7eb;
+      }
+      article {
+        background: #0f172a;
+        border-color: #1f2937;
+      }
+      .meta {
+        color: #9ca3af;
+      }
+      code {
+        background: #111827;
+      }
+      footer {
+        color: #9ca3af;
+      }
+      a {
+        color: #93c5fd;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Helm 0.18.2 Release Notes</h1>
+      <p class="meta">Release date: August 4, 2026</p>
+    <h2>Added</h2>
+    <ul>
+      <li>An append-only SQLite migration identity manifest now records each released migration&#x27;s version, name, up/down SQL, and SHA-256 definition checksum.</li>
+      <li>Migration <code>20</code> persists and backfills migration-definition checksums, while verified private pre-migration backups provide bounded recovery points before future schema changes.</li>
+      <li>Project WOW first-run contracts and the Native Mac Experience audit, approved information architecture, prototypes, state matrix, quality budgets, research protocol, and incremental migration map now form the closed v0.18 design baseline for v0.19 implementation.</li>
+    </ul>
+    <h2>Changed</h2>
+    <ul>
+      <li>SQLite initialization now validates ledger continuity and immutable migration identity before applying new work, separates default debug databases from release data, and surfaces initialization failures through CLI, FFI, XPC, and Service Health paths.</li>
+      <li>Release CI now exercises persisted SQLite upgrade, rollback, tampering, backup, CLI, and FFI boundaries through the shared migration-compatibility gate.</li>
+      <li>Pre-1.0 planning now targets Health, Updates, Packages, Activity, and Sources in the Control Center, with separate Settings, contextual diagnostics, command-based search, and explicit base Helm, Helm Pro, and Helm Fleet boundaries.</li>
+    </ul>
+    <h2>Security</h2>
+    <ul>
+      <li>Unknown, missing, reordered, renamed, or checksum-mismatched migration ledger entries fail closed instead of allowing an incompatible database history to continue.</li>
+    </ul>
+    <p>This release contains the completed v0.18 work before production v0.19 native-experience and first-run implementation begins. The design artifacts are planning contracts only; they do not add the planned first-run or redesigned UI behavior in v0.18.2.</p>
+    <p class="meta">Need full context? <a href="https://github.com/jasoncavinder/Helm/releases/tag/v0.18.2" rel="noopener noreferrer">View this release on GitHub</a>.</p>
+    </article>
+    <footer>Generated from <code>CHANGELOG.md</code>.</footer>
+  </main>
+</body>
+</html>
