@@ -833,6 +833,47 @@ The base experience follows:
 Canonical detail: `docs/app-design/PROJECT_WOW.md`.
 
 ---
+## Decision 041 — Native macOS Experience Is a Pre-1.0 Product Gate
+
+**Decision:**
+Treat whole-app macOS design maturation as an internal pre-1.0 product initiative rather than a final visual-polish task.
+
+The initiative may revise information architecture, layout, workflows, window behavior, menus, toolbars, Settings, controls, content, motion, accessibility, and perceived performance. Prefer native macOS patterns and system controls where they express Helm's behavior clearly. Custom presentation remains appropriate only when it adds domain-specific value and preserves expected macOS input and accessibility behavior.
+
+Deliver the work incrementally:
+
+- `0.18.x`: research, audit, state matrix, design decisions, prototypes, and budgets
+- `0.19.x`: native application foundation and first-run value foundation
+- `0.20.x`: core workflow and information-architecture redesign
+- `0.21.x`: accessibility, system integration, resilience, and first-run recovery/receipt completion
+- `0.22.x`: fit, finish, perceived performance, validation, and UI lock
+- `1.0.0`: production native-experience release gate
+
+**Architecture boundary:**
+
+- SwiftUI and AppKit remain presentation and platform-integration layers.
+- Business rules, policy, planning, orchestration, and execution remain in service/core.
+- AppKit bridges are permitted for native behavior SwiftUI cannot provide reliably, including the existing keyboard key-view-loop gap.
+- The current macOS 11+ baseline remains unless a separate compatibility decision changes it; newer system appearance is adopted through availability-aware enhancement rather than imitation.
+
+**Relationship to existing design work:**
+
+- Project WOW remains the internal first-run value initiative; the Native Mac Experience initiative owns the quality of its macOS presentation.
+- The earlier app redesign and `docs/ui/` artifacts remain the implemented baseline and research input.
+- Earlier restrictions that limited redesign to visual changes or prohibited layout/interaction changes no longer constrain pre-1.0 design work.
+- This decision supersedes Decision 023 only where that historical schedule placed all general pre-1.0 hardening in `0.19.x`; final hardening now closes in `0.22.x` after the staged design milestones.
+- Helm's brand system supports native behavior and accessibility rather than overriding them.
+
+**Rationale:**
+
+- Incremental custom styling improved consistency but cannot by itself create familiar macOS window, command, input, navigation, and Settings behavior.
+- Deferring workflow, accessibility, and platform integration until final polish would make meaningful redesign too risky near 1.0.
+- Staged milestones let Helm validate structure with users before migrating every production surface.
+- A native foundation reduces future component drift and gives Helm Pro and Helm Fleet surfaces a coherent platform model.
+
+Canonical detail: `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`.
+
+---
 ## Summary
 
 Helm prioritizes:

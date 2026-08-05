@@ -1,5 +1,7 @@
 # Helm Annotated Mockups (Text)
 
+Status: Historical baseline mockups and research input, not the approved pre-1.0 target. See `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`.
+
 ## 1) Menu Bar Popover (Triage)
 
 ```text

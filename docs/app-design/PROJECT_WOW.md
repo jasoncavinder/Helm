@@ -554,32 +554,39 @@ Fleet-specific indicators:
 
 This phase must not disrupt the Doctor/repair and local security groundwork already sequenced for 0.18.x.
 
-### Internal initiative phase 1 — Base value reveal in early 0.19.x
+### Internal initiative phase 1 — Base value reveal foundation in 0.19.x
 
 - staged local scan and streaming Environment Brief
 - conservative automatic defaults with disclosure
 - remove mandatory manager/settings setup pages
 - replace forced walkthroughs with contextual tips
-- GUI/CLI/TUI finding and brief parity
 - offline and partial-coverage behavior
+- build the GUI flow on the native window, navigation, focus, progress, and sheet foundation defined in `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`
 
-### Internal initiative phase 2 — Verified improvement in mid 0.19.x
+### Internal initiative phase 2 — Verified improvement in 0.20.x
 
 - personalized deterministic recommendations
 - plan preview and one supported safe improvement
+- maintain continuous plan -> execution -> verification -> recovery context in the redesigned core workflows
+
+### Internal initiative phase 3 — Recovery and accessibility in 0.21.x
+
 - persisted setup session
 - resume/retry and bounded rollback
 - before/after verification and Action Receipt
 - redacted Copy Summary
-
-### Internal initiative phase 3 — Pre-1.0 trust hardening in late 0.19.x
-
 - safety conflict detection
 - first supported bootstrap plans
+- GUI/CLI/TUI finding, plan, verification, and receipt parity where first-run interaction is supported
 - full keyboard and VoiceOver completion
 - locale/text-expansion validation
+
+### Internal initiative phase 4 — Pre-1.0 validation in 0.22.x
+
 - performance budgets and cancellation tests
 - moderated first-run validation
+- offline, partial-failure, interruption, and recovery-state validation
+- native macOS design-quality sign-off for the production first-run flow
 
 ### 1.0 release gate
 

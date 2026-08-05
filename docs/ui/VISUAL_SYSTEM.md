@@ -1,5 +1,7 @@
 # Helm Visual System
 
+Status: Current integrated baseline. The canonical pre-1.0 native experience initiative may replace custom presentation with system controls and platform conventions where they improve behavior or accessibility.
+
 ## Visual Direction
 
 Calm operational clarity:

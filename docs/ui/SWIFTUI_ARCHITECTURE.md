@@ -152,8 +152,11 @@ ControlCenterWindowView
 | `PackageRowView` | Components/PackageRowView.swift | Package row with status, version, actions |
 | `TaskRowView` | Components/TaskRowView.swift | Task row with spinner, description, cancel |
 | `ManagerItemView` | Components/ManagerItemView.swift | Manager avatar tile with status dot |
-| `HelmPrimaryButtonStyle` | Components/HelmButtonStyles.swift | Orange/red gradient button |
-| `HelmSecondaryButtonStyle` | Components/HelmButtonStyles.swift | Light background bordered button |
+| `HelmPrimaryButtonStyle` | Components/HelmButtonStyles.swift | Helm Blue primary action button |
+| `HelmSecondaryButtonStyle` | Components/HelmButtonStyles.swift | Blue-tinted bordered secondary action |
+| `HelmTertiaryButtonStyle` | Components/HelmButtonStyles.swift | Text-only lower-emphasis action |
+| `HelmProButtonStyle` | Components/HelmButtonStyles.swift | Rope Gold Pro-context action |
+| `HelmIconButtonStyle` | Components/HelmButtonStyles.swift | Compact icon action treatment |
 | `FilterButton` | Components/FilterButton.swift | Toggle-style filter |
 | `LabeledContentRow` | Components/LabeledContentRow.swift | Label + value row |
 | `MetricCardView` | ControlCenterViews.swift | Large metric card (overview) |

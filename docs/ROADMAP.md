@@ -647,54 +647,122 @@ Exit Criteria:
 
 ---
 
-## 0.19.x — Stability & Pre-1.0 Hardening (rc)
+## 0.18.x — Pre-1.0 Experience Definition (parallel design slice)
 
 Goal:
 
-- Full integration test matrix, especially:
-
-  - multi-manager authority ordering
-  - guarded OS update flow
-  - failure isolation
-- Multi-manager orchestration stress tests
-- Cancellation stress tests
-- Logging refinement
-- Crash recovery validation
-- No known race conditions
-- Introduce revision-aware snapshot transport and evaluate event delivery only where it reduces polling without weakening reconnect, ordering, replay, or backpressure guarantees.
-- Consolidate related XPC reads/actions behind additive, versioned request/response contracts; retain compatibility until all surfaces migrate.
-- Memory safety audit
-- i18n validation:
-  - key parity across locales
-  - placeholder consistency
-  - ICU syntax validation
-- UI validation for text expansion
-- Localization fallback behavior tested
-- Project WOW base first-run value delivery:
-  - staged local discovery and streaming Environment Brief
-  - conservative defaults with an inspection receipt
-  - contextual guidance replacing mandatory first-run tours
-  - personalized plan preview and one supported safe, verified improvement
-  - persisted setup session with bounded resume/retry/rollback
-  - Action Receipt and redacted local summary
-  - GUI/CLI/TUI contract parity where first-run interaction is supported
-  - offline and partial-failure behavior
-- App Design Refinement (planned):
-  - finalize production typography direction across app/website
-  - reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding
+- Audit the current menu bar app and Control Center against core user jobs and native macOS behavior.
+- Inventory custom controls and record where native controls, windows, menus, toolbars, Settings, lists/tables, focus, and selection should replace or constrain custom presentation.
+- Run baseline task-based usability sessions and define measurable design-quality budgets.
+- Prototype the menu bar surface, Control Center, Settings, and Project WOW first run at sufficient fidelity to test workflow and platform behavior.
+- Define the complete loading/success/empty/partial/failure/offline/blocked/cancellation/recovery state matrix.
+- Produce an incremental migration map that preserves service/core business-logic authority.
 
 Exit Criteria:
 
-- All core paths tested
-- No known race conditions
-- No unhandled panics
-- Stable FFI boundary
-- Deterministic execution verified
+- Target information architecture and core workflows are validated before production UI migration.
+- Accessibility, localization, motion, perceived-performance, window, input, and state-quality gates are approved.
+- Project WOW and whole-app navigation share one compatible experience model.
+- Intentional departures from macOS conventions have documented Helm-specific rationale.
+- The design lane does not destabilize Doctor/repair or local-security delivery.
+
+---
+
+## 0.19.x — Native Experience Foundation & First-Run Value (rc)
+
+Goal:
+
+- Establish the native macOS application foundation defined in `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`:
+  - native window, titlebar, toolbar, menu-command, sidebar/split-view, selection, and focus behavior
+  - standard semantic component layer with documented exceptions for Helm-specific controls
+  - first-class macOS Settings window/scene with Command-Comma behavior
+  - window restoration, resizing, activation, and multi-display behavior
+  - keyboard traversal infrastructure, including AppKit bridges where SwiftUI is insufficient
+- Introduce revision-aware snapshot transport and evaluate event delivery only where it reduces polling without weakening reconnect, ordering, replay, or backpressure guarantees.
+- Consolidate related XPC reads/actions behind additive, versioned request/response contracts; retain compatibility until all surfaces migrate.
+- Begin Project WOW base first-run value delivery on the native experience foundation:
+  - staged local discovery and streaming Environment Brief
+  - conservative defaults with an inspection receipt
+  - contextual guidance replacing mandatory first-run tours
+  - reviewed plan foundation using native progress, focus, selection, and sheet behavior
+- Finalize production typography direction across app/website.
+- Reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding; the app interface continues to prefer system typography.
+
+Exit Criteria:
+
 - Snapshot revision/reconnect behavior and consolidated XPC contracts are covered by integration tests.
-- Project WOW first-run flow performs no unprompted mutation and has no mandatory network dependency.
-- Project WOW produces useful partial results when one or more managers fail.
+- App shell and first-run foundation are coherent in light/dark appearance at minimum and expanded window sizes.
+- Toolbar actions have application-menu command equivalents.
+- Settings are reachable through the application menu and Command-Comma and contain durable preferences rather than operational workflows.
+- No new surface introduces an ad hoc control or status semantic outside the approved component system.
+- Project WOW discovery and Environment Brief perform no unprompted mutation and have no mandatory network dependency.
+
+---
+
+## 0.20.x — Core Workflow & Information Architecture Redesign (rc)
+
+Goal:
+
+- Redesign the health, updates, packages, tasks, managers, search, inspector, and diagnostics workflows around native macOS patterns.
+- Revalidate the top-level information architecture against task frequency and user research.
+- Use native list, table, outline, split-view, toolbar, menu, contextual-menu, and inspector behavior where comparison and density matter.
+- Simplify action hierarchy and remove duplicated or misplaced entry points.
+- Preserve one continuous plan -> execution -> verification -> recovery presentation.
+- Complete content-design passes for labels, empty states, errors, policy blocks, provenance, authority, and recovery.
+- Revise the menu bar triage surface so it remains glanceable and routes cleanly into Control Center context.
+- Continue Project WOW through personalized plan preview and one supported safe, verified improvement.
+
+Exit Criteria:
+
+- Moderated users complete the primary health, upgrade, install, failure-recovery, and manager-source tasks without assistance or avoidable navigation reversals.
+- Destructive, privileged, guarded, and policy-blocked actions remain explicit and attributable.
+- Each release-critical domain covers loading, success, empty, partial, failure, offline, blocked, cancellation, and recovery states.
+- Control Center remains responsive and preserves selection/context while tasks and snapshot updates arrive.
+- Presentation changes do not move business or orchestration logic out of service/core boundaries.
+
+---
+
+## 0.21.x — Accessibility, System Integration & Resilience (rc)
+
+Goal:
+
+- Deliver keyboard-only and VoiceOver parity for every release-critical macOS workflow.
+- Validate Full Keyboard Access, logical focus order/restoration, conventional shortcuts, contextual menus, command validation, default actions, and cancel actions.
+- Harden increased contrast, reduced motion, reduced transparency, localization, and text expansion behavior.
+- Complete notification deep links and background/foreground continuity.
+- Validate offline, partial-data, interrupted-task, cancellation, and recovery experiences.
+- Complete Project WOW persisted setup session, verified improvement, Action Receipt, redacted summary, bounded resume/retry/rollback, and GUI/CLI/TUI contract parity where first-run interaction is supported.
+
+Exit Criteria:
+
+- No known keyboard trap or pointer-only release-critical action.
+- Accessibility Inspector and manual VoiceOver validation pass the approved state/workflow matrix.
+- All seven current locales pass representative narrow/expanded window, critical-sheet, and first-run validation.
+- Project WOW produces useful partial results when managers fail or the network is unavailable.
 - Every Project WOW action described as reversible has a verified rollback path.
-- Revised first-run flow is completable with keyboard and VoiceOver across supported locales.
+
+---
+
+## 0.22.x — Fit, Finish & Pre-1.0 Hardening (rc)
+
+Goal:
+
+- Complete the full integration matrix, especially multi-manager authority ordering, guarded OS updates, failure isolation, cancellation, and crash recovery.
+- Run multi-manager orchestration and cancellation stress tests.
+- Complete logging refinement, memory-safety audit, race-condition closure, and FFI stability validation.
+- Validate i18n key/placeholder/ICU correctness, localization fallback, and UI text expansion.
+- Optimize first useful render, window open, section switching, search response, scrolling, progress updates, and idle resource use against documented experience budgets.
+- Complete motion, progress, inactive-window, menu, focus, selection, and transition polish.
+- Run final custom-component exception, visual consistency, state-fixture, screenshot-regression, multi-display, appearance, localization, and failure-injection audits.
+- Complete final moderated usability and first-run validation before UI lock.
+
+Exit Criteria:
+
+- All core paths tested; no known race conditions, unhandled panics, or high-severity design-system, accessibility, workflow, or perceived-performance defects.
+- Stable FFI boundary and deterministic execution verified.
+- Users can identify current state, next action, action consequence, and recovery path on release-critical surfaces.
+- Design sign-off covers behavior and all state variants rather than only static ideal-state screenshots.
+- Product screenshots and end-user design documentation are updated only after UI lock.
 
 ---
 
@@ -712,11 +780,17 @@ Goal:
 - Logs and diagnostics present
 - First-run Environment Brief demonstrates personalized value before manual configuration
 - First-run plans, actions, verification, recovery, and receipts preserve Helm safety and transparency guarantees
+- Native macOS window, menu, toolbar, Settings, navigation, selection, focus, and command behavior is consistent across release-critical surfaces
+- Core workflows meet the pre-1.0 native experience, accessibility, localization, failure-state, and perceived-performance bar
 
 Exit Criteria:
 
 - Project WOW base experience meets the pre-1.0 accessibility, offline, failure, and performance gates in `docs/app-design/PROJECT_WOW.md`.
 - Moderated users can identify what Helm discovered, changed, and left unchanged.
+- The production app meets the `docs/app-design/NATIVE_MACOS_EXPERIENCE.md` 1.0 release gate.
+- Core workflows pass moderated usability, keyboard, VoiceOver, localization, failure, and performance validation.
+- Important toolbar actions have appropriate application-menu and keyboard equivalents.
+- Custom controls have documented product value and complete macOS input/accessibility behavior.
 
 ---
 
