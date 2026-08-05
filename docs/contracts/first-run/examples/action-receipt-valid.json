@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0.0",
+  "receiptId": "990e8400-e29b-41d4-a716-446655440004",
+  "actionId": "880e8400-e29b-41d4-a716-446655440003",
+  "planId": "770e8400-e29b-41d4-a716-446655440002",
+  "timestamp": "2026-08-04T12:04:00Z",
+  "status": "success",
+  "postVerificationResult": "passed",
+  "recoveryLimits": "Cannot rollback Homebrew tap update.",
+  "localizationKey": "receipt.homebrew.update_tap.success",
+  "localizationArgs": ["homebrew/core"]
+}

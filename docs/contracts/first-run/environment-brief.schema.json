@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/environment-brief.schema.json",
+  "title": "Environment Brief",
+  "description": "Deterministic scan of the local environment for Project WOW first-run evaluation.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "briefId": { "type": "string", "format": "uuid", "description": "Stable public ID for the brief" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "system": {
+      "type": "object",
+      "properties": {
+        "osVersion": { "type": "string" },
+        "architecture": { "type": "string", "enum": ["arm64", "x86_64"] },
+        "hasPasswordlessSudo": { "type": "boolean" },
+        "isOnline": { "type": "boolean" }
+      },
+      "required": ["osVersion", "architecture", "hasPasswordlessSudo"]
+    },
+    "discoveredManagers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "manager": { "type": "string" },
+          "status": { "type": "string", "enum": ["detected", "installed", "eligible", "unsupported"] },
+          "installationMethod": { "type": "string" },
+          "isSafeForPlanning": { "type": "boolean" },
+          "provenance": { "type": "string" }
+        },
+        "required": ["manager", "status"]
+      }
+    },
+    "observationClass": {
+      "type": "string",
+      "enum": ["local_only", "network_required"],
+      "description": "Classification of the observation scope used to generate this brief."
+    }
+  },
+  "required": ["schemaVersion", "briefId", "generatedAt", "system", "discoveredManagers", "observationClass"]
+}

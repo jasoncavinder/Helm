@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/setup-session.schema.json",
+  "title": "Setup Session",
+  "description": "Tracks the overall Project WOW first-run session state machine.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "briefId": { "type": "string", "format": "uuid" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "state": {
+      "type": "string",
+      "enum": ["queued", "running", "completed", "failed", "cancelled", "deferred"]
+    },
+    "consent": {
+      "type": "object",
+      "properties": {
+        "networkAllowed": { "type": "boolean" },
+        "mutationAllowed": { "type": "boolean" },
+        "privilegeAllowed": { "type": "boolean" }
+      },
+      "required": ["networkAllowed", "mutationAllowed", "privilegeAllowed"]
+    },
+    "partialManagerCoverage": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of managers explicitly scoped out or skipped."
+    },
+    "offlineBehavior": {
+      "type": "string",
+      "enum": ["strict", "opportunistic", "abort"],
+      "description": "How the session handles offline state."
+    }
+  },
+  "required": ["schemaVersion", "sessionId", "briefId", "startedAt", "updatedAt", "state", "consent", "offlineBehavior"]
+}

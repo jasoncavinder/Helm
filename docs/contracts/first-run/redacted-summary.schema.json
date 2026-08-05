@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/redacted-summary.schema.json",
+  "title": "Redacted Summary",
+  "description": "A privacy-preserving shareable summary of the setup session.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "redactionClass": {
+      "type": "string",
+      "enum": ["strict"],
+      "description": "Level of redaction applied. Strips paths, usernames, serials, etc."
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "totalActions": { "type": "integer" },
+        "successfulActions": { "type": "integer" },
+        "failedActions": { "type": "integer" },
+        "durationSeconds": { "type": "integer" }
+      },
+      "required": ["totalActions", "successfulActions", "failedActions"]
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "osFamily": { "type": "string" },
+        "arch": { "type": "string" }
+      },
+      "required": ["osFamily", "arch"]
+    }
+  },
+  "required": ["schemaVersion", "sessionId", "redactionClass", "metrics", "environment"]
+}

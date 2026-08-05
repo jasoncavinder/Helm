@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/managed-bootstrap.schema.json",
+  "title": "Managed Bootstrap Configuration Envelope",
+  "description": "Vendor-neutral contract for MDM and Fleet coexistence.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "authority": {
+      "type": "string",
+      "enum": ["mdm_profile", "local_override", "fleet_policy"]
+    },
+    "enforcementMode": {
+      "type": "string",
+      "enum": ["read_only", "required"],
+      "description": "If 'required', skips user prompting because policy supplied the answer."
+    },
+    "policies": {
+      "type": "object",
+      "properties": {
+        "allowNetwork": { "type": "boolean" },
+        "allowPrivilegeEscalation": { "type": "boolean" },
+        "requireReceiptRetention": { "type": "boolean" }
+      },
+      "description": "Precedence and most-restrictive-wins rules apply to these fields."
+    },
+    "immutableSafetyMinimums": {
+      "type": "object",
+      "description": "Apple/MDM and Helm safety minimums that cannot be overridden."
+    }
+  },
+  "required": ["schemaVersion", "authority", "enforcementMode", "policies"]
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0.0",
+  "briefId": "550e8400-e29b-41d4-a716-446655440000",
+  "generatedAt": "2026-08-04T12:00:00Z",
+  "system": {
+    "osVersion": "14.5.0",
+    "architecture": "arm64",
+    "hasPasswordlessSudo": false,
+    "isOnline": true
+  },
+  "discoveredManagers": [
+    {
+      "manager": "homebrew",
+      "status": "installed",
+      "installationMethod": "system_curl",
+      "isSafeForPlanning": true,
+      "provenance": "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+    },
+    {
+      "manager": "mise",
+      "status": "detected",
+      "installationMethod": "unknown",
+      "isSafeForPlanning": false
+    }
+  ],
+  "observationClass": "local_only"
+}

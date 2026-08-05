@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/plan.schema.json",
+  "title": "Recommendation and Reviewed Plan",
+  "description": "A deterministically ordered plan of typed actions.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "planId": { "type": "string", "format": "uuid" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "state": {
+      "type": "string",
+      "enum": ["proposed", "reviewed", "approved", "invalidated", "revalidated"]
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "actionId": { "type": "string", "format": "uuid" },
+          "manager": { "type": "string" },
+          "type": { "type": "string", "description": "Must be an allowlisted typed-action" },
+          "mutationClass": { "type": "string", "enum": ["safe", "destructive", "privileged"] },
+          "preVerificationStatus": { "type": "string", "enum": ["pending", "verified", "failed"] },
+          "rollbackEligible": { "type": "boolean" }
+        },
+        "required": ["actionId", "manager", "type", "mutationClass", "preVerificationStatus", "rollbackEligible"]
+      }
+    }
+  },
+  "required": ["schemaVersion", "planId", "sessionId", "createdAt", "state", "actions"]
+}

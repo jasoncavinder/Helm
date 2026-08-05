@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/action-receipt.schema.json",
+  "title": "Action Receipt",
+  "description": "Immutable record of a completed or failed action.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "receiptId": { "type": "string", "format": "uuid" },
+    "actionId": { "type": "string", "format": "uuid" },
+    "planId": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["success", "partial", "failed", "rolled_back"]
+    },
+    "postVerificationResult": {
+      "type": "string",
+      "enum": ["passed", "failed", "skipped"]
+    },
+    "recoveryLimits": {
+      "type": "string",
+      "description": "Human or machine-readable limits on honest rollback capability."
+    },
+    "localizationKey": {
+      "type": "string",
+      "description": "Key for human-readable localization rather than embedded English."
+    },
+    "localizationArgs": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["schemaVersion", "receiptId", "actionId", "planId", "timestamp", "status", "postVerificationResult", "localizationKey"]
+}

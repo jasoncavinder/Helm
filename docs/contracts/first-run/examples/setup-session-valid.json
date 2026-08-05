@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "sessionId": "660e8400-e29b-41d4-a716-446655440001",
+  "briefId": "550e8400-e29b-41d4-a716-446655440000",
+  "startedAt": "2026-08-04T12:00:01Z",
+  "updatedAt": "2026-08-04T12:05:00Z",
+  "state": "running",
+  "consent": {
+    "networkAllowed": true,
+    "mutationAllowed": true,
+    "privilegeAllowed": false
+  },
+  "partialManagerCoverage": ["macports"],
+  "offlineBehavior": "opportunistic"
+}

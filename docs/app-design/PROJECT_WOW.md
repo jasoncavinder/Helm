@@ -545,12 +545,14 @@ Fleet-specific indicators:
 
 ### Internal initiative phase 0 — Definition closure immediately after v0.18.1
 
-- approve this charter and product/tier feature allocation
-- define Environment Brief, setup-session, Action Receipt, and redaction schemas
-- define discovery/privacy classification and Fleet managed-configuration contract
-- prototype GUI and CLI flows
-- create first-run usability and accessibility protocols
-- define local metrics events without adding telemetry transport
+- [x] approve this charter and product/tier feature allocation
+- [x] define Environment Brief, setup-session, Action Receipt, and redaction schemas (`docs/contracts/first-run/`)
+- [x] define discovery/privacy classification (`docs/architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md`)
+- [x] define Fleet managed-configuration contract (`docs/contracts/first-run/FLEET_BOUNDARY.md`)
+- [x] prototype GUI and CLI flows (`docs/contracts/first-run/CLI_TUI_CONTRACT.md`)
+- [x] create first-run usability and accessibility protocols (`docs/architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md`)
+- [x] define local metrics events without adding telemetry transport (`docs/contracts/first-run/metrics-event.schema.json`)
+- [x] bootstrap feasibility and typed-action matrix (`docs/architecture/BOOTSTRAP_FEASIBILITY_MATRIX.md`)
 
 This planning/prototype closure does not reopen the released `v0.18.1` runtime scope or require another `0.18.x` publication. It must complete before production `0.19.x` first-run implementation begins.
 

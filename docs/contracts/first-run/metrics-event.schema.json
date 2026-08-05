@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/metrics-event.schema.json",
+  "title": "Local Metrics Event",
+  "description": "Local definition of a metrics event. Automatic upload is explicitly prohibited.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventName": { "type": "string", "description": "e.g., 'first_run_started', 'plan_approved', 'action_failed'" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "privacyClass": {
+      "type": "string",
+      "enum": ["anonymous", "redacted", "local_only"],
+      "description": "Must be 'local_only' for events that contain PII."
+    },
+    "retentionDays": {
+      "type": "integer",
+      "default": 30,
+      "description": "Local retention policy limit."
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Event-specific data, heavily redacted."
+    }
+  },
+  "required": ["schemaVersion", "eventId", "eventName", "timestamp", "privacyClass", "payload"]
+}
