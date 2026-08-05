@@ -795,6 +795,42 @@ Canonical detail: `docs/architecture/DOCTOR_REPAIR_KNOWLEDGE.md`.
 - Local persistence supports offline operation, finding lifecycle, repair auditability, and future trusted knowledge distribution.
 
 ---
+## Decision 040 — Project WOW Edition Boundary and Fleet Coexistence
+
+**Decision:**
+Adopt Project WOW as Helm's first-run value initiative and preserve one shared local-first experience contract across Helm, Helm Pro, and the planned Helm Fleet business product.
+
+The base experience follows:
+
+`Environment Brief -> reviewed plan -> approved typed action -> verification -> Action Receipt`
+
+**Edition boundary:**
+
+- Base Helm owns the first-run value reveal, safety-critical findings, conservative defaults, plan transparency, failure recovery, honest rollback, offline behavior, accessibility, and redacted local summary.
+- Helm Pro may add advanced personal optimization, history, reusable personal Blueprints, advisory enrichment, and optional Shared Brain enrichment.
+- Helm Fleet owns managed bootstrap, organization baselines, policy/drift/compliance, rollout, approvals, and audit capabilities.
+- Pro and Fleet gates must never hide information required for safe execution or weaken the base first-run experience.
+
+**Fleet coexistence policy:**
+
+- Helm Fleet complements rather than replaces MDM and software-distribution systems.
+- External management authority retains ownership of enrollment, assignment/scope, PKG/app delivery, configuration profiles, OS update enforcement, self-service presentation, and enterprise compliance systems of record.
+- Helm Fleet owns deterministic local package/tool observation, policy evaluation, provenance-aware planning, typed execution, verification, and explainability.
+- Effective managed state uses the most restrictive applicable policy; Apple/MDM enforcement and Helm core safety minimums cannot be weakened by Helm Fleet policy.
+- Build vendor-neutral signed PKG, managed configuration, CLI machine-output, inventory/compliance, and audit-export contracts before relying on vendor-specific APIs or agent commands.
+- Initial compatibility validation targets Jamf Pro, Microsoft Intune, Kandji, and Munki; their assignment, rollout, and distribution semantics remain authoritative.
+
+**Rationale:**
+
+- Helm's first-run experience cannot serve as an adoption engine if its core value is paywalled.
+- Safety and recovery are product integrity requirements rather than premium differentiators.
+- Advanced individual intelligence and reusable workflows provide a natural Pro boundary without degrading base Helm.
+- Businesses already operate mature enrollment, distribution, policy, and inventory systems; competing with those authorities would create races, duplicated policy, and adoption friction.
+- Vendor-neutral integration contracts keep Fleet portable while allowing certified workflows for the tools customers already use.
+
+Canonical detail: `docs/app-design/PROJECT_WOW.md`.
+
+---
 ## Summary
 
 Helm prioritizes:

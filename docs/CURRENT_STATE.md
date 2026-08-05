@@ -17,6 +17,7 @@ See:
 
 Active milestone:
 - latest stable release currently published on `main`: **0.17.12** (released on 2026-07-29)
+- approved product-design planning track: **Project WOW** defines the base Helm first-run value loop and its Helm Pro/Helm Fleet expansion boundaries at `docs/app-design/PROJECT_WOW.md`; contract/prototype planning is assigned to `0.18.x`, base implementation to `0.19.x`, and no Project WOW behavior is implemented by this documentation checkpoint
 - `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - next integration target on `dev`: **0.18.x** (SQLite-backed doctor/repair knowledge with deterministic cross-installation fingerprints, followed by local security groundwork)
 - repository operations follow-up on `dev`: repository-local Codex operating model refined for lean context (`project_doc_max_bytes=131072`), policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `ops/codex/skills/`, slash-command templates under `.codex/commands/`, and structured local notify logging to `dev/logs/codex-runs.ndjson`.

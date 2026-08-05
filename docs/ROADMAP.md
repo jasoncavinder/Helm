@@ -670,6 +670,15 @@ Goal:
   - ICU syntax validation
 - UI validation for text expansion
 - Localization fallback behavior tested
+- Project WOW base first-run value delivery:
+  - staged local discovery and streaming Environment Brief
+  - conservative defaults with an inspection receipt
+  - contextual guidance replacing mandatory first-run tours
+  - personalized plan preview and one supported safe, verified improvement
+  - persisted setup session with bounded resume/retry/rollback
+  - Action Receipt and redacted local summary
+  - GUI/CLI/TUI contract parity where first-run interaction is supported
+  - offline and partial-failure behavior
 - App Design Refinement (planned):
   - finalize production typography direction across app/website
   - reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding
@@ -682,6 +691,10 @@ Exit Criteria:
 - Stable FFI boundary
 - Deterministic execution verified
 - Snapshot revision/reconnect behavior and consolidated XPC contracts are covered by integration tests.
+- Project WOW first-run flow performs no unprompted mutation and has no mandatory network dependency.
+- Project WOW produces useful partial results when one or more managers fail.
+- Every Project WOW action described as reversible has a verified rollback path.
+- Revised first-run flow is completable with keyboard and VoiceOver across supported locales.
 
 ---
 
@@ -697,6 +710,13 @@ Goal:
 - Authority ordering guaranteed
 - Guardrails enforced
 - Logs and diagnostics present
+- First-run Environment Brief demonstrates personalized value before manual configuration
+- First-run plans, actions, verification, recovery, and receipts preserve Helm safety and transparency guarantees
+
+Exit Criteria:
+
+- Project WOW base experience meets the pre-1.0 accessibility, offline, failure, and performance gates in `docs/app-design/PROJECT_WOW.md`.
+- Moderated users can identify what Helm discovered, changed, and left unchanged.
 
 ---
 
@@ -728,12 +748,15 @@ Goal:
 - Add entitlement verification and safe degradation behavior
 - Define managed bootstrap configuration contract for fleet MDM deployments
 - Keep update authority decoupled from licensing authority by channel
+- Formalize Project WOW edition boundaries so base value, safety, transparency, accessibility, offline behavior, and recovery never depend on Pro entitlement
+- Define entitlement-safe degradation for Helm Pro Project WOW enrichments and Helm Fleet managed experiences
 
 Exit Criteria:
 
 - Distribution build matrix and channel authority mapping are documented and approved
 - Invalid/expired entitlements degrade predictably without unsafe behavior
 - Managed bootstrap configuration is documented and testable
+- Project WOW capability-gate tests prove base Helm remains a complete first-run experience without Pro or Fleet entitlement
 
 ---
 
@@ -747,6 +770,7 @@ Goal:
 - Matching engine: package name + version range -> severity + recommendations
 - SQLite-backed advisory cache with TTL-based refresh
 - UI: vulnerability status, severity badges, and recommended actions per package
+- Project WOW Pro recommendation enrichment using locally evaluated advisory results
 - Offline-capable with cached advisory data
 - Non-blocking: advisory checks never delay operations
 - No Helm-operated central database required
@@ -771,6 +795,7 @@ Goal:
 
 - Fingerprint sharing for anonymous package/environment signals
 - Known-fix lookup and recommendation enrichment
+- Optional Project WOW Pro enrichment for Advanced Conflict Radar, personal insights, and Blueprint recommendations; local base findings remain authoritative and available offline
 - Postgres-backed central system-of-record
 - Provider-portable HTTP API architecture
 - Optional stateless edge/API layer for advisory enrichment queries (Cloudflare Workers is acceptable but replaceable)
@@ -801,12 +826,16 @@ Goal:
 - Organization-level locale policies
 - Locale enforcement for managed environments
 - Multi-locale reporting and audit output
+- Helm Fleet Environment/Compliance Brief built from the same local finding contracts as base Helm
+- Organization baselines and managed first-run receipts that distinguish organization-controlled from user-controllable state
+- External management authority attribution for MDM/software-distribution-owned state
 
 Exit Criteria:
 
 - Policy precedence rules are deterministic and tested
 - Drift categories and compliance states are surfaced clearly
 - Offline behavior uses last valid policy snapshot without UI/executor instability
+- Fleet findings and drift identify the controlling external authority and never weaken MDM or core safety policy
 
 ---
 
@@ -818,12 +847,15 @@ Goal:
 - Policy approval workflow and rollback controls
 - Audit/event export integrations (SIEM/webhook/ticketing targets)
 - Role-based access model for business operators
+- Management-tool integration kits for PKG/configuration deployment, inventory/compliance collection, and audit export
+- Initial workflow certification targets: Jamf Pro, Microsoft Intune, Kandji, and Munki
 
 Exit Criteria:
 
 - Ring promotion and rollback flow verified end-to-end
 - Policy changes and enforcement actions produce attributable audit events
 - Enterprise controls preserve Helm safety and orchestration guarantees
+- Certified integrations preserve vendor assignment, rollout, and software-distribution authority without competing background mutation
 
 ---
 
@@ -866,12 +898,15 @@ Goal:
 - Deliver Helm Business as a separate fleet-focused binary and lifecycle
 - Keep one shared core codebase while separating consumer and fleet release operations
 - Integrate business policy/compliance capabilities without collapsing architecture boundaries
+- Deliver the managed Project WOW experience under the Helm Fleet capability model
+- Preserve coexistence with incumbent MDM, package distribution, self-service, inventory, and compliance systems
 
 Exit Criteria:
 
 - Fleet product boundaries are explicit and documented
 - Fleet release lifecycle is independent from consumer release cadence
 - Business operational model aligns with enterprise policy and compliance requirements
+- Fleet onboarding can be preconfigured by management authority while still providing employees a readable local receipt
 
 ---
 
@@ -882,9 +917,11 @@ Goal:
 - Deliver PKG-based enterprise deployment flow for Helm Business
 - Deliver MDM-ready managed bootstrap and admin-controlled update workflows
 - Deliver offline organizational license-file handling for fleet environments
+- Validate vendor-neutral managed preferences/ManagedApp configuration, CLI JSON/exit-code, inventory attribute, compliance discovery, and local audit-export contracts
 
 Exit Criteria:
 
 - PKG + MDM deployment lifecycle is documented and validated as the fleet distribution path
 - Offline license file model is documented with fail-safe behavior
 - Fleet update flow remains admin-controlled and decoupled from consumer update channels
+- Jamf Pro, Intune, Kandji, and Munki deployment/configuration/inventory paths have documented validation matrices

@@ -281,11 +281,31 @@ Settings include:
 
 ---
 
-### **8) Onboarding Wizard**
+### **8) First-Run Value Experience (Project WOW)**
 
-- Detect available managers
-- Present safety policy defaults
-- Choose auto-update preferences
+Helm's first-run experience must demonstrate personalized value before requiring manual configuration.
+
+Base Helm requirements:
+
+- Begin staged local discovery after any required license gate.
+- Present a streaming Environment Brief covering detected managers, provenance, eligibility, package state, and actionable local findings.
+- State clearly what Helm inspected and whether network access or mutation occurred.
+- Apply conservative, reversible defaults without forcing manager-selection or generic-settings pages.
+- Require plan preview and explicit confirmation before installs, upgrades, shell edits, cleanup, or privileged work.
+- Offer at least one safe, verified improvement when an applicable action exists.
+- Persist recovery state and an Action Receipt for Helm-initiated changes.
+- Remain useful offline and under partial manager failure.
+- Provide GUI/CLI/TUI contract parity for findings, plans, verification, and receipts where the surface supports first-run interaction.
+- Replace mandatory feature tours with optional contextual guidance.
+- Treat full keyboard, VoiceOver, localization, and Reduce Motion behavior as release requirements.
+
+Edition policy:
+
+- The first-run value reveal, safety-critical findings, transparency, recovery, offline behavior, and redacted local summary remain part of base Helm.
+- Helm Pro may add advanced personal optimization, history, reusable personal Blueprints, and advisory-enriched recommendations.
+- Helm Fleet adds managed bootstrap, organization policy/baselines, drift/compliance, rollout, approvals, and audit while remaining subordinate to existing MDM and software-distribution authority.
+
+Canonical design and sequencing: `docs/app-design/PROJECT_WOW.md`.
 
 ---
 
