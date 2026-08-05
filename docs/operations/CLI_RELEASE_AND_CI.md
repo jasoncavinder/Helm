@@ -452,6 +452,8 @@ Promotion path after each release:
 - `scripts/release/runbook.sh tag` requires a branch named `main`, while agent policy requires release work in an isolated linked worktree and reserves the primary `main` checkout for coordination. Add a worktree-safe tag path that requires a clean `HEAD` exactly equal to `origin/main` before mutation ([#333](https://github.com/jasoncavinder/Helm/issues/333)).
 - The direct CLI and DMG workflows successfully uploaded artifacts and opened publish PRs, but their immediate metadata checks still concluded as failures while `main` intentionally remained behind those PRs. Align the workflow result and publication summary with the documented non-red follow-up-required state; hard failures must remain unchanged for build, signing, notarization, verification, upload, or PR-creation faults ([#332](https://github.com/jasoncavinder/Helm/issues/332)).
 
+`v0.18.2` confirmed that [#332](https://github.com/jasoncavinder/Helm/issues/332) remains active: both artifact workflows opened auto-merge publication PRs and uploaded valid assets, but set `PUBLISH_FOLLOWUP_REQUIRED=no` before checking the still-old `main` metadata, producing red terminal runs. Operators must continue treating this specific post-upload metadata race as the documented merge-and-`verify_only=true` path until the workflow-state fix lands; all earlier build, signing, notarization, upload, or PR-creation failures remain blocking.
+
 ---
 
 ## 6. Install Script CI Responsibilities
