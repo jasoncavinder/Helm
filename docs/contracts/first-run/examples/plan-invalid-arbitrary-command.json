@@ -21,15 +21,14 @@
       "requiresNetwork": false,
       "requiresPrivilege": false,
       "impactKey": "setup.plan.clear_selected_executable.impact",
-      "impactArgs": {
-        "manager": "mise"
-      },
+      "impactArgs": {},
       "preVerificationStatus": "applicable",
       "verificationMethodId": "manager.detect_selected_executable",
       "expectedStateKey": "setup.expected.path_default",
       "retryBehavior": "revalidate_then_retry",
       "rollbackEligible": true,
-      "recoveryLimitsKey": "setup.recovery.preference_snapshot_only"
+      "recoveryLimitsKey": "setup.recovery.preference_snapshot_only",
+      "command": "payload-selected executable content"
     }
   ]
 }

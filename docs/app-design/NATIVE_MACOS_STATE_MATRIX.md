@@ -1,6 +1,6 @@
 # Native macOS Surface and Workflow State Matrix
 
-Status: approved design-definition baseline; final schema names must remain aligned with Project WOW contracts
+Status: approved design-definition baseline aligned with the v0.18 Project WOW schemas in `docs/contracts/first-run/`
 
 ## State Grammar
 
@@ -38,6 +38,7 @@ Canonical presentation terms:
 | Failed | The attempted stage did not complete its declared result. | Partial if no useful scope remains. |
 | Recovery Available | At least one currently valid resume/retry/restore action is provided by core contracts. | Guaranteed rollback. |
 | Rollback Limited | Some or all effects lack a verified inverse. | Reversible. |
+| Rolled Back | A tested inverse restored and verified the declared pre-action state. | Cancelled, merely retried, or assumed restored. |
 | No Changes | Observation or plan completed without mutation. | Verified improvement. |
 
 ## Cross-Surface Matrix
@@ -116,6 +117,7 @@ Each cell describes the minimum visible behavior. `N/A` means the state does not
 | Cancelled | Applied/verified work, cancelled active work, unstarted work | Keep Changes, Review Rollback, Resume only if contract permits |
 | Interrupted | Last durable stage, reconciliation requirement, known/unknown effects | Reconcile/Resume, Retry Unverified, Keep, Diagnostics |
 | Failed | Failed stage, no-change/partial/unknown effect classification | Retry if safe, revise plan, Diagnostics |
+| Rolled Back | Restored pre-action state, rollback verification evidence, any effects outside the inverse | Done, Diagnostics if residual effects remain |
 
 ## Content Requirements by Blocking Class
 

@@ -2,41 +2,72 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://helm.run/schemas/v0.18/first-run/environment-brief.schema.json",
   "title": "Environment Brief",
-  "description": "Deterministic scan of the local environment for Project WOW first-run evaluation.",
+  "description": "A revisioned, local-first observation of the environment. It contains no credentials, shell history, arbitrary project data, or privilege probe result.",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "schemaVersion": { "type": "string", "const": "1.0.0" },
-    "briefId": { "type": "string", "format": "uuid", "description": "Stable public ID for the brief" },
+    "briefId": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 1 },
     "generatedAt": { "type": "string", "format": "date-time" },
     "system": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "osVersion": { "type": "string" },
+        "osVersion": { "type": "string", "minLength": 1 },
         "architecture": { "type": "string", "enum": ["arm64", "x86_64"] },
-        "hasPasswordlessSudo": { "type": "boolean" },
-        "isOnline": { "type": "boolean" }
+        "activeShell": { "type": "string", "minLength": 1 },
+        "distributionChannel": { "type": "string", "minLength": 1 },
+        "updateAuthority": { "type": "string", "minLength": 1 }
       },
-      "required": ["osVersion", "architecture", "hasPasswordlessSudo"]
+      "required": ["osVersion", "architecture", "activeShell", "distributionChannel", "updateAuthority"]
     },
     "discoveredManagers": {
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "manager": { "type": "string" },
-          "status": { "type": "string", "enum": ["detected", "installed", "eligible", "unsupported"] },
-          "installationMethod": { "type": "string" },
-          "isSafeForPlanning": { "type": "boolean" },
-          "provenance": { "type": "string" }
+          "manager": { "type": "string", "minLength": 1 },
+          "detected": { "type": "boolean" },
+          "eligibility": { "type": "string", "enum": ["eligible", "ineligible", "unknown"] },
+          "managementState": {
+            "type": "string",
+            "enum": ["ready", "setup_required", "multiple_instances_attention", "detected_unmanageable", "not_installed", "unknown"]
+          },
+          "activeInstallationMethod": { "type": "string", "minLength": 1 },
+          "provenance": { "type": "string", "enum": ["unknown", "system", "homebrew", "macports", "nix", "asdf", "mise", "rustup_init", "enterprise_managed", "source_build"] },
+          "freshness": { "type": "string", "enum": ["current", "cached", "unknown"] }
         },
-        "required": ["manager", "status"]
+        "required": ["manager", "detected", "eligibility", "managementState", "freshness"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "detected": { "const": true } },
+              "required": ["detected"]
+            },
+            "then": { "required": ["provenance"] }
+          }
+        ]
       }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "intendedManagerCount": { "type": "integer", "minimum": 0 },
+        "currentManagerCount": { "type": "integer", "minimum": 0 },
+        "cachedManagerCount": { "type": "integer", "minimum": 0 },
+        "failedManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "cancelledManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "deferredManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      },
+      "required": ["intendedManagerCount", "currentManagerCount", "cachedManagerCount", "failedManagers", "cancelledManagers", "deferredManagers"]
     },
     "observationClass": {
       "type": "string",
-      "enum": ["local_only", "network_required"],
-      "description": "Classification of the observation scope used to generate this brief."
+      "enum": ["local_only", "local_and_disclosed_network"]
     }
   },
-  "required": ["schemaVersion", "briefId", "generatedAt", "system", "discoveredManagers", "observationClass"]
+  "required": ["schemaVersion", "briefId", "revision", "generatedAt", "system", "discoveredManagers", "coverage", "observationClass"]
 }

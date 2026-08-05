@@ -651,26 +651,27 @@ Exit Criteria:
 
 ---
 
-## 0.18.x — Pre-1.0 Experience Definition (post-release planning closure)
+## 0.18.x — Pre-1.0 Experience Definition (post-release planning closure) - Completed
 
-Status: remaining planning/prototype closure after corrective `v0.18.1`; this does not alter the released runtime scope or require another `0.18.x` publication.
+Status: planning/prototype artifact closure completed after corrective `v0.18.1`; this does not alter the released runtime scope or require another `0.18.x` publication.
 
 Goal:
 
 - Audit the current menu bar app and Control Center against core user jobs and native macOS behavior.
 - Inventory custom controls and record where native controls, windows, menus, toolbars, Settings, lists/tables, focus, and selection should replace or constrain custom presentation.
-- Run baseline task-based usability sessions and define measurable design-quality budgets.
+- Define the owner-run task-based usability/accessibility protocol, complete an expert cognitive walkthrough, and set measurable design-quality budgets; do not claim participant evidence until sessions occur.
 - Prototype the menu bar surface, Control Center, Settings, and Project WOW first run at sufficient fidelity to test workflow and platform behavior.
 - Define the complete loading/success/empty/partial/failure/offline/blocked/cancellation/recovery state matrix.
 - Produce an incremental migration map that preserves service/core business-logic authority.
 
 Exit Criteria:
 
-- Target information architecture and core workflows are validated before production UI migration.
+- Target Health/Updates/Packages/Activity/Sources information architecture and core workflows are approved for implementation and covered by testable prototypes before production UI migration.
 - Accessibility, localization, motion, perceived-performance, window, input, and state-quality gates are approved.
 - Project WOW and whole-app navigation share one compatible experience model.
 - Intentional departures from macOS conventions have documented Helm-specific rationale.
 - The design lane does not alter the released Doctor/repair, local-security, or migration-safety behavior.
+- Owner-run participant validation remains open and is required before v0.20 workflow sign-off and v0.22 UI lock.
 
 ---
 
@@ -691,6 +692,7 @@ Goal:
   - conservative defaults with an inspection receipt
   - contextual guidance replacing mandatory first-run tours
   - reviewed plan foundation using native progress, focus, selection, and sheet behavior
+- Implement against `docs/contracts/first-run/`, `docs/architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md`, and the v0.19 slices in `docs/app-design/NATIVE_MACOS_MIGRATION_MAP.md`; do not place planning, consent, execution, verification, or recovery policy in SwiftUI.
 - Finalize production typography direction across app/website.
 - Reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding; the app interface continues to prefer system typography.
 
@@ -709,7 +711,7 @@ Exit Criteria:
 
 Goal:
 
-- Redesign the health, updates, packages, tasks, managers, search, inspector, and diagnostics workflows around native macOS patterns.
+- Redesign Health, Updates, Packages, Activity, Sources, command-based search, inspector, and contextual diagnostics around native macOS patterns.
 - Revalidate the top-level information architecture against task frequency and user research.
 - Use native list, table, outline, split-view, toolbar, menu, contextual-menu, and inspector behavior where comparison and density matter.
 - Simplify action hierarchy and remove duplicated or misplaced entry points.

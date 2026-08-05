@@ -1,12 +1,47 @@
 {
   "schemaVersion": "1.0.0",
   "receiptId": "990e8400-e29b-41d4-a716-446655440004",
-  "actionId": "880e8400-e29b-41d4-a716-446655440003",
+  "sessionId": "660e8400-e29b-41d4-a716-446655440001",
   "planId": "770e8400-e29b-41d4-a716-446655440002",
-  "timestamp": "2026-08-04T12:04:00Z",
-  "status": "success",
-  "postVerificationResult": "passed",
-  "recoveryLimits": "Cannot rollback Homebrew tap update.",
-  "localizationKey": "receipt.homebrew.update_tap.success",
-  "localizationArgs": ["homebrew/core"]
+  "createdAt": "2026-08-04T12:06:00Z",
+  "status": "partially_verified",
+  "summaryKey": "setup.receipt.partial.summary",
+  "summaryArgs": {
+    "verifiedCount": 1,
+    "failedCoverageCount": 1
+  },
+  "actionResults": [
+    {
+      "actionId": "880e8400-e29b-41d4-a716-446655440003",
+      "typedActionId": "manager.clear_selected_executable_override",
+      "status": "verified",
+      "applyResult": "applied",
+      "verificationResult": "passed",
+      "before": {
+        "localizationKey": "setup.receipt.before.custom_executable",
+        "localizationArgs": {
+          "manager": "mise"
+        }
+      },
+      "after": {
+        "localizationKey": "setup.receipt.after.path_default",
+        "localizationArgs": {
+          "manager": "mise"
+        }
+      },
+      "rollbackEligible": true,
+      "recoveryLimits": {
+        "localizationKey": "setup.recovery.preference_snapshot_only",
+        "localizationArgs": {}
+      }
+    }
+  ],
+  "unchangedState": [
+    {
+      "localizationKey": "setup.receipt.unchanged.failed_manager_scan",
+      "localizationArgs": {
+        "count": 1
+      }
+    }
+  ]
 }

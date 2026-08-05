@@ -875,7 +875,7 @@ The initiative may revise information architecture, layout, workflows, window be
 
 Deliver the work incrementally:
 
-- `0.18.x` planning closure immediately after `v0.18.1`: research, audit, state matrix, design decisions, prototypes, and budgets; no runtime-scope reopening or additional `0.18.x` publication
+- `0.18.x` planning closure after `v0.18.1` (complete): audit, component inventory, approved IA, prototypes, state matrix, budgets, owner-run research protocol/expert walkthrough, and migration map; no runtime-scope reopening or additional `0.18.x` publication
 - `0.19.x`: native application foundation and first-run value foundation
 - `0.20.x`: core workflow and information-architecture redesign
 - `0.21.x`: accessibility, system integration, resilience, and first-run recovery/receipt completion
@@ -892,6 +892,8 @@ Deliver the work incrementally:
 **Relationship to existing design work:**
 
 - Project WOW remains the internal first-run value initiative; the Native Mac Experience initiative owns the quality of its macOS presentation.
+- The approved Control Center destinations are Health, Updates, Packages, Activity, and Sources. Settings is a separate window/scene, diagnostics is contextual, and search is command-based.
+- Repository artifact closure does not constitute human validation. The owner-run moderated study remains required before v0.20 workflow sign-off and v0.22 UI lock.
 - The earlier app redesign and `docs/ui/` artifacts remain the implemented baseline and research input.
 - Earlier restrictions that limited redesign to visual changes or prohibited layout/interaction changes no longer constrain pre-1.0 design work.
 - This decision supersedes Decision 023 only where that historical schedule placed all general pre-1.0 hardening in `0.19.x`; final hardening now closes in `0.22.x` after the staged design milestones.
@@ -904,7 +906,7 @@ Deliver the work incrementally:
 - Staged milestones let Helm validate structure with users before migrating every production surface.
 - A native foundation reduces future component drift and gives Helm Pro and Helm Fleet surfaces a coherent platform model.
 
-Canonical detail: `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`.
+Canonical detail: `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`, with the approved artifact index recorded there.
 
 ---
 ## Summary

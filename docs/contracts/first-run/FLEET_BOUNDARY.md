@@ -6,26 +6,31 @@ This document defines the minimal, vendor-neutral contract required to ensure He
 **External MDM and software-distribution authority remains controlling.** Helm does not attempt to fight, override, or usurp policies deployed via Jamf, Intune, Kandji, Munki, or Apple Profiles.
 
 ## 2. Managed Values and Precedence
-- `authority`: Indicates the source of the configuration (`mdm_profile`, `local_override`, `fleet_policy`).
-- **Most-Restrictive-Wins**: If local user preferences conflict with MDM policies (e.g., user wants to allow beta updates, MDM forbids it), the most restrictive policy always wins.
+- `authority`: identifies Apple/MDM, signed Fleet policy, distribution assignment, or local-user input.
+- Effective precedence is Apple/MDM enforcement, locally verified Fleet policy, distribution assignment, Helm core safety minimums, Helm defaults, then user preferences where permitted.
+- **Most-Restrictive-Wins**: a lower authority cannot widen network, privilege, mutation, source, or retention permissions denied by a higher authority or core safety.
+- Policy identity, revision, issue/expiry time, and local verification evidence support deterministic offline reconciliation. Payload claims do not self-assign trust.
 
 ## 3. Enforcement Mode
-- `read_only`: Helm displays the managed state but allows the user to view alternatives (though they cannot apply them).
-- `required`: Helm strictly enforces the policy. **Consumer questions are skipped because policy supplied an answer.** For example, if MDM mandates Homebrew installation, the first-run setup skips asking the user for Homebrew consent.
+- `advisory`: Helm may recommend the managed preference but the user retains control where higher authority permits.
+- `read_only`: Helm displays managed state and alternatives but cannot apply a conflicting local choice.
+- `required`: consumer preference questions already answered by verified policy may be skipped. This does not bypass macOS authorization, Helm preflight/revalidation, typed-action admission, verification, or recovery truth. A required but unsupported action remains blocked rather than becoming executable.
 
 ## 4. Immutable Safety Minimums
 Helm maintains strict safety minimums that cannot be downgraded by policy:
-- Cryptographic signature validation for downloaded binaries.
-- Apple Notarization checks.
-- Disallowing arbitrary string-concatenated shell execution.
+- Finite typed actions only; no arbitrary commands, arguments, scripts, or payload-selected executables.
+- Current state and policy revalidation immediately before apply.
+- Post-verification before a result is labeled Verified.
+- Rollback labels only for tested inverses with current ownership/precondition checks.
+- Approved-host, integrity, size/time, and platform trust checks for any future downloaded installer workflow.
 
 ## 5. Offline Behavior and Expiry
-- Managed configurations are cached locally in the SQLite store.
-- If the device is offline, Helm operates using the last known valid policy.
-- Expiry mechanisms (if defined by the MDM profile) will gracefully downgrade to restrictive defaults if a required heartbeat is missed.
+- A future Fleet implementation may cache only locally verified managed configuration in the SQLite store.
+- If the device is offline, Helm may use the last valid unexpired policy and must surface its age and authority.
+- Expired, malformed, unverifiable, or downgraded policy fails closed to core safety and restrictive defaults; no mutation resumes automatically.
 
 ## 6. Auditability
-- All actions executed under a managed configuration include the `authority` source in their `Action Receipt`.
+- All actions executed under a managed configuration include the effective `authority` source in their per-action Action Receipt result.
 - The `Redacted Summary` includes an aggregate of managed enforcement events.
 
 ## 7. Exclusions

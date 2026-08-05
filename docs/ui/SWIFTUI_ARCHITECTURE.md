@@ -2,7 +2,16 @@
 
 This document describes the current SwiftUI architecture of the Helm macOS app.
 
-It reflects the implementation released in `v0.17.12`.
+It describes the current pre-native-migration implementation lineage through the `v0.18.1` baseline. The v0.18 Native Mac Experience artifacts are target design contracts and do not change the implementation described here.
+
+Target migration references:
+
+- Approved IA and window responsibilities: `docs/app-design/NATIVE_MACOS_INFORMATION_ARCHITECTURE.md`
+- Current-to-target component decisions: `docs/app-design/NATIVE_MACOS_COMPONENT_INVENTORY.md`
+- Incremental implementation slices: `docs/app-design/NATIVE_MACOS_MIGRATION_MAP.md`
+- Complete presentation states and quality gates: `docs/app-design/NATIVE_MACOS_STATE_MATRIX.md` and `docs/app-design/NATIVE_MACOS_QUALITY_BUDGETS.md`
+
+The target replaces the current Overview/Updates/Packages/Tasks/Managers/Settings sidebar with Health/Updates/Packages/Activity/Sources, moves Settings to a standard separate scene/window, keeps diagnostics contextual, and treats search as a command. Business rules, planning, orchestration, execution, verification, and recovery remain service/core-owned throughout migration.
 
 ---
 

@@ -1,6 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "eventId": "aa0e8400-e29b-41d4-a716-446655440005",
+  "sessionId": "660e8400-e29b-41d4-a716-446655440001",
   "eventName": "plan_approved",
   "timestamp": "2026-08-04T12:03:00Z",
   "privacyClass": "local_only",

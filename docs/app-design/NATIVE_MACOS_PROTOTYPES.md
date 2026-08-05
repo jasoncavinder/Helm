@@ -416,5 +416,5 @@ Receipt rules:
 - Focus order matches reading order; arrows work within every collection.
 - Selection remains visible and distinct from focus in key and inactive windows.
 - Every failure/offline/blocked example identifies what remains true and the next action.
-- Environment Brief, plan, progress, and receipt use shared Project WOW IDs and state terms after contract integration.
+- Environment Brief, plan, progress, and receipt use the shared Project WOW IDs and state terms in `docs/contracts/first-run/`.
 - No prototype implies production behavior exists in v0.18.

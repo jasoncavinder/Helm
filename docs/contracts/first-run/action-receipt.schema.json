@@ -2,34 +2,61 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://helm.run/schemas/v0.18/first-run/action-receipt.schema.json",
   "title": "Action Receipt",
-  "description": "Immutable record of a completed or failed action.",
+  "description": "A session-level receipt that preserves each action's execution, verification, unchanged-state, authority, and recovery truth.",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "schemaVersion": { "type": "string", "const": "1.0.0" },
     "receiptId": { "type": "string", "format": "uuid" },
-    "actionId": { "type": "string", "format": "uuid" },
+    "sessionId": { "type": "string", "format": "uuid" },
     "planId": { "type": "string", "format": "uuid" },
-    "timestamp": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" },
     "status": {
       "type": "string",
-      "enum": ["success", "partial", "failed", "rolled_back"]
+      "enum": ["no_changes", "verified", "partially_verified", "failed_verification", "cancelled", "interrupted", "failed", "rolled_back"]
     },
-    "postVerificationResult": {
-      "type": "string",
-      "enum": ["passed", "failed", "skipped"]
-    },
-    "recoveryLimits": {
-      "type": "string",
-      "description": "Human or machine-readable limits on honest rollback capability."
-    },
-    "localizationKey": {
-      "type": "string",
-      "description": "Key for human-readable localization rather than embedded English."
-    },
-    "localizationArgs": {
+    "summaryKey": { "type": "string", "minLength": 1 },
+    "summaryArgs": { "$ref": "#/$defs/localizationArgs" },
+    "actionResults": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "$ref": "#/$defs/actionResult" }
+    },
+    "unchangedState": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/localizedFact" }
     }
   },
-  "required": ["schemaVersion", "receiptId", "actionId", "planId", "timestamp", "status", "postVerificationResult", "localizationKey"]
+  "required": ["schemaVersion", "receiptId", "sessionId", "createdAt", "status", "summaryKey", "summaryArgs", "actionResults", "unchangedState"],
+  "$defs": {
+    "localizationArgs": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "integer", "boolean"] }
+    },
+    "localizedFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "localizationKey": { "type": "string", "minLength": 1 },
+        "localizationArgs": { "$ref": "#/$defs/localizationArgs" }
+      },
+      "required": ["localizationKey", "localizationArgs"]
+    },
+    "actionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actionId": { "type": "string", "format": "uuid" },
+        "typedActionId": { "type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)+$" },
+        "status": { "type": "string", "enum": ["no_changes", "verified", "failed_verification", "cancelled", "interrupted", "failed", "rolled_back", "deferred"] },
+        "applyResult": { "type": "string", "enum": ["not_started", "no_changes", "applied", "cancelled", "interrupted", "failed", "unknown"] },
+        "verificationResult": { "type": "string", "enum": ["not_run", "passed", "failed", "interrupted"] },
+        "before": { "$ref": "#/$defs/localizedFact" },
+        "after": { "$ref": "#/$defs/localizedFact" },
+        "authority": { "type": "string", "minLength": 1 },
+        "rollbackEligible": { "type": "boolean" },
+        "recoveryLimits": { "$ref": "#/$defs/localizedFact" }
+      },
+      "required": ["actionId", "typedActionId", "status", "applyResult", "verificationResult", "before", "after", "rollbackEligible", "recoveryLimits"]
+    }
+  }
 }

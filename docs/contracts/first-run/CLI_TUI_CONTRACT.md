@@ -1,48 +1,72 @@
 # CLI/TUI Interaction Contract
 
-This document specifies the proposed `helm first-run` command behavior and machine-output semantics, ensuring parity with the GUI.
+Status: proposed v0.19 interface; no command is implemented by this planning closure
 
-## 1. Commands
+The human-facing target namespace is `helm setup`. Existing `helm onboarding` behavior remains compatible until a reviewed implementation introduces an alias or migration. GUI, CLI, and TUI consume the same Environment Brief, Setup Session, Reviewed Plan, action, verification, and Action Receipt semantics.
 
-### `helm first-run status` (or `brief`)
-- **Behavior**: Executes local observation stages.
-- **Output**: JSON representation of the `Environment Brief`.
-- **Exit Code**: `0` on success, `1` on fatal evaluation error.
+## Commands
 
-### `helm first-run plan`
-- **Behavior**: Generates a recommendation plan based on the brief. Does NOT execute it.
-- **Output**: JSON representation of the `Recommendation / Reviewed Plan`.
-- **Interactive**: TUI presents a preview list.
-- **Non-Interactive**: Outputs JSON envelope.
+### `helm setup status`
 
-### `helm first-run apply [--plan <plan-id>]`
-- **Behavior**: Executes the approved plan.
-- **Interactive**: Prompts for required consent (network, mutation, privilege) if not already granted. Displays progress via standard TUI spinners.
-- **Non-Interactive**: Fails with exit code `2` (Consent Required) unless `--auto-approve` or strict policy is provided.
-- **Output**: Stream of NDJSON events, culminating in `Action Receipt` summaries.
-- **Exit Code**: `0` (Success), `3` (Partial Failure), `1` (Fatal Failure).
+- Reads the latest setup session and brief without starting mutation.
+- Human output summarizes state, coverage, freshness, consent, and valid next actions.
+- `--json` returns the versioned session/brief envelope.
 
-### `helm first-run resume`
-- **Behavior**: Resumes the last pending or interrupted `Setup Session`.
-- **Output**: Revalidates the plan and continues `apply`.
+### `helm setup scan [--offline]`
 
-### `helm first-run cancel`
-- **Behavior**: Safely interrupts an ongoing session.
-- **Output**: Emits a `cancelled` state event. Next action is cleanly aborted.
-- **Exit Code**: `130` (SIGINT equivalent).
+- Starts or resumes bounded local observation.
+- `--offline` sets strict local-only behavior and marks network work Deferred.
+- TTY progress goes to stderr; JSON/NDJSON stdout remains machine-only.
 
-### `helm first-run receipt <receipt-id>`
-- **Behavior**: Displays an `Action Receipt`.
-- **Flags**: `--redact` outputs a `Redacted Summary`.
+### `helm setup plan [--profile maintain|audit|new-mac|customize]`
 
-### `helm first-run reset`
-- **Behavior**: Clears local onboarding state (for testing/development).
+- Generates a proposed plan from a brief revision and does not execute it.
+- Interactive mode presents review and explicit inclusion choices.
+- Machine mode returns the plan envelope and plan ID.
 
-## 2. Envelopes and Accessibility
+### `helm setup apply --plan <plan-id> --yes`
 
-- **Output Format**: All machine output uses standard JSON. Streamed execution updates use NDJSON (Newline Delimited JSON) to allow piping to `jq` or external tools.
-- **Accessibility / Plain-Terminal**: If `NO_COLOR=1` or a dumb terminal is detected, the TUI gracefully degrades to linear plaintext logs instead of interactive spinners.
+- Revalidates the plan before submission.
+- `--yes` confirms only the reviewed plan. Network, mutation, and privilege must also be allowed by explicit flags or managed policy defined by the implementation; none can weaken core safety.
+- Missing consent in noninteractive mode returns a deterministic machine error and performs no mutation.
+- NDJSON events carry state transitions and conclude with receipt references.
 
-## 3. Timeout and Cancellation
-- Network requests have a strict timeout (e.g., 30s for catalog fetch).
-- Cancellation (`Ctrl-C`) is trapped. Helm completes the currently running atomic action (if unsafe to interrupt) and then cleanly halts the session, preserving state for a future `resume`.
+### `helm setup resume [--session <session-id>]`
+
+- Reconciles interrupted/unverified work and revalidates before any new submission.
+- Never resumes mutation merely because the process relaunched.
+
+### `helm setup cancel [--session <session-id>]`
+
+- Requests real cancellation through orchestration.
+- Emits `cancelling` until authoritative terminal state, prevents future dependent submission, then records `cancelled` or actual terminal outcome.
+- Exit `130` is reserved for an invocation interrupted by SIGINT; command-requested cancellation uses the normal documented result envelope.
+
+### `helm setup receipt <receipt-id> [--redacted]`
+
+- Displays one Action Receipt.
+- `--redacted` emits the strict Redacted Summary. Unredacted local fields require explicit supported inclusion flags if added later.
+
+## Machine-Mode Rules
+
+- Prompt only when stdin is a TTY.
+- Preserve deterministic `--json`/`--ndjson`, `--quiet`, `--no-color`, cancellation, and exit codes.
+- Keep progress and diagnostics off JSON/NDJSON stdout.
+- Plain output is line-oriented when alternate-screen TUI behavior is unsuitable.
+- Machine errors identify the required state/consent and a deterministic next command.
+- No `--auto-approve` bypass exists.
+
+Suggested exit classes for implementation review:
+
+| Code | Meaning |
+|---:|---|
+| 0 | Requested observation/review/apply completed with declared successful or no-change result. |
+| 1 | Usage, validation, prerequisite, policy, or fatal command/session error; no successful requested result. |
+| 2 | One submitted action/task failed, including a sole failed-verification result. |
+| 3 | Mixed/partial result, including verified work plus failed or failed-verification scope. |
+| 4 | Command-requested or authoritative task/session cancellation. |
+| 5 | Existing Helm onboarding completion is required. |
+| 6 | Existing Helm license acceptance is required. |
+| 130 | Process was terminated by SIGINT before Helm returned its normal result envelope; query authoritative session state. |
+
+These classes preserve the existing task-oriented `0`-`6` CLI contract. v0.19 implementation must add setup cases without changing existing command meanings; normal setup cancellation returns `4`, not `130`.
