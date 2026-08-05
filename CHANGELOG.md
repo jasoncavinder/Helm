@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-08-04
+
+### Added
+- An append-only SQLite migration identity manifest now records each released migration's version, name, up/down SQL, and SHA-256 definition checksum.
+- Migration `20` persists and backfills migration-definition checksums, while verified private pre-migration backups provide bounded recovery points before future schema changes.
+- Project WOW first-run contracts and the Native Mac Experience audit, approved information architecture, prototypes, state matrix, quality budgets, research protocol, and incremental migration map now form the closed v0.18 design baseline for v0.19 implementation.
+
+### Changed
+- SQLite initialization now validates ledger continuity and immutable migration identity before applying new work, separates default debug databases from release data, and surfaces initialization failures through CLI, FFI, XPC, and Service Health paths.
+- Release CI now exercises persisted SQLite upgrade, rollback, tampering, backup, CLI, and FFI boundaries through the shared migration-compatibility gate.
+- Pre-1.0 planning now targets Health, Updates, Packages, Activity, and Sources in the Control Center, with separate Settings, contextual diagnostics, command-based search, and explicit base Helm, Helm Pro, and Helm Fleet boundaries.
+
+### Security
+- Unknown, missing, reordered, renamed, or checksum-mismatched migration ledger entries fail closed instead of allowing an incompatible database history to continue.
+
+This release contains the completed v0.18 work before production v0.19 native-experience and first-run implementation begins. The design artifacts are planning contracts only; they do not add the planned first-run or redesigned UI behavior in v0.18.2.
+
 ## [0.18.1] - 2026-08-04
 
 ### Fixed
