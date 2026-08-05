@@ -281,9 +281,11 @@ Settings include:
 
 ---
 
-### **8) First-Run Value Experience (Project WOW)**
+### **8) First-Run Value Experience**
 
 Helm's first-run experience must demonstrate personalized value before requiring manual configuration.
+
+Internal design initiative: **Project WOW**. This is a planning label for creating the initial first-use value moment, not a product or edition.
 
 Base Helm requirements:
 
@@ -299,7 +301,7 @@ Base Helm requirements:
 - Replace mandatory feature tours with optional contextual guidance.
 - Treat full keyboard, VoiceOver, localization, and Reduce Motion behavior as release requirements.
 
-Edition policy:
+Product/tier feature allocation:
 
 - The first-run value reveal, safety-critical findings, transparency, recovery, offline behavior, and redacted local summary remain part of base Helm.
 - Helm Pro may add advanced personal optimization, history, reusable personal Blueprints, and advisory-enriched recommendations.

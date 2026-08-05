@@ -91,18 +91,6 @@ Users will receive advance notice.
 - Team plans
 - Enterprise agreements
 
-### 4.3 Project WOW Edition Boundary
-
-Project WOW uses the following edition split:
-
-- **Helm:** Environment Brief, safety-critical findings, conservative defaults, plan transparency, one supported safe improvement, verification, recovery/rollback, offline behavior, accessibility, and redacted local Action Receipt.
-- **Helm Pro:** advanced individual optimization and history, Advanced Conflict Radar beyond safety-critical findings, reusable personal Helm Blueprints, and advisory/Shared Brain recommendation enrichment.
-- **Helm Fleet:** managed bootstrap, organization baselines, policy/drift/compliance, rollout/approvals, audit, and integration kits for existing MDM/software-distribution systems.
-
-Safety, transparency, recovery, and the core first-run value reveal are not paid gates. Helm Fleet complements existing business management authority rather than replacing enrollment, deployment, OS-update, inventory, or compliance systems.
-
-Canonical feature matrix: `docs/app-design/PROJECT_WOW.md`.
-
 ---
 
 ## 5. Trust Principles

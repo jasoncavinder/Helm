@@ -1,7 +1,7 @@
 # Project WOW — First-Run Value Initiative
 
-Status: Approved planning direction  
-Scope: Pre-1.0 foundation with post-1.0 Helm Pro and Helm Fleet expansion  
+Status: Approved internal planning direction
+Scope: Internal first-run design initiative with features allocated across existing product plans
 Last updated: 2026-08-04
 
 ## 1. Objective
@@ -15,7 +15,7 @@ The experience must demonstrate useful, trustworthy, personalized value before a
 - what Helm recommends next
 - why Helm is safer or faster than managing each tool independently
 
-Project WOW is an internal initiative name. User-facing language should follow Helm's existing brand voice: calm, technical, deterministic, and professional.
+Project WOW is an internal initiative name for creating Helm's initial first-use value moment. It is not a product, edition, entitlement, pricing tier, or user-facing brand. User-facing language should follow Helm's existing brand voice: calm, technical, deterministic, and professional.
 
 ## 2. North-Star Experience
 
@@ -35,17 +35,17 @@ The core promise is:
 
 Delight must come from competence rather than gamification. Project WOW does not use fabricated health scores, fake time-saved claims, confetti, forced social sharing, or hidden automation.
 
-## 3. Edition Principles
+## 3. Product/Tier Feature Allocation
 
-Project WOW spans three planned editions:
+Project WOW does not define a new edition or product. Features conceived through the initiative are allocated among Helm's existing product plans:
 
 - **Helm** — the fully usable base consumer product.
 - **Helm Pro** — advanced individual intelligence, history, and reusable personal workflows.
 - **Helm Fleet** — the business fleet product currently described elsewhere as Helm Business/Fleet.
 
-The final public name of the business product can be resolved separately. This document uses **Helm Fleet** as the capability label while preserving the existing separate-product and separate-lifecycle architecture.
+The final public name of the business product can be resolved separately. This document uses **Helm Fleet** as its capability label while preserving the existing separate-product and separate-lifecycle architecture.
 
-Edition boundaries follow these rules:
+Feature allocation follows these rules:
 
 1. The first-run value reveal belongs to base Helm. It cannot function as Helm's adoption engine if it is paywalled.
 2. Safety, transparency, accessibility, offline operation, failure recovery, and honest rollback are never Pro gates.
@@ -392,11 +392,11 @@ Offline behavior:
 - network actions are `Deferred`, not presented as local failures
 - cached installers run only when integrity and policy can be verified
 
-## 11. Memorable Feature and Edition Matrix
+## 11. Memorable Feature and Product/Tier Matrix
 
 Complexity uses `S` (localized surface), `M` (shared contract and surfaces), `L` (persisted cross-layer workflow), and `XL` (new hardened subsystem). Impact is scored from 1 to 5.
 
-| Priority | Feature | Edition | Why it is remarkable | First-five-minute value | Recommendation potential | Complexity / impact |
+| Priority | Feature | Product/tier | Why it is remarkable | First-five-minute value | Recommendation potential | Complexity / impact |
 |---:|---|---|---|---|---|---|
 | 1 | Environment Brief | Helm | Makes a fragmented toolchain understandable immediately | Very high | Very high | M / 5 |
 | 2 | Action Receipt and redacted summary | Helm | Proves transparency and creates something safe to share | Very high | Very high | S-M / 5 |
@@ -543,9 +543,9 @@ Fleet-specific indicators:
 
 ## 14. Prioritized Implementation Roadmap
 
-### Project WOW 0 — Definition during 0.18.x
+### Internal initiative phase 0 — Definition during 0.18.x
 
-- approve this charter and edition boundary
+- approve this charter and product/tier feature allocation
 - define Environment Brief, setup-session, Action Receipt, and redaction schemas
 - define discovery/privacy classification and Fleet managed-configuration contract
 - prototype GUI and CLI flows
@@ -554,7 +554,7 @@ Fleet-specific indicators:
 
 This phase must not disrupt the Doctor/repair and local security groundwork already sequenced for 0.18.x.
 
-### Project WOW 1 — Base value reveal in early 0.19.x
+### Internal initiative phase 1 — Base value reveal in early 0.19.x
 
 - staged local scan and streaming Environment Brief
 - conservative automatic defaults with disclosure
@@ -563,7 +563,7 @@ This phase must not disrupt the Doctor/repair and local security groundwork alre
 - GUI/CLI/TUI finding and brief parity
 - offline and partial-coverage behavior
 
-### Project WOW 2 — Verified improvement in mid 0.19.x
+### Internal initiative phase 2 — Verified improvement in mid 0.19.x
 
 - personalized deterministic recommendations
 - plan preview and one supported safe improvement
@@ -572,7 +572,7 @@ This phase must not disrupt the Doctor/repair and local security groundwork alre
 - before/after verification and Action Receipt
 - redacted Copy Summary
 
-### Project WOW 3 — Pre-1.0 trust hardening in late 0.19.x
+### Internal initiative phase 3 — Pre-1.0 trust hardening in late 0.19.x
 
 - safety conflict detection
 - first supported bootstrap plans

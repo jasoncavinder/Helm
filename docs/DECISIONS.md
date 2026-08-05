@@ -795,16 +795,18 @@ Canonical detail: `docs/architecture/DOCTOR_REPAIR_KNOWLEDGE.md`.
 - Local persistence supports offline operation, finding lifecycle, repair auditability, and future trusted knowledge distribution.
 
 ---
-## Decision 040 — Project WOW Edition Boundary and Fleet Coexistence
+## Decision 040 — Internal Project WOW Feature Allocation and Fleet Coexistence
 
 **Decision:**
-Adopt Project WOW as Helm's first-run value initiative and preserve one shared local-first experience contract across Helm, Helm Pro, and the planned Helm Fleet business product.
+Use Project WOW solely as an internal name for Helm's first-run value design initiative. It is not a product, edition, entitlement, or pricing tier.
+
+Preserve one shared local-first first-run experience contract, then allocate resulting capabilities among the existing Helm, Helm Pro, and planned Helm Fleet product plans.
 
 The base experience follows:
 
 `Environment Brief -> reviewed plan -> approved typed action -> verification -> Action Receipt`
 
-**Edition boundary:**
+**Product/tier feature allocation:**
 
 - Base Helm owns the first-run value reveal, safety-critical findings, conservative defaults, plan transparency, failure recovery, honest rollback, offline behavior, accessibility, and redacted local summary.
 - Helm Pro may add advanced personal optimization, history, reusable personal Blueprints, advisory enrichment, and optional Shared Brain enrichment.

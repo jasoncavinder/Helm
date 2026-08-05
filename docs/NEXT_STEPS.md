@@ -25,7 +25,8 @@ Focus:
 - retain explicit TODO seams for future online fingerprint lookup once local knowledge contract is stable
 - sequence `0.18.x` local security groundwork now that the `0.17.12` hardening slice has landed
 - maintain Project WOW as the approved first-run design initiative: complete contracts/prototypes during `0.18.x`, then deliver the base Environment Brief -> reviewed plan -> verified improvement -> Action Receipt loop during `0.19.x`
-- preserve the Project WOW edition boundary: first-run value/safety/transparency/recovery stay in base Helm; advanced personal intelligence belongs to Helm Pro; organization policy/deployment/drift/audit belongs to Helm Fleet
+- keep Project WOW as internal design terminology only; allocate resulting features among the existing Helm, Helm Pro, and Helm Fleet plans
+- keep first-run value/safety/transparency/recovery in base Helm; allocate advanced personal intelligence to Helm Pro and organization policy/deployment/drift/audit to Helm Fleet
 - design Helm Fleet integrations to coexist with current business management authority through vendor-neutral PKG, managed configuration, CLI/inventory/compliance, and audit contracts before bespoke vendor APIs
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
@@ -35,8 +36,8 @@ Project WOW planning source:
 
 - `docs/app-design/PROJECT_WOW.md`
 - base delivery target: `0.19.x`, with the resulting first-run experience included in the `1.0.0` quality gate
-- post-1.0 Helm Pro expansion: Advanced Conflict Radar, personal Blueprints, advanced insights/history, and advisory/Shared Brain enrichment
-- post-1.0 Helm Fleet expansion: managed zero-touch first run, Environment/Compliance Brief, organization baselines, policy/drift, certified Jamf Pro/Intune/Kandji/Munki workflows, rollout/approvals, and audit export
+- resulting features allocated to post-1.0 Helm Pro: Advanced Conflict Radar, personal Blueprints, advanced insights/history, and advisory/Shared Brain enrichment
+- resulting features allocated to post-1.0 Helm Fleet: managed zero-touch first run, Environment/Compliance Brief, organization baselines, policy/drift, certified Jamf Pro/Intune/Kandji/Munki workflows, rollout/approvals, and audit export
 - Fleet does not replace MDM or software distribution; external enrollment, scope, deployment, OS-update, and compliance authority remains controlling
 
 Current checkpoint:

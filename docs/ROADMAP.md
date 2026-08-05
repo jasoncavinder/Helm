@@ -748,15 +748,15 @@ Goal:
 - Add entitlement verification and safe degradation behavior
 - Define managed bootstrap configuration contract for fleet MDM deployments
 - Keep update authority decoupled from licensing authority by channel
-- Formalize Project WOW edition boundaries so base value, safety, transparency, accessibility, offline behavior, and recovery never depend on Pro entitlement
-- Define entitlement-safe degradation for Helm Pro Project WOW enrichments and Helm Fleet managed experiences
+- Formalize how first-run initiative features map onto existing products so base value, safety, transparency, accessibility, offline behavior, and recovery never depend on Pro entitlement
+- Define entitlement-safe degradation for Helm Pro first-run enrichments and Helm Fleet managed first-run experiences
 
 Exit Criteria:
 
 - Distribution build matrix and channel authority mapping are documented and approved
 - Invalid/expired entitlements degrade predictably without unsafe behavior
 - Managed bootstrap configuration is documented and testable
-- Project WOW capability-gate tests prove base Helm remains a complete first-run experience without Pro or Fleet entitlement
+- Capability-gate tests prove base Helm remains a complete first-run experience without Pro or Fleet entitlement
 
 ---
 
@@ -770,7 +770,7 @@ Goal:
 - Matching engine: package name + version range -> severity + recommendations
 - SQLite-backed advisory cache with TTL-based refresh
 - UI: vulnerability status, severity badges, and recommended actions per package
-- Project WOW Pro recommendation enrichment using locally evaluated advisory results
+- Helm Pro recommendation enrichment using locally evaluated advisory results
 - Offline-capable with cached advisory data
 - Non-blocking: advisory checks never delay operations
 - No Helm-operated central database required
@@ -795,7 +795,7 @@ Goal:
 
 - Fingerprint sharing for anonymous package/environment signals
 - Known-fix lookup and recommendation enrichment
-- Optional Project WOW Pro enrichment for Advanced Conflict Radar, personal insights, and Blueprint recommendations; local base findings remain authoritative and available offline
+- Optional Helm Pro enrichment for Advanced Conflict Radar, personal insights, and Blueprint recommendations; local base findings remain authoritative and available offline
 - Postgres-backed central system-of-record
 - Provider-portable HTTP API architecture
 - Optional stateless edge/API layer for advisory enrichment queries (Cloudflare Workers is acceptable but replaceable)
@@ -898,7 +898,7 @@ Goal:
 - Deliver Helm Business as a separate fleet-focused binary and lifecycle
 - Keep one shared core codebase while separating consumer and fleet release operations
 - Integrate business policy/compliance capabilities without collapsing architecture boundaries
-- Deliver the managed Project WOW experience under the Helm Fleet capability model
+- Deliver the managed first-run experience under the Helm Fleet capability model
 - Preserve coexistence with incumbent MDM, package distribution, self-service, inventory, and compliance systems
 
 Exit Criteria:
