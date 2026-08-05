@@ -234,7 +234,7 @@ Notifications are reserved for meaningful state changes when Helm is not frontmo
 
 ### 0.18.x — Experience definition and prototypes (post-v0.18.1 planning closure)
 
-This planning and validation artifact closure completed after the corrective `v0.18.1` release. It does not reopen the released runtime scope or require another `0.18.x` publication. Production `0.19.x` redesign implementation begins from these artifacts.
+This planning and validation artifact closure completed after the corrective `v0.18.1` release and is included as planning-only content in the final `v0.18.2` containment release. It does not claim implementation of the target experience. Production `0.19.x` redesign implementation begins from these artifacts.
 
 Deliverables:
 

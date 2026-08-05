@@ -875,7 +875,7 @@ The initiative may revise information architecture, layout, workflows, window be
 
 Deliver the work incrementally:
 
-- `0.18.x` planning closure after `v0.18.1` (complete): audit, component inventory, approved IA, prototypes, state matrix, budgets, owner-run research protocol/expert walkthrough, and migration map; no runtime-scope reopening or additional `0.18.x` publication
+- `0.18.x` planning closure after `v0.18.1` (complete): audit, component inventory, approved IA, prototypes, state matrix, budgets, owner-run research protocol/expert walkthrough, and migration map; included as planning-only content in the final `v0.18.2` containment release without claiming implementation of the target experience
 - `0.19.x`: native application foundation and first-run value foundation
 - `0.20.x`: core workflow and information-architecture redesign
 - `0.21.x`: accessibility, system integration, resilience, and first-run recovery/receipt completion

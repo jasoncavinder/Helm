@@ -45,7 +45,7 @@ Key features:
 - **Localization** — `en`, `es`, `de`, `fr`, `pt-BR`, `ja`, and `hu` with locale override in Settings
 - **Upgrade transparency** — dedicated upgrade preview surface with scoped execution and failure-attribution visibility
 
-> **Current release:** `v0.18.1` is the latest stable release. `v0.18.0` remains withdrawn because of its critical SQLite migration defect; users of `v0.18.0` should update to `v0.18.1` before further use. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Current release:** `v0.18.1` remains the latest stable release while `v0.18.2` completes release validation. `v0.18.0` remains withdrawn because of its critical SQLite migration defect; users of `v0.18.0` should update to `v0.18.1` or later before further use. Please report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## How it works
 

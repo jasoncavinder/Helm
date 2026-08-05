@@ -62,6 +62,32 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.18.2 (Final v0.18 Containment Release Gate, Pending)
+
+### Scope
+
+- [x] Append-only SQLite migration identity manifest records released migration version, name, up/down SQL, and SHA-256 definition checksum.
+- [x] Migration `20` persists and backfills migration-definition checksums without rewriting prior released migrations.
+- [x] SQLite initialization rejects ledger gaps, unknown versions, changed names, changed checksums, and missing checksums on checksum-aware databases.
+- [x] Verified private pre-migration backups, integrity checks, bounded retention, and Reset Local Data cleanup provide a recoverable migration boundary.
+- [x] Debug databases are separated from release data by default while explicit `HELM_DB_PATH` overrides remain supported.
+- [x] Initialization failures propagate through CLI, FFI, XPC, and Service Health paths instead of being silently discarded.
+- [x] Migration compatibility checks run in normal CI and GUI/CLI release workflows.
+- [x] Project WOW and Native Mac Experience v0.18 design contracts are complete and included as planning-only release content; no target first-run or redesigned UI behavior is claimed.
+- [x] The owner-run moderated-study checkpoint remains open and required before v0.20 workflow sign-off and v0.22 UI lock.
+
+### Required Validation
+
+- [x] Stateful v0.17.12 upgrade, affected-v0.18.0 recovery, rollback, tampering, backup, CLI, and FFI migration suites pass on the merged implementation.
+- [x] Run the full repository quality gate, documentation sync, Sparkle checklist, and non-mutating `v0.18.2` release rehearsal from the release-preparation branch.
+- [ ] Merge release preparation through `dev` and the protected `dev` to `main` path.
+- [ ] Run rehearsal and preflight from a clean, current `main` checkout.
+- [ ] Confirm a fresh successful `Release macOS Canary` on `macos-26` after the final release changes.
+- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` under the maintainer's release authorization.
+- [ ] Create and push annotated tag `v0.18.2` from the verified `main` revision.
+- [ ] Complete signed/notarized GUI and direct CLI artifact publication.
+- [ ] Merge generated metadata PRs if required and complete post-publication verification and drift guards.
+
 ## v0.18.1 (Corrective Release Gate, Completed)
 
 ### Required Remediation

@@ -564,7 +564,7 @@ Fleet-specific indicators:
 - [x] define local metrics events without adding telemetry transport (`docs/contracts/first-run/metrics-event.schema.json`)
 - [x] bootstrap feasibility and typed-action matrix (`docs/architecture/BOOTSTRAP_FEASIBILITY_MATRIX.md`)
 
-This completed planning/prototype closure does not reopen the released `v0.18.1` runtime scope or require another `0.18.x` publication. Production `0.19.x` first-run implementation begins from these contracts.
+This completed planning/prototype closure is included as planning-only content in the final `v0.18.2` containment release. It does not claim implementation of the target first-run experience. Production `0.19.x` first-run implementation begins from these contracts.
 
 Artifact closure is complete. The human moderated-study checkpoint remains explicitly open: no participant session or result is claimed by these documents, and v0.20 workflow sign-off/v0.22 UI lock still require owner-run evidence.
 
