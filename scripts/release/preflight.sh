@@ -11,6 +11,7 @@ CHECK_SECRETS=1
 CHECK_WORKFLOWS=1
 CHECK_RULESET_POLICY=1
 ALLOW_EXISTING_TAG=0
+ALLOW_PUBLISHED_METADATA=0
 TAG_NAME=""
 ERROR_COUNT=0
 WARN_COUNT=0
@@ -29,6 +30,7 @@ Options:
   --skip-workflows            Skip GitHub workflow presence checks.
   --skip-ruleset-policy       Skip main-branch ruleset bypass policy checks.
   --allow-existing-tag        Allow tag to already exist locally/remotely.
+  --allow-published-metadata  Allow stable metadata to equal the target during post-publication verification.
   -h, --help                  Show this help.
 
 This script validates release prerequisites before tagging/publishing.
@@ -315,7 +317,11 @@ check_pre_tag_metadata_snapshot() {
     info "stable metadata on origin/main is behind target tag (${appcast_version} < ${expected_version})"
     ;;
   0)
-    fail "stable metadata on origin/main already matches target version ${expected_version}; choose the next tag or resolve existing publication state"
+    if [ "$ALLOW_PUBLISHED_METADATA" -eq 1 ]; then
+      info "stable metadata on origin/main matches target version ${expected_version} (post-publication verification)"
+    else
+      fail "stable metadata on origin/main already matches target version ${expected_version}; choose the next tag or resolve existing publication state"
+    fi
     ;;
   1)
     fail "stable metadata on origin/main is ahead of target version (${appcast_version} > ${expected_version})"
@@ -577,6 +583,12 @@ check_required_workflows() {
     return
   fi
 
+  local repo
+  if ! repo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)" || [ -z "$repo" ]; then
+    fail "unable to resolve repository slug for workflow state checks"
+    return
+  fi
+
   local required_workflows=(
     "release-macos-dmg.yml"
     "release-cli-direct.yml"
@@ -587,10 +599,14 @@ check_required_workflows() {
     "cli-update-drift.yml"
   )
 
-  local wf
+  local wf workflow_state
   for wf in "${required_workflows[@]}"; do
-    if ! gh workflow view "$wf" >/dev/null 2>&1; then
+    if ! workflow_state="$(gh api "repos/${repo}/actions/workflows/${wf}" --jq '.state' 2>/dev/null)"; then
       fail "required workflow not found or inaccessible: ${wf}"
+      continue
+    fi
+    if [ "$workflow_state" != "active" ]; then
+      fail "required workflow is not active: ${wf} (state=${workflow_state:-unknown})"
     fi
   done
 }
@@ -678,6 +694,10 @@ parse_args() {
       ;;
     --allow-existing-tag)
       ALLOW_EXISTING_TAG=1
+      shift
+      ;;
+    --allow-published-metadata)
+      ALLOW_PUBLISHED_METADATA=1
       shift
       ;;
     -h | --help)

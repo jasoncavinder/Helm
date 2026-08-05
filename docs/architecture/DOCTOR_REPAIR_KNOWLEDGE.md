@@ -215,6 +215,7 @@ Each entry contains:
 | `selector` | exact `v2` fingerprint or normalized finding selector fields |
 | `option_id` | stable surface-facing repair option identifier |
 | `action_id` | typed action registered by the installed Helm version |
+| `recommendation_rank` | optional non-negative rank; the lowest available rank is recommended |
 | `policy` | restrictions only: confirmation, automation ceiling, and enabled state |
 | `parameter_bindings` | allowlisted references to normalized finding fields; no literal executable data |
 | `content_keys` | localization keys for title, description, impact, and guidance |

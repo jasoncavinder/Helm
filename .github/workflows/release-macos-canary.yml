@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           MACOS_VERSION="$(sw_vers -productVersion)"
-          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2; exit}')"
+          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2}')"
           XCODE_MAJOR="${XCODE_VERSION%%.*}"
 
           if [ -z "$XCODE_VERSION" ] || [ "$XCODE_MAJOR" != "$EXPECTED_XCODE_MAJOR" ]; then
@@ -42,6 +42,9 @@ jobs:
         with:
           toolchain: 1.93.1
           targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Run SQLite migration compatibility gate
+        run: scripts/ci/check_sqlite_migration_compatibility.sh
 
       - name: Run serialized Rust release gate
         run: cargo test --workspace --manifest-path core/rust/Cargo.toml -- --test-threads=1

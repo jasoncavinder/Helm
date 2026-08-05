@@ -543,7 +543,7 @@ Fleet-specific indicators:
 
 ## 14. Prioritized Implementation Roadmap
 
-### Internal initiative phase 0 — Definition during 0.18.x
+### Internal initiative phase 0 — Definition closure immediately after v0.18.1
 
 - approve this charter and product/tier feature allocation
 - define Environment Brief, setup-session, Action Receipt, and redaction schemas
@@ -552,7 +552,7 @@ Fleet-specific indicators:
 - create first-run usability and accessibility protocols
 - define local metrics events without adding telemetry transport
 
-This phase must not disrupt the Doctor/repair and local security groundwork already sequenced for 0.18.x.
+This planning/prototype closure does not reopen the released `v0.18.1` runtime scope or require another `0.18.x` publication. It must complete before production `0.19.x` first-run implementation begins.
 
 ### Internal initiative phase 1 — Base value reveal foundation in 0.19.x
 

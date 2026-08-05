@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-08-04
+
+### Fixed
+- SQLite startup now reconciles the known development migration `17` collision before applying the released doctor/repair schema, preserving existing user data.
+- Already-current databases no longer replay destructive historical DDL during startup, preserving package identifiers and making repeated migration initialization idempotent.
+- Rust service initialization now succeeds for affected databases, restoring Refresh task submission and Helm CLI installation after updating to `v0.18.0`.
+
+## [0.18.0] - 2026-08-03
+
+### Added
+- SQLite-backed doctor scan generations, finding lifecycle, repair history, versioned repair knowledge, provenance, and local overrides.
+- Deterministic bundled and imported repair knowledge using RFC 8785 canonical JSON, SHA-256 integrity checks, and an allowlist of typed repair actions.
+- Internal local-only security advisory domain and cache groundwork with normalized records, deterministic identities and ordering, freshness evaluation, and pruning support.
+
+### Changed
+- CLI and FFI/XPC repair planning now resolves effective persisted knowledge, localized content keys, and deterministic recommendation rank.
+- Repair apply now revalidates active findings, records execution history, and verifies outcomes through follow-up scans.
+- Doctor scans now distinguish full, scoped, partial, failed, and cancelled coverage so only successfully evaluated scopes can resolve findings.
+
+### Security
+- Knowledge imports fail closed on forged trust, policy weakening, protected rebinding, unknown actions, equivocation, and malformed or noncanonical envelopes.
+- Repair execution rejects detached CLI work and records terminal outcomes for both CLI and FFI paths.
+- Advisory cache persistence validates canonical identities and normalized query inputs transactionally.
+
+Security advisory providers, scheduler integration, doctor advisory findings, and public advisory UI/CLI surfaces remain intentionally deferred beyond `0.18.x`.
+
 ## [0.17.12] - 2026-07-29
 
 ### Fixed

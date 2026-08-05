@@ -11,29 +11,34 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-0.18.x planning on `dev` (post-v0.17.12 stable release)
+post-v0.18.1 design-definition closure, then v0.19.x native-experience foundation and first-run value
 ```
 
 Focus:
-- keep `main`/`dev` release-state docs and version markers aligned now that `v0.17.12` is published
-- maintain release-process hardening guardrails now that phases 1-5 are complete (preflight, publish verification, drift prevention)
+- complete the remaining planning-only `0.18.x` Project WOW and Native Mac Experience definition artifacts before beginning production `v0.19.x` UI or first-run implementation
+- maintain release-process hardening guardrails now that `v0.18.1` publication is complete
+- preserve the released `v0.18.1` migration-reconciliation behavior and its affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
-- continue doctor/repair subsystem foundation in core + FFI + service surfaces without widening into online knowledge lookup yet
-- replace the transitional embedded repair map with SQLite-backed, versioned knowledge and deterministic import/export contracts while keeping lookup local/embedded for now
-- ensure equivalent normalized manager/environment problems produce the same cross-installation fingerprint while sensitive local evidence remains outside fingerprint identity
-- restrict repair knowledge to allowlisted typed Helm action IDs; knowledge must never contain commands, arguments, scripts, plugins, or arbitrary executable content
-- retain explicit TODO seams for future online fingerprint lookup once local knowledge contract is stable
-- sequence `0.18.x` local security groundwork now that the `0.17.12` hardening slice has landed
-- maintain Project WOW as the approved first-run design initiative: complete contracts/prototypes during `0.18.x`, then deliver its base Environment Brief -> reviewed plan -> verified improvement -> Action Receipt loop across `0.19.x`-`0.21.x`
+- preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
+- preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
+- retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs
+- preserve the internal-only `0.18.x` advisory domain/cache foundation; provider fetchers, task-scheduler wiring, doctor advisory findings, and public CLI/GUI surfaces remain post-`0.18.x`
+- close the remaining Project WOW `0.18.x` definition/prototype work immediately after `v0.18.1`, then deliver its base Environment Brief -> reviewed plan -> verified improvement -> Action Receipt loop across `0.19.x`-`0.21.x`
 - keep Project WOW as internal design terminology only; allocate resulting features among the existing Helm, Helm Pro, and Helm Fleet plans
 - keep first-run value/safety/transparency/recovery in base Helm; allocate advanced personal intelligence to Helm Pro and organization policy/deployment/drift/audit to Helm Fleet
-- run the Native Mac Experience initiative as the whole-app design track: define and prototype during `0.18.x`, deliver native foundations in `0.19.x`, redesign core workflows in `0.20.x`, close accessibility/system-integration gaps in `0.21.x`, and complete design validation/hardening in `0.22.x`
+- close the remaining Native Mac Experience `0.18.x` research/prototype work immediately after `v0.18.1`, then deliver native foundations in `0.19.x`, redesign core workflows in `0.20.x`, close accessibility/system-integration gaps in `0.21.x`, and complete design validation/hardening in `0.22.x`
 - treat the earlier visual-only app redesign proposal and `docs/ui/` artifacts as the current baseline and research input, not constraints that prohibit information-architecture, layout, or interaction changes
 - prefer native macOS windows, menus, toolbars, Settings, navigation, lists/tables, focus, selection, and commands before custom controls while preserving the presentation-only SwiftUI boundary
 - design Helm Fleet integrations to coexist with current business management authority through vendor-neutral PKG, managed configuration, CLI/inventory/compliance, and audit contracts before bespoke vendor APIs
 - keep launch-at-login scoped to GUI only (no CLI/TUI parity target)
 - track post-mise lifecycle follow-ups: plugin-as-package modeling evaluation and managed-environment install-source policy controls
-- keep the repository-local Codex operating model current (lean `AGENTS`, isolated task worktrees under `.worktrees/` via `agent-worktree-isolation`, `ops/codex/skills/`, `.codex/commands/`, notify logging, and `ops/codex/docs/` workflows) so recurring AI workflows remain deterministic and low-friction
+- keep the agent-agnostic operating model current (lean `AGENTS`, isolated task worktrees under `.worktrees/` via `agent-worktree-isolation`, `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, notify logging to `dev/logs/agent-runs.ndjson`, and `scripts/agents/` workflows) so recurring AI workflows remain deterministic and low-friction
+
+Remaining `0.18.x` design-definition closure is planning/prototype work only. It does not reopen the published `v0.18.1` runtime scope or require a `v0.18.2` release:
+
+- Project WOW contracts: Environment Brief, setup session, recommendation/plan, Action Receipt, and redaction schemas; discovery/consent classification; bootstrap feasibility and typed-action boundaries; offline/failure/recovery semantics; CLI/TUI interaction contract; local metrics event definitions; first-run usability/accessibility protocol; Fleet managed-configuration boundary
+- Native Mac Experience artifacts: current-experience screenshot audit; custom-versus-native component inventory; user-research plan and baseline task protocol; information-architecture options and decision; menu bar, Control Center, Settings, and Project WOW prototypes; complete state matrix; accessibility and perceived-performance budgets; incremental production migration map
+- joint closure gate: prototypes and contracts use one compatible navigation/state model, intentional departures from macOS conventions are recorded, unresolved implementation questions are converted into scoped `0.19.x` backlog items, and no production redesign implementation begins in this closure
 
 Project WOW planning source:
 
@@ -54,13 +59,15 @@ Native Mac Experience planning source:
 - `1.0.0`: native experience and Project WOW release gates must both pass on the production app
 
 Current checkpoint:
-- `v0.17.12` is the current stable release on `main`; current-scope manager adapter completion, final stable-line hardening, and package workflow hardening are now published:
+- `0.18.x` internal groundwork is released on `main` through `v0.18.1`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
+- `v0.18.1` transactionally reconciles the migration `17` collision, avoids historical DDL replay, and passed fresh-install, `v0.17.12` upgrade, and affected-`v0.18.0` recovery validation.
+- `v0.18.1` is the current public stable release; doctor/repair, local security groundwork, migration recovery, and package workflow hardening are now published:
   - bulk and scoped upgrade phase coordination now resides in Rust/FFI/XPC. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
   - all current manager adapters are considered complete for Helm's intended scope
   - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
-    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, and transitional embedded repair knowledge-provider scaffolding pending the `0.18.x` SQLite-backed knowledge contract
+    - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, SQLite-backed repair knowledge, and a storeless compatibility fallback constrained by the typed-action registry
     - manager package-state issue generation now routes through doctor findings and includes fingerprint/severity/evidence plus repair-option metadata
     - added repair-apply execution path through FFI + XPC (`helm_apply_manager_package_state_issue_repair`) and migrated GUI metadata-only repair actions to that subsystem
     - CLI doctor scaffolding now includes `helm doctor scan` and `helm doctor repair plan|apply` for local-first health/repair flows
@@ -383,7 +390,7 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.17.12`
+- latest stable release on `main`: `v0.18.1`
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
@@ -401,11 +408,11 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.18.x` — Local security groundwork (internal-only)
 - `v0.19.x` — Native experience foundation & first-run value
 - `v0.20.x` — Core workflow & information architecture redesign
 - `v0.21.x` — Accessibility, system integration & resilience
 - `v0.22.x` — Fit, finish & pre-1.0 hardening
+- `v1.0.0` — Stable control plane release
 
 ## Historical v0.17.x Delivery Tracker (0.17.3 Checkpoint)
 
@@ -1300,3 +1307,4 @@ Delivered:
 - Distribution/licensing future-state planning documentation is aligned for 0.14 release notes and roadmap planning (no implementation yet).
 - 0.14.x and 0.15.x release execution are complete on `main` (`v0.14.1` and `v0.15.0`).
 - 0.17.12 release execution is complete on `main`; 0.17.x diagnostics/logging delivery and post-`0.17.x` follow-up stabilization are now closed with stable lineage `v0.17.0`, `v0.17.1`, `v0.17.2`, `v0.17.3`, `v0.17.4`, `v0.17.5`, `v0.17.6`, `v0.17.7`, `v0.17.8`, `v0.17.9`, `v0.17.10`, `v0.17.11`, and `v0.17.12`.
+- 0.18.1 corrective release execution is complete on `main`; `v0.18.0` remains withdrawn, while doctor/repair persistence, local-security groundwork, and migration recovery are publicly distributed through `v0.18.1`.

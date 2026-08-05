@@ -19,3 +19,6 @@ ureq = "2.10"
 
 [build-dependencies]
 cbindgen = "0.29"
+
+[dev-dependencies]
+rusqlite = { version = "0.33", features = ["bundled"] }

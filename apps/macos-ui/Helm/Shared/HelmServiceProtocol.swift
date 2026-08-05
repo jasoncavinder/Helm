@@ -101,6 +101,7 @@ import Foundation
         packageName: String,
         issueCode: String,
         optionId: String,
+        confirmed: Bool,
         withReply reply: @escaping (Int64) -> Void
     )
     func uninstallManagerWithOptions(

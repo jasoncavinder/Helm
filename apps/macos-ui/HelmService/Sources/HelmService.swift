@@ -36,21 +36,45 @@ class HelmService: NSObject, HelmServiceProtocol {
     }
 
     private let cliShimCommandRunner = HelmCliShimCommandRunner()
+    private var initializationErrorKey: String?
 
     override init() {
         super.init()
 
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbPath = appSupport.appendingPathComponent("Helm/helm.db").path
+        let environmentPath = ProcessInfo.processInfo.environment["HELM_DB_PATH"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let databaseURL: URL
+        if let environmentPath, !environmentPath.isEmpty {
+            databaseURL = URL(fileURLWithPath: environmentPath)
+        } else {
+#if DEBUG
+            let databaseDirectory = "Helm-Development"
+#else
+            let databaseDirectory = "Helm"
+#endif
+            databaseURL = appSupport
+                .appendingPathComponent(databaseDirectory, isDirectory: true)
+                .appendingPathComponent("helm.db", isDirectory: false)
+        }
+        let dbPath = databaseURL.path
 
         logger.info("HelmService init — DB path: \(dbPath)")
 
-        try? FileManager.default.createDirectory(atPath: appSupport.appendingPathComponent("Helm").path, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
 
         let result = dbPath.withCString { cPath in
             helm_init(cPath)
         }
         logger.info("helm_init result: \(result)")
+        if !result, let cString = helm_take_last_error_key() {
+            defer { helm_free_string(cString) }
+            initializationErrorKey = String(cString: cString)
+            logger.error("helm_init failed: \(self.initializationErrorKey ?? "unknown")")
+        }
     }
 
     func listInstalledPackages(withReply reply: @escaping (String?) -> Void) {
@@ -837,6 +861,7 @@ class HelmService: NSObject, HelmServiceProtocol {
         packageName: String,
         issueCode: String,
         optionId: String,
+        confirmed: Bool,
         withReply reply: @escaping (Int64) -> Void
     ) {
         let taskId = managerId.withCString { manager in
@@ -849,7 +874,8 @@ class HelmService: NSObject, HelmServiceProtocol {
                                 sourceManager,
                                 package,
                                 issue,
-                                option
+                                option,
+                                confirmed
                             )
                         }
                     }
@@ -857,7 +883,7 @@ class HelmService: NSObject, HelmServiceProtocol {
             }
         }
         logger.info(
-            "helm_apply_manager_package_state_issue_repair(\(managerId), \(sourceManagerId), \(packageName), \(issueCode), \(optionId)) result: \(taskId)"
+            "helm_apply_manager_package_state_issue_repair(\(managerId), \(sourceManagerId), \(packageName), \(issueCode), \(optionId), confirmed=\(confirmed)) result: \(taskId)"
         )
         reply(taskId)
     }
@@ -915,6 +941,10 @@ class HelmService: NSObject, HelmServiceProtocol {
     }
 
     func takeLastErrorKey(withReply reply: @escaping (String?) -> Void) {
+        if let initializationErrorKey {
+            reply(initializationErrorKey)
+            return
+        }
         guard let cString = helm_take_last_error_key() else {
             reply(nil)
             return

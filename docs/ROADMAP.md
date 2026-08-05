@@ -543,7 +543,7 @@ Exit Criteria:
 
 ---
 
-## v0.17.12 — Upgrade Workflow Authority Correction (pending patch)
+## v0.17.12 — Upgrade Workflow Authority Correction (released)
 
 Goal:
 
@@ -559,7 +559,9 @@ Exit Criteria:
 
 ---
 
-## 0.18.x — Doctor & Repair Foundation (rc)
+## 0.18.x — Doctor & Repair Foundation - Released on `main`
+
+Release status: published through corrective `v0.18.1`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
 
 Goal:
 
@@ -593,7 +595,7 @@ Sequencing note:
 
 ---
 
-## Security Staging (Planned)
+## Security Staging
 
 Stage 0 (`<=0.16.x`):
 - Documentation and planning only
@@ -624,7 +626,9 @@ Stage 3 (`1.4.x`) — Shared Brain:
 
 ---
 
-## 0.18.x — Local Security Groundwork (rc, second slice)
+## 0.18.x — Local Security Groundwork (second slice) - Released on `main`
+
+Release status: published through `v0.18.1` after migration remediation and recovery validation.
 
 Goal:
 
@@ -647,7 +651,9 @@ Exit Criteria:
 
 ---
 
-## 0.18.x — Pre-1.0 Experience Definition (parallel design slice)
+## 0.18.x — Pre-1.0 Experience Definition (post-release planning closure)
+
+Status: remaining planning/prototype closure after corrective `v0.18.1`; this does not alter the released runtime scope or require another `0.18.x` publication.
 
 Goal:
 
@@ -664,7 +670,7 @@ Exit Criteria:
 - Accessibility, localization, motion, perceived-performance, window, input, and state-quality gates are approved.
 - Project WOW and whole-app navigation share one compatible experience model.
 - Intentional departures from macOS conventions have documented Helm-specific rationale.
-- The design lane does not destabilize Doctor/repair or local-security delivery.
+- The design lane does not alter the released Doctor/repair, local-security, or migration-safety behavior.
 
 ---
 

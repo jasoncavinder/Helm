@@ -35,32 +35,74 @@ This checklist is required before creating a release tag on `main`.
 
 ## Release Preflight (All Releases, Mandatory Before Tagging)
 
-- [ ] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
-- [ ] Read and follow `docs/operations/RELEASE_FLOW.md` before any release mutation.
-- [ ] Run `scripts/release/rehearsal_dry_run.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` and retain its passing report.
-- [ ] Confirm `Release macOS Canary` passed on `macos-26` after the latest release-workflow or toolchain change.
-- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after any release credential rotation or permission change.
-- [ ] Confirm preflight reports token scopes include `repo` and `workflow`.
-- [ ] Confirm preflight validates required release workflows are present and enabled.
-- [ ] Confirm preflight validates required DMG/signing/update secrets are present.
-- [ ] Confirm `RELEASE_PUBLISH_PAT` is configured and authenticated so release-generated publish PRs can receive required checks and auto-merge normally.
-- [ ] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
-- [ ] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
-- [ ] Confirm crash/error reporting policy remains local-only for the release line and no automatic remote telemetry path was introduced (`docs/operations/CRASH_REPORTING_POLICY.md`).
-- [ ] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
+- [x] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
+- [x] Read and follow `docs/operations/RELEASE_FLOW.md` before any release mutation.
+- [x] Run `scripts/release/rehearsal_dry_run.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` and retain its passing report.
+- [x] Confirm `Release macOS Canary` passed on `macos-26` after the latest release-workflow or toolchain change.
+- [x] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after any release credential rotation or permission change.
+- [x] Confirm preflight reports token scopes include `repo` and `workflow`.
+- [x] Confirm preflight validates required release workflows are present and enabled.
+- [x] Confirm preflight validates required DMG/signing/update secrets are present.
+- [x] Confirm `RELEASE_PUBLISH_PAT` is configured and authenticated so release-generated publish PRs can receive required checks and auto-merge normally.
+- [x] Confirm preflight validates `main` ruleset publish-PR bypass policy (prefer GitHub Actions app `pull_request` bypass when available; otherwise use `Repository admin` `pull_request` fallback; no `always` bypass actors).
+- [x] Confirm preflight snapshot sanity passes for stable tags (`origin/main` appcast + `cli/latest.json` in sync and behind target tag).
+- [x] Confirm crash/error reporting policy remains local-only for the release line and no automatic remote telemetry path was introduced (`docs/operations/CRASH_REPORTING_POLICY.md`).
+- [x] Optional wrapper path: `scripts/release/runbook.sh prepare --tag <tag>`.
 
 ## Release Publication Verification (All Releases)
 
-- [ ] Review release workflow summary output for both release workflows:
+- [x] Review release workflow summary output for both release workflows:
   - `Artifacts uploaded: yes`
   - `Publish PR opened: yes/no`
   - `Main metadata synced: yes/no`
-- [ ] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and run workflow_dispatch with `verify_only=true` for the corresponding release workflow to verify `Main metadata synced: yes` without rebuilding artifacts.
-- [ ] Confirm release publication verification status is green after publish PR merge:
+- [x] If workflow summary reports follow-up required (publish PR still open), merge the publish PR and run workflow_dispatch with `verify_only=true` for the corresponding release workflow to verify `Main metadata synced: yes` without rebuilding artifacts.
+- [x] Confirm release publication verification status is green after publish PR merge:
   - `Release Publish Verify`
   - `Appcast Drift Guard`
   - `CLI Update Metadata Drift Guard`
-- [ ] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
+- [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
+
+## v0.18.1 (Corrective Release Gate, Completed)
+
+### Required Remediation
+
+- [x] Resolve the critical migration `17` collision identified after the `v0.18.0` withdrawal.
+- [x] Detect the known development migration identity before applying dependent released migrations.
+- [x] Verify the fix against a temporary backup of the affected production database without modifying the live store.
+- [x] Verify fresh database creation and migration from the `v0.17.12` schema.
+- [x] Verify safe recovery for databases already touched by `v0.18.0`.
+- [x] Verify migration atomicity, idempotency, failure rollback, and data preservation.
+- [x] Verify affected-database startup through a CLI subprocess and Refresh acceptance through an isolated FFI process.
+- [x] Verify Refresh and CLI installation through the final signed app/XPC service boundary against recovered database copies.
+- [x] Run targeted SQLite, doctor/repair, Rust workspace, macOS UI/service, documentation, web, and release-contract checks after rebasing onto withdrawal-complete `main`.
+- [x] Run the non-mutating `v0.18.1` release rehearsal.
+- [x] Merge the hotfix through the protected branch path and run rehearsal/preflight from a clean, current `main` checkout.
+- [x] Run a fresh successful `Release macOS Canary` on `macos-26`.
+- [x] Obtain explicit maintainer approval before tag creation and publication.
+- [x] Complete the full rehearsal, preflight, canary, signing, notarization, publication, and post-publication verification gates.
+
+## v0.18.0 (Withdrawn)
+
+`v0.18.0` was published on 2026-08-03 and withdrawn after discovery of a critical SQLite migration defect. The immutable tag is retained for auditability; `v0.18.1` is the corrective public stable successor.
+
+### Scope
+
+- [x] SQLite is canonical for doctor scan generations, finding lifecycle, repair knowledge, local overrides, provenance, and repair history.
+- [x] Bundled and imported knowledge uses canonical integrity validation and maps only to allowlisted typed repair actions.
+- [x] CLI and FFI/XPC doctor and repair paths persist scans, resolve effective knowledge, record execution history, and verify repair outcomes.
+- [x] Internal security advisory records and cache persistence provide deterministic normalization, validation, ordering, freshness, and pruning without a public feature surface.
+- [x] Provider fetchers, scheduler wiring, doctor advisory findings, and public advisory CLI/GUI surfaces remain explicitly deferred beyond `0.18.x`.
+
+### Required Validation
+
+- [x] Doctor/repair and advisory persistence suites cover deterministic lifecycle, hostile imports, stale completion, normalization, and transactional rejection behavior.
+- [x] Run the full repository quality gate, documentation sync, Sparkle checklist, and non-mutating release rehearsal from the release-preparation branch.
+- [x] Merge release preparation through `dev` and the protected `dev` to `main` path.
+- [x] Run rehearsal and preflight from a clean, current `main` checkout.
+- [x] Run a fresh successful `Release macOS Canary` on `macos-26` after the final release changes.
+- [x] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after explicit maintainer approval.
+- [x] Obtain explicit maintainer approval before tag creation and publication.
+- [x] Complete release publication and post-publication metadata verification.
 
 ## v0.17.12 (Stable Patch Release Gate, Completed)
 

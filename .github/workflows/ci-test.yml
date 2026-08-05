@@ -44,6 +44,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('core/rust/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Run SQLite migration compatibility gate
+        working-directory: .
+        run: scripts/ci/check_sqlite_migration_compatibility.sh
+
       - name: Run cargo test
         run: cargo test --workspace
 

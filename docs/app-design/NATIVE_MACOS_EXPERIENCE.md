@@ -219,9 +219,9 @@ Notifications are reserved for meaningful state changes when Helm is not frontmo
 
 ## 7. Pre-1.0 Milestones
 
-### 0.18.x — Experience definition and prototypes
+### 0.18.x — Experience definition and prototypes (post-v0.18.1 planning closure)
 
-This is a planning and validation lane alongside the already committed Doctor/repair and local-security work. It must not destabilize those deliveries.
+This remaining work is a planning and validation closure after the corrective `v0.18.1` release. It does not reopen the released runtime scope or require another `0.18.x` publication. It must complete before production `0.19.x` redesign implementation begins.
 
 Deliverables:
 
