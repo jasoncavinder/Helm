@@ -1,9 +1,116 @@
+use std::sync::OnceLock;
+
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SqliteMigration {
     pub version: i64,
     pub name: &'static str,
     pub up_sql: &'static str,
     pub down_sql: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SqliteMigrationManifest {
+    schema: String,
+    schema_version: u32,
+    migrations: Vec<SqliteMigrationIdentity>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SqliteMigrationIdentity {
+    version: i64,
+    name: String,
+    definition_sha256: String,
+}
+
+static MIGRATION_MANIFEST: OnceLock<Result<SqliteMigrationManifest, String>> = OnceLock::new();
+
+pub fn migration_definition_checksum(migration: &SqliteMigration) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"helm.sqlite-migration.v1\0");
+    hasher.update(migration.version.to_be_bytes());
+    for field in [
+        migration.name.as_bytes(),
+        migration.up_sql.as_bytes(),
+        migration.down_sql.as_bytes(),
+    ] {
+        hasher.update((field.len() as u64).to_be_bytes());
+        hasher.update(field);
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+pub fn validate_migration_manifest() -> Result<(), String> {
+    let manifest = migration_manifest()?;
+    if manifest.schema != "helm.sqlite-migration-manifest" || manifest.schema_version != 1 {
+        return Err("unsupported SQLite migration manifest schema".to_string());
+    }
+    if manifest.migrations.len() != MIGRATIONS.len() {
+        return Err(format!(
+            "SQLite migration manifest has {} entries but code defines {}",
+            manifest.migrations.len(),
+            MIGRATIONS.len()
+        ));
+    }
+
+    for (index, (identity, migration)) in manifest
+        .migrations
+        .iter()
+        .zip(MIGRATIONS.iter())
+        .enumerate()
+    {
+        let expected_version = i64::try_from(index + 1)
+            .map_err(|_| "SQLite migration manifest is too large".to_string())?;
+        if identity.version != expected_version || migration.version != expected_version {
+            return Err(format!(
+                "SQLite migration sequence is not contiguous at version {expected_version}"
+            ));
+        }
+        if identity.name != migration.name {
+            return Err(format!(
+                "SQLite migration {expected_version} name differs from the immutable manifest"
+            ));
+        }
+        let checksum = migration_definition_checksum(migration);
+        if identity.definition_sha256 != checksum {
+            return Err(format!(
+                "SQLite migration {expected_version} SQL differs from the immutable manifest"
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn migration_definition_checksum_for_version(
+    version: i64,
+) -> Result<&'static str, String> {
+    let manifest = migration_manifest()?;
+    manifest
+        .migrations
+        .iter()
+        .find(|entry| entry.version == version)
+        .map(|entry| entry.definition_sha256.as_str())
+        .ok_or_else(|| format!("SQLite migration {version} is absent from the immutable manifest"))
+}
+
+fn migration_manifest() -> Result<&'static SqliteMigrationManifest, String> {
+    MIGRATION_MANIFEST
+        .get_or_init(|| {
+            serde_json::from_str(include_str!(
+                "../../resources/sqlite_migration_manifest.json"
+            ))
+            .map_err(|error| format!("invalid SQLite migration manifest: {error}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
 const MIGRATION_0001: SqliteMigration = SqliteMigration {
@@ -933,7 +1040,20 @@ ALTER TABLE repair_knowledge_entries DROP COLUMN recommendation_rank;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 19] = [
+// The checksum column belongs to migration infrastructure and intentionally
+// remains present when application data is reset to an earlier schema version.
+const MIGRATION_0020: SqliteMigration = SqliteMigration {
+    version: 20,
+    name: "add_migration_definition_checksums",
+    up_sql: r#"
+ALTER TABLE helm_schema_migrations ADD COLUMN definition_checksum TEXT;
+"#,
+    down_sql: r#"
+SELECT 1;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 20] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -953,6 +1073,7 @@ const MIGRATIONS: [SqliteMigration; 19] = [
     MIGRATION_0017,
     MIGRATION_0018,
     MIGRATION_0019,
+    MIGRATION_0020,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

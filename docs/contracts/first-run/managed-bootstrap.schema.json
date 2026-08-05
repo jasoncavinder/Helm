@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/managed-bootstrap.schema.json",
+  "title": "Managed Bootstrap Configuration Envelope",
+  "description": "A revisioned vendor-neutral policy input. It cannot weaken Apple/MDM authority or Helm core safety and does not itself contain executable instructions.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "policyId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "authority": {
+      "type": "string",
+      "enum": ["apple_or_mdm", "fleet_policy", "distribution_assignment", "local_user"]
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": { "type": "string", "enum": ["os_managed_configuration", "locally_verified_signature", "local_user"] },
+        "keyId": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "minLength": 1 }
+      },
+      "required": ["method"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "method": { "const": "locally_verified_signature" } },
+            "required": ["method"]
+          },
+          "then": { "required": ["keyId", "signature"] }
+        }
+      ]
+    },
+    "enforcementMode": {
+      "type": "string",
+      "enum": ["advisory", "required", "read_only"]
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowNetwork": { "type": "boolean" },
+        "allowPrivilegeRequest": { "type": "boolean" },
+        "allowUserOverride": { "type": "boolean" },
+        "requireReceiptRetention": { "type": "boolean" }
+      },
+      "required": ["allowNetwork", "allowPrivilegeRequest", "allowUserOverride", "requireReceiptRetention"]
+    },
+    "immutableSafetyMinimums": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "typedActionsOnly": { "type": "boolean", "const": true },
+        "revalidateBeforeApply": { "type": "boolean", "const": true },
+        "postVerifyBeforeSuccess": { "type": "boolean", "const": true },
+        "honestRollbackLabels": { "type": "boolean", "const": true }
+      },
+      "required": ["typedActionsOnly", "revalidateBeforeApply", "postVerifyBeforeSuccess", "honestRollbackLabels"]
+    }
+  },
+  "required": ["schemaVersion", "policyId", "revision", "issuedAt", "authority", "verification", "enforcementMode", "policies", "immutableSafetyMinimums"]
+}

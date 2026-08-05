@@ -8,18 +8,23 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.18.1 is the latest public stable release**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect, and `v0.19.x` stability and pre-1.0 hardening is next.
+Current documentation baseline: **0.18.1 is the latest public stable release and v0.18.2 is in release validation on `dev`**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` contains the final v0.18 migration-safety hardening and the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
 
-Implementation baseline: **0.18.x doctor/repair and local security groundwork is released on `main` through corrective `v0.18.1`**; `v0.18.0` remains withdrawn.
+Implementation baseline: **0.18.x doctor/repair and local security groundwork is released on `main` through corrective `v0.18.1`; additional SQLite migration-safety hardening is complete on `dev` for v0.18.2**. The design-definition additions are planning contracts and do not implement the planned first-run or redesigned UI behavior.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.18.1**
+- `v0.18.2` stable release preparation is in progress on `dev`; public GUI and CLI update metadata remains pinned to `v0.18.1` until publication succeeds.
 - `v0.18.0` was published on 2026-08-03 and then withdrawn after discovery of a critical SQLite migration defect; its immutable tag is retained for auditability while its release is not publicly distributed.
 - public GUI and CLI update metadata points to the signed `v0.18.1` artifacts.
 - delivered in `v0.18.1`: reconciliation of the known development migration `17` collision before released doctor/repair migrations run, plus prevention of historical DDL replay for already-current databases, preserving package identifiers and user data.
+- complete on `dev` for `v0.18.2`: immutable migration identities and definition checksums, fail-closed ledger validation, verified bounded pre-migration backups, debug/release database separation, initialization-error propagation, and migration-compatibility CI/release gates.
+- approved internal product-design planning track: **Project WOW** defines the base Helm first-run value loop and product allocation at `docs/app-design/PROJECT_WOW.md`; its v0.18 machine contracts, bootstrap audit, CLI/TUI contract, native prototype, state matrix, and research protocol are complete planning artifacts, staged implementation/validation follows in `0.19.x`-`0.22.x`, and no related runtime behavior is implemented by this documentation checkpoint
+- approved internal whole-app design planning track: the **Native Mac Experience initiative** at `docs/app-design/NATIVE_MACOS_EXPERIENCE.md` now has a complete v0.18 audit, component inventory, approved Health/Updates/Packages/Activity/Sources IA, native prototypes, state matrix, quality budgets, research protocol/expert walkthrough, and incremental migration map; Settings is separate, diagnostics contextual, and search command-based; production implementation remains staged across `0.19.x`-`0.22.x`
+- human-validation status: no participant session is claimed by the v0.18 artifact closure; the owner-run moderated checkpoint in `docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md` remains required before v0.20 workflow sign-off and before v0.22 UI lock
 - `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - delivered on `main` for **0.18.x**: SQLite-backed doctor finding lifecycle and repair knowledge, deterministic cross-installation fingerprints, guarded bundled/imported knowledge, repair verification history, and the local security-advisory domain/cache groundwork; provider fetchers and user-facing advisory features remain deferred to the staged advisory release.
 - repository operations follow-up on `main`: agent-agnostic operating model with policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, and structured local notify logging to `dev/logs/agent-runs.ndjson`.
@@ -1024,4 +1029,4 @@ Helm is a **functional control plane for 28 implemented managers** with:
 
 The core architecture is in place. The Rust core passed a full audit with no critical issues.
 
-0.13.x through 0.18.1 stable checkpoints are complete on `main`; `v0.18.0` remains withdrawn, and `v0.18.1` is the corrective stable release for the doctor/repair and local-security groundwork.
+0.13.x through 0.18.1 stable checkpoints are complete on `main`; `v0.18.0` remains withdrawn, `v0.18.1` is the corrective public stable release, and `v0.18.2` is in validation as the final v0.18 containment release before v0.19 implementation.

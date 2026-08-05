@@ -561,7 +561,7 @@ Exit Criteria:
 
 ## 0.18.x — Doctor & Repair Foundation - Released on `main`
 
-Release status: published through corrective `v0.18.1`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
+Release status: published through corrective `v0.18.1`, with final migration-safety hardening in `v0.18.2` release validation; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
 
 Goal:
 
@@ -628,7 +628,7 @@ Stage 3 (`1.4.x`) — Shared Brain:
 
 ## 0.18.x — Local Security Groundwork (second slice) - Released on `main`
 
-Release status: published through `v0.18.1` after migration remediation and recovery validation.
+Release status: published through `v0.18.1` after migration remediation and recovery validation, with final v0.18 containment in `v0.18.2` release validation.
 
 Goal:
 
@@ -651,41 +651,126 @@ Exit Criteria:
 
 ---
 
-## 0.19.x — Stability & Pre-1.0 Hardening (rc)
+## 0.18.x — Pre-1.0 Experience Definition (post-release planning closure) - Completed
+
+Status: planning/prototype artifact closure completed after corrective `v0.18.1` and is included as planning-only content in the `v0.18.2` containment release alongside migration-safety hardening.
 
 Goal:
 
-- Full integration test matrix, especially:
-
-  - multi-manager authority ordering
-  - guarded OS update flow
-  - failure isolation
-- Multi-manager orchestration stress tests
-- Cancellation stress tests
-- Logging refinement
-- Crash recovery validation
-- No known race conditions
-- Introduce revision-aware snapshot transport and evaluate event delivery only where it reduces polling without weakening reconnect, ordering, replay, or backpressure guarantees.
-- Consolidate related XPC reads/actions behind additive, versioned request/response contracts; retain compatibility until all surfaces migrate.
-- Memory safety audit
-- i18n validation:
-  - key parity across locales
-  - placeholder consistency
-  - ICU syntax validation
-- UI validation for text expansion
-- Localization fallback behavior tested
-- App Design Refinement (planned):
-  - finalize production typography direction across app/website
-  - reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding
+- Audit the current menu bar app and Control Center against core user jobs and native macOS behavior.
+- Inventory custom controls and record where native controls, windows, menus, toolbars, Settings, lists/tables, focus, and selection should replace or constrain custom presentation.
+- Define the owner-run task-based usability/accessibility protocol, complete an expert cognitive walkthrough, and set measurable design-quality budgets; do not claim participant evidence until sessions occur.
+- Prototype the menu bar surface, Control Center, Settings, and Project WOW first run at sufficient fidelity to test workflow and platform behavior.
+- Define the complete loading/success/empty/partial/failure/offline/blocked/cancellation/recovery state matrix.
+- Produce an incremental migration map that preserves service/core business-logic authority.
 
 Exit Criteria:
 
-- All core paths tested
-- No known race conditions
-- No unhandled panics
-- Stable FFI boundary
-- Deterministic execution verified
+- Target Health/Updates/Packages/Activity/Sources information architecture and core workflows are approved for implementation and covered by testable prototypes before production UI migration.
+- Accessibility, localization, motion, perceived-performance, window, input, and state-quality gates are approved.
+- Project WOW and whole-app navigation share one compatible experience model.
+- Intentional departures from macOS conventions have documented Helm-specific rationale.
+- The design lane does not alter the released Doctor/repair, local-security, or migration-safety behavior.
+- Owner-run participant validation remains open and is required before v0.20 workflow sign-off and v0.22 UI lock.
+
+---
+
+## 0.19.x — Native Experience Foundation & First-Run Value (rc)
+
+Goal:
+
+- Establish the native macOS application foundation defined in `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`:
+  - native window, titlebar, toolbar, menu-command, sidebar/split-view, selection, and focus behavior
+  - standard semantic component layer with documented exceptions for Helm-specific controls
+  - first-class macOS Settings window/scene with Command-Comma behavior
+  - window restoration, resizing, activation, and multi-display behavior
+  - keyboard traversal infrastructure, including AppKit bridges where SwiftUI is insufficient
+- Introduce revision-aware snapshot transport and evaluate event delivery only where it reduces polling without weakening reconnect, ordering, replay, or backpressure guarantees.
+- Consolidate related XPC reads/actions behind additive, versioned request/response contracts; retain compatibility until all surfaces migrate.
+- Begin Project WOW base first-run value delivery on the native experience foundation:
+  - staged local discovery and streaming Environment Brief
+  - conservative defaults with an inspection receipt
+  - contextual guidance replacing mandatory first-run tours
+  - reviewed plan foundation using native progress, focus, selection, and sheet behavior
+- Implement against `docs/contracts/first-run/`, `docs/architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md`, and the v0.19 slices in `docs/app-design/NATIVE_MACOS_MIGRATION_MAP.md`; do not place planning, consent, execution, verification, or recovery policy in SwiftUI.
+- Finalize production typography direction across app/website.
+- Reminder: purchase Neue Haas Grotesk commercial license before shipping it in product branding; the app interface continues to prefer system typography.
+
+Exit Criteria:
+
 - Snapshot revision/reconnect behavior and consolidated XPC contracts are covered by integration tests.
+- App shell and first-run foundation are coherent in light/dark appearance at minimum and expanded window sizes.
+- Toolbar actions have application-menu command equivalents.
+- Settings are reachable through the application menu and Command-Comma and contain durable preferences rather than operational workflows.
+- No new surface introduces an ad hoc control or status semantic outside the approved component system.
+- Project WOW discovery and Environment Brief perform no unprompted mutation and have no mandatory network dependency.
+
+---
+
+## 0.20.x — Core Workflow & Information Architecture Redesign (rc)
+
+Goal:
+
+- Redesign Health, Updates, Packages, Activity, Sources, command-based search, inspector, and contextual diagnostics around native macOS patterns.
+- Revalidate the top-level information architecture against task frequency and user research.
+- Use native list, table, outline, split-view, toolbar, menu, contextual-menu, and inspector behavior where comparison and density matter.
+- Simplify action hierarchy and remove duplicated or misplaced entry points.
+- Preserve one continuous plan -> execution -> verification -> recovery presentation.
+- Complete content-design passes for labels, empty states, errors, policy blocks, provenance, authority, and recovery.
+- Revise the menu bar triage surface so it remains glanceable and routes cleanly into Control Center context.
+- Continue Project WOW through personalized plan preview and one supported safe, verified improvement.
+
+Exit Criteria:
+
+- Moderated users complete the primary health, upgrade, install, failure-recovery, and manager-source tasks without assistance or avoidable navigation reversals.
+- Destructive, privileged, guarded, and policy-blocked actions remain explicit and attributable.
+- Each release-critical domain covers loading, success, empty, partial, failure, offline, blocked, cancellation, and recovery states.
+- Control Center remains responsive and preserves selection/context while tasks and snapshot updates arrive.
+- Presentation changes do not move business or orchestration logic out of service/core boundaries.
+
+---
+
+## 0.21.x — Accessibility, System Integration & Resilience (rc)
+
+Goal:
+
+- Deliver keyboard-only and VoiceOver parity for every release-critical macOS workflow.
+- Validate Full Keyboard Access, logical focus order/restoration, conventional shortcuts, contextual menus, command validation, default actions, and cancel actions.
+- Harden increased contrast, reduced motion, reduced transparency, localization, and text expansion behavior.
+- Complete notification deep links and background/foreground continuity.
+- Validate offline, partial-data, interrupted-task, cancellation, and recovery experiences.
+- Complete Project WOW persisted setup session, verified improvement, Action Receipt, redacted summary, bounded resume/retry/rollback, and GUI/CLI/TUI contract parity where first-run interaction is supported.
+
+Exit Criteria:
+
+- No known keyboard trap or pointer-only release-critical action.
+- Accessibility Inspector and manual VoiceOver validation pass the approved state/workflow matrix.
+- All seven current locales pass representative narrow/expanded window, critical-sheet, and first-run validation.
+- Project WOW produces useful partial results when managers fail or the network is unavailable.
+- Every Project WOW action described as reversible has a verified rollback path.
+
+---
+
+## 0.22.x — Fit, Finish & Pre-1.0 Hardening (rc)
+
+Goal:
+
+- Complete the full integration matrix, especially multi-manager authority ordering, guarded OS updates, failure isolation, cancellation, and crash recovery.
+- Run multi-manager orchestration and cancellation stress tests.
+- Complete logging refinement, memory-safety audit, race-condition closure, and FFI stability validation.
+- Validate i18n key/placeholder/ICU correctness, localization fallback, and UI text expansion.
+- Optimize first useful render, window open, section switching, search response, scrolling, progress updates, and idle resource use against documented experience budgets.
+- Complete motion, progress, inactive-window, menu, focus, selection, and transition polish.
+- Run final custom-component exception, visual consistency, state-fixture, screenshot-regression, multi-display, appearance, localization, and failure-injection audits.
+- Complete final moderated usability and first-run validation before UI lock.
+
+Exit Criteria:
+
+- All core paths tested; no known race conditions, unhandled panics, or high-severity design-system, accessibility, workflow, or perceived-performance defects.
+- Stable FFI boundary and deterministic execution verified.
+- Users can identify current state, next action, action consequence, and recovery path on release-critical surfaces.
+- Design sign-off covers behavior and all state variants rather than only static ideal-state screenshots.
+- Product screenshots and end-user design documentation are updated only after UI lock.
 
 ---
 
@@ -701,6 +786,19 @@ Goal:
 - Authority ordering guaranteed
 - Guardrails enforced
 - Logs and diagnostics present
+- First-run Environment Brief demonstrates personalized value before manual configuration
+- First-run plans, actions, verification, recovery, and receipts preserve Helm safety and transparency guarantees
+- Native macOS window, menu, toolbar, Settings, navigation, selection, focus, and command behavior is consistent across release-critical surfaces
+- Core workflows meet the pre-1.0 native experience, accessibility, localization, failure-state, and perceived-performance bar
+
+Exit Criteria:
+
+- Project WOW base experience meets the pre-1.0 accessibility, offline, failure, and performance gates in `docs/app-design/PROJECT_WOW.md`.
+- Moderated users can identify what Helm discovered, changed, and left unchanged.
+- The production app meets the `docs/app-design/NATIVE_MACOS_EXPERIENCE.md` 1.0 release gate.
+- Core workflows pass moderated usability, keyboard, VoiceOver, localization, failure, and performance validation.
+- Important toolbar actions have appropriate application-menu and keyboard equivalents.
+- Custom controls have documented product value and complete macOS input/accessibility behavior.
 
 ---
 
@@ -732,12 +830,15 @@ Goal:
 - Add entitlement verification and safe degradation behavior
 - Define managed bootstrap configuration contract for fleet MDM deployments
 - Keep update authority decoupled from licensing authority by channel
+- Formalize how first-run initiative features map onto existing products so base value, safety, transparency, accessibility, offline behavior, and recovery never depend on Pro entitlement
+- Define entitlement-safe degradation for Helm Pro first-run enrichments and Helm Fleet managed first-run experiences
 
 Exit Criteria:
 
 - Distribution build matrix and channel authority mapping are documented and approved
 - Invalid/expired entitlements degrade predictably without unsafe behavior
 - Managed bootstrap configuration is documented and testable
+- Capability-gate tests prove base Helm remains a complete first-run experience without Pro or Fleet entitlement
 
 ---
 
@@ -751,6 +852,7 @@ Goal:
 - Matching engine: package name + version range -> severity + recommendations
 - SQLite-backed advisory cache with TTL-based refresh
 - UI: vulnerability status, severity badges, and recommended actions per package
+- Helm Pro recommendation enrichment using locally evaluated advisory results
 - Offline-capable with cached advisory data
 - Non-blocking: advisory checks never delay operations
 - No Helm-operated central database required
@@ -775,6 +877,7 @@ Goal:
 
 - Fingerprint sharing for anonymous package/environment signals
 - Known-fix lookup and recommendation enrichment
+- Optional Helm Pro enrichment for Advanced Conflict Radar, personal insights, and Blueprint recommendations; local base findings remain authoritative and available offline
 - Postgres-backed central system-of-record
 - Provider-portable HTTP API architecture
 - Optional stateless edge/API layer for advisory enrichment queries (Cloudflare Workers is acceptable but replaceable)
@@ -805,12 +908,16 @@ Goal:
 - Organization-level locale policies
 - Locale enforcement for managed environments
 - Multi-locale reporting and audit output
+- Helm Fleet Environment/Compliance Brief built from the same local finding contracts as base Helm
+- Organization baselines and managed first-run receipts that distinguish organization-controlled from user-controllable state
+- External management authority attribution for MDM/software-distribution-owned state
 
 Exit Criteria:
 
 - Policy precedence rules are deterministic and tested
 - Drift categories and compliance states are surfaced clearly
 - Offline behavior uses last valid policy snapshot without UI/executor instability
+- Fleet findings and drift identify the controlling external authority and never weaken MDM or core safety policy
 
 ---
 
@@ -822,12 +929,15 @@ Goal:
 - Policy approval workflow and rollback controls
 - Audit/event export integrations (SIEM/webhook/ticketing targets)
 - Role-based access model for business operators
+- Management-tool integration kits for PKG/configuration deployment, inventory/compliance collection, and audit export
+- Initial workflow certification targets: Jamf Pro, Microsoft Intune, Kandji, and Munki
 
 Exit Criteria:
 
 - Ring promotion and rollback flow verified end-to-end
 - Policy changes and enforcement actions produce attributable audit events
 - Enterprise controls preserve Helm safety and orchestration guarantees
+- Certified integrations preserve vendor assignment, rollout, and software-distribution authority without competing background mutation
 
 ---
 
@@ -870,12 +980,15 @@ Goal:
 - Deliver Helm Business as a separate fleet-focused binary and lifecycle
 - Keep one shared core codebase while separating consumer and fleet release operations
 - Integrate business policy/compliance capabilities without collapsing architecture boundaries
+- Deliver the managed first-run experience under the Helm Fleet capability model
+- Preserve coexistence with incumbent MDM, package distribution, self-service, inventory, and compliance systems
 
 Exit Criteria:
 
 - Fleet product boundaries are explicit and documented
 - Fleet release lifecycle is independent from consumer release cadence
 - Business operational model aligns with enterprise policy and compliance requirements
+- Fleet onboarding can be preconfigured by management authority while still providing employees a readable local receipt
 
 ---
 
@@ -886,9 +999,11 @@ Goal:
 - Deliver PKG-based enterprise deployment flow for Helm Business
 - Deliver MDM-ready managed bootstrap and admin-controlled update workflows
 - Deliver offline organizational license-file handling for fleet environments
+- Validate vendor-neutral managed preferences/ManagedApp configuration, CLI JSON/exit-code, inventory attribute, compliance discovery, and local audit-export contracts
 
 Exit Criteria:
 
 - PKG + MDM deployment lifecycle is documented and validated as the fleet distribution path
 - Offline license file model is documented with fail-safe behavior
 - Fleet update flow remains admin-controlled and decoupled from consumer update channels
+- Jamf Pro, Intune, Kandji, and Munki deployment/configuration/inventory paths have documented validation matrices

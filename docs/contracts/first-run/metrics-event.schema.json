@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/metrics-event.schema.json",
+  "title": "Local First-Run Metrics Event",
+  "description": "A bounded local measurement record. This contract defines no telemetry transport and prohibits automatic upload.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "eventName": {
+      "type": "string",
+      "enum": ["session_started", "first_personalized_result", "brief_completed", "plan_viewed", "plan_approved", "action_submitted", "action_verified", "action_failed_verification", "session_cancelled", "session_interrupted", "session_completed"]
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "privacyClass": { "type": "string", "const": "local_only" },
+    "retentionDays": { "type": "integer", "minimum": 0, "maximum": 365, "default": 30 },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "elapsedMilliseconds": { "type": "integer", "minimum": 0 },
+        "actionCount": { "type": "integer", "minimum": 0 },
+        "currentCoverageCount": { "type": "integer", "minimum": 0 },
+        "incompleteCoverageCount": { "type": "integer", "minimum": 0 },
+        "offline": { "type": "boolean" },
+        "resultClass": { "type": "string", "enum": ["no_changes", "verified", "partial", "failed_verification", "cancelled", "interrupted", "failed", "deferred"] }
+      }
+    }
+  },
+  "required": ["schemaVersion", "eventId", "sessionId", "eventName", "timestamp", "privacyClass", "retentionDays", "payload"]
+}

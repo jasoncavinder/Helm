@@ -1,5 +1,7 @@
 # Helm UI Redesign Concept
 
+Status: Integrated current-experience baseline and research input. The canonical pre-1.0 redesign direction is `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`.
+
 ## Design Philosophy: Quiet Flight Deck
 
 Helm should feel like a flight deck for local system hygiene:

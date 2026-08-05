@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, DatabaseName, OptionalExtension, params};
 
 use crate::models::{
     AutomationLevel, CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo,
@@ -23,10 +23,14 @@ use crate::persistence::{
     PersistenceResult, PinStore, SearchCacheStore, TaskStore,
 };
 use crate::security_advisory::{AdvisoryCacheRecord, AdvisoryCacheStore};
-use crate::sqlite::migrations::{SqliteMigration, current_schema_version, migration, migrations};
+use crate::sqlite::migrations::{
+    SqliteMigration, current_schema_version, migration, migration_definition_checksum_for_version,
+    migrations, validate_migration_manifest,
+};
 use crate::versioning::normalize_package_family_key;
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
+const MIGRATION_CHECKSUM_SCHEMA_VERSION: i64 = 20;
 pub const BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY: &str = "bundled:helm";
 
 pub struct SqliteStore {
@@ -102,6 +106,9 @@ impl MigrationStore for SqliteStore {
     }
 
     fn apply_migration(&self, target_version: i64) -> PersistenceResult<()> {
+        validate_migration_manifest()
+            .map_err(|error| storage_error_text("apply_migration", error))?;
+
         if target_version < 0 || target_version > current_schema_version() {
             return Err(storage_error_text(
                 "apply_migration",
@@ -119,9 +126,29 @@ impl MigrationStore for SqliteStore {
         self.with_connection("apply_migration", |connection| {
             ensure_migrations_table(connection)?;
             let current_version = read_current_version(connection)?;
+            let reconciliation_required = replaced_migration_reconciliation_required(
+                connection,
+                current_version,
+                target_version,
+            )?;
+            if current_version > 0 && (target_version > current_version || reconciliation_required)
+            {
+                let backup_path =
+                    create_pre_migration_backup(connection, &self.database_path, current_version)?;
+                tracing::info!(
+                    path = %backup_path.display(),
+                    from_version = current_version,
+                    target_version,
+                    "created verified pre-migration SQLite backup"
+                );
+            }
             reconcile_replaced_migrations(connection, current_version, target_version)?;
+            validate_applied_migration_identities(connection, current_version)?;
 
             if target_version == current_version {
+                if target_version >= MIGRATION_CHECKSUM_SCHEMA_VERSION {
+                    backfill_migration_checksums(connection, target_version)?;
+                }
                 return Ok(());
             }
 
@@ -139,8 +166,19 @@ impl MigrationStore for SqliteStore {
                 }
             }
 
+            if target_version >= MIGRATION_CHECKSUM_SCHEMA_VERSION {
+                backfill_migration_checksums(connection, target_version)?;
+            }
+
             Ok(())
-        })
+        })?;
+
+        if target_version == 0 {
+            remove_pre_migration_backups(&self.database_path).map_err(|error| {
+                storage_error_text("remove_migration_backups", error.to_string())
+            })?;
+        }
+        Ok(())
     }
 }
 
@@ -2318,7 +2356,8 @@ fn ensure_migrations_table(connection: &Connection) -> rusqlite::Result<()> {
 CREATE TABLE IF NOT EXISTS helm_schema_migrations (
     version INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
-    applied_at_unix INTEGER NOT NULL
+    applied_at_unix INTEGER NOT NULL,
+    definition_checksum TEXT
 );
 ",
     )?;
@@ -2342,6 +2381,276 @@ fn read_current_version(connection: &Connection) -> rusqlite::Result<i64> {
         [],
         |row| row.get(0),
     )
+}
+
+fn replaced_migration_reconciliation_required(
+    connection: &Connection,
+    current_version: i64,
+    target_version: i64,
+) -> rusqlite::Result<bool> {
+    const REPLACED_MIGRATION_VERSION: i64 = 17;
+    if current_version < REPLACED_MIGRATION_VERSION || target_version < REPLACED_MIGRATION_VERSION {
+        return Ok(false);
+    }
+    let recorded_name: Option<String> = connection
+        .query_row(
+            &format!("SELECT name FROM {MIGRATIONS_TABLE} WHERE version = ?1"),
+            [REPLACED_MIGRATION_VERSION],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(recorded_name.as_deref() == Some("add_advisory_cache"))
+}
+
+fn create_pre_migration_backup(
+    connection: &Connection,
+    database_path: &Path,
+    current_version: i64,
+) -> rusqlite::Result<PathBuf> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?
+        .as_nanos();
+    let file_name = database_path
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new("helm.db"))
+        .to_string_lossy();
+    let parent = database_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let backup_path = parent.join(format!(
+        "{file_name}.pre-migration-v{current_version}-{timestamp}.backup"
+    ));
+    let partial_path = backup_path.with_extension("backup.partial");
+
+    let result = (|| {
+        create_private_file(&partial_path)?;
+        connection.backup(DatabaseName::Main, &partial_path, None)?;
+        let backup = Connection::open(&partial_path)?;
+        let integrity: String = backup.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+        if integrity != "ok" {
+            return Err(storage_error_sqlite(&format!(
+                "pre-migration backup integrity check failed: {integrity}"
+            )));
+        }
+        drop(backup);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&partial_path, fs::Permissions::from_mode(0o600))
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+        }
+        fs::rename(&partial_path, &backup_path)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+        if let Err(error) = prune_pre_migration_backups(database_path, 3) {
+            tracing::warn!(
+                error = %error,
+                "failed to prune old pre-migration SQLite backups"
+            );
+        }
+        Ok(backup_path.clone())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&partial_path);
+    }
+    result
+}
+
+fn create_private_file(path: &Path) -> rusqlite::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(path)
+        .map(drop)
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))
+}
+
+fn pre_migration_backup_paths(database_path: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let parent = database_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let prefix = format!(
+        "{}.pre-migration-",
+        database_path
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("helm.db"))
+            .to_string_lossy()
+    );
+    let mut backups = fs::read_dir(parent)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name().is_some_and(|name| {
+                let name = name.to_string_lossy();
+                name.starts_with(&prefix)
+                    && (name.ends_with(".backup") || name.ends_with(".backup.partial"))
+            })
+        })
+        .collect::<Vec<_>>();
+    backups.sort_by(|left, right| {
+        let left_modified = fs::metadata(left)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH);
+        let right_modified = fs::metadata(right)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH);
+        left_modified
+            .cmp(&right_modified)
+            .then_with(|| left.cmp(right))
+    });
+    Ok(backups)
+}
+
+fn prune_pre_migration_backups(database_path: &Path, retain: usize) -> std::io::Result<()> {
+    let backups = pre_migration_backup_paths(database_path)?;
+    let (partial, completed): (Vec<_>, Vec<_>) = backups
+        .into_iter()
+        .partition(|path| path.to_string_lossy().ends_with(".backup.partial"));
+    for backup in partial {
+        fs::remove_file(backup)?;
+    }
+    let remove_count = completed.len().saturating_sub(retain);
+    for backup in completed.into_iter().take(remove_count) {
+        fs::remove_file(backup)?;
+    }
+    Ok(())
+}
+
+fn remove_pre_migration_backups(database_path: &Path) -> std::io::Result<()> {
+    for backup in pre_migration_backup_paths(database_path)? {
+        fs::remove_file(backup)?;
+    }
+    Ok(())
+}
+
+fn migration_checksum_column_exists(connection: &Connection) -> rusqlite::Result<bool> {
+    let mut statement = connection.prepare("PRAGMA table_info(helm_schema_migrations)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    for column in columns {
+        if column? == "definition_checksum" {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn validate_applied_migration_identities(
+    connection: &Connection,
+    current_version: i64,
+) -> rusqlite::Result<()> {
+    if current_version < 0 || current_version > current_schema_version() {
+        return Err(storage_error_sqlite(&format!(
+            "database migration version {current_version} is outside the supported range"
+        )));
+    }
+
+    let has_checksums = migration_checksum_column_exists(connection)?;
+    let records = if has_checksums {
+        let mut statement = connection.prepare(&format!(
+            "SELECT version, name, definition_checksum FROM {MIGRATIONS_TABLE} ORDER BY version"
+        ))?;
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    } else {
+        let mut statement = connection.prepare(&format!(
+            "SELECT version, name FROM {MIGRATIONS_TABLE} ORDER BY version"
+        ))?;
+        statement
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, None))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+
+    if i64::try_from(records.len()).ok() != Some(current_version) {
+        return Err(storage_error_sqlite(
+            "database migration ledger is not contiguous",
+        ));
+    }
+
+    for (index, (version, name, checksum)) in records.iter().enumerate() {
+        let expected_version = i64::try_from(index + 1)
+            .map_err(|_| storage_error_sqlite("database migration ledger is too large"))?;
+        if *version != expected_version {
+            return Err(storage_error_sqlite(&format!(
+                "database migration ledger is missing version {expected_version}"
+            )));
+        }
+        let expected = migration(*version).ok_or_else(|| {
+            storage_error_sqlite(&format!(
+                "database contains unknown migration version {version}"
+            ))
+        })?;
+        if name != expected.name {
+            return Err(storage_error_sqlite(&format!(
+                "unexpected migration identity for version {version}: '{name}'"
+            )));
+        }
+        if has_checksums
+            && current_version >= MIGRATION_CHECKSUM_SCHEMA_VERSION
+            && checksum.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(storage_error_sqlite(&format!(
+                "missing migration checksum for version {version}"
+            )));
+        }
+        if let Some(checksum) = checksum.as_deref().filter(|value| !value.is_empty()) {
+            let expected_checksum = migration_definition_checksum_for_version(*version)
+                .map_err(|error| storage_error_sqlite(&error))?;
+            if checksum != expected_checksum {
+                return Err(storage_error_sqlite(&format!(
+                    "unexpected migration checksum for version {version}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn backfill_migration_checksums(
+    connection: &mut Connection,
+    current_version: i64,
+) -> rusqlite::Result<()> {
+    let transaction = connection.transaction()?;
+    backfill_migration_checksums_in_transaction(&transaction, current_version)?;
+    transaction.commit()?;
+    validate_applied_migration_identities(connection, current_version)
+}
+
+fn backfill_migration_checksums_in_transaction(
+    transaction: &rusqlite::Transaction<'_>,
+    current_version: i64,
+) -> rusqlite::Result<()> {
+    for version in 1..=current_version {
+        let checksum = migration_definition_checksum_for_version(version)
+            .map_err(|error| storage_error_sqlite(&error))?;
+        transaction.execute(
+            &format!(
+                "UPDATE {MIGRATIONS_TABLE}
+                 SET definition_checksum = ?2
+                 WHERE version = ?1
+                   AND (definition_checksum IS NULL OR definition_checksum = '')"
+            ),
+            (version, checksum),
+        )?;
+    }
+    Ok(())
 }
 
 fn reconcile_replaced_migrations(
@@ -2399,13 +2708,29 @@ fn apply_up_migration(
 ) -> rusqlite::Result<()> {
     let transaction = connection.transaction()?;
     execute_batch_tolerant(&transaction, migration.up_sql)?;
-    transaction.execute(
-        &format!(
-            "INSERT INTO {MIGRATIONS_TABLE} (version, name, applied_at_unix)
-             VALUES (?1, ?2, strftime('%s', 'now'))"
-        ),
-        (migration.version, migration.name),
-    )?;
+    if migration_checksum_column_exists(&transaction)? {
+        let checksum = migration_definition_checksum_for_version(migration.version)
+            .map_err(|error| storage_error_sqlite(&error))?;
+        transaction.execute(
+            &format!(
+                "INSERT INTO {MIGRATIONS_TABLE}
+                    (version, name, applied_at_unix, definition_checksum)
+                 VALUES (?1, ?2, strftime('%s', 'now'), ?3)"
+            ),
+            (migration.version, migration.name, checksum),
+        )?;
+    } else {
+        transaction.execute(
+            &format!(
+                "INSERT INTO {MIGRATIONS_TABLE} (version, name, applied_at_unix)
+                 VALUES (?1, ?2, strftime('%s', 'now'))"
+            ),
+            (migration.version, migration.name),
+        )?;
+    }
+    if migration.version == MIGRATION_CHECKSUM_SCHEMA_VERSION {
+        backfill_migration_checksums_in_transaction(&transaction, migration.version)?;
+    }
     transaction.commit()?;
     Ok(())
 }

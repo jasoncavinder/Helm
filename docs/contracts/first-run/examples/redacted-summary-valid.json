@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0.0",
+  "sessionId": "660e8400-e29b-41d4-a716-446655440001",
+  "redactionClass": "strict",
+  "sessionStatus": "partially_verified",
+  "metrics": {
+    "totalActions": 1,
+    "verifiedActions": 1,
+    "noChangeActions": 0,
+    "failedVerificationActions": 0,
+    "failedActions": 0,
+    "cancelledOrInterruptedActions": 0,
+    "deferredActions": 0,
+    "managedActions": 0,
+    "durationSeconds": 359
+  },
+  "environment": {
+    "osFamily": "macOS",
+    "architecture": "arm64"
+  }
+}

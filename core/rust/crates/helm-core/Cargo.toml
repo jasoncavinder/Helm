@@ -6,7 +6,7 @@ license = "UNLICENSED"
 description = "Helm core domain models and manager adapter contracts"
 
 [dependencies]
-rusqlite = { version = "0.33", features = ["bundled"] }
+rusqlite = { version = "0.33", features = ["backup", "bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_jcs = "0.2.0"
 serde_json = "1"

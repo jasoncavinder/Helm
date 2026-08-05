@@ -128,6 +128,10 @@ jobs:
           toolchain: 1.93.1
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
+      - name: Run SQLite migration compatibility gate
+        if: ${{ env.VERIFY_ONLY != 'true' }}
+        run: scripts/ci/check_sqlite_migration_compatibility.sh
+
       - name: Build CLI binaries (arm64, x86_64, universal)
         if: ${{ env.VERIFY_ONLY != 'true' }}
         env:

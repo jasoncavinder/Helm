@@ -281,15 +281,61 @@ Settings include:
 
 ---
 
-### **8) Onboarding Wizard**
+### **8) First-Run Value Experience**
 
-- Detect available managers
-- Present safety policy defaults
-- Choose auto-update preferences
+Helm's first-run experience must demonstrate personalized value before requiring manual configuration.
+
+Internal design initiative: **Project WOW**. This is a planning label for creating the initial first-use value moment, not a product or edition.
+
+Base Helm requirements:
+
+- Begin staged local discovery after any required license gate.
+- Present a streaming Environment Brief covering detected managers, provenance, eligibility, package state, and actionable local findings.
+- State clearly what Helm inspected and whether network access or mutation occurred.
+- Derive and present conservative defaults without forcing manager-selection or generic-settings pages; do not persist even Helm-local preference changes without the applicable reviewed consent.
+- Require plan preview and explicit confirmation before manager/environment changes, installs, upgrades, shell edits, CLI integration, cleanup, or privileged work.
+- Offer at least one safe, verified improvement when an applicable action exists.
+- Persist recovery state and an Action Receipt for Helm-initiated changes.
+- Remain useful offline and under partial manager failure.
+- Provide GUI/CLI/TUI contract parity for findings, plans, verification, and receipts where the surface supports first-run interaction.
+- Replace mandatory feature tours with optional contextual guidance.
+- Treat full keyboard, VoiceOver, localization, and Reduce Motion behavior as release requirements.
+
+Product/tier feature allocation:
+
+- The first-run value reveal, safety-critical findings, transparency, recovery, offline behavior, and redacted local summary remain part of base Helm.
+- Helm Pro may add advanced personal optimization, history, reusable personal Blueprints, and advisory-enriched recommendations.
+- Helm Fleet adds managed bootstrap, organization policy/baselines, drift/compliance, rollout, approvals, and audit while remaining subordinate to existing MDM and software-distribution authority.
+
+Canonical design and sequencing: `docs/app-design/PROJECT_WOW.md`.
+
+Closed v0.18 definition artifacts: `docs/architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md`, `docs/architecture/BOOTSTRAP_FEASIBILITY_MATRIX.md`, `docs/contracts/first-run/`, and the Native Mac first-run/state/research artifacts linked from the canonical design.
 
 ---
 
-### 9) Upgrade Preview & Dry-Run
+### 9) Native macOS Experience Quality
+
+Helm's production app must feel and behave like a high-quality macOS application rather than a cross-platform dashboard hosted in a Mac window.
+
+Pre-1.0 requirements:
+
+- Prefer native window, titlebar, toolbar, sidebar, split-view, table/list, inspector, menu, Settings, sheet, alert, focus, selection, and command behavior.
+- Make important commands available through appropriate application menus and keyboard shortcuts, not only custom buttons.
+- Keep the menu bar surface glanceable and use the Control Center for deeper operational work.
+- Revalidate information architecture, workflow sequencing, content, and progressive disclosure rather than limiting redesign work to styling.
+- Reduce unnecessary custom cards, gradients, materials, shadows, radii, and controls when system structure communicates more clearly.
+- Preserve selection, focus, filters, scroll position, task progress, and recovery context through expected window and background-task transitions.
+- Cover loading, success, empty, partial, failure, blocked, offline, cancellation, verification, and recovery states for release-critical workflows.
+- Pass keyboard-only, VoiceOver, increased-contrast, reduced-motion, reduced-transparency, localization, text-expansion, multi-display, and perceived-performance gates.
+- Keep SwiftUI presentation-only; design work must not move orchestration or policy out of service/core boundaries.
+
+Canonical design and sequencing: `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`.
+
+Approved v0.18 target: Health, Updates, Packages, Activity, and Sources; separate Settings; contextual diagnostics; command-based search. The audit, component inventory, IA, prototypes, state matrix, budgets, research protocol, and migration map are planning artifacts, not shipped UI behavior.
+
+---
+
+### 10) Upgrade Preview & Dry-Run
 
 Before executing bulk upgrades, Helm must provide:
 
@@ -305,7 +351,7 @@ Dry-run mode must be supported for CLI and UI.
 
 ---
 
-### 10) Helm Self-Update
+### 11) Helm Self-Update
 
 Helm must support self-updating via a signed update mechanism.
 
@@ -326,7 +372,7 @@ Self-update behavior must not depend on Homebrew and must remain decoupled from 
 
 ---
 
-### 11) Diagnostics & Transparency
+### 12) Diagnostics & Transparency
 
 Helm must provide:
 
@@ -339,7 +385,7 @@ Control planes must be transparent.
 
 ---
 
-### 12) Enterprise Managed Mode (Post-1.0 Expansion)
+### 13) Enterprise Managed Mode (Post-1.0 Expansion)
 
 Helm Business (fleet product) adds centrally managed operation without collapsing Helm's core architecture:
 
@@ -386,8 +432,9 @@ This scope is planned for 1.x and is not a 1.0 release gate.
 5. `0.9.x` internationalization foundation (completed): centralized locale loading, key-based UI string accessors, locale preference persistence.
 6. `0.10.x` core language manager delivery (completed): npm/pipx/pip/cargo/cargo-binstall end-to-end plus hardening baseline.
 7. `0.11.x-0.12.x` language + localization expansion (completed): extended language adapters (pnpm/yarn/poetry/rubygems/bundler), non-English locale hardening, upgrade preview, dry-run.
-8. `0.13.x-0.19.x` UX/platform, reliability & hardening (in progress): UI/UX analysis and redesign, platform managers (docker/xcode), self-update, diagnostics, security groundwork staging (`0.18.x`), and stress/hardening (`0.19.x`).
-9. `1.0.0` stabilization: release criteria closure, documentation lock, and production readiness sign-off.
+8. `0.13.x-0.18.x` UX/platform, reliability & groundwork (completed): initial UI/UX redesign, platform managers (docker/xcode), self-update, diagnostics, doctor/repair, local security staging, and planning-only pre-1.0 design definition.
+9. `0.19.x-0.22.x` native macOS experience and release hardening (planned): native foundation and first-run value, core workflow redesign, accessibility/system integration, then fit/finish, stress, and design validation.
+10. `1.0.0` stabilization: release criteria closure, documentation lock, native-experience sign-off, and production readiness sign-off.
 
 ---
 

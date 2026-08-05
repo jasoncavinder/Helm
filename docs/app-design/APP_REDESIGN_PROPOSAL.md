@@ -1,8 +1,12 @@
 # Helm App Redesign Proposal
 
+Status: Historical visual-refinement proposal; largely integrated into the current UI baseline
+
+Current direction: `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`. That initiative supersedes this proposal wherever this document limits changes to visual styling or preserves the existing layout and interaction model.
+
 ## Scope and Constraints
 
-This proposal refines visual design only. It does not re-architect layout, flow, or information architecture.
+This proposal recorded the earlier visual-only refinement pass. It did not re-architect layout, flow, or information architecture.
 
 Constraints honored:
 - No major layout changes
@@ -16,7 +20,7 @@ Design intent:
 - Professional
 - Native to macOS
 
-## Current Baseline (Observed)
+## Historical Baseline (Observed at Proposal Time)
 
 Current implementation strengths:
 - Strong three-region structure and operational hierarchy in Control Center
@@ -220,8 +224,8 @@ Dark mode refinements:
 - Respect Reduce Motion by keeping transitions opacity/position-light and 180-240ms ease-out.
 - Maintain keyboard and VoiceOver semantics already in place.
 
-## Implementation Notes
+## Historical Implementation Notes
 
-- This is an incremental visual refactor, not a layout redesign.
+- This was an incremental visual refactor, not a layout redesign. That constraint no longer applies to the canonical pre-1.0 initiative.
 - Recommended sequence: token layer first, then button/card standardization, then per-section polish.
 - Validate on both light and dark appearances in Control Center and popover before rollout.
