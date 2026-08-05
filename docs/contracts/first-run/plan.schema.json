@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/plan.schema.json",
+  "title": "Recommendation and Reviewed Plan",
+  "description": "A revision-bound, deterministically ordered plan of finite typed Helm actions. It never contains commands, argument vectors, scripts, or executable substitutions.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "planId": { "type": "string", "format": "uuid" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "briefId": { "type": "string", "format": "uuid" },
+    "briefRevision": { "type": "integer", "minimum": 1 },
+    "policyRevision": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "state": {
+      "type": "string",
+      "enum": ["proposed", "reviewed", "approved", "invalidated", "revalidated"]
+    },
+    "actions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/plannedAction" }
+    }
+  },
+  "required": ["schemaVersion", "planId", "sessionId", "briefId", "briefRevision", "policyRevision", "createdAt", "state", "actions"],
+  "$defs": {
+    "localizationArgs": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "integer", "boolean"] }
+    },
+    "plannedAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actionId": { "type": "string", "format": "uuid", "description": "Plan-instance identity." },
+        "typedActionId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)+$",
+          "description": "Identifier resolved by a finite compiled Helm action/planner registry."
+        },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "dependsOn": { "type": "array", "items": { "type": "string", "format": "uuid" }, "uniqueItems": true },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "type": "string", "enum": ["helm", "manager", "package", "system"] },
+            "identifier": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "identifier"]
+        },
+        "mutationClass": {
+          "type": "string",
+          "enum": ["read_only", "helm_preference", "user_environment", "manager_or_package", "privileged_system"]
+        },
+        "requiresNetwork": { "type": "boolean" },
+        "requiresPrivilege": { "type": "boolean" },
+        "impactKey": { "type": "string", "minLength": 1 },
+        "impactArgs": { "$ref": "#/$defs/localizationArgs" },
+        "preVerificationStatus": { "type": "string", "enum": ["pending", "already_satisfied", "applicable", "blocked", "failed"] },
+        "verificationMethodId": { "type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)+$" },
+        "expectedStateKey": { "type": "string", "minLength": 1 },
+        "retryBehavior": { "type": "string", "enum": ["revalidate_then_retry", "manual_only", "not_applicable"] },
+        "rollbackEligible": { "type": "boolean" },
+        "recoveryLimitsKey": { "type": "string", "minLength": 1 }
+      },
+      "required": ["actionId", "typedActionId", "sequence", "dependsOn", "target", "mutationClass", "requiresNetwork", "requiresPrivilege", "impactKey", "impactArgs", "preVerificationStatus", "verificationMethodId", "expectedStateKey", "retryBehavior", "rollbackEligible", "recoveryLimitsKey"]
+    }
+  }
+}

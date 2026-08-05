@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/redacted-summary.schema.json",
+  "title": "Redacted Summary",
+  "description": "A strict aggregate suitable for explicit local copy/export. It excludes usernames, hostnames, serials, paths, package names, organization identifiers, and raw diagnostics.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "redactionClass": { "type": "string", "const": "strict" },
+    "sessionStatus": {
+      "type": "string",
+      "enum": ["no_changes", "verified", "partially_verified", "failed_verification", "cancelled", "interrupted", "failed", "rolled_back"]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "totalActions": { "type": "integer", "minimum": 0 },
+        "verifiedActions": { "type": "integer", "minimum": 0 },
+        "noChangeActions": { "type": "integer", "minimum": 0 },
+        "failedVerificationActions": { "type": "integer", "minimum": 0 },
+        "failedActions": { "type": "integer", "minimum": 0 },
+        "cancelledOrInterruptedActions": { "type": "integer", "minimum": 0 },
+        "deferredActions": { "type": "integer", "minimum": 0 },
+        "managedActions": { "type": "integer", "minimum": 0 },
+        "durationSeconds": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["totalActions", "verifiedActions", "noChangeActions", "failedVerificationActions", "failedActions", "cancelledOrInterruptedActions", "deferredActions", "managedActions"]
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "osFamily": { "type": "string", "const": "macOS" },
+        "architecture": { "type": "string", "enum": ["arm64", "x86_64"] }
+      },
+      "required": ["osFamily", "architecture"]
+    }
+  },
+  "required": ["schemaVersion", "sessionId", "redactionClass", "sessionStatus", "metrics", "environment"]
+}

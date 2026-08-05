@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0.0",
+  "briefId": "550e8400-e29b-41d4-a716-446655440000",
+  "revision": 3,
+  "generatedAt": "2026-08-04T12:00:00Z",
+  "system": {
+    "osVersion": "14.5.0",
+    "architecture": "arm64",
+    "activeShell": "zsh",
+    "distributionChannel": "developer_id",
+    "updateAuthority": "sparkle"
+  },
+  "discoveredManagers": [
+    {
+      "manager": "homebrew_formula",
+      "detected": true,
+      "eligibility": "eligible",
+      "managementState": "ready",
+      "provenance": "homebrew",
+      "freshness": "current"
+    },
+    {
+      "manager": "mise",
+      "detected": true,
+      "eligibility": "eligible",
+      "managementState": "setup_required",
+      "provenance": "mise",
+      "freshness": "current"
+    }
+  ],
+  "coverage": {
+    "intendedManagerCount": 3,
+    "currentManagerCount": 2,
+    "cachedManagerCount": 0,
+    "failedManagers": ["macports"],
+    "cancelledManagers": [],
+    "deferredManagers": []
+  },
+  "observationClass": "local_only"
+}

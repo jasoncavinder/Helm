@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0.0",
+  "policyId": "fleet-bootstrap-default",
+  "revision": 4,
+  "issuedAt": "2026-08-04T10:00:00Z",
+  "expiresAt": "2026-08-11T10:00:00Z",
+  "authority": "fleet_policy",
+  "verification": {
+    "method": "locally_verified_signature",
+    "keyId": "fleet-policy-2026-01",
+    "signature": "base64-signature-placeholder-for-contract-fixture"
+  },
+  "enforcementMode": "required",
+  "policies": {
+    "allowNetwork": true,
+    "allowPrivilegeRequest": false,
+    "allowUserOverride": false,
+    "requireReceiptRetention": true
+  },
+  "immutableSafetyMinimums": {
+    "typedActionsOnly": true,
+    "revalidateBeforeApply": true,
+    "postVerifyBeforeSuccess": true,
+    "honestRollbackLabels": true
+  }
+}

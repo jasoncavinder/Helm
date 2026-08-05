@@ -1,6 +1,6 @@
 # Project WOW — First-Run Value Initiative
 
-Status: Approved internal planning direction
+Status: approved internal direction; v0.18 contract/prototype artifact closure complete; runtime implementation deferred
 Scope: Internal first-run design initiative with features allocated across existing product plans
 Last updated: 2026-08-04
 
@@ -16,6 +16,15 @@ The experience must demonstrate useful, trustworthy, personalized value before a
 - why Helm is safer or faster than managing each tool independently
 
 Project WOW is an internal initiative name for creating Helm's initial first-use value moment. It is not a product, edition, entitlement, pricing tier, or user-facing brand. User-facing language should follow Helm's existing brand voice: calm, technical, deterministic, and professional.
+
+Planning artifacts:
+
+- Architecture/state semantics: `docs/architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md`
+- Environment Brief, setup-session, reviewed-plan, Action Receipt, redaction, metrics, and managed-bootstrap schemas: `docs/contracts/first-run/`
+- Current executable-route audit: `docs/architecture/BOOTSTRAP_FEASIBILITY_MATRIX.md`
+- Native first-run prototype: `docs/app-design/NATIVE_MACOS_PROTOTYPES.md`
+- Cross-surface state presentation: `docs/app-design/NATIVE_MACOS_STATE_MATRIX.md`
+- Owner-run research and accessibility protocol: `docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md`
 
 ## 2. North-Star Experience
 
@@ -127,19 +136,19 @@ The brief prioritizes concrete findings over a synthetic score:
 
 Project WOW removes manager-selection and generic-settings pages from the mandatory path.
 
-Helm may apply reversible local defaults automatically and disclose them in a receipt:
+Helm may derive and present conservative defaults automatically without persisting a change. Persisting a Helm preference or changing manager enablement, executable selection, shell files, CLI integration, packages, managers, or system state requires the applicable reviewed plan and consent. The Environment Brief and receipt disclose assumed defaults, persisted choices, and unchanged environment state.
 
-- monitor eligible detected managers
+- propose monitoring eligible detected managers
 - keep ineligible managers visible but disabled
-- enforce canonical authority ordering
+- use canonical authority ordering for every proposed/executed plan
 - use system locale, contrast, and motion preferences
-- select an executable only when the choice is unambiguous under core policy
+- propose an executable only when the choice is unambiguous under core policy
 - retain PATH-default behavior when provenance is ambiguous
 - leave destructive cleanup and unattended mutations disabled
 - keep guarded OS actions behind explicit confirmation
 - keep product analytics disabled unless the user opts in
 
-The user can edit defaults without being required to review each one.
+The user can customize proposed defaults without entering a mandatory generic-settings wizard.
 
 ### 4.5 Goal-based personalization
 
@@ -301,7 +310,7 @@ helm setup scan --offline
 helm setup plan --profile maintain
 helm setup apply --plan <plan-id> --yes
 helm setup resume
-helm setup rollback <session-id>
+helm setup receipt <receipt-id> --redacted
 ```
 
 Contract requirements:
@@ -319,7 +328,8 @@ Every Project WOW mutation belongs to a persisted setup session.
 
 After interruption, offer:
 
-- resume from the next unverified step
+- reconcile persisted and currently observed state
+- resume only still-valid unfinished work after explicit review and revalidation
 - retry the failed step
 - keep successful changes
 - roll back reversible changes
@@ -545,14 +555,18 @@ Fleet-specific indicators:
 
 ### Internal initiative phase 0 — Definition closure immediately after v0.18.1
 
-- approve this charter and product/tier feature allocation
-- define Environment Brief, setup-session, Action Receipt, and redaction schemas
-- define discovery/privacy classification and Fleet managed-configuration contract
-- prototype GUI and CLI flows
-- create first-run usability and accessibility protocols
-- define local metrics events without adding telemetry transport
+- [x] approve this charter and product/tier feature allocation
+- [x] define Environment Brief, setup-session, Action Receipt, and redaction schemas (`docs/contracts/first-run/`)
+- [x] define discovery/privacy classification (`docs/architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md`)
+- [x] define Fleet managed-configuration contract (`docs/contracts/first-run/FLEET_BOUNDARY.md`)
+- [x] prototype GUI and CLI flows (`docs/app-design/NATIVE_MACOS_PROTOTYPES.md` and `docs/contracts/first-run/CLI_TUI_CONTRACT.md`)
+- [x] create first-run usability and accessibility protocols (`docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md`)
+- [x] define local metrics events without adding telemetry transport (`docs/contracts/first-run/metrics-event.schema.json`)
+- [x] bootstrap feasibility and typed-action matrix (`docs/architecture/BOOTSTRAP_FEASIBILITY_MATRIX.md`)
 
-This planning/prototype closure does not reopen the released `v0.18.1` runtime scope or require another `0.18.x` publication. It must complete before production `0.19.x` first-run implementation begins.
+This completed planning/prototype closure does not reopen the released `v0.18.1` runtime scope or require another `0.18.x` publication. Production `0.19.x` first-run implementation begins from these contracts.
+
+Artifact closure is complete. The human moderated-study checkpoint remains explicitly open: no participant session or result is claimed by these documents, and v0.20 workflow sign-off/v0.22 UI lock still require owner-run evidence.
 
 ### Internal initiative phase 1 — Base value reveal foundation in 0.19.x
 

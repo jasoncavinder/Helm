@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0.0",
+  "planId": "770e8400-e29b-41d4-a716-446655440002",
+  "sessionId": "660e8400-e29b-41d4-a716-446655440001",
+  "briefId": "550e8400-e29b-41d4-a716-446655440000",
+  "briefRevision": 3,
+  "policyRevision": "local-policy-12",
+  "createdAt": "2026-08-04T12:02:00Z",
+  "state": "reviewed",
+  "actions": [
+    {
+      "actionId": "880e8400-e29b-41d4-a716-446655440003",
+      "typedActionId": "manager.clear_selected_executable_override",
+      "sequence": 0,
+      "dependsOn": [],
+      "target": {
+        "kind": "manager",
+        "identifier": "mise"
+      },
+      "mutationClass": "helm_preference",
+      "requiresNetwork": false,
+      "requiresPrivilege": false,
+      "impactKey": "setup.plan.clear_selected_executable.impact",
+      "impactArgs": {},
+      "preVerificationStatus": "applicable",
+      "verificationMethodId": "manager.detect_selected_executable",
+      "expectedStateKey": "setup.expected.path_default",
+      "retryBehavior": "revalidate_then_retry",
+      "rollbackEligible": true,
+      "recoveryLimitsKey": "setup.recovery.preference_snapshot_only",
+      "command": "payload-selected executable content"
+    }
+  ]
+}

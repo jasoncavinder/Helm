@@ -1,6 +1,6 @@
 # Native Mac Experience Initiative
 
-Status: Approved internal planning direction
+Status: approved internal direction; v0.18 design-definition artifact closure complete; runtime migration deferred
 Scope: Pre-1.0 product, interaction, and visual design maturation for the macOS app
 Last updated: 2026-08-04
 
@@ -11,6 +11,19 @@ Make Helm feel unmistakably like a high-quality macOS application: capable, calm
 The current app is clean, functional, and professional, but its design has grown through feature delivery and incremental custom styling. The next stage is broader than a visual refresh. It must reconsider how Helm organizes information, uses windows and menus, presents controls, responds to keyboard and pointer input, explains system state, and earns trust during long-running or risky work.
 
 This is an internal design initiative, not a product, edition, entitlement, or user-facing brand. Its quality requirements apply to base Helm and to every future Helm Pro or Helm Fleet surface built on the macOS app.
+
+Approved v0.18 artifact set:
+
+- `NATIVE_MACOS_CURRENT_EXPERIENCE_AUDIT.md`
+- `NATIVE_MACOS_COMPONENT_INVENTORY.md`
+- `NATIVE_MACOS_INFORMATION_ARCHITECTURE.md`
+- `NATIVE_MACOS_PROTOTYPES.md`
+- `NATIVE_MACOS_STATE_MATRIX.md`
+- `NATIVE_MACOS_QUALITY_BUDGETS.md`
+- `NATIVE_MACOS_RESEARCH_VALIDATION.md`
+- `NATIVE_MACOS_MIGRATION_MAP.md`
+
+The approved target uses Health, Updates, Packages, Activity, and Sources. Settings is a separate macOS window/scene, diagnostics is contextual, and search is command-based. No production UI behavior is changed by this artifact closure.
 
 ## 2. Product Standard
 
@@ -159,7 +172,7 @@ Notifications are reserved for meaningful state changes when Helm is not frontmo
 
 ### Information architecture
 
-- Test whether Overview, Updates, Packages, Tasks, Managers, and Settings remain the right top-level structure.
+- Validate and preserve the approved Health, Updates, Packages, Activity, and Sources destination model while keeping Settings separate.
 - Define what belongs in list content, the inspector, a sheet, Settings, or a dedicated detail view.
 - Standardize navigation and deep-link behavior across popover, notifications, menus, and Control Center.
 
@@ -221,12 +234,12 @@ Notifications are reserved for meaningful state changes when Helm is not frontmo
 
 ### 0.18.x — Experience definition and prototypes (post-v0.18.1 planning closure)
 
-This remaining work is a planning and validation closure after the corrective `v0.18.1` release. It does not reopen the released runtime scope or require another `0.18.x` publication. It must complete before production `0.19.x` redesign implementation begins.
+This planning and validation artifact closure completed after the corrective `v0.18.1` release. It does not reopen the released runtime scope or require another `0.18.x` publication. Production `0.19.x` redesign implementation begins from these artifacts.
 
 Deliverables:
 
 - current-experience audit with screenshots and a custom-versus-native component inventory
-- task-based user research plan and baseline usability sessions
+- task-based human-research protocol and expert cognitive-walkthrough baseline; owner-run participant sessions remain a later checkpoint
 - approved experience principles, information-architecture options, and platform-pattern decisions
 - low- and high-fidelity prototypes for the menu bar surface, Control Center, Settings, and Project WOW first run
 - state matrix covering loading, success, empty, partial, failure, offline, blocked, and recovery states
@@ -235,9 +248,10 @@ Deliverables:
 
 Exit gate:
 
-- prototypes validate the target workflows before production UI refactoring begins
+- prototypes cover the target workflows and pass expert review before production UI refactoring begins
 - open design decisions and intentional departures from macOS conventions are recorded
 - Project WOW and whole-app navigation use one compatible experience model
+- the owner-run moderated study remains open and is required before v0.20 workflow sign-off and again before v0.22 UI lock
 
 ### 0.19.x — Native foundation and first-run value
 
@@ -260,7 +274,7 @@ Exit gate:
 
 Deliverables:
 
-- redesigned health, updates, packages, tasks, managers, search, inspector, and diagnostics workflows
+- redesigned Health, Updates, Packages, Activity, Sources, search-command, inspector, and contextual-diagnostics workflows
 - native list/table/outline patterns where comparison and density matter
 - simplified action hierarchy and contextual commands
 - continuous plan -> execution -> verification -> recovery presentation
@@ -348,6 +362,7 @@ Metrics must not justify invasive telemetry. Prefer moderated studies, opt-in be
 This document is the canonical pre-1.0 whole-app design direction.
 
 - `docs/app-design/PROJECT_WOW.md` remains canonical for first-run value, consent, recovery, and word-of-mouth goals.
+- The eight `docs/app-design/NATIVE_MACOS_*.md` definition artifacts listed above are the approved target audit, IA, prototypes, state/budget contracts, research protocol, and migration plan.
 - `docs/app-design/APP_REDESIGN_PROPOSAL.md` records the earlier visual-refinement proposal and is superseded where it limits work to visual changes or forbids layout/interaction changes.
 - `docs/ui/REDESIGN_CONCEPT.md`, `INFORMATION_ARCHITECTURE.md`, `USER_FLOWS.md`, `VISUAL_SYSTEM.md`, and `MOCKUPS.md` describe the current integrated baseline and are research inputs, not immutable constraints.
 - `docs/ui/SWIFTUI_ARCHITECTURE.md` remains the implementation-state reference.

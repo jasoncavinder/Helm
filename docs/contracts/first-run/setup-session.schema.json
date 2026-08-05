@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://helm.run/schemas/v0.18/first-run/setup-session.schema.json",
+  "title": "Setup Session",
+  "description": "Tracks Project WOW discovery, review, apply, verification, interruption, and reconciliation without collapsing per-action state.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "briefId": { "type": "string", "format": "uuid" },
+    "briefRevision": { "type": "integer", "minimum": 1 },
+    "planId": { "type": "string", "format": "uuid" },
+    "receiptId": { "type": "string", "format": "uuid" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "state": {
+      "type": "string",
+      "enum": ["queued", "running", "verifying", "completed", "partially_completed", "failed", "cancelled", "interrupted", "deferred"]
+    },
+    "consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "networkAllowed": { "type": "boolean" },
+        "mutationAllowed": { "type": "boolean" },
+        "privilegeAllowed": { "type": "boolean" }
+      },
+      "required": ["networkAllowed", "mutationAllowed", "privilegeAllowed"]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "completeManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "cachedManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "failedManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "cancelledManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "deferredManagers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      },
+      "required": ["completeManagers", "cachedManagers", "failedManagers", "cancelledManagers", "deferredManagers"]
+    },
+    "actionStates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "actionId": { "type": "string", "format": "uuid" },
+          "state": {
+            "type": "string",
+            "enum": ["pending", "queued", "running", "applying", "cancelling", "cancelled", "applied", "verifying", "verified", "failed_verification", "failed", "deferred", "interrupted", "no_changes", "rolling_back", "rolled_back"]
+          },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["actionId", "state", "updatedAt"]
+      }
+    },
+    "resume": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": { "type": "string", "enum": ["not_applicable", "available", "reconciliation_required", "blocked"] },
+        "lastDurableStage": { "type": "string", "minLength": 1 },
+        "requiresRevalidation": { "type": "boolean" }
+      },
+      "required": ["state", "requiresRevalidation"]
+    },
+    "offlineBehavior": {
+      "type": "string",
+      "enum": ["strict", "opportunistic", "abort"]
+    }
+  },
+  "required": ["schemaVersion", "sessionId", "briefId", "briefRevision", "startedAt", "updatedAt", "state", "consent", "coverage", "actionStates", "resume", "offlineBehavior"]
+}
