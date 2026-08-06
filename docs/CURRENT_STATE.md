@@ -319,7 +319,7 @@ Implemented on `feat/v0.16.0-kickoff`:
   - non-direct channels remain no-op at runtime (MAS/Setapp/Fleet isolation)
 - Added optional Sparkle bridge implementation guarded with `#if canImport(Sparkle)` so non-Sparkle builds remain compile-safe
 - Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
-- Pinned Sparkle SPM dependency to exact `2.8.1` to keep update-framework compatibility aligned with macOS 11+ deployment targets.
+- Pinned Sparkle SPM dependency to exact `2.9.5` to keep update-framework compatibility aligned with macOS 13+ deployment targets.
 - Added user entry points for manual update checks:
   - status-menu `Check for Updates`
   - popover About overlay `Check for Updates`

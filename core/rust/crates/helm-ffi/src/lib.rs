@@ -4478,11 +4478,24 @@ fn auto_check_endpoint_allowed(endpoint: &str) -> bool {
 }
 
 fn auto_check_http_agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS))
-        .timeout_read(Duration::from_secs(AUTO_CHECK_HTTP_READ_TIMEOUT_SECS))
-        .timeout_write(Duration::from_secs(AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS))
-        .build()
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(
+            AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS,
+        )))
+        .timeout_recv_response(Some(Duration::from_secs(
+            AUTO_CHECK_HTTP_READ_TIMEOUT_SECS,
+        )))
+        .timeout_recv_body(Some(Duration::from_secs(AUTO_CHECK_HTTP_READ_TIMEOUT_SECS)))
+        .timeout_send_request(Some(Duration::from_secs(
+            AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS,
+        )))
+        .timeout_send_body(Some(Duration::from_secs(
+            AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS,
+        )))
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .build();
+    ureq::Agent::new_with_config(config)
 }
 
 fn run_due_auto_check_tick(store: &SqliteStore) {
@@ -4543,8 +4556,8 @@ fn run_due_auto_check_tick(store: &SqliteStore) {
     }
 
     match auto_check_http_agent().get(endpoint.as_str()).call() {
-        Ok(response) => {
-            let _ = response.into_string();
+        Ok(mut response) => {
+            let _ = response.body_mut().read_to_string();
         }
         Err(error) => {
             eprintln!("coordinator auto-check request failed: {error}");

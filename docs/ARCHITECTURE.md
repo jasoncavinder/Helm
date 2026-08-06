@@ -23,8 +23,8 @@ Primary goals:
 
 Minimum platform baseline:
 
-- macOS 11+ (Big Sur)
-- Rationale: aligns with modern platform security primitives required for planned App Attest-based install authentication in the Shared Brain stage (`1.4.x`)
+- macOS 13+ (Ventura)
+- Rationale: aligns with modern platform APIs already used in the app and keeps the toolchain baseline current for dependency and platform upgrades
 
 Helm is not a shell wrapper. It is a **structured execution engine**.
 

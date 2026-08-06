@@ -130,7 +130,6 @@
   "app.settings.label.language.german": "Deutsch",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Iniciar o Helm ao iniciar sessão",
-  "app.settings.label.launch_at_login_requires_macos_13": "Indisponível nesta compilação",
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
   "app.settings.label.language.spanish": "Español",
   "app.settings.label.language.system_default": "Padrão do sistema",

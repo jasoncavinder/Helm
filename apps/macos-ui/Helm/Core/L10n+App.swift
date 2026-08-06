@@ -238,7 +238,6 @@ extension L10n {
                 static let japanese = "app.settings.label.language.japanese"
                 static let hungarian = "app.settings.label.language.hungarian"
                 static let launchAtLogin = "app.settings.label.launch_at_login"
-                static let launchAtLoginRequiresMacOS13 = "app.settings.label.launch_at_login_requires_macos_13"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
                 static let safeMode = "app.settings.label.safe_mode"

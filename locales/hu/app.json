@@ -28,7 +28,6 @@
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Helm indítása bejelentkezéskor",
-  "app.settings.label.launch_at_login_requires_macos_13": "Ebben a buildben nem érhető el",
   "app.settings.label.auto_check": "Frissítések automatikus ellenőrzése",
   "app.settings.label.check_frequency": "Ellenőrzés gyakorisága",
   "app.settings.label.safe_mode": "Biztonságos mód (macOS-frissítések blokkolása)",

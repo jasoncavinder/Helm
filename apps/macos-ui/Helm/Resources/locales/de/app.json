@@ -28,7 +28,6 @@
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Helm beim Anmelden starten",
-  "app.settings.label.launch_at_login_requires_macos_13": "In dieser Build nicht verfügbar",
   "app.settings.label.auto_check": "Automatisch nach Updates suchen",
   "app.settings.label.check_frequency": "Prüfen alle",
   "app.settings.label.safe_mode": "Sicherer Modus (macOS-Updates blockieren)",

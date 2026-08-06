@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%2011%2B-blue" alt="macOS 11+">
+  <img src="https://img.shields.io/badge/platform-macOS%2013%2B-blue" alt="macOS 13+">
   <img src="https://img.shields.io/badge/swift-5.7%2B-orange" alt="Swift 5.7+">
   <img src="https://img.shields.io/badge/rust-2024%20edition-brown" alt="Rust 2024">
   <img src="https://img.shields.io/github/v/tag/jasoncavinder/Helm?label=version" alt="Version">
@@ -65,7 +65,7 @@ Your support helps fund continued development.
 Install the latest release DMG from GitHub Releases:
 - https://github.com/jasoncavinder/Helm/releases
 
-DMG builds target **Any Mac (Apple Silicon + Intel)** on **macOS 11+ (Big Sur)** and use standard drag-to-`Applications` installation.
+Current repository builds target **Any Mac (Apple Silicon + Intel)** on **macOS 13+ (Ventura)** and use standard drag-to-`Applications` installation.
 
 ## Install Methods (Current)
 
@@ -150,7 +150,7 @@ The XPC boundary isolates process execution from the sandboxed app. The Rust cor
 
 ### Prerequisites
 
-- macOS 11+ (Big Sur)
+- macOS 13+ (Ventura)
 - Xcode 14+
 - Rust stable toolchain (2024 edition)
 

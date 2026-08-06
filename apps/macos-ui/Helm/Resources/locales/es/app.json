@@ -28,7 +28,6 @@
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Iniciar Helm al iniciar sesión",
-  "app.settings.label.launch_at_login_requires_macos_13": "No disponible en esta compilación",
   "app.settings.label.auto_check": "Comprobar actualizaciones automáticamente",
   "app.settings.label.check_frequency": "Comprobar cada",
   "app.settings.label.safe_mode": "Modo seguro (bloquear actualizaciones de macOS)",

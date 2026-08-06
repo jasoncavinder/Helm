@@ -5617,12 +5617,24 @@ fn self_update_allow_insecure_urls() -> bool {
 }
 
 fn self_update_http_agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(SELF_UPDATE_HTTP_CONNECT_TIMEOUT_SECS))
-        .timeout_read(Duration::from_secs(SELF_UPDATE_HTTP_READ_TIMEOUT_SECS))
-        .timeout_write(Duration::from_secs(SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS))
-        .redirects(0)
-        .build()
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(
+            SELF_UPDATE_HTTP_CONNECT_TIMEOUT_SECS,
+        )))
+        .timeout_recv_response(Some(Duration::from_secs(
+            SELF_UPDATE_HTTP_READ_TIMEOUT_SECS,
+        )))
+        .timeout_recv_body(Some(Duration::from_secs(SELF_UPDATE_HTTP_READ_TIMEOUT_SECS)))
+        .timeout_send_request(Some(Duration::from_secs(
+            SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS,
+        )))
+        .timeout_send_body(Some(Duration::from_secs(
+            SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS,
+        )))
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .build();
+    ureq::Agent::new_with_config(config)
 }
 
 fn self_update_max_download_bytes() -> usize {
@@ -5961,67 +5973,8 @@ fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUp
     let mut current_url = endpoint.trim().to_string();
     let mut redirect_hops = 0usize;
     loop {
-        let response = match self_update_http_agent().get(&current_url).call() {
+        let mut response = match self_update_http_agent().get(&current_url).call() {
             Ok(response) => response,
-            Err(ureq::Error::Status(code, response)) => {
-                if is_http_redirect_status(code) {
-                    let location = response
-                        .header("Location")
-                        .map(str::trim)
-                        .unwrap_or_default();
-                    if location.is_empty() {
-                        return Err(SelfUpdateCommandError::new(
-                            SelfUpdateErrorKind::ManifestHttp,
-                            format!(
-                                "self-update endpoint redirect from '{}' is missing Location header",
-                                current_url
-                            ),
-                        )
-                        .with_endpoint(endpoint.to_string())
-                        .with_http_status(code)
-                        .with_asset_url(current_url.clone()));
-                    }
-                    if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
-                        return Err(SelfUpdateCommandError::new(
-                            SelfUpdateErrorKind::ManifestHttp,
-                            format!(
-                                "self-update endpoint exceeded redirect limit ({} hops)",
-                                SELF_UPDATE_MAX_REDIRECT_HOPS
-                            ),
-                        )
-                        .with_endpoint(endpoint.to_string())
-                        .with_http_status(code)
-                        .with_asset_url(current_url.clone()));
-                    }
-                    current_url = resolve_update_redirect_target(
-                        current_url.as_str(),
-                        location,
-                        "endpoint",
-                        Some(endpoint),
-                        SelfUpdateErrorKind::ManifestHttp,
-                    )?;
-                    redirect_hops += 1;
-                    continue;
-                }
-
-                let body = response.into_string().unwrap_or_default();
-                let body = body.replace('\n', " ");
-                let summary = if body.len() > 200 {
-                    format!("{}...", &body[..200])
-                } else {
-                    body
-                };
-                return Err(SelfUpdateCommandError::new(
-                    SelfUpdateErrorKind::ManifestHttp,
-                    format!(
-                        "self-update endpoint returned HTTP {} for '{}': {}",
-                        code, current_url, summary
-                    ),
-                )
-                .with_endpoint(endpoint.to_string())
-                .with_http_status(code)
-                .with_asset_url(current_url));
-            }
             Err(error) => {
                 return Err(SelfUpdateCommandError::new(
                     SelfUpdateErrorKind::ManifestTransport,
@@ -6035,10 +5988,12 @@ fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUp
             }
         };
 
-        if is_http_redirect_status(response.status()) {
-            let status = response.status();
+        let status = response.status().as_u16();
+        if is_http_redirect_status(status) {
             let location = response
-                .header("Location")
+                .headers()
+                .get("Location")
+                .and_then(|value| value.to_str().ok())
                 .map(str::trim)
                 .unwrap_or_default();
             if location.is_empty() {
@@ -6076,7 +6031,7 @@ fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUp
             continue;
         }
 
-        let body = response.into_string().map_err(|error| {
+        let body = response.body_mut().read_to_string().map_err(|error| {
             SelfUpdateCommandError::new(
                 SelfUpdateErrorKind::ManifestRead,
                 format!("failed to read self-update endpoint payload: {error}"),
@@ -6084,6 +6039,24 @@ fn fetch_cli_update_manifest(endpoint: &str) -> Result<CliUpdateManifest, SelfUp
             .with_endpoint(endpoint.to_string())
             .with_asset_url(current_url.clone())
         })?;
+        if status >= 400 {
+            let sanitized = body.replace('\n', " ");
+            let summary = if sanitized.len() > 200 {
+                format!("{}...", &sanitized[..200])
+            } else {
+                sanitized
+            };
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::ManifestHttp,
+                format!(
+                    "self-update endpoint returned HTTP {} for '{}': {}",
+                    status, current_url, summary
+                ),
+            )
+            .with_endpoint(endpoint.to_string())
+            .with_http_status(status)
+            .with_asset_url(current_url));
+        }
         let manifest: CliUpdateManifest = serde_json::from_str(&body).map_err(|error| {
             SelfUpdateCommandError::new(
                 SelfUpdateErrorKind::ManifestParse,
@@ -6186,51 +6159,6 @@ fn download_update_bytes(url: &str) -> Result<Vec<u8>, SelfUpdateCommandError> {
     loop {
         let response = match self_update_http_agent().get(&current_url).call() {
             Ok(response) => response,
-            Err(ureq::Error::Status(code, response)) => {
-                if is_http_redirect_status(code) {
-                    let location = response
-                        .header("Location")
-                        .map(str::trim)
-                        .unwrap_or_default();
-                    if location.is_empty() {
-                        return Err(SelfUpdateCommandError::new(
-                            SelfUpdateErrorKind::AssetHttp,
-                            format!(
-                                "update download redirect from '{}' is missing Location header",
-                                current_url
-                            ),
-                        )
-                        .with_asset_url(current_url)
-                        .with_http_status(code));
-                    }
-                    if redirect_hops >= SELF_UPDATE_MAX_REDIRECT_HOPS {
-                        return Err(SelfUpdateCommandError::new(
-                            SelfUpdateErrorKind::AssetHttp,
-                            format!(
-                                "update download exceeded redirect limit ({} hops)",
-                                SELF_UPDATE_MAX_REDIRECT_HOPS
-                            ),
-                        )
-                        .with_asset_url(current_url)
-                        .with_http_status(code));
-                    }
-                    current_url = resolve_update_redirect_target(
-                        current_url.as_str(),
-                        location,
-                        "download",
-                        None,
-                        SelfUpdateErrorKind::AssetHttp,
-                    )?;
-                    redirect_hops += 1;
-                    continue;
-                }
-                return Err(SelfUpdateCommandError::new(
-                    SelfUpdateErrorKind::AssetHttp,
-                    format!("failed to download update binary (HTTP {})", code),
-                )
-                .with_asset_url(current_url)
-                .with_http_status(code));
-            }
             Err(error) => {
                 return Err(SelfUpdateCommandError::new(
                     SelfUpdateErrorKind::AssetTransport,
@@ -6240,10 +6168,12 @@ fn download_update_bytes(url: &str) -> Result<Vec<u8>, SelfUpdateCommandError> {
             }
         };
 
-        if is_http_redirect_status(response.status()) {
-            let status = response.status();
+        let status = response.status().as_u16();
+        if is_http_redirect_status(status) {
             let location = response
-                .header("Location")
+                .headers()
+                .get("Location")
+                .and_then(|value| value.to_str().ok())
                 .map(str::trim)
                 .unwrap_or_default();
             if location.is_empty() {
@@ -6279,7 +6209,16 @@ fn download_update_bytes(url: &str) -> Result<Vec<u8>, SelfUpdateCommandError> {
             continue;
         }
 
-        let mut reader = response.into_reader();
+        if status >= 400 {
+            return Err(SelfUpdateCommandError::new(
+                SelfUpdateErrorKind::AssetHttp,
+                format!("failed to download update binary (HTTP {})", status),
+            )
+            .with_asset_url(current_url)
+            .with_http_status(status));
+        }
+
+        let mut reader = response.into_parts().1.into_reader();
         return read_update_bytes_with_limit(&mut reader, max_bytes, current_url.as_str());
     }
 }
@@ -6333,7 +6272,11 @@ fn verify_sha256(bytes: &[u8], expected_sha256: &str) -> Result<(), String> {
 
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    let digest = format!("{:x}", hasher.finalize());
+    let digest = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     if digest != expected {
         return Err(format!(
             "self-update checksum mismatch (expected {}, got {})",
