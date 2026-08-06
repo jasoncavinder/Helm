@@ -201,7 +201,7 @@ Current checkpoint:
     - Control Center drag-to-move now applies across the full window background (interactive controls still take precedence)
     - settings top metric cards now deep-link to Managers/Updates/Tasks
     - inspector selection now clears when sections change and selected rows/cards are visually highlighted
-    - launch-at-login setting added for supported systems (macOS 13+), with localized unsupported messaging on older systems
+    - launch-at-login setting added through `SMAppService.mainApp` on the macOS 13+ baseline
     - manager/popover count rendering paths precompute per-manager counts to reduce repeated filtering work in hot UI update loops
   - pre-rc.4 stabilization follow-up delivered on `dev`:
     - popover outside-click close handling now only reacts to click events (not hover/drag movement)
@@ -475,7 +475,7 @@ Delivered:
 - Added `AppUpdateCoordinator` with strict channel isolation and manual update-check entry point plumbing
 - Added optional Sparkle bridge (`#if canImport(Sparkle)`) while preserving non-Sparkle build compatibility
 - Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
-- Pinned Sparkle SPM dependency to exact `2.8.1` to keep compatibility aligned with macOS 11+ targets.
+- Pinned Sparkle SPM dependency to exact `2.9.5` to keep compatibility aligned with macOS 13+ targets.
 - Added user entry points:
   - status menu `Check for Updates`
   - popover About overlay `Check for Updates`

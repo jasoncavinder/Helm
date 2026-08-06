@@ -15,7 +15,7 @@ When you open the DMG, install like a standard macOS app:
 2. Launch Helm from `Applications`.
 3. If macOS prompts, confirm opening the app and grant requested permissions.
 
-The DMG is built for **Any Mac (Apple Silicon + Intel)** with a **macOS 11+ (Big Sur)** minimum target.
+Repository DMG builds target **Any Mac (Apple Silicon + Intel)** with a **macOS 13+ (Ventura)** minimum target.
 
 ## Install Helm CLI (curl/sh)
 
@@ -31,7 +31,7 @@ Installer behavior:
 
 ## Prerequisites
 
-- macOS 11 (Big Sur) or later
+- macOS 13 (Ventura) or later
 - Xcode 14+
 - Rust stable toolchain (2024 edition)
 

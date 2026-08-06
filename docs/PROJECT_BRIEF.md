@@ -157,8 +157,8 @@ System integrity and tooling:
 ## **Platform & UX Choices**
 
 - Menu bar macOS utility (`LSUIElement`, no Dock icon).
-- Minimum platform baseline: **macOS 11+ (Big Sur)**.
-  - Rationale: aligns with planned modern security primitives for future App Attest usage in post-1.0 Shared Brain features.
+- Minimum platform baseline: **macOS 13+ (Ventura)**.
+  - Rationale: aligns the app with the modern platform APIs it already uses (`SMAppService`) and keeps Xcode/Rust toolchains on a current path for dependency upgrades.
 - SwiftUI frontend for native look & feel.
 - Floating panel UI from the menu bar icon.
 - Background execution for long-running tasks.

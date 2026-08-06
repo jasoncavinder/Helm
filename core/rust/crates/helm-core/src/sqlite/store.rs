@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, DatabaseName, OptionalExtension, params};
+use rusqlite::{Connection, MAIN_DB, OptionalExtension, params};
 
 use crate::models::{
     AutomationLevel, CachedSearchResult, CoreError, CoreErrorKind, DetectionInfo,
@@ -2426,7 +2426,7 @@ fn create_pre_migration_backup(
 
     let result = (|| {
         create_private_file(&partial_path)?;
-        connection.backup(DatabaseName::Main, &partial_path, None)?;
+        connection.backup(MAIN_DB, &partial_path, None)?;
         let backup = Connection::open(&partial_path)?;
         let integrity: String = backup.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
         if integrity != "ok" {
@@ -3112,13 +3112,14 @@ impl AdvisoryCacheStore for SqliteStore {
     }
 
     fn count(&self) -> Result<usize, String> {
-        self.with_connection("count_advisories", |connection| {
+        let count = self.with_connection("count_advisories", |connection| {
             ensure_schema_ready(connection)?;
             connection.query_row("SELECT COUNT(*) FROM security_advisories", [], |row| {
-                row.get(0)
+                row.get::<_, i64>(0)
             })
         })
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+        usize::try_from(count).map_err(|_| "advisory count does not fit in usize".to_string())
     }
 }
 

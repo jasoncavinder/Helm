@@ -506,12 +506,8 @@ private extension AppDelegate {
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = shouldAllowControlCenterWindowBackgroundDragging()
             window.delegate = self
-            if #available(macOS 11.0, *) {
-                window.toolbarStyle = .unifiedCompact
-            }
-            if #available(macOS 11.0, *) {
-                window.titlebarSeparatorStyle = .none
-            }
+            window.toolbarStyle = .unifiedCompact
+            window.titlebarSeparatorStyle = .none
             window.contentViewController = hostingController
             window.autorecalculatesKeyViewLoop = true
             window.isReleasedWhenClosed = false

@@ -193,13 +193,6 @@ struct SettingsSectionView: View {
                         set: { core.setLaunchAtLogin($0) }
                     ))
                     .toggleStyle(.switch)
-                    .disabled(!core.launchAtLoginSupported)
-
-                    if !core.launchAtLoginSupported {
-                        Text(L10n.App.Settings.Label.launchAtLoginRequiresMacOS13.localized)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
 
                     Divider()
 
