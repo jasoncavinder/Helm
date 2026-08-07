@@ -52,9 +52,11 @@ run_release_contracts() {
   run scripts/release/tests/build_unsigned_variant_contract.sh
   run scripts/release/tests/publish_verify_state_contract.sh
   run scripts/release/tests/publish_verify_prerelease_state_contract.sh
+  run scripts/release/tests/publish_verify_prerelease_pair_state_contract.sh
   run scripts/release/tests/ci_toolchain_contract.sh
   run scripts/release/tests/provenance_manifest_contract.sh
   run scripts/release/tests/sparkle_recovery_contract.sh
+  run scripts/release/tests/sparkle_appcast_channels_contract.sh
   run scripts/release/check_release_line_copy.sh
 
   # Non-destructive release-safety checks only.

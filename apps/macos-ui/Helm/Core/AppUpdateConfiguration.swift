@@ -24,6 +24,14 @@ enum HelmUpdateAuthority: String {
     case unavailable = "unavailable"
 }
 
+enum HelmSparkleUpdateChannel {
+    static let beta = "beta"
+
+    static func allowedChannels(prereleaseUpdatesEnabled: Bool) -> Set<String> {
+        prereleaseUpdatesEnabled ? [beta] : []
+    }
+}
+
 extension HelmDistributionChannel {
     var updateAuthority: HelmUpdateAuthority {
         switch self {

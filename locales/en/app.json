@@ -29,6 +29,8 @@
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Launch Helm at login",
   "app.settings.label.auto_check": "Auto-check for updates",
+  "app.settings.label.prerelease_updates": "Receive beta and release candidate updates",
+  "app.settings.label.prerelease_updates_description": "Stable updates remain available.",
   "app.settings.label.check_frequency": "Check every",
   "app.settings.label.safe_mode": "Safe Mode (block macOS updates)",
   "app.settings.label.auto_clean_kegs": "Auto-clean old Homebrew kegs",

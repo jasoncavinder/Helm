@@ -20,7 +20,7 @@ Focus:
 - maintain release-process hardening guardrails now that `v0.18.2` publication is complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
-- complete the `0.19.x` manager/updater integration: preserve the v0.18 migration-safety baseline while landing npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, dependency modernization, and the macOS 13 Ventura baseline
+- complete the `0.19.x` manager/updater integration: preserve the v0.18 migration-safety baseline while landing npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, explicit beta/RC opt-in with stable-channel isolation, dependency modernization, and the macOS 13 Ventura baseline
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
 - retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs

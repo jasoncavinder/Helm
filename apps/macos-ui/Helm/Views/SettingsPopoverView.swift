@@ -205,6 +205,21 @@ struct SettingsSectionView: View {
                         .frame(width: 150)
                         .disabled(!appUpdate.canCheckForUpdates || !appUpdate.autoCheckEnabled)
                     }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(L10n.App.Settings.Label.prereleaseUpdates.localized, isOn: Binding(
+                            get: { appUpdate.prereleaseUpdatesEnabled },
+                            set: { appUpdate.setPrereleaseUpdatesEnabled($0) }
+                        ))
+                        .toggleStyle(.switch)
+                        .disabled(!appUpdate.canCheckForUpdates)
+
+                        Text(L10n.App.Settings.Label.prereleaseUpdatesDescription.localized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
 
                 SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {

@@ -88,7 +88,12 @@ target_version = str(state.get("target_version", "")).strip()
 
 try:
     root = ET.parse(appcast_path).getroot()
-    item = root.find("./channel/item")
+    item = None
+    for candidate in root.findall("./channel/item"):
+        channel = (candidate.findtext(f"{{{sparkle_ns}}}channel") or "").strip() or "default"
+        if channel == "default":
+            item = candidate
+            break
     enclosure = None if item is None else item.find("enclosure")
     appcast_version = "" if enclosure is None else str(enclosure.attrib.get(f"{{{sparkle_ns}}}shortVersionString", "")).strip()
 except Exception:

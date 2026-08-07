@@ -71,12 +71,17 @@ This checklist is required before creating a release tag on `main`.
 - [x] The macOS 13 Ventura baseline is explicit and the obsolete macOS 11/12 login-helper fallback is removed.
 - [x] Dependency modernization retains the `v0.18.2` SQLite online-backup and migration-ledger safety contract.
 - [x] npm/related install-instance normalization, MAS refresh handling, Sparkle inventory/update visibility, external-bundle GUI update actions, and scheduled eligible-channel Helm checks are included.
+- [x] Direct Developer ID builds expose a default-off beta/RC opt-in; Helm remains explicitly excluded from the separate Sparkle Apps manager.
+- [x] GUI appcast publication preserves one stable unchanneled item and replaces only the matching signed `beta` prerelease item.
 
 ### Required Validation
 
 - [x] Full repository quality gate passes on the v0.18.2-based integration branch.
 - [x] SQLite migration compatibility gate passes with `rusqlite 0.40.1`, including backup and tamper/recovery coverage.
 - [x] Sparkle appcast/recovery checklist and arm64 Xcode tests pass.
+- [x] Appcast channel contracts verify stable/RC coexistence, replacement, malformed or explicit-`default` channel rejection, channel-specific verification, and per-channel downgrade refusal.
+- [x] Appcast publication merges against current `main` at generation and again immediately before publication, preventing stale-tag reruns and publication races from rolling back either channel.
+- [x] Prerelease publication verification rejects missing or mismatched GUI/CLI metadata unless the exact counterpart publication PR remains open.
 - [x] Third-party dependency licenses are re-audited for the candidate dependency graph.
 - [x] Non-mutating `v0.19.0-rc.1` release rehearsal and preflight complete without unresolved errors.
 
@@ -86,6 +91,7 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Confirm a fresh successful `Release macOS Canary` after the final workflow/toolchain changes.
 - [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` under explicit maintainer authorization.
 - [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.1` or publishing artifacts.
+- [ ] Confirm the published appcast retains `v0.18.2` as the default-channel item and adds `v0.19.0-rc.1` only as the `beta` item.
 - [ ] Complete signed/notarized GUI and direct CLI prerelease publication and post-publication verification.
 
 ## v0.18.2 (Final v0.18 Containment Release Gate, Completed)

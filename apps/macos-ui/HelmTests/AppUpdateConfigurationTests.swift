@@ -1,6 +1,17 @@
 import XCTest
 
 final class AppUpdateConfigurationTests: XCTestCase {
+    func testSparklePrereleaseChannelIsOptIn() {
+        XCTAssertEqual(
+            HelmSparkleUpdateChannel.allowedChannels(prereleaseUpdatesEnabled: false),
+            []
+        )
+        XCTAssertEqual(
+            HelmSparkleUpdateChannel.allowedChannels(prereleaseUpdatesEnabled: true),
+            [HelmSparkleUpdateChannel.beta]
+        )
+    }
+
     func testDistributionChannelMapsToSingleUpdateAuthoritySource() {
         XCTAssertEqual(HelmDistributionChannel.developerID.updateAuthority, .sparkle)
         XCTAssertEqual(HelmDistributionChannel.appStore.updateAuthority, .appStore)

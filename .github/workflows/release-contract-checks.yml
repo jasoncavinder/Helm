@@ -38,6 +38,9 @@ jobs:
       - name: Validate prerelease publish verify merge-order contracts
         run: scripts/release/tests/publish_verify_prerelease_state_contract.sh
 
+      - name: Validate prerelease GUI and CLI pair-state contracts
+        run: scripts/release/tests/publish_verify_prerelease_pair_state_contract.sh
+
       - name: Validate release-line copy drift contracts
         run: scripts/release/check_release_line_copy.sh
 
@@ -46,6 +49,9 @@ jobs:
 
       - name: Validate release workflow safety contracts
         run: scripts/release/tests/release_workflow_contract.sh
+
+      - name: Validate Sparkle appcast channel contracts
+        run: scripts/release/tests/sparkle_appcast_channels_contract.sh
 
       - name: Validate post-publication preflight contract
         run: scripts/release/tests/preflight_post_publish_contract.sh
