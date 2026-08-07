@@ -56,6 +56,8 @@ for workflow in "$CLI_WORKFLOW" "$DMG_WORKFLOW"; do
   reject_pattern 'mergedAt.*@tsv' "$workflow" "metadata publication must not parse nullable mergedAt through collapsing TSV fields"
   expect_pattern 'validate_github_release_state\.sh' "$workflow" "direct release workflows must validate published GitHub release state"
   expect_pattern '--event-prerelease "\$EVENT_RELEASE_PRERELEASE"' "$workflow" "release-event state must be checked against the tag channel"
+  expect_pattern "EVENT_RELEASE_PRERELEASE: \\\$\\{\\{ github\\.event_name == 'release'" "$workflow" "release-event prerelease state must be normalized explicitly for release events"
+  reject_pattern "EVENT_RELEASE_PRERELEASE: \\\$\\{\\{ github\\.event\\.release\\.prerelease \\|\\| '' \\}\\}" "$workflow" "release-event prerelease state must not collapse false to an empty string"
 done
 
 expect_pattern 'APPCAST_CHANNEL="beta"' "$DMG_WORKFLOW" "RC releases must select the Sparkle beta channel"

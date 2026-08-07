@@ -37,7 +37,7 @@ jobs:
     env:
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
       EVENT_NAME: ${{ github.event_name }}
-      EVENT_RELEASE_PRERELEASE: ${{ github.event.release.prerelease || '' }}
+      EVENT_RELEASE_PRERELEASE: ${{ github.event_name == 'release' && (github.event.release.prerelease && 'true' || 'false') || '' }}
       VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.verify_only == 'true' && 'true' || 'false') || 'false' }}
       WORKFLOW_SHA: ${{ github.workflow_sha }}
       LANG: en_US.UTF-8
