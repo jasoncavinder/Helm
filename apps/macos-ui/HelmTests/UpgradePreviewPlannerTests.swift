@@ -313,6 +313,60 @@ final class UpgradePreviewPlannerTests: XCTestCase {
 }
 
 final class PackageConsolidationPolicyTests: XCTestCase {
+    func testSparkleSnapshotReplacementKeyDistinguishesSameNameBundlePaths() {
+        let applicationsKey = PackageConsolidationPolicy.snapshotReplacementKey(
+            managerId: "sparkle",
+            packageName: "Example",
+            packageIdentifier: "/Applications/Example.app"
+        )
+        let userApplicationsKey = PackageConsolidationPolicy.snapshotReplacementKey(
+            managerId: "sparkle",
+            packageName: "Example",
+            packageIdentifier: "/Users/test/Applications/Example.app"
+        )
+
+        XCTAssertNotEqual(applicationsKey, userApplicationsKey)
+        XCTAssertEqual(
+            applicationsKey,
+            PackageConsolidationPolicy.snapshotReplacementKey(
+                managerId: "Sparkle",
+                packageName: " example ",
+                packageIdentifier: " /Applications/Example.app "
+            )
+        )
+    }
+
+    func testSnapshotReplacementKeyKeepsExistingNameIdentityForOtherManagers() {
+        XCTAssertEqual(
+            PackageConsolidationPolicy.snapshotReplacementKey(
+                managerId: "npm",
+                packageName: "typescript",
+                packageIdentifier: "/one"
+            ),
+            PackageConsolidationPolicy.snapshotReplacementKey(
+                managerId: "npm",
+                packageName: "typescript",
+                packageIdentifier: "/two"
+            )
+        )
+    }
+
+    func testSparkleInstanceLabelShowsAbbreviatedBundlePath() {
+        XCTAssertEqual(
+            PackageConsolidationPolicy.instanceDisambiguationLabel(
+                managerId: "sparkle",
+                packageIdentifier: "/Applications/Example.app"
+            ),
+            "/Applications/Example.app"
+        )
+        XCTAssertNil(
+            PackageConsolidationPolicy.instanceDisambiguationLabel(
+                managerId: "npm",
+                packageIdentifier: "/Applications/Example.app"
+            )
+        )
+    }
+
     func testStatusRankPrioritizesUpgradableThenInstalledThenAvailable() {
         XCTAssertLessThan(
             PackageConsolidationPolicy.statusRank("upgradable"),

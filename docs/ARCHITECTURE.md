@@ -156,7 +156,7 @@ Helm currently implements 28 adapters:
 - **Toolchain / Runtime:** mise, asdf (optional), rustup
 - **System / OS:** Homebrew (formulae), softwareupdate, MacPorts (optional), nix-darwin (optional)
 - **Language:** npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler
-- **App / GUI:** mas, Homebrew casks, Sparkle (detection-only), Setapp (detection-only)
+- **App / GUI:** mas, Homebrew casks, Sparkle (inventory, conservative outdated detection, vendor-authoritative updates), Setapp (detection-only)
 - **Container / VM:** Docker Desktop, podman, colima, Parallels Desktop (detection-only)
 - **Security / Firmware:** Xcode Command Line Tools, Rosetta 2, Firmware Updates
 

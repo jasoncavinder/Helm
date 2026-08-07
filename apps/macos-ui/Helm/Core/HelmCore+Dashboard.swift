@@ -37,20 +37,20 @@ extension HelmCore {
         let enabledOutdated = outdatedPackages.filter { isManagerEnabled($0.managerId) }
         let outdatedStableIds = Set(
             enabledOutdated.map { package in
-                packageDescriptionLookupKey(
+                PackageConsolidationPolicy.snapshotReplacementKey(
                     managerId: package.managerId,
                     packageName: package.name,
-                    version: nil
+                    packageIdentifier: package.packageIdentifier
                 )
             }
         )
         let installedOnly = installedPackages.filter {
             isManagerEnabled($0.managerId)
                 && !outdatedStableIds.contains(
-                    packageDescriptionLookupKey(
+                    PackageConsolidationPolicy.snapshotReplacementKey(
                         managerId: $0.managerId,
                         packageName: $0.name,
-                        version: nil
+                        packageIdentifier: $0.packageIdentifier
                     )
                 )
         }

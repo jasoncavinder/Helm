@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use quick_xml::Reader;
 use quick_xml::XmlVersion;
@@ -34,6 +34,8 @@ const CURL_COMMAND: &str = "/usr/bin/curl";
 const SW_VERS_COMMAND: &str = "/usr/bin/sw_vers";
 const PLIST_TIMEOUT: Duration = Duration::from_secs(15);
 const FEED_TIMEOUT: Duration = Duration::from_secs(45);
+const APPCAST_SCAN_BUDGET: Duration = Duration::from_secs(120);
+const MAX_CONCURRENT_APPCAST_FETCHES: usize = 4;
 const MAX_APPCAST_BYTES: &str = "4194304";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -65,10 +67,18 @@ impl<S: SparkleSource> SparkleAdapter<S> {
         &self,
         apps: &[SparkleApp],
     ) -> AdapterResult<(Vec<InstalledPackage>, Vec<OutdatedPackage>)> {
-        let installed = installed_packages(apps);
-        let system_version = self.source.system_version()?;
-        let mut outdated = Vec::new();
+        self.snapshots_with_appcast_budget(apps, APPCAST_SCAN_BUDGET)
+    }
 
+    fn snapshots_with_appcast_budget(
+        &self,
+        apps: &[SparkleApp],
+        appcast_budget: Duration,
+    ) -> AdapterResult<(Vec<InstalledPackage>, Vec<OutdatedPackage>)> {
+        let installed = installed_packages(apps);
+        let appcast_deadline = Instant::now() + appcast_budget;
+        let system_version = self.source.system_version()?;
+        let mut candidates = Vec::new();
         for app in apps {
             let Some(feed_url) = app.feed_url.as_deref() else {
                 continue;
@@ -84,50 +94,120 @@ impl<S: SparkleSource> SparkleAdapter<S> {
             let Some(installed_build) = app.bundle_version.as_deref() else {
                 continue;
             };
-
-            let raw = match self.source.appcast(feed_url) {
-                Ok(raw) => raw,
-                Err(error) => {
-                    tracing::warn!(
-                        bundle_id = app.bundle_identifier,
-                        error = error.message,
-                        "Sparkle appcast refresh failed for one application"
-                    );
-                    continue;
-                }
-            };
-            let candidate = match parse_sparkle_appcast(&raw, installed_build, &system_version) {
-                Ok(candidate) => candidate,
-                Err(error) => {
-                    tracing::warn!(
-                        bundle_id = app.bundle_identifier,
-                        error = error.message,
-                        "Sparkle appcast parsing failed for one application"
-                    );
-                    continue;
-                }
-            };
-            let Some(candidate) = candidate else {
-                continue;
-            };
-
-            outdated.push(OutdatedPackage {
-                package: package_ref(app),
-                package_identifier: Some(app.bundle_path.to_string_lossy().into_owned()),
-                installed_version: app
-                    .short_version
-                    .clone()
-                    .or_else(|| app.bundle_version.clone()),
-                candidate_version: candidate.display_version,
-                pinned: false,
-                restart_required: false,
-                runtime_state: Default::default(),
+            candidates.push(SparkleAppcastCandidate {
+                app,
+                feed_url,
+                installed_build,
             });
         }
 
-        outdated.sort_by(|left, right| left.package.name.cmp(&right.package.name));
+        let worker_count = candidates.len().min(MAX_CONCURRENT_APPCAST_FETCHES);
+        let runtime_handle = tokio::runtime::Handle::try_current().ok();
+        let (mut outdated, skipped_count) = std::thread::scope(|scope| {
+            let mut workers = Vec::with_capacity(worker_count);
+            for worker_index in 0..worker_count {
+                let candidates = &candidates;
+                let system_version = &system_version;
+                let runtime_handle = runtime_handle.clone();
+                workers.push(scope.spawn(move || {
+                    let _runtime_guard = runtime_handle.as_ref().map(|handle| handle.enter());
+                    let mut packages = Vec::new();
+                    let mut skipped = 0usize;
+                    for candidate in candidates.iter().skip(worker_index).step_by(worker_count) {
+                        if Instant::now() >= appcast_deadline {
+                            skipped += 1;
+                            continue;
+                        }
+                        if let Some(package) =
+                            self.outdated_package(candidate, system_version.as_str())
+                        {
+                            packages.push(package);
+                        }
+                    }
+                    (packages, skipped)
+                }));
+            }
+
+            let mut packages = Vec::new();
+            let mut skipped = 0usize;
+            for worker in workers {
+                let Ok((worker_packages, worker_skipped)) = worker.join() else {
+                    return Err(sparkle_internal_error("Sparkle appcast worker panicked"));
+                };
+                packages.extend(worker_packages);
+                skipped += worker_skipped;
+            }
+            Ok((packages, skipped))
+        })?;
+
+        if skipped_count > 0 {
+            tracing::warn!(
+                skipped_count,
+                budget_seconds = appcast_budget.as_secs(),
+                "Sparkle appcast scan budget reached; remaining applications stay inventory-only for this refresh"
+            );
+        }
+
+        outdated.sort_by(|left, right| {
+            left.package.name.cmp(&right.package.name).then_with(|| {
+                left.package_identifier
+                    .as_deref()
+                    .cmp(&right.package_identifier.as_deref())
+            })
+        });
         Ok((installed, outdated))
     }
+
+    fn outdated_package(
+        &self,
+        candidate: &SparkleAppcastCandidate<'_>,
+        system_version: &str,
+    ) -> Option<OutdatedPackage> {
+        let raw = match self.source.appcast(candidate.feed_url) {
+            Ok(raw) => raw,
+            Err(error) => {
+                tracing::warn!(
+                    bundle_id = candidate.app.bundle_identifier,
+                    error = error.message,
+                    "Sparkle appcast refresh failed for one application"
+                );
+                return None;
+            }
+        };
+        let update = match parse_sparkle_appcast(&raw, candidate.installed_build, system_version) {
+            Ok(candidate) => candidate,
+            Err(error) => {
+                tracing::warn!(
+                    bundle_id = candidate.app.bundle_identifier,
+                    error = error.message,
+                    "Sparkle appcast parsing failed for one application"
+                );
+                return None;
+            }
+        };
+        let update = update?;
+
+        Some(OutdatedPackage {
+            package: package_ref(candidate.app),
+            package_identifier: Some(candidate.app.bundle_path.to_string_lossy().into_owned()),
+            installed_version: candidate
+                .app
+                .short_version
+                .clone()
+                .or_else(|| candidate.app.bundle_version.clone()),
+            candidate_version: update.display_version,
+            pinned: false,
+            restart_required: false,
+            runtime_state: Default::default(),
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SparkleAppcastCandidate<'a> {
+    app: &'a SparkleApp,
+    feed_url: &'a str,
+    installed_build: &'a str,
 }
 
 impl<S: SparkleSource> ManagerAdapter for SparkleAdapter<S> {
@@ -535,18 +615,31 @@ fn sparkle_parse_error(message: impl Into<String>) -> CoreError {
     }
 }
 
+fn sparkle_internal_error(message: impl Into<String>) -> CoreError {
+    CoreError {
+        manager: Some(ManagerId::Sparkle),
+        task: Some(TaskType::Refresh),
+        action: Some(ManagerAction::ListOutdated),
+        kind: CoreErrorKind::Internal,
+        message: message.into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
         ListOutdatedRequest, ManagerAdapter, RefreshRequest,
     };
     use crate::adapters::sparkle::{
-        SparkleAdapter, SparkleApp, SparkleSource, compare_versions, parse_sparkle_appcast,
-        sparkle_appcast_request, sparkle_plist_request,
+        MAX_CONCURRENT_APPCAST_FETCHES, SparkleAdapter, SparkleApp, SparkleSource,
+        compare_versions, parse_sparkle_appcast, sparkle_appcast_request, sparkle_plist_request,
     };
     use crate::models::{ManagerAction, ManagerId, TaskType};
 
@@ -711,6 +804,76 @@ mod tests {
         assert_eq!(outdated.unwrap().len(), 1);
     }
 
+    #[test]
+    fn appcast_fetches_use_bounded_concurrency_and_deterministic_ordering() {
+        let tracker = Arc::new(ConcurrencyTracker::default());
+        let apps = tracked_apps(8);
+        let adapter = SparkleAdapter::new(TrackingSource {
+            apps: apps.clone(),
+            tracker: tracker.clone(),
+            delay: Duration::from_millis(25),
+            require_runtime: false,
+        });
+
+        let (_, outdated) = adapter
+            .snapshots_with_appcast_budget(&apps, Duration::from_secs(1))
+            .expect("bounded appcast scan");
+
+        assert_eq!(outdated.len(), apps.len());
+        assert!(tracker.maximum_active.load(Ordering::SeqCst) > 1);
+        assert!(tracker.maximum_active.load(Ordering::SeqCst) <= MAX_CONCURRENT_APPCAST_FETCHES);
+        assert!(
+            outdated
+                .windows(2)
+                .all(|items| items[0].package.name <= items[1].package.name)
+        );
+    }
+
+    #[test]
+    fn appcast_scan_budget_stops_launching_more_stalled_feeds() {
+        let tracker = Arc::new(ConcurrencyTracker::default());
+        let apps = tracked_apps(12);
+        let adapter = SparkleAdapter::new(TrackingSource {
+            apps: apps.clone(),
+            tracker: tracker.clone(),
+            delay: Duration::from_millis(600),
+            require_runtime: false,
+        });
+
+        let (_, outdated) = adapter
+            .snapshots_with_appcast_budget(&apps, Duration::from_millis(500))
+            .expect("budgeted appcast scan");
+        let calls = tracker.call_count.load(Ordering::SeqCst);
+
+        assert!(calls > 0);
+        assert!(calls <= MAX_CONCURRENT_APPCAST_FETCHES);
+        assert_eq!(outdated.len(), calls);
+        assert!(outdated.len() < apps.len());
+    }
+
+    #[test]
+    fn appcast_workers_inherit_the_calling_tokio_runtime() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _runtime_guard = runtime.enter();
+        let tracker = Arc::new(ConcurrencyTracker::default());
+        let apps = tracked_apps(1);
+        let adapter = SparkleAdapter::new(TrackingSource {
+            apps: apps.clone(),
+            tracker,
+            delay: Duration::ZERO,
+            require_runtime: true,
+        });
+
+        let (_, outdated) = adapter
+            .snapshots_with_appcast_budget(&apps, Duration::from_secs(1))
+            .expect("runtime-aware appcast scan");
+
+        assert_eq!(outdated.len(), 1);
+    }
+
     fn app(
         path: &str,
         bundle_identifier: &str,
@@ -730,6 +893,57 @@ mod tests {
     struct FixtureSource {
         apps: Vec<SparkleApp>,
         feeds: HashMap<String, AdapterResult<String>>,
+    }
+
+    #[derive(Default)]
+    struct ConcurrencyTracker {
+        active: AtomicUsize,
+        maximum_active: AtomicUsize,
+        call_count: AtomicUsize,
+    }
+
+    struct TrackingSource {
+        apps: Vec<SparkleApp>,
+        tracker: Arc<ConcurrencyTracker>,
+        delay: Duration,
+        require_runtime: bool,
+    }
+
+    impl SparkleSource for TrackingSource {
+        fn apps(&self) -> AdapterResult<Vec<SparkleApp>> {
+            Ok(self.apps.clone())
+        }
+
+        fn appcast(&self, _feed_url: &str) -> AdapterResult<String> {
+            if self.require_runtime {
+                tokio::runtime::Handle::current().block_on(async {});
+            }
+            self.tracker.call_count.fetch_add(1, Ordering::SeqCst);
+            let active = self.tracker.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.tracker
+                .maximum_active
+                .fetch_max(active, Ordering::SeqCst);
+            std::thread::sleep(self.delay);
+            self.tracker.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(APPCAST.to_string())
+        }
+
+        fn system_version(&self) -> AdapterResult<String> {
+            Ok("14.6".to_string())
+        }
+    }
+
+    fn tracked_apps(count: usize) -> Vec<SparkleApp> {
+        (0..count)
+            .map(|index| {
+                app(
+                    &format!("/Applications/App {index:02}.app"),
+                    &format!("com.example.app{index:02}"),
+                    &format!("App {index:02}"),
+                    Some(&format!("https://example.com/app{index:02}.xml")),
+                )
+            })
+            .collect()
     }
 
     impl SparkleSource for FixtureSource {
