@@ -940,7 +940,9 @@ Publish direct-channel stable releases as unchanneled Sparkle items and beta/rel
 
 - Stable users never receive a prerelease through Helm's automatic or manual update checks.
 - Opted-in users remain eligible for both stable and `beta` items, using Sparkle's normal version ordering.
-- The shared appcast retains one signed item per supported channel; release publication replaces only the matching item.
+- The shared appcast retains one signed item per supported channel; release publication replaces only the matching item, merges against current `main`, and rejects per-channel build regressions.
+- Stable items omit `sparkle:channel`; an explicit `default` value is invalid because Sparkle treats every explicit channel name as a custom channel.
+- Published GUI beta and CLI RC metadata must identify the same candidate, except while the exact missing counterpart publication PR remains open.
 - Helm remains excluded from the separate Sparkle Apps manager because its self-update authority stays with the channel-aware Helm updater.
 - MAS, Setapp, and fleet distributions remain unaffected because they cannot use Helm's Sparkle updater.
 

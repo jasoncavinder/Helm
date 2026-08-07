@@ -74,7 +74,15 @@ if not 1 <= len(items) <= 2:
 
 versions_by_channel = {}
 for item in items:
-    channel_name = (item.findtext(sparkle_channel_tag) or "").strip() or "default"
+    channel_element = item.find(sparkle_channel_tag)
+    if channel_element is None:
+        channel_name = "default"
+    else:
+        channel_name = (channel_element.text or "").strip()
+        if not channel_name:
+            fail("empty Sparkle channel; stable items must omit <sparkle:channel>")
+        if channel_name == "default":
+            fail("stable default-channel items must omit <sparkle:channel>")
     if channel_name not in {"default", "beta"}:
         fail(f"unsupported Sparkle channel: {channel_name}")
     if channel_name in versions_by_channel:
@@ -88,6 +96,10 @@ for item in items:
     for required_attr in (sparkle_sig_attr, sparkle_version_attr, sparkle_short_version_attr):
         if not enclosure.get(required_attr):
             fail(f"missing required enclosure attribute for {channel_name}: {required_attr}")
+
+    build_version = enclosure.get(sparkle_version_attr, "").strip()
+    if not build_version.isdecimal():
+        fail(f"Sparkle build version must be numeric for {channel_name}, got: {build_version}")
 
     if enclosure.get(sparkle_delta_attr):
         fail("delta updates are disabled by policy; found sparkle:deltaFrom on enclosure")

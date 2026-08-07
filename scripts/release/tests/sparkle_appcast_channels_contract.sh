@@ -18,9 +18,11 @@ write_appcast() {
   local build_version="$3"
   local channel="$4"
   local channel_element=""
-  if [ "$channel" != "default" ]; then
-    channel_element="<sparkle:channel>${channel}</sparkle:channel>"
-  fi
+  case "$channel" in
+    default) ;;
+    explicit-default) channel_element="<sparkle:channel>default</sparkle:channel>" ;;
+    *) channel_element="<sparkle:channel>${channel}</sparkle:channel>" ;;
+  esac
 
   cat > "$path" <<XML
 <?xml version="1.0" encoding="utf-8"?>
@@ -46,6 +48,9 @@ STABLE_CANDIDATE="${TMP_DIR}/stable.xml"
 MERGED_APPCAST="${TMP_DIR}/merged.xml"
 UPDATED_APPCAST="${TMP_DIR}/updated.xml"
 INVALID_APPCAST="${TMP_DIR}/invalid.xml"
+EXPLICIT_DEFAULT_APPCAST="${TMP_DIR}/explicit-default.xml"
+NEWER_BETA_CANDIDATE="${TMP_DIR}/newer-beta.xml"
+NEWER_MERGED_APPCAST="${TMP_DIR}/newer-merged.xml"
 
 write_appcast "$BASE_APPCAST" "0.18.2" "18002900" "default"
 write_appcast "$BETA_CANDIDATE" "0.19.0-rc.1" "19000601" "beta"
@@ -88,6 +93,35 @@ if "$VERIFY_SCRIPT" "$MERGED_APPCAST" --expected-version "0.19.0-rc.2" --expecte
 fi
 if "$VERIFY_SCRIPT" "$MERGED_APPCAST" --expected-version "0.19.0-rc.1" >/dev/null 2>&1; then
   fail "verifier accepted an expected version without an expected channel"
+fi
+
+write_appcast "$EXPLICIT_DEFAULT_APPCAST" "0.19.0" "19000900" "explicit-default"
+if "$VERIFY_SCRIPT" "$EXPLICIT_DEFAULT_APPCAST" >/dev/null 2>&1; then
+  fail "verifier accepted an explicit Sparkle default channel"
+fi
+if "$MERGE_SCRIPT" \
+  --base-appcast "$EXPLICIT_DEFAULT_APPCAST" \
+  --candidate-appcast "$BETA_CANDIDATE" \
+  --output "$TMP_DIR/explicit-default-merged.xml" >/dev/null 2>&1; then
+  fail "merger accepted an explicit Sparkle default channel"
+fi
+
+write_appcast "$NEWER_BETA_CANDIDATE" "0.19.0-rc.2" "19000602" "beta"
+"$MERGE_SCRIPT" \
+  --base-appcast "$UPDATED_APPCAST" \
+  --candidate-appcast "$NEWER_BETA_CANDIDATE" \
+  --output "$NEWER_MERGED_APPCAST"
+if "$MERGE_SCRIPT" \
+  --base-appcast "$NEWER_MERGED_APPCAST" \
+  --candidate-appcast "$BETA_CANDIDATE" \
+  --output "$TMP_DIR/downgraded.xml" >/dev/null 2>&1; then
+  fail "merger accepted a beta-channel version regression"
+fi
+if "$MERGE_SCRIPT" \
+  --base-appcast "$UPDATED_APPCAST" \
+  --candidate-appcast "$BASE_APPCAST" \
+  --output "$TMP_DIR/stable-downgraded.xml" >/dev/null 2>&1; then
+  fail "merger accepted a stable-channel version regression"
 fi
 
 printf '[sparkle-appcast-channels-contract] passed\n'

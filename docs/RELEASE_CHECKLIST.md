@@ -72,14 +72,16 @@ This checklist is required before creating a release tag on `main`.
 - [x] Dependency modernization retains the `v0.18.2` SQLite online-backup and migration-ledger safety contract.
 - [x] npm/related install-instance normalization, MAS refresh handling, Sparkle inventory/update visibility, external-bundle GUI update actions, and scheduled eligible-channel Helm checks are included.
 - [x] Direct Developer ID builds expose a default-off beta/RC opt-in; Helm remains explicitly excluded from the separate Sparkle Apps manager.
-- [x] GUI appcast publication preserves one stable default-channel item and replaces only the matching signed `beta` prerelease item.
+- [x] GUI appcast publication preserves one stable unchanneled item and replaces only the matching signed `beta` prerelease item.
 
 ### Required Validation
 
 - [x] Full repository quality gate passes on the v0.18.2-based integration branch.
 - [x] SQLite migration compatibility gate passes with `rusqlite 0.40.1`, including backup and tamper/recovery coverage.
 - [x] Sparkle appcast/recovery checklist and arm64 Xcode tests pass.
-- [x] Appcast channel contracts verify stable/RC coexistence, replacement, malformed-channel rejection, and channel-specific release verification.
+- [x] Appcast channel contracts verify stable/RC coexistence, replacement, malformed or explicit-`default` channel rejection, channel-specific verification, and per-channel downgrade refusal.
+- [x] Appcast publication merges against current `main` at generation and again immediately before publication, preventing stale-tag reruns and publication races from rolling back either channel.
+- [x] Prerelease publication verification rejects missing or mismatched GUI/CLI metadata unless the exact counterpart publication PR remains open.
 - [x] Third-party dependency licenses are re-audited for the candidate dependency graph.
 - [x] Non-mutating `v0.19.0-rc.1` release rehearsal and preflight complete without unresolved errors.
 

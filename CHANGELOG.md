@@ -18,7 +18,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - The minimum supported platform is now macOS 13 Ventura, removing obsolete compatibility branches and the legacy login-helper fallback.
 - Rust and website dependencies have been modernized, including `rusqlite 0.40.1` while preserving the released online-backup migration safety path.
 - Scripted Xcode validation now selects `arch=arm64` explicitly while retaining Ventura deployment-target compatibility.
-- Sparkle release publication now preserves the stable default-channel item when adding or replacing a signed beta/RC item, with channel-aware drift and post-publication verification.
+- Sparkle release publication now preserves the stable unchanneled item when adding or replacing a signed beta/RC item, merges against current `main`, rejects per-channel rollback, and fails closed on unexplained GUI/CLI prerelease metadata gaps.
 
 ### Fixed
 - Manager install-instance normalization now hides runtime shims and groups helper entry points without collapsing intentionally distinct installations, improving npm and related manager multi-install reporting.

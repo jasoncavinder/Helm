@@ -258,11 +258,6 @@ jobs:
             )"
           fi
 
-          if [ -z "$APPCAST_BETA_VERSION" ] && [ -z "$RC_CLI_VERSION" ]; then
-            echo "[verify] No prerelease GUI or CLI metadata found; skipping prerelease verification."
-            exit 0
-          fi
-
           if [ -f "$RC_CLI_FILE" ] && [ -z "$RC_CLI_VERSION" ]; then
             echo "::error::Unable to parse prerelease CLI version from ${RC_CLI_FILE}"
             exit 1
@@ -272,26 +267,48 @@ jobs:
             echo "::error::actual channel=${RC_CLI_CHANNEL}"
             exit 1
           fi
-          if [ -n "$APPCAST_BETA_VERSION" ] && [ -n "$RC_CLI_VERSION" ] && [ "$APPCAST_BETA_VERSION" != "$RC_CLI_VERSION" ]; then
-            OPEN_PUBLISH_HEADS="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open --json headRefName --jq '.[].headRefName' || true)"
-            EXPECTED_GUI_HEAD="chore/publish-updates-v${RC_CLI_VERSION}"
-            EXPECTED_CLI_HEAD="chore/publish-cli-updates-v${APPCAST_BETA_VERSION}-rc"
-            if grep -Fxq "$EXPECTED_GUI_HEAD" <<< "$OPEN_PUBLISH_HEADS" || grep -Fxq "$EXPECTED_CLI_HEAD" <<< "$OPEN_PUBLISH_HEADS"; then
-              echo "::notice::Prerelease GUI/CLI mismatch is pending the matching publish PR merge."
-              echo "::notice::appcast_beta=${APPCAST_BETA_VERSION} cli_latest_rc=${RC_CLI_VERSION}"
+
+          OPEN_PUBLISH_HEADS="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open --json headRefName --jq '.[].headRefName' || true)"
+          PAIR_STATE="$(
+            scripts/release/publish_verify_prerelease_pair_state.sh \
+              "$APPCAST_BETA_VERSION" \
+              "$RC_CLI_VERSION" \
+              "$OPEN_PUBLISH_HEADS"
+          )"
+          PAIR_STATUS="$(printf '%s\n' "$PAIR_STATE" | awk -F= '$1=="STATUS" {print substr($0, index($0, "=") + 1)}')"
+          PAIR_REASON="$(printf '%s\n' "$PAIR_STATE" | awk -F= '$1=="REASON" {print substr($0, index($0, "=") + 1)}')"
+          RC_VERSION="$(printf '%s\n' "$PAIR_STATE" | awk -F= '$1=="TARGET_VERSION" {print substr($0, index($0, "=") + 1)}')"
+          MATCHING_HEADS="$(printf '%s\n' "$PAIR_STATE" | awk -F= '$1=="MATCHING_HEADS" {print substr($0, index($0, "=") + 1)}')"
+
+          case "$PAIR_STATUS" in
+            empty)
+              echo "[verify] No prerelease GUI or CLI metadata found; skipping prerelease verification."
+              exit 0
+              ;;
+            synced)
+              ;;
+            pending)
+              echo "::notice::Prerelease GUI/CLI gap is pending the exact counterpart publish PR merge."
+              echo "::notice::appcast_beta=${APPCAST_BETA_VERSION:-<missing>} cli_latest_rc=${RC_CLI_VERSION:-<missing>} heads=${MATCHING_HEADS}"
               {
-                echo "- Prerelease metadata status: follow-up required (pending publish PR merge)"
-                echo "- GUI beta-channel version: ${APPCAST_BETA_VERSION}"
-                echo "- RC CLI metadata version: ${RC_CLI_VERSION}"
+                echo "- Prerelease metadata status: follow-up required (pending exact counterpart publish PR)"
+                echo "- GUI beta-channel version: ${APPCAST_BETA_VERSION:-<missing>}"
+                echo "- RC CLI metadata version: ${RC_CLI_VERSION:-<missing>}"
+                echo "- Matching publish PR branch: ${MATCHING_HEADS}"
               } >> "$GITHUB_STEP_SUMMARY"
               exit 0
-            fi
-            echo "::error::Prerelease GUI and CLI metadata versions differ."
-            echo "::error::appcast_beta=${APPCAST_BETA_VERSION} cli_latest_rc=${RC_CLI_VERSION}"
-            exit 1
-          fi
+              ;;
+            invalid|incomplete|mismatch)
+              echo "::error::Prerelease GUI and CLI metadata are not coherent: ${PAIR_REASON}"
+              echo "::error::appcast_beta=${APPCAST_BETA_VERSION:-<missing>} cli_latest_rc=${RC_CLI_VERSION:-<missing>}"
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected prerelease pair state: ${PAIR_STATUS:-<empty>}"
+              exit 1
+              ;;
+          esac
 
-          RC_VERSION="${APPCAST_BETA_VERSION:-$RC_CLI_VERSION}"
           RC_TAG="v${RC_VERSION}"
           RC_RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}" --jq '{tag_name, draft, prerelease}')"
           RC_RELEASE_DRAFT="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("draft") else "false")')"

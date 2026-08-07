@@ -507,7 +507,8 @@ jobs:
           DMG_PATH="$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
           APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
           APPCAST_CANDIDATE_PATH="$PWD/build/release-assets/appcast-candidate.xml"
-          APPCAST_BASE_PATH="$PWD/web/public/updates/appcast.xml"
+          APPCAST_BASE_PATH="$RUNNER_TEMP/appcast-base-main.xml"
+          FEED_PATH="web/public/updates/appcast.xml"
           RELEASE_NOTES_PATH="$PWD/build/release-assets/release-notes/${TAG_NAME}.html"
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/Helm-${TAG_NAME}-macos-universal.dmg"
           RELEASE_NOTES_URL="$(
@@ -557,6 +558,11 @@ jobs:
             --channel "$APPCAST_CHANNEL" \
             --display-version "$DISPLAY_VERSION" \
             --release-notes-url "$RELEASE_NOTES_URL"
+
+          # Tags are immutable, so merge against the currently published feed rather
+          # than the historical appcast from the tag checkout.
+          git fetch --no-tags --depth=1 origin main
+          git show "FETCH_HEAD:${FEED_PATH}" > "$APPCAST_BASE_PATH"
 
           apps/macos-ui/scripts/merge_sparkle_appcast.py \
             --base-appcast "$APPCAST_BASE_PATH" \
@@ -626,6 +632,7 @@ jobs:
           set -euo pipefail
 
           APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          APPCAST_CANDIDATE_PATH="$PWD/build/release-assets/appcast-candidate.xml"
           RELEASE_NOTES_PATH="$PWD/build/release-assets/release-notes/${TAG_NAME}.html"
           FEED_PATH="web/public/updates/appcast.xml"
           RELEASE_NOTES_FEED_PATH="web/public/updates/release-notes/${TAG_NAME}.html"
@@ -651,6 +658,25 @@ jobs:
           fi
           mkdir -p "$PUBLISH_DIR/$(dirname "$FEED_PATH")"
           mkdir -p "$PUBLISH_DIR/$(dirname "$RELEASE_NOTES_FEED_PATH")"
+
+          # Re-merge against the freshly cloned publication base to close the race
+          # between appcast generation and creation of the publication branch.
+          apps/macos-ui/scripts/merge_sparkle_appcast.py \
+            --base-appcast "$PUBLISH_DIR/$FEED_PATH" \
+            --candidate-appcast "$APPCAST_CANDIDATE_PATH" \
+            --output "$APPCAST_PATH"
+
+          EXPECTED_VERSION="${TAG_NAME#v}"
+          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
+            EXPECTED_CHANNEL="beta"
+          else
+            EXPECTED_CHANNEL="default"
+          fi
+          apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh \
+            "$APPCAST_PATH" \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-channel "$EXPECTED_CHANNEL"
+
           cp "$APPCAST_PATH" "$PUBLISH_DIR/$FEED_PATH"
           cp "$RELEASE_NOTES_PATH" "$PUBLISH_DIR/$RELEASE_NOTES_FEED_PATH"
 
