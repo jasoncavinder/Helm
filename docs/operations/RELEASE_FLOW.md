@@ -41,6 +41,31 @@ fetched `origin/main`; this exception does not permit tagging a candidate branch
 
 After explicit maintainer approval:
 
+### Release Channel Semantics
+
+GitHub exposes release state as full release versus prerelease. Helm derives its
+stable/RC channel from the immutable tag and requires both representations to
+agree:
+
+- `vX.Y.Z` is a published, non-draft GitHub release with `prerelease=false`.
+  Creation uses `--latest`, and `releases/latest` must resolve to this stable tag.
+- `vX.Y.Z-rc.N` is a published, non-draft GitHub prerelease with
+  `prerelease=true`. RC creation never requests latest, and an RC tag must never
+  own `releases/latest`.
+- Stable and RC releases coexist. Publishing an RC does not replace, demote, or
+  repoint the current stable GitHub release.
+
+`scripts/release/runbook.sh publish` validates these invariants for an existing
+release and immediately after creating a release. A mismatch is a hard failure;
+do not reuse, edit around, or retag a release into the other channel.
+
+Helm's metadata routing mirrors that state: stable tags update the appcast
+`default` channel and `cli/latest.json`; RC tags update the appcast `beta`
+channel and `cli/latest-rc.json`. The appcast currently carries both logical
+channels in one document. If Sparkle transport later uses separate stable and
+prerelease feed URLs, stable tags must route only to the stable feed and RC tags
+only to the prerelease feed; the GitHub release-state contract does not change.
+
 1. Create and push the annotated tag:
 
    ```bash
@@ -63,6 +88,9 @@ After explicit maintainer approval:
    scripts/release/runbook.sh publish --tag vX.Y.Z
    ```
 
+   Use `vX.Y.Z-rc.N` for an RC. Existing releases are validated rather than
+   accepted blindly.
+
 3. Watch `Release macOS DMG` and `Release CLI Direct Installer` to completion. Do not run auxiliary variants until direct GUI and CLI artifacts have published.
    Stable tags replace the unchanneled default item. RC tags replace only the `beta` item and must preserve the current stable item. The workflow merges against current `main` both during generation and immediately before publication, and rejects any per-channel build regression.
 4. Read both publication summaries. Artifact upload and metadata synchronization are separate states.
@@ -75,7 +103,9 @@ After explicit maintainer approval:
 
    The verify command uses an explicit post-publication preflight mode that permits stable metadata to equal the released tag. Standalone preflight and tag preparation remain strict and reject that state.
 
-7. Confirm public metadata references the released version: stable releases in the appcast default channel plus `cli/latest.json`, or RC releases in the appcast `beta` channel plus `cli/latest-rc.json`.
+7. Confirm public metadata references a release with matching GitHub state:
+   stable releases in the appcast default channel plus `cli/latest.json`, or RC
+   prereleases in the appcast `beta` channel plus `cli/latest-rc.json`.
 
 ## Recovery Rules
 

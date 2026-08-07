@@ -43,6 +43,8 @@ jobs:
       HELM_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.HELM_SPARKLE_PUBLIC_ED_KEY }}
       HELM_SPARKLE_PRIVATE_ED_KEY: ${{ secrets.HELM_SPARKLE_PRIVATE_ED_KEY }}
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_RELEASE_PRERELEASE: ${{ github.event.release.prerelease || '' }}
       VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.verify_only == 'true' && 'true' || 'false') || 'false' }}
       EXPECTED_XCODE_MAJOR: "26"
       WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -50,6 +52,34 @@ jobs:
       LC_ALL: en_US.UTF-8
 
     steps:
+      - name: Resolve release channel and appcast target
+        run: |
+          set -euo pipefail
+
+          if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            RELEASE_CHANNEL="stable"
+            APPCAST_CHANNEL="default"
+            EXPECTED_PRERELEASE="false"
+          elif [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            RELEASE_CHANNEL="rc"
+            APPCAST_CHANNEL="beta"
+            EXPECTED_PRERELEASE="true"
+          else
+            echo "::error::Unsupported tag format '${TAG_NAME}'. Expected vX.Y.Z or vX.Y.Z-rc.N"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "release" ] && [ "$EVENT_RELEASE_PRERELEASE" != "$EXPECTED_PRERELEASE" ]; then
+            echo "::error::Tag '${TAG_NAME}' requires prerelease=${EXPECTED_PRERELEASE}, but the release event reported prerelease=${EVENT_RELEASE_PRERELEASE:-<empty>}."
+            exit 1
+          fi
+
+          {
+            echo "RELEASE_CHANNEL=${RELEASE_CHANNEL}"
+            echo "APPCAST_CHANNEL=${APPCAST_CHANNEL}"
+          } >> "$GITHUB_ENV"
+          echo "[preflight] Resolved channel=${RELEASE_CHANNEL} appcast_channel=${APPCAST_CHANNEL}"
+
       - name: Validate required secrets
         if: ${{ env.VERIFY_ONLY != 'true' }}
         run: |
@@ -113,10 +143,20 @@ jobs:
           fi
 
       - name: Checkout
-        if: ${{ env.VERIFY_ONLY != 'true' }}
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           ref: ${{ env.TAG_NAME }}
+
+      - name: Validate published GitHub release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          args=(--tag "$TAG_NAME")
+          if [ "$EVENT_NAME" = "release" ]; then
+            args+=(--event-prerelease "$EVENT_RELEASE_PRERELEASE")
+          fi
+          scripts/release/validate_github_release_state.sh "${args[@]}"
 
       - name: Verify macOS release runtime
         if: ${{ env.VERIFY_ONLY != 'true' }}
@@ -536,11 +576,6 @@ jobs:
           )"
           GITHUB_RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
           DISPLAY_VERSION="${TAG_NAME#v}"
-          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
-            APPCAST_CHANNEL="beta"
-          else
-            APPCAST_CHANNEL="default"
-          fi
 
           apps/macos-ui/scripts/generate_release_notes_html.py \
             --changelog-path "$PWD/CHANGELOG.md" \
@@ -574,15 +609,10 @@ jobs:
         run: |
           set -euo pipefail
           EXPECTED_VERSION="${TAG_NAME#v}"
-          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
-            EXPECTED_CHANNEL="beta"
-          else
-            EXPECTED_CHANNEL="default"
-          fi
           apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh \
             "$PWD/build/release-assets/appcast.xml" \
             --expected-version "$EXPECTED_VERSION" \
-            --expected-channel "$EXPECTED_CHANNEL"
+            --expected-channel "$APPCAST_CHANNEL"
 
       - name: Generate DMG release provenance manifest
         if: ${{ env.VERIFY_ONLY != 'true' }}
@@ -667,15 +697,10 @@ jobs:
             --output "$APPCAST_PATH"
 
           EXPECTED_VERSION="${TAG_NAME#v}"
-          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
-            EXPECTED_CHANNEL="beta"
-          else
-            EXPECTED_CHANNEL="default"
-          fi
           apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh \
             "$APPCAST_PATH" \
             --expected-version "$EXPECTED_VERSION" \
-            --expected-channel "$EXPECTED_CHANNEL"
+            --expected-channel "$APPCAST_CHANNEL"
 
           cp "$APPCAST_PATH" "$PUBLISH_DIR/$FEED_PATH"
           cp "$RELEASE_NOTES_PATH" "$PUBLISH_DIR/$RELEASE_NOTES_FEED_PATH"
@@ -833,11 +858,7 @@ jobs:
           FEED_PATH="web/public/updates/appcast.xml"
           VERIFY_DIR="$RUNNER_TEMP/appcast-verify-main"
           EXPECTED_VERSION="${TAG_NAME#v}"
-          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
-            EXPECTED_CHANNEL="beta"
-          else
-            EXPECTED_CHANNEL="default"
-          fi
+          EXPECTED_CHANNEL="$APPCAST_CHANNEL"
 
           git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$VERIFY_DIR"
           MAIN_FEED="$VERIFY_DIR/$FEED_PATH"
