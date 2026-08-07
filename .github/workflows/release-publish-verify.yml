@@ -179,9 +179,10 @@ jobs:
             exit 1
           fi
 
-          RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${STABLE_TAG}" --jq '{tag_name, draft, prerelease}')"
+          RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${STABLE_TAG}" --jq '{tag_name, draft, prerelease, published_at}')"
           RELEASE_DRAFT="$(printf '%s' "$RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("draft") else "false")')"
           RELEASE_PRERELEASE="$(printf '%s' "$RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("prerelease") else "false")')"
+          RELEASE_PUBLISHED_AT="$(printf '%s' "$RELEASE_STATE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("published_at") or "")')"
 
           if [ "$RELEASE_DRAFT" = "true" ]; then
             echo "::error::Release ${STABLE_TAG} is still draft."
@@ -189,6 +190,17 @@ jobs:
           fi
           if [ "$RELEASE_PRERELEASE" = "true" ]; then
             echo "::error::Release ${STABLE_TAG} must be stable (prerelease=false) for top appcast/latest metadata."
+            exit 1
+          fi
+          if [ -z "$RELEASE_PUBLISHED_AT" ]; then
+            echo "::error::Stable release ${STABLE_TAG} is not published."
+            exit 1
+          fi
+
+          LATEST_STABLE_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name')"
+          if [ "$LATEST_STABLE_TAG" != "$STABLE_TAG" ]; then
+            echo "::error::Stable metadata must match GitHub releases/latest."
+            echo "::error::metadata=${STABLE_TAG} releases_latest=${LATEST_STABLE_TAG:-<empty>}"
             exit 1
           fi
 
@@ -310,9 +322,10 @@ jobs:
           esac
 
           RC_TAG="v${RC_VERSION}"
-          RC_RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}" --jq '{tag_name, draft, prerelease}')"
+          RC_RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}" --jq '{tag_name, draft, prerelease, published_at}')"
           RC_RELEASE_DRAFT="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("draft") else "false")')"
           RC_RELEASE_PRERELEASE="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("prerelease") else "false")')"
+          RC_RELEASE_PUBLISHED_AT="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("published_at") or "")')"
 
           if [ "$RC_RELEASE_DRAFT" = "true" ]; then
             echo "::error::Prerelease tag ${RC_TAG} is still draft."
@@ -320,6 +333,16 @@ jobs:
           fi
           if [ "$RC_RELEASE_PRERELEASE" != "true" ]; then
             echo "::error::RC metadata points at ${RC_TAG}, but that release is not marked prerelease=true."
+            exit 1
+          fi
+          if [ -z "$RC_RELEASE_PUBLISHED_AT" ]; then
+            echo "::error::RC release ${RC_TAG} is not published."
+            exit 1
+          fi
+
+          LATEST_STABLE_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)"
+          if [ "$LATEST_STABLE_TAG" = "$RC_TAG" ]; then
+            echo "::error::RC release ${RC_TAG} must never own GitHub releases/latest."
             exit 1
           fi
 

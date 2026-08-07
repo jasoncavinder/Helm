@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # Assertions intentionally match literal workflow variables.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -7,9 +8,12 @@ ALL_VARIANTS_WORKFLOW="${WORKFLOWS_DIR}/release-all-variants.yml"
 CLI_WORKFLOW="${WORKFLOWS_DIR}/release-cli-direct.yml"
 DMG_WORKFLOW="${WORKFLOWS_DIR}/release-macos-dmg.yml"
 PUBLISH_VERIFY_WORKFLOW="${WORKFLOWS_DIR}/release-publish-verify.yml"
+CLI_DRIFT_WORKFLOW="${WORKFLOWS_DIR}/cli-update-drift.yml"
 CANARY_WORKFLOW="${WORKFLOWS_DIR}/release-macos-canary.yml"
 AUTH_CHECK_WORKFLOW="${WORKFLOWS_DIR}/release-publish-auth-check.yml"
 PREFLIGHT_SCRIPT="${ROOT_DIR}/scripts/release/preflight.sh"
+RUNBOOK_SCRIPT="${ROOT_DIR}/scripts/release/runbook.sh"
+RELEASE_STATE_VALIDATOR="${ROOT_DIR}/scripts/release/validate_github_release_state.sh"
 WEB_BUILD_WORKFLOW="${WORKFLOWS_DIR}/web-build.yml"
 
 fail() {
@@ -50,6 +54,8 @@ for workflow in "$CLI_WORKFLOW" "$DMG_WORKFLOW"; do
   expect_pattern 'HANDOFF_STATUS.*=.*open' "$workflow" "metadata publication must preserve an open publish PR while polling"
   expect_pattern 'HANDOFF_STATUS.*closed_unmerged' "$workflow" "metadata publication must preserve a non-red closed-PR follow-up state"
   reject_pattern 'mergedAt.*@tsv' "$workflow" "metadata publication must not parse nullable mergedAt through collapsing TSV fields"
+  expect_pattern 'validate_github_release_state\.sh' "$workflow" "direct release workflows must validate published GitHub release state"
+  expect_pattern '--event-prerelease "\$EVENT_RELEASE_PRERELEASE"' "$workflow" "release-event state must be checked against the tag channel"
 done
 
 expect_pattern 'APPCAST_CHANNEL="beta"' "$DMG_WORKFLOW" "RC releases must select the Sparkle beta channel"
@@ -59,11 +65,24 @@ expect_pattern '--base-appcast "\$APPCAST_BASE_PATH"' "$DMG_WORKFLOW" "appcast p
 expect_pattern 'git fetch --no-tags --depth=1 origin main' "$DMG_WORKFLOW" "appcast generation must fetch the current main publication base"
 expect_pattern 'git show "FETCH_HEAD:\$\{FEED_PATH\}" > "\$APPCAST_BASE_PATH"' "$DMG_WORKFLOW" "appcast generation must read the feed from current main"
 expect_pattern '--base-appcast "\$PUBLISH_DIR/\$FEED_PATH"' "$DMG_WORKFLOW" "appcast publication must re-merge against the freshly cloned main feed"
-expect_pattern 'EXPECTED_CHANNEL="beta"' "$DMG_WORKFLOW" "RC publication verification must select the beta channel"
+expect_pattern 'EXPECTED_CHANNEL="\$APPCAST_CHANNEL"' "$DMG_WORKFLOW" "appcast verification must use the centrally resolved channel"
 expect_pattern 'APPCAST_BETA_VERSION' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must inspect GUI beta metadata"
 expect_pattern 'publish_verify_prerelease_pair_state\.sh' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must require coherent GUI and CLI prerelease metadata"
 expect_pattern 'invalid\|incomplete\|mismatch' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must reject one-sided or unexplained GUI/CLI RC drift"
 expect_pattern 'pending the exact counterpart publish PR merge' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification may defer only for the exact counterpart publish PR"
+expect_pattern 'releases/latest' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must anchor stable metadata to GitHub releases/latest"
+expect_pattern 'RC release .* must never own GitHub releases/latest' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must keep RC releases out of releases/latest"
+expect_pattern 'published_at' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must require published releases"
+
+expect_pattern 'releases/latest' "$CLI_DRIFT_WORKFLOW" "stable CLI drift checks must resolve GitHub releases/latest"
+expect_pattern 'prerelease == true' "$CLI_DRIFT_WORKFLOW" "RC CLI drift checks must resolve published prereleases"
+expect_pattern 'latest-rc\.json' "$CLI_DRIFT_WORKFLOW" "RC CLI drift checks must preserve the prerelease metadata path"
+
+expect_pattern 'validate_github_release_state\.sh' "$RUNBOOK_SCRIPT" "release runbook must validate existing and newly created releases"
+expect_pattern '--latest' "$RUNBOOK_SCRIPT" "stable release creation must preserve --latest"
+expect_pattern '--prerelease' "$RUNBOOK_SCRIPT" "RC release creation must preserve --prerelease"
+expect_pattern 'releases/latest' "$RELEASE_STATE_VALIDATOR" "release-state validator must enforce latest ownership"
+expect_pattern 'release .* is not published' "$RELEASE_STATE_VALIDATOR" "release-state validator must reject unpublished releases"
 
 expect_pattern 'runs-on: macos-26' "$CANARY_WORKFLOW" "release canary must use the supported macOS runner"
 expect_pattern 'EXPECTED_XCODE_MAJOR: "26"' "$CANARY_WORKFLOW" "release canary must pin the expected Xcode major"
