@@ -130,7 +130,7 @@ fi
 SPARKLE_SIGN_UPDATE_BIN="${SPARKLE_BIN_DIR:+$SPARKLE_BIN_DIR/sign_update}"
 
 if [[ ! -x "${SPARKLE_SIGN_UPDATE_BIN:-}" ]]; then
-  SPARKLE_RELEASE_VERSION="${SPARKLE_RELEASE_VERSION:-2.8.1}"
+  SPARKLE_RELEASE_VERSION="${SPARKLE_RELEASE_VERSION:-2.9.5}"
   SPARKLE_ARTIFACT_URL="https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_RELEASE_VERSION}/Sparkle-for-Swift-Package-Manager.zip"
   TMP_SPARKLE_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_SPARKLE_DIR"' EXIT

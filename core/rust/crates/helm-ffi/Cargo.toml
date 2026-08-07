@@ -15,10 +15,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-ureq = "2.10"
+ureq = "3.3"
 
 [build-dependencies]
 cbindgen = "0.29"
 
 [dev-dependencies]
-rusqlite = { version = "0.33", features = ["bundled"] }
+rusqlite = { version = "0.40.1", features = ["bundled"] }

@@ -50,7 +50,7 @@ Release check policy (required vs advisory):
 
 Pinned versions:
 
-- Rust toolchain: `1.93.1` (all workflows using `dtolnay/rust-toolchain`)
+- Rust toolchain: `1.97.1` (all workflows using `dtolnay/rust-toolchain`)
 - SwiftLint: `0.59.1` via `portable_swiftlint.zip`
 - SwiftLint portable SHA-256: `58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1`
 

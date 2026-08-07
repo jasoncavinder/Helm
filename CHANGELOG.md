@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0-rc.1] - 2026-08-06
+
+### Added
+- The Sparkle apps manager now inventories apps in standard system and user application roots, exposes conservative update availability from bounded static HTTPS appcasts, and isolates individual vendor-feed failures.
+- Individual Sparkle app updates now use Sparkle's external-bundle updater API, while Helm remains excluded by bundle identifier and Sparkle apps remain outside bulk and manager-lifecycle automation.
+- Eligible direct Developer ID builds now expose user-configurable automatic Helm update checks backed by Sparkle's persisted scheduler, with hourly, daily, weekly, and monthly intervals.
+
+### Changed
+- The minimum supported platform is now macOS 13 Ventura, removing obsolete compatibility branches and the legacy login-helper fallback.
+- Rust and website dependencies have been modernized, including `rusqlite 0.40.1` while preserving the released online-backup migration safety path.
+- Scripted Xcode validation now selects `arch=arm64` explicitly while retaining Ventura deployment-target compatibility.
+
+### Fixed
+- Manager install-instance normalization now hides runtime shims and groups helper entry points without collapsing intentionally distinct installations, improving npm and related manager multi-install reporting.
+- Mac App Store refresh handling now treats expected all-package outcomes consistently and preserves actionable diagnostics for authentication or command failures.
+- Swift settings and manager surfaces now reflect the expanded Sparkle and multi-instance behavior without admitting Sparkle work into bulk upgrade plans.
+
+This release candidate preserves the `v0.18.2` append-only migration ledger, verified pre-migration backups, debug/release database separation, and affected-database recovery guarantees. It does not claim delivery of the broader native-experience or Project WOW implementation planned across `0.19.x` and later milestones.
+
 ## [0.18.2] - 2026-08-04
 
 ### Added

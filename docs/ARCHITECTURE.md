@@ -23,8 +23,8 @@ Primary goals:
 
 Minimum platform baseline:
 
-- macOS 11+ (Big Sur)
-- Rationale: aligns with modern platform security primitives required for planned App Attest-based install authentication in the Shared Brain stage (`1.4.x`)
+- macOS 13+ (Ventura)
+- Rationale: aligns with modern platform APIs already used in the app and keeps the toolchain baseline current for dependency and platform upgrades
 
 Helm is not a shell wrapper. It is a **structured execution engine**.
 
@@ -156,7 +156,7 @@ Helm currently implements 28 adapters:
 - **Toolchain / Runtime:** mise, asdf (optional), rustup
 - **System / OS:** Homebrew (formulae), softwareupdate, MacPorts (optional), nix-darwin (optional)
 - **Language:** npm, pnpm, yarn, pip, pipx, cargo, cargo-binstall, RubyGems, Poetry, Bundler
-- **App / GUI:** mas, Homebrew casks, Sparkle (detection-only), Setapp (detection-only)
+- **App / GUI:** mas, Homebrew casks, Sparkle (inventory, conservative outdated detection, vendor-authoritative updates), Setapp (detection-only)
 - **Container / VM:** Docker Desktop, podman, colima, Parallels Desktop (detection-only)
 - **Security / Firmware:** Xcode Command Line Tools, Rosetta 2, Firmware Updates
 

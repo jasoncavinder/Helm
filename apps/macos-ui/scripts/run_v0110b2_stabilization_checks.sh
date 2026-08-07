@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+XCODE_DESTINATION="$("$ROOT_DIR/apps/macos-ui/scripts/macos_xcode_destination.sh")"
 
 run() {
   echo
@@ -19,7 +20,7 @@ echo "==> xcodebuild HelmTests"
 XCODE_LOG="/tmp/helm_v0110b2_xcodebuild.log"
 if ! xcodebuild -project "$ROOT_DIR/apps/macos-ui/Helm.xcodeproj" \
   -scheme HelmTests \
-  -destination 'platform=macOS' \
+  -destination "$XCODE_DESTINATION" \
   -derivedDataPath /tmp/helmtests-deriveddata \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \

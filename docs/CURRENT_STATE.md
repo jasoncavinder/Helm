@@ -10,13 +10,14 @@ It reflects reality, not intention.
 
 Current documentation baseline: **0.18.2 is the latest public stable release on `main`**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
 
-Implementation baseline: **0.18.x doctor/repair, local security groundwork, and migration-safety hardening are released on `main` through `v0.18.2`**. The design-definition additions are planning contracts and do not implement the planned first-run or redesigned UI behavior.
+Implementation baseline: **`0.19.0-rc.1` source preparation on the v0.18.2 lineage**, combining manager/updater reliability, dependency modernization, and the macOS 13 baseline while preserving released migration safety. The broader native-experience and Project WOW implementation remains staged work rather than part of this candidate.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.18.2**
+- prepared source candidate: **0.19.0-rc.1** (not tagged or published; public update metadata remains on `v0.18.2`)
 - `v0.18.0` was published on 2026-08-03 and then withdrawn after discovery of a critical SQLite migration defect; its immutable tag is retained for auditability while its release is not publicly distributed.
 - public GUI and CLI update metadata points to the signed `v0.18.2` artifacts.
 - delivered in `v0.18.1`: reconciliation of the known development migration `17` collision before released doctor/repair migrations run, plus prevention of historical DDL replay for already-current databases, preserving package identifiers and user data.
@@ -26,6 +27,7 @@ Active milestone:
 - human-validation status: no participant session is claimed by the v0.18 artifact closure; the owner-run moderated checkpoint in `docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md` remains required before v0.20 workflow sign-off and before v0.22 UI lock
 - `v0.17.12` moves bulk and scoped upgrade authority sequencing into Rust/FFI/XPC; every submitted task reaches a terminal state before the next phase is scheduled, and scoped-workflow cancellation prevents later-phase submission while preserving individual task cancellation and diagnostics.
 - delivered on `main` for **0.18.x**: SQLite-backed doctor finding lifecycle and repair knowledge, deterministic cross-installation fingerprints, guarded bundled/imported knowledge, repair verification history, and the local security-advisory domain/cache groundwork; provider fetchers and user-facing advisory features remain deferred to the staged advisory release.
+- active `0.19.x` manager/updater integration: standard application roots are inventoried for embedded Sparkle frameworks; Helm is excluded by bundle identifier; static HTTPS appcasts provide conservative outdated visibility through bounded concurrent checks with per-feed failure isolation; individual GUI update actions use Sparkle's external-bundle updater API configured for the target app; eligible direct-channel Helm builds expose Sparkle-backed scheduled checks; npm multi-install normalization and MAS refresh handling are hardened; and the minimum supported macOS release moves to macOS 13 Ventura.
 - repository operations follow-up on `main`: agent-agnostic operating model with policy-only root `AGENTS.md`, isolated agent task worktrees under `.worktrees/` with the `agent-worktree-isolation` Skill, workflow Skills under `.opencode/skills/`, inactive prompt drafts under `.opencode/templates/`, and structured local notify logging to `dev/logs/agent-runs.ndjson`.
 - withdrawn release record for `v0.18.0`:
   - signed/notarized DMG and direct CLI artifacts passed release canary, publish-auth, provenance, metadata convergence, and drift-guard verification before the migration defect was discovered.
@@ -186,6 +188,7 @@ Scope notes:
 
 - Package managers above are considered complete relative to Helm's current feature model, even when the native manager exposes additional functionality Helm intentionally does not model.
 - Detection-only/status-only managers are complete within that narrower product scope and are not intended to expose full package-mutation surfaces.
+- The Sparkle apps manager inventories Sparkle bundles under `/Applications` and `~/Applications`, derives conservative outdated state only from static HTTPS appcasts using bounded concurrent checks and an aggregate scan budget, and delegates each selected update to Sparkle's external-bundle updater configured for that app. Helm is explicitly excluded, dynamic-feed apps remain inventory-only, and Sparkle apps are excluded from bulk upgrade plans and manager lifecycle automation.
 - `nix_darwin` is considered complete for Helm's current scope because Helm intentionally limits it to detect/refresh rather than misrepresent declarative nix-darwin state through `nix-env` compatibility mutations.
 
 ---
@@ -319,7 +322,7 @@ Implemented on `feat/v0.16.0-kickoff`:
   - non-direct channels remain no-op at runtime (MAS/Setapp/Fleet isolation)
 - Added optional Sparkle bridge implementation guarded with `#if canImport(Sparkle)` so non-Sparkle builds remain compile-safe
 - Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
-- Pinned Sparkle SPM dependency to exact `2.8.1` to keep update-framework compatibility aligned with macOS 11+ deployment targets.
+- Pinned Sparkle SPM dependency to exact `2.9.5` to keep update-framework compatibility aligned with macOS 13+ deployment targets.
 - Added user entry points for manual update checks:
   - status-menu `Check for Updates`
   - popover About overlay `Check for Updates`

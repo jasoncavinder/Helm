@@ -1,6 +1,6 @@
 # Helm macOS UI
 
-SwiftUI menu bar utility for macOS 11+ (Big Sur).
+SwiftUI menu bar utility for macOS 13+ (Ventura).
 
 ## Overview
 
@@ -16,5 +16,5 @@ xcodebuild -project Helm.xcodeproj -scheme Helm -configuration Debug build
 ## Requirements
 
 - Xcode 14+
-- macOS 11.0 deployment target
+- macOS 13.0 deployment target
 - Swift 5.7

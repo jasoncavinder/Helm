@@ -43,7 +43,7 @@ No. Helm Business is planned as a separate fleet product lifecycle, not a hidden
 
 ### What macOS versions are supported?
 
-Helm requires macOS 11 (Big Sur) or later and runs natively on both Apple Silicon and Intel Macs.
+Helm's current development baseline is macOS 13 (Ventura) or later, and it runs natively on both Apple Silicon and Intel Macs.
 
 ### Does Helm require administrator privileges?
 
@@ -108,7 +108,7 @@ This only needs to be done once. After that, the app opens normally.
 
 ### How do I build from source?
 
-See the [Installation guide](/guides/installation/) for prerequisites and build steps. You'll need macOS 11+ (Big Sur), Xcode 14+, and a Rust stable toolchain.
+See the [Installation guide](/guides/installation/) for prerequisites and build steps. You'll need macOS 13+ (Ventura), Xcode 14+, and a Rust stable toolchain.
 
 ---
 

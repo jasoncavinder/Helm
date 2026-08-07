@@ -8,7 +8,6 @@ struct SettingsSectionView: View {
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
 
-    @State private var checkFrequency = 60
     @State private var showResetConfirmation = false
     @State private var isResetting = false
     @State private var includeDiagnostics = false
@@ -25,19 +24,6 @@ struct SettingsSectionView: View {
         formatter.timeStyle = .short
         return formatter
     }()
-
-    private var selectedFrequencyLabel: String {
-        switch checkFrequency {
-        case 15:
-            return L10n.App.Settings.Frequency.every15Min.localized
-        case 30:
-            return L10n.App.Settings.Frequency.every30Min.localized
-        case 1440:
-            return L10n.App.Settings.Frequency.daily.localized
-        default:
-            return L10n.App.Settings.Frequency.every1Hour.localized
-        }
-    }
 
     private var helmCliStatusLabel: String {
         if !core.helmCliBundledAvailable {
@@ -193,30 +179,31 @@ struct SettingsSectionView: View {
                         set: { core.setLaunchAtLogin($0) }
                     ))
                     .toggleStyle(.switch)
-                    .disabled(!core.launchAtLoginSupported)
-
-                    if !core.launchAtLoginSupported {
-                        Text(L10n.App.Settings.Label.launchAtLoginRequiresMacOS13.localized)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
 
                     Divider()
 
-                    HStack {
-                        Text(L10n.App.Settings.Label.autoCheck.localized)
-                        Spacer()
-                        Text(L10n.App.Managers.State.comingSoon.localized)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: Binding(
+                        get: { appUpdate.autoCheckEnabled },
+                        set: { appUpdate.setAutoCheckEnabled($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .disabled(!appUpdate.canCheckForUpdates)
 
                     HStack {
                         Text(L10n.App.Settings.Label.checkFrequency.localized)
                         Spacer()
-                        Text(selectedFrequencyLabel)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Picker("", selection: Binding(
+                            get: { appUpdate.checkFrequencyMinutes },
+                            set: { appUpdate.setCheckFrequencyMinutes($0) }
+                        )) {
+                            Text(L10n.App.Settings.Frequency.every1Hour.localized).tag(60)
+                            Text(L10n.App.Settings.Frequency.daily.localized).tag(1_440)
+                            Text(L10n.App.Settings.Frequency.weekly.localized).tag(10_080)
+                            Text(L10n.App.Settings.Frequency.monthly.localized).tag(43_800)
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                        .disabled(!appUpdate.canCheckForUpdates || !appUpdate.autoCheckEnabled)
                     }
                 }
 
@@ -615,6 +602,7 @@ struct SettingsSectionView: View {
             }
         }
         .onAppear {
+            appUpdate.refreshState()
             core.refreshLaunchAtLogin()
             core.refreshHelmCliShimStatus()
         }

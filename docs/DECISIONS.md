@@ -909,6 +909,28 @@ Deliver the work incrementally:
 Canonical detail: `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`, with the approved artifact index recorded there.
 
 ---
+## Decision 043 — macOS 13 Ventura Is the Minimum Platform Baseline
+
+**Decision:**
+Raise Helm's minimum supported macOS release from macOS 11 Big Sur to macOS 13 Ventura beginning with the `0.19.x` line.
+
+**Consequences:**
+
+- All app, service, helper, build, test, and release deployment targets use macOS 13 or newer.
+- The app uses `SMAppService.mainApp` directly and removes the legacy login-helper fallback required only for macOS 11/12.
+- Swift compatibility branches whose only purpose was supporting releases older than Ventura may be removed.
+- Dependency upgrades may adopt versions whose supported macOS floor is Ventura, subject to normal quality and license gates.
+- Universal Apple Silicon and Intel distribution remains supported; this decision changes the operating-system floor, not the architecture matrix.
+
+**Rationale:**
+
+- Helm already relies on modern platform APIs and can simplify platform integration, testing, and updater behavior on a single maintained baseline.
+- Removing obsolete fallback paths reduces lifecycle and launch-at-login complexity.
+- The broader `0.19.x` dependency and manager modernization warrants an explicit compatibility boundary rather than hiding the platform change in a patch release.
+
+This decision supersedes Decision 023 and Decision 042 only where they retain macOS 11 as the active platform baseline.
+
+---
 ## Summary
 
 Helm prioritizes:

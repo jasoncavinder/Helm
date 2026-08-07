@@ -1402,7 +1402,10 @@ private struct InspectorPackageDetailView: View {
                             )
                         ) {
                             ForEach(activeManagerGroup.packages, id: \.id) { candidate in
-                                Text(versionSelectionLabel(for: candidate))
+                                let selectionLabel = versionSelectionLabel(for: candidate)
+                                Text(selectionLabel)
+                                    .lineLimit(2)
+                                    .help(selectionLabel)
                                     .tag(candidate.id)
                             }
                         }
@@ -1783,6 +1786,12 @@ private struct InspectorPackageDetailView: View {
         }
         if package.status == .upgradable, let latestVersion = normalizedVersionText(package.latestVersion) {
             flags.append(L10n.App.Inspector.latest.localized + " " + latestVersion)
+        }
+        if let instanceLabel = PackageConsolidationPolicy.instanceDisambiguationLabel(
+            managerId: package.managerId,
+            packageIdentifier: package.packageIdentifier
+        ) {
+            flags.append(instanceLabel)
         }
         guard !flags.isEmpty else { return versionText }
         return versionText + " (" + flags.joined(separator: ", ") + ")"
@@ -2679,7 +2688,7 @@ private struct InspectorManagerDetailView: View {
                                             }
                                             Text(instance.displayPath)
                                                 .font(.system(.caption, design: .monospaced))
-                                                .lineLimit(2)
+                                                .fixedSize(horizontal: false, vertical: true)
                                                 .multilineTextAlignment(.leading)
                                             Spacer(minLength: 0)
                                             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -2689,6 +2698,7 @@ private struct InspectorManagerDetailView: View {
                                         }
                                     }
                                     .buttonStyle(.plain)
+                                    .help(instance.displayPath)
                                     .helmPointer()
 
                                     if isExpanded {

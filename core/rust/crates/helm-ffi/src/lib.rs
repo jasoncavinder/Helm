@@ -3519,6 +3519,8 @@ struct FfiUpgradePlanStep {
     status: String,
 }
 
+const MAS_ALL_PACKAGES_TARGET: &str = "__all__";
+
 fn manager_authority_key(id: ManagerId) -> &'static str {
     match helm_core::registry::manager(id).map(|descriptor| descriptor.authority) {
         Some(ManagerAuthority::Authoritative) => "authoritative",
@@ -3560,6 +3562,9 @@ fn upgrade_reason_label_for(
             "service.task.label.upgrade.rustup_toolchain",
             vec![("toolchain", package_name.to_string())],
         ),
+        ManagerId::Mas if package_name == MAS_ALL_PACKAGES_TARGET => {
+            ("service.task.label.upgrade.mas_all", vec![])
+        }
         ManagerId::SoftwareUpdate => ("service.task.label.upgrade.softwareupdate_all", vec![]),
         _ => (
             "service.task.label.upgrade.package",
@@ -3593,12 +3598,33 @@ fn push_upgrade_plan_step(
     cleanup_old_kegs: bool,
     next_order_index: &mut u64,
 ) {
+    push_upgrade_plan_step_with_extra_reason_args(
+        steps,
+        manager,
+        package_name,
+        cleanup_old_kegs,
+        next_order_index,
+        Vec::new(),
+    );
+}
+
+fn push_upgrade_plan_step_with_extra_reason_args(
+    steps: &mut Vec<FfiUpgradePlanStep>,
+    manager: ManagerId,
+    package_name: String,
+    cleanup_old_kegs: bool,
+    next_order_index: &mut u64,
+    extra_reason_label_args: Vec<(&'static str, String)>,
+) {
     let (reason_label_key, reason_label_args_vec) =
         upgrade_reason_label_for(manager, &package_name, cleanup_old_kegs);
-    let reason_label_args = reason_label_args_vec
+    let mut reason_label_args = reason_label_args_vec
         .into_iter()
         .map(|(key, value)| (key.to_string(), value))
-        .collect();
+        .collect::<std::collections::HashMap<_, _>>();
+    for (key, value) in extra_reason_label_args {
+        reason_label_args.insert(key.to_string(), value);
+    }
 
     steps.push(FfiUpgradePlanStep {
         step_id: upgrade_plan_step_id(manager, &package_name),
@@ -4478,11 +4504,22 @@ fn auto_check_endpoint_allowed(endpoint: &str) -> bool {
 }
 
 fn auto_check_http_agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS))
-        .timeout_read(Duration::from_secs(AUTO_CHECK_HTTP_READ_TIMEOUT_SECS))
-        .timeout_write(Duration::from_secs(AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS))
-        .build()
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(
+            AUTO_CHECK_HTTP_CONNECT_TIMEOUT_SECS,
+        )))
+        .timeout_recv_response(Some(Duration::from_secs(AUTO_CHECK_HTTP_READ_TIMEOUT_SECS)))
+        .timeout_recv_body(Some(Duration::from_secs(AUTO_CHECK_HTTP_READ_TIMEOUT_SECS)))
+        .timeout_send_request(Some(Duration::from_secs(
+            AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS,
+        )))
+        .timeout_send_body(Some(Duration::from_secs(
+            AUTO_CHECK_HTTP_WRITE_TIMEOUT_SECS,
+        )))
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .build();
+    ureq::Agent::new_with_config(config)
 }
 
 fn run_due_auto_check_tick(store: &SqliteStore) {
@@ -4543,8 +4580,8 @@ fn run_due_auto_check_tick(store: &SqliteStore) {
     }
 
     match auto_check_http_agent().get(endpoint.as_str()).call() {
-        Ok(response) => {
-            let _ = response.into_string();
+        Ok(mut response) => {
+            let _ = response.body_mut().read_to_string();
         }
         Err(error) => {
             eprintln!("coordinator auto-check request failed: {error}");
@@ -7235,16 +7272,15 @@ pub extern "C" fn helm_preview_upgrade_plan(
         }
     }
 
-    if state.runtime.is_manager_enabled(ManagerId::Mas) {
-        for package_name in targets.mas {
-            push_upgrade_plan_step(
-                &mut steps,
-                ManagerId::Mas,
-                package_name,
-                false,
-                &mut order_index,
-            );
-        }
+    if state.runtime.is_manager_enabled(ManagerId::Mas) && !targets.mas.is_empty() {
+        push_upgrade_plan_step_with_extra_reason_args(
+            &mut steps,
+            ManagerId::Mas,
+            MAS_ALL_PACKAGES_TARGET.to_string(),
+            false,
+            &mut order_index,
+            vec![("package_names", targets.mas.join("\n"))],
+        );
     }
 
     if state.runtime.is_manager_enabled(ManagerId::Mise) {
@@ -7447,7 +7483,11 @@ fn scoped_upgrade_workflow_steps(
                 || step
                     .reason_label_key
                     .to_ascii_lowercase()
-                    .contains(&package_filter))
+                    .contains(&package_filter)
+                || step
+                    .reason_label_args
+                    .values()
+                    .any(|value| value.to_ascii_lowercase().contains(&package_filter)))
     });
     steps.sort_by(|left, right| {
         upgrade_authority_rank(&left.authority)
@@ -7937,25 +7977,24 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
             }
         }
 
-        if runtime.is_manager_enabled(ManagerId::Mas) {
-            for package_name in targets.mas {
-                let request = AdapterRequest::Upgrade(UpgradeRequest {
-                    package: Some(PackageRef {
-                        manager: ManagerId::Mas,
-                        name: package_name.clone(),
-                    }),
-                    target_name: None,
-                    version: None,
-                });
-                match runtime.submit(ManagerId::Mas, request).await {
-                    Ok(task_id) => {
-                        let (label_key, label_args) =
-                            upgrade_task_label_for(ManagerId::Mas, &package_name, false);
-                        set_task_label(task_id, label_key, &label_args);
-                    }
-                    Err(error) => {
-                        eprintln!("upgrade_all: failed to queue mas upgrade task: {error}");
-                    }
+        if runtime.is_manager_enabled(ManagerId::Mas) && !targets.mas.is_empty() {
+            let package_name = MAS_ALL_PACKAGES_TARGET.to_string();
+            let request = AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Mas,
+                    name: package_name.clone(),
+                }),
+                target_name: None,
+                version: None,
+            });
+            match runtime.submit(ManagerId::Mas, request).await {
+                Ok(task_id) => {
+                    let (label_key, label_args) =
+                        upgrade_task_label_for(ManagerId::Mas, &package_name, false);
+                    set_task_label(task_id, label_key, &label_args);
+                }
+                Err(error) => {
+                    eprintln!("upgrade_all: failed to queue mas upgrade task: {error}");
                 }
             }
         }
@@ -11425,14 +11464,15 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 mod tests {
     use super::{
         ALL_MANAGERS_UPGRADE_SCOPE, CoordinatorRequest, CoordinatorWorkflowRequest,
-        FfiUpgradePlanStep, SERVICE_ERROR_UNSUPPORTED_CAPABILITY, UpgradeWorkflowControl,
-        build_manager_statuses, build_manager_uninstall_plan, build_manager_uninstall_preview,
-        build_visible_tasks, collect_upgrade_all_targets, homebrew_probe_candidates,
-        manager_allows_individual_package_install, manager_allows_individual_package_uninstall,
-        manager_authority_key, manager_participates_in_catalog_sync,
-        manager_participates_in_package_search, manager_uninstall_label_for_route,
-        parse_homebrew_config_version, prune_expired_upgrade_workflow_reservations,
-        push_upgrade_plan_step, repair_confirmation_satisfied,
+        FfiUpgradePlanStep, MAS_ALL_PACKAGES_TARGET, SERVICE_ERROR_UNSUPPORTED_CAPABILITY,
+        UpgradeWorkflowControl, build_manager_statuses, build_manager_uninstall_plan,
+        build_manager_uninstall_preview, build_visible_tasks, collect_upgrade_all_targets,
+        homebrew_probe_candidates, manager_allows_individual_package_install,
+        manager_allows_individual_package_uninstall, manager_authority_key,
+        manager_participates_in_catalog_sync, manager_participates_in_package_search,
+        manager_uninstall_label_for_route, parse_homebrew_config_version,
+        prune_expired_upgrade_workflow_reservations, push_upgrade_plan_step,
+        push_upgrade_plan_step_with_extra_reason_args, repair_confirmation_satisfied,
         resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
         run_external_updates_workflow_steps, rustup_probe_candidates,
         scoped_upgrade_workflow_steps, search_label_args, search_label_key_for_query,
@@ -12853,6 +12893,28 @@ mod tests {
     }
 
     #[test]
+    fn scoped_upgrade_workflow_filters_collapsed_mas_step_by_reason_args() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step_with_extra_reason_args(
+            &mut steps,
+            ManagerId::Mas,
+            MAS_ALL_PACKAGES_TARGET.to_string(),
+            false,
+            &mut order_index,
+            vec![("package_names", "GarageBand\nPages\nWhatsApp".to_string())],
+        );
+
+        let filtered = scoped_upgrade_workflow_steps(steps, "mas", "pages");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].step_id, "mas:__all__");
+        assert_eq!(
+            filtered[0].reason_label_key,
+            "service.task.label.upgrade.mas_all"
+        );
+    }
+
+    #[test]
     fn expired_upgrade_workflow_cancellation_reservation_is_pruned() {
         let mut workflows = HashMap::new();
         let now = Instant::now();
@@ -13136,7 +13198,7 @@ mod tests {
     fn manager_status_exports_detection_only_flags() {
         let statuses = build_manager_statuses(None, None, &HashMap::new(), &HashMap::new());
 
-        assert!(status_for(&statuses, ManagerId::Sparkle).is_detection_only);
+        assert!(!status_for(&statuses, ManagerId::Sparkle).is_detection_only);
         assert!(status_for(&statuses, ManagerId::Setapp).is_detection_only);
         assert!(status_for(&statuses, ManagerId::ParallelsDesktop).is_detection_only);
         assert!(!status_for(&statuses, ManagerId::HomebrewFormula).is_detection_only);

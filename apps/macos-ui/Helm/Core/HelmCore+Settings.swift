@@ -10,83 +10,11 @@ private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core
 
 extension HelmCore {
     static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
-    private static let legacyLoginItemBundleIdentifier = "com.jasoncavinder.HelmLoginHelper"
-    private static let legacyLoginItemAppName = "HelmLoginHelper.app"
 
     // MARK: - App Lifecycle
 
-    var launchAtLoginSupported: Bool {
-        if #available(macOS 13.0, *) {
-            return true
-        }
-        return legacyLoginItemIsAvailable()
-    }
-
-    private func legacyLoginItemBundleURL() -> URL {
-        Bundle.main.bundleURL
-            .appendingPathComponent("Contents", isDirectory: true)
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("LoginItems", isDirectory: true)
-            .appendingPathComponent(Self.legacyLoginItemAppName, isDirectory: true)
-    }
-
-    private func legacyLoginItemIsAvailable() -> Bool {
-        FileManager.default.fileExists(atPath: legacyLoginItemBundleURL().path)
-    }
-
-    private func legacyLoginItemIsEnabled() -> Bool {
-        if launchctlJobIsLoaded(
-            arguments: [
-                "print",
-                "gui/\(getuid())/\(Self.legacyLoginItemBundleIdentifier)",
-            ]
-        ) {
-            return true
-        }
-
-        if launchctlJobIsLoaded(arguments: ["list", Self.legacyLoginItemBundleIdentifier]) {
-            return true
-        }
-
-        return UserDefaults.standard.bool(forKey: Self.launchAtLoginEnabledKey)
-    }
-
-    private func launchctlJobIsLoaded(arguments: [String]) -> Bool {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        task.arguments = arguments
-        task.standardOutput = Pipe()
-        task.standardError = Pipe()
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-            return task.terminationStatus == 0
-        } catch {
-            logger.debug("launchctl status query failed: \(error.localizedDescription)")
-            return false
-        }
-    }
-
     func refreshLaunchAtLogin() {
-        guard launchAtLoginSupported else {
-            DispatchQueue.main.async {
-                UserDefaults.standard.removeObject(forKey: Self.launchAtLoginEnabledKey)
-                self.launchAtLoginEnabled = false
-            }
-            return
-        }
-
-        if #available(macOS 13.0, *) {
-            let enabled = SMAppService.mainApp.status == .enabled
-            DispatchQueue.main.async {
-                UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginEnabledKey)
-                self.launchAtLoginEnabled = enabled
-            }
-            return
-        }
-
-        let enabled = legacyLoginItemIsEnabled()
+        let enabled = SMAppService.mainApp.status == .enabled
         DispatchQueue.main.async {
             UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginEnabledKey)
             self.launchAtLoginEnabled = enabled
@@ -94,44 +22,20 @@ extension HelmCore {
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
-        guard launchAtLoginSupported else {
-            recordLastError(
-                source: "core.settings",
-                action: "setLaunchAtLogin.unsupported",
-                taskType: "settings"
-            )
-            return
-        }
-
-        if #available(macOS 13.0, *) {
-            do {
-                if enabled {
-                    try SMAppService.mainApp.register()
-                } else {
-                    try SMAppService.mainApp.unregister()
-                }
-            } catch {
-                logger.error("setLaunchAtLogin(\(enabled)) failed: \(error.localizedDescription)")
-                recordLastError(
-                    source: "core.settings",
-                    action: "setLaunchAtLogin",
-                    taskType: "settings"
-                )
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
             }
-            refreshLaunchAtLogin()
-            return
-        }
-
-        let success = SMLoginItemSetEnabled(Self.legacyLoginItemBundleIdentifier as CFString, enabled)
-        if !success {
-            logger.error("setLaunchAtLogin(\(enabled)) failed for legacy login helper")
+        } catch {
+            logger.error("setLaunchAtLogin(\(enabled)) failed: \(error.localizedDescription)")
             recordLastError(
                 source: "core.settings",
-                action: "setLaunchAtLogin.legacy",
+                action: "setLaunchAtLogin",
                 taskType: "settings"
             )
         }
-
         refreshLaunchAtLogin()
     }
 
@@ -873,7 +777,8 @@ extension HelmCore {
                 managerId: $0.managerId,
                 authority: $0.authority,
                 packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey
+                reasonLabelKey: $0.reasonLabelKey,
+                reasonLabelArgs: $0.reasonLabelArgs
             )
         }
         var stepById: [String: CoreUpgradePlanStep] = [:]
@@ -895,7 +800,8 @@ extension HelmCore {
                 managerId: $0.managerId,
                 authority: $0.authority,
                 packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey
+                reasonLabelKey: $0.reasonLabelKey,
+                reasonLabelArgs: $0.reasonLabelArgs
             )
         }
         var stepById: [String: CoreUpgradePlanStep] = [:]

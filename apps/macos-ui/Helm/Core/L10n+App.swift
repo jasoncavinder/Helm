@@ -238,7 +238,6 @@ extension L10n {
                 static let japanese = "app.settings.label.language.japanese"
                 static let hungarian = "app.settings.label.language.hungarian"
                 static let launchAtLogin = "app.settings.label.launch_at_login"
-                static let launchAtLoginRequiresMacOS13 = "app.settings.label.launch_at_login_requires_macos_13"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
                 static let safeMode = "app.settings.label.safe_mode"
@@ -249,6 +248,8 @@ extension L10n {
                 static let every30Min = "app.settings.frequency.every_30_min"
                 static let every1Hour = "app.settings.frequency.every_1_hour"
                 static let daily = "app.settings.frequency.daily"
+                static let weekly = "app.settings.frequency.weekly"
+                static let monthly = "app.settings.frequency.monthly"
             }
             struct Action {
                 static let refreshNow = "app.settings.action.refresh_now"

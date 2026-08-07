@@ -31,7 +31,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.1
+          toolchain: 1.97.1
           components: rustfmt, clippy
 
       - name: Cache cargo registry and build
@@ -67,7 +67,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.1
+          toolchain: 1.97.1
 
       - name: Validate channel policy rendering
         run: |
@@ -77,10 +77,11 @@ jobs:
       - name: Build and test Xcode project
         run: |
           set -euo pipefail
+          XCODE_DESTINATION="$(apps/macos-ui/scripts/macos_xcode_destination.sh)"
           xcodebuild \
             -project apps/macos-ui/Helm.xcodeproj \
             -scheme Helm \
-            -destination "platform=macOS" \
+            -destination "$XCODE_DESTINATION" \
             -configuration Debug \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \

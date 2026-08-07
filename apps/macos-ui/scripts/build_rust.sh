@@ -21,8 +21,8 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT/core/rust"
 
-# Keep Rust min deployment target aligned with Xcode (macOS 11.0 baseline).
-export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
+# Keep Rust min deployment target aligned with Xcode (macOS 13.0 baseline).
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
 
 MIN_MACOS_LINK_ARG="-C link-arg=-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
 case " ${RUSTFLAGS:-} " in
@@ -46,8 +46,8 @@ else
     CARGO_FLAGS=""
 fi
 
-# Keep macOS 11 links on a toolchain whose prebuilt stdlib still supports that
-# baseline. Newer stable toolchains currently emit std objects with minos 12.0.
+# Preserve manual fallback support for local macOS 11 builds when the deployment
+# target is explicitly overridden below the repository baseline.
 RUST_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
 if [ "${MACOSX_DEPLOYMENT_TARGET%%.*}" -le 11 ] && [ "$RUST_TOOLCHAIN" = "stable" ]; then
     RUST_TOOLCHAIN="1.92.0"
@@ -185,7 +185,7 @@ compute_inputs_fingerprint() {
     {
         echo "configuration=${CONFIGURATION:-Debug}"
         echo "profile=$PROFILE"
-        echo "deployment_target=${MACOSX_DEPLOYMENT_TARGET:-11.0}"
+        echo "deployment_target=${MACOSX_DEPLOYMENT_TARGET:-13.0}"
         echo "target_suffix=$TARGET_SUFFIX"
         echo "requested_archs=$REQUESTED_ARCHS"
         echo "rust_targets=${RUST_TARGETS[*]}"

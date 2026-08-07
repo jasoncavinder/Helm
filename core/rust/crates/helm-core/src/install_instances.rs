@@ -322,25 +322,77 @@ pub fn collect_manager_install_instances(
             .map(PathBuf::from),
     );
 
-    collect_manager_install_instances_from_candidates(manager, detection, &candidates)
+    let mut context = ExternalEvidenceContext::new();
+    collect_manager_install_instances_from_candidates_with_context(
+        manager,
+        detection,
+        &candidates,
+        &mut context,
+    )
 }
 
+#[cfg(test)]
 fn collect_manager_install_instances_from_candidates(
     manager: ManagerId,
     detection: &DetectionInfo,
     candidates: &[PathBuf],
 ) -> Vec<ManagerInstallInstance> {
+    let mut context = ExternalEvidenceContext::new();
+    collect_manager_install_instances_from_candidates_with_context(
+        manager,
+        detection,
+        candidates,
+        &mut context,
+    )
+}
+
+fn collect_manager_install_instances_from_candidates_with_context(
+    manager: ManagerId,
+    detection: &DetectionInfo,
+    candidates: &[PathBuf],
+    context: &mut ExternalEvidenceContext,
+) -> Vec<ManagerInstallInstance> {
     let active_path = detection.executable_path.as_ref();
     let active_canonical = active_path.and_then(|path| path.canonicalize().ok());
+    let runtime_shim_resolution = active_path.and_then(|path| {
+        resolve_runtime_shim_target(manager, path, context).and_then(|target_path| {
+            if target_path.is_file() {
+                Some(RuntimeShimResolution {
+                    target_path: target_path.clone(),
+                    target_canonical: target_path.canonicalize().ok(),
+                })
+            } else {
+                None
+            }
+        })
+    });
+
+    let mut expanded_candidates = candidates.to_vec();
+    if let Some(resolution) = runtime_shim_resolution.as_ref()
+        && !expanded_candidates
+            .iter()
+            .any(|candidate| candidate == &resolution.target_path)
+    {
+        expanded_candidates.push(resolution.target_path.clone());
+    }
 
     let mut by_identity: HashMap<String, CandidateInstance> = HashMap::new();
-    for candidate in candidates {
+    let mut hidden_runtime_shim_aliases = Vec::new();
+    for candidate in &expanded_candidates {
+        if runtime_shim_resolution.is_some()
+            && is_runtime_dependency_shim_candidate(manager, candidate)
+        {
+            hidden_runtime_shim_aliases.push(candidate.clone());
+            continue;
+        }
+
         let canonical = candidate.canonicalize().ok();
         if !candidate_represents_executable(candidate, canonical.as_deref()) {
             continue;
         }
 
-        let (identity_kind, identity_value) = compute_identity(candidate, canonical.as_deref());
+        let (identity_kind, identity_value) =
+            compute_identity(manager, candidate, canonical.as_deref());
         let key = format!("{}:{}", identity_kind.as_str(), identity_value);
 
         let is_active = is_active_candidate(
@@ -348,7 +400,14 @@ fn collect_manager_install_instances_from_candidates(
             canonical.as_deref(),
             active_path.map(PathBuf::as_path),
             active_canonical.as_deref(),
-        );
+        ) || runtime_shim_resolution.as_ref().is_some_and(|resolution| {
+            path_matches_runtime_target(
+                candidate,
+                canonical.as_deref(),
+                resolution.target_path.as_path(),
+                resolution.target_canonical.as_deref(),
+            )
+        });
 
         let entry = by_identity.entry(key).or_insert_with(|| CandidateInstance {
             identity_kind,
@@ -366,8 +425,30 @@ fn collect_manager_install_instances_from_candidates(
         if entry.canonical_path.is_none() {
             entry.canonical_path = canonical.clone();
         }
+        if let Some(canonical_path) = canonical.as_ref()
+            && !entry.alias_paths.iter().any(|path| path == canonical_path)
+        {
+            entry.alias_paths.push(canonical_path.clone());
+        }
         if !entry.alias_paths.iter().any(|path| path == candidate) {
             entry.alias_paths.push(candidate.clone());
+        }
+    }
+
+    if let Some(resolution) = runtime_shim_resolution.as_ref()
+        && let Some(entry) = by_identity.values_mut().find(|entry| {
+            path_matches_runtime_target(
+                entry.display_path.as_path(),
+                entry.canonical_path.as_deref(),
+                resolution.target_path.as_path(),
+                resolution.target_canonical.as_deref(),
+            )
+        })
+    {
+        for shim_path in hidden_runtime_shim_aliases {
+            if !entry.alias_paths.iter().any(|path| path == &shim_path) {
+                entry.alias_paths.push(shim_path);
+            }
         }
     }
 
@@ -382,11 +463,141 @@ fn collect_manager_install_instances_from_candidates(
             .cmp(&right.display_path.to_string_lossy())
     });
 
-    let mut context = ExternalEvidenceContext::new();
     identities
         .into_iter()
-        .map(|candidate| classify_instance(manager, detection, candidate, &mut context))
+        .map(|candidate| classify_instance(manager, detection, candidate, context))
         .collect()
+}
+
+#[derive(Clone, Debug)]
+struct RuntimeShimResolution {
+    target_path: PathBuf,
+    target_canonical: Option<PathBuf>,
+}
+
+fn resolve_runtime_shim_target(
+    manager: ManagerId,
+    active_path: &Path,
+    context: &mut ExternalEvidenceContext,
+) -> Option<PathBuf> {
+    if !supports_runtime_dependency_shims(manager) {
+        return None;
+    }
+
+    let executable_name = active_path.file_name()?.to_str()?.trim();
+    if executable_name.is_empty() {
+        return None;
+    }
+
+    let command = runtime_shim_command_path(active_path, executable_name)?;
+    let command_rendered = command.to_string_lossy().to_string();
+    let output = (context.runner)(
+        command_rendered.as_str(),
+        &["which", executable_name],
+        EXTERNAL_EVIDENCE_TIMEOUT,
+    )?;
+    parse_runtime_shim_target_output(output.as_str())
+}
+
+fn runtime_shim_command_path(active_path: &Path, executable_name: &str) -> Option<PathBuf> {
+    if is_mise_runtime_shim_path(active_path, executable_name) {
+        return active_path.canonicalize().ok().filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("mise"))
+        });
+    }
+
+    if is_asdf_runtime_shim_path(active_path, executable_name) {
+        return configured_asdf_root_paths()
+            .into_iter()
+            .map(|root| root.join("bin/asdf"))
+            .find(|path| path.is_file())
+            .or_else(|| Some(PathBuf::from("asdf")));
+    }
+
+    None
+}
+
+fn parse_runtime_shim_target_output(output: &str) -> Option<PathBuf> {
+    output
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with('/'))
+        .map(PathBuf::from)
+}
+
+fn supports_runtime_dependency_shims(manager: ManagerId) -> bool {
+    matches!(
+        manager,
+        ManagerId::Rustup
+            | ManagerId::Npm
+            | ManagerId::Pnpm
+            | ManagerId::Yarn
+            | ManagerId::Pip
+            | ManagerId::Pipx
+            | ManagerId::Poetry
+            | ManagerId::RubyGems
+            | ManagerId::Bundler
+            | ManagerId::Cargo
+            | ManagerId::CargoBinstall
+    )
+}
+
+fn is_runtime_dependency_shim_candidate(manager: ManagerId, path: &Path) -> bool {
+    if !supports_runtime_dependency_shims(manager) {
+        return false;
+    }
+
+    let Some(executable_name) = path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+
+    is_mise_runtime_shim_path(path, executable_name)
+        || is_asdf_runtime_shim_path(path, executable_name)
+}
+
+fn is_mise_runtime_shim_path(path: &Path, executable_name: &str) -> bool {
+    let rendered = path.to_string_lossy().to_ascii_lowercase();
+    let suffix = format!("/shims/{}", executable_name.to_ascii_lowercase());
+    rendered.ends_with(suffix.as_str())
+        && (rendered.contains("/.local/share/mise/shims/")
+            || rendered.contains("/.local/share/rtx/shims/"))
+}
+
+fn is_asdf_runtime_shim_path(path: &Path, executable_name: &str) -> bool {
+    let rendered = path.to_string_lossy().to_ascii_lowercase();
+    let suffix = format!("/shims/{}", executable_name.to_ascii_lowercase());
+    rendered.ends_with(suffix.as_str())
+        && path_contains_asdf_root_subpath(rendered.as_str(), "shims/")
+}
+
+fn path_matches_runtime_target(
+    candidate: &Path,
+    candidate_canonical: Option<&Path>,
+    target_path: &Path,
+    target_canonical: Option<&Path>,
+) -> bool {
+    if candidate == target_path {
+        return true;
+    }
+    if let (Some(candidate_canonical), Some(target_canonical)) =
+        (candidate_canonical, target_canonical)
+        && candidate_canonical == target_canonical
+    {
+        return true;
+    }
+    if let Some(target_canonical) = target_canonical
+        && candidate == target_canonical
+    {
+        return true;
+    }
+    if let Some(candidate_canonical) = candidate_canonical
+        && candidate_canonical == target_path
+    {
+        return true;
+    }
+    false
 }
 
 fn classify_instance(
@@ -2382,6 +2593,19 @@ fn is_active_candidate(
 }
 
 fn compute_identity(
+    manager: ManagerId,
+    display_path: &Path,
+    canonical_path: Option<&Path>,
+) -> (InstallInstanceIdentityKind, String) {
+    if let Some(install_root) = manager_install_identity_root(manager, display_path, canonical_path)
+    {
+        return compute_path_identity(install_root.as_path(), Some(install_root.as_path()));
+    }
+
+    compute_path_identity(display_path, canonical_path)
+}
+
+fn compute_path_identity(
     display_path: &Path,
     canonical_path: Option<&Path>,
 ) -> (InstallInstanceIdentityKind, String) {
@@ -2417,6 +2641,49 @@ fn compute_identity(
     (
         InstallInstanceIdentityKind::FallbackHash,
         format!("{:016x}", stable_hash64(&fallback)),
+    )
+}
+
+fn manager_install_identity_root(
+    manager: ManagerId,
+    display_path: &Path,
+    canonical_path: Option<&Path>,
+) -> Option<PathBuf> {
+    match manager {
+        ManagerId::Pip => python_runtime_install_root(display_path, canonical_path),
+        _ => None,
+    }
+}
+
+fn python_runtime_install_root(
+    display_path: &Path,
+    canonical_path: Option<&Path>,
+) -> Option<PathBuf> {
+    canonical_path
+        .and_then(|path| runtime_install_root(path, &["python3", "pip3", "pip"]))
+        .or_else(|| runtime_install_root(display_path, &["python3", "pip3", "pip"]))
+}
+
+fn runtime_install_root(path: &Path, executable_names: &[&str]) -> Option<PathBuf> {
+    let rendered = path.to_string_lossy().to_ascii_lowercase();
+    if !path_matches_any_exec_name(rendered.as_str(), executable_names) {
+        return None;
+    }
+
+    let bin_dir = path.parent()?;
+    if !bin_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("bin"))
+    {
+        return None;
+    }
+
+    Some(
+        bin_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| bin_dir.to_path_buf()),
     )
 }
 
@@ -3255,6 +3522,247 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn collect_manager_install_instances_hides_runtime_shims_when_target_is_resolved() {
+        use std::sync::OnceLock;
+
+        static TARGET_PATH: OnceLock<String> = OnceLock::new();
+
+        fn mise_runner(program: &str, args: &[&str], _timeout: Duration) -> Option<String> {
+            assert!(
+                program.ends_with("/bin/mise"),
+                "unexpected command path: {program}"
+            );
+            assert_eq!(args, ["which", "npm"]);
+            TARGET_PATH.get().cloned()
+        }
+
+        let root = std::env::temp_dir().join(format!(
+            "helm-install-instance-mise-shim-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let mise_bin_dir = root.join("opt/homebrew/bin");
+        fs::create_dir_all(&mise_bin_dir).unwrap();
+        let mise_binary = mise_bin_dir.join("mise");
+        fs::write(&mise_binary, b"binary").unwrap();
+
+        let shim_dir = root.join(".local/share/mise/shims");
+        fs::create_dir_all(&shim_dir).unwrap();
+        let shim_path = shim_dir.join("npm");
+        std::os::unix::fs::symlink(&mise_binary, &shim_path).unwrap();
+
+        let node26_dir = root.join(".local/share/mise/installs/node/26.6.0");
+        let node24_dir = root.join(".local/share/mise/installs/node/24.17.0");
+        fs::create_dir_all(node26_dir.join("bin")).unwrap();
+        fs::create_dir_all(node26_dir.join("lib/node_modules/npm/bin")).unwrap();
+        fs::create_dir_all(node24_dir.join("bin")).unwrap();
+        fs::create_dir_all(node24_dir.join("lib/node_modules/npm/bin")).unwrap();
+
+        let node26_cli = node26_dir.join("lib/node_modules/npm/bin/npm-cli.js");
+        let node24_cli = node24_dir.join("lib/node_modules/npm/bin/npm-cli.js");
+        fs::write(&node26_cli, b"node26").unwrap();
+        fs::write(&node24_cli, b"node24").unwrap();
+
+        std::os::unix::fs::symlink(
+            "../lib/node_modules/npm/bin/npm-cli.js",
+            node26_dir.join("bin/npm"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+            "../lib/node_modules/npm/bin/npm-cli.js",
+            node24_dir.join("bin/npm"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("./26.6.0", root.join(".local/share/mise/installs/node/26"))
+            .unwrap();
+        std::os::unix::fs::symlink(
+            "./26.6.0",
+            root.join(".local/share/mise/installs/node/latest"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("./24.17.0", root.join(".local/share/mise/installs/node/24"))
+            .unwrap();
+        std::os::unix::fs::symlink(
+            "./24.17.0",
+            root.join(".local/share/mise/installs/node/lts-krypton"),
+        )
+        .unwrap();
+
+        let target_path = root.join(".local/share/mise/installs/node/26/bin/npm");
+        let _ = TARGET_PATH.set(format!("{}\n", target_path.to_string_lossy()));
+
+        let detection = DetectionInfo {
+            installed: true,
+            executable_path: Some(shim_path.clone()),
+            version: Some("11.17.0".to_string()),
+        };
+        let candidates = vec![
+            shim_path.clone(),
+            root.join(".local/share/mise/installs/node/latest/bin/npm"),
+            root.join(".local/share/mise/installs/node/lts-krypton/bin/npm"),
+        ];
+        let mut context = ExternalEvidenceContext::with_runner(mise_runner);
+        let instances = collect_manager_install_instances_from_candidates_with_context(
+            ManagerId::Npm,
+            &detection,
+            &candidates,
+            &mut context,
+        );
+
+        assert_eq!(instances.len(), 2);
+        assert!(
+            instances
+                .iter()
+                .all(|instance| { !instance.display_path.to_string_lossy().contains("/shims/") })
+        );
+
+        let active = instances
+            .iter()
+            .find(|instance| instance.is_active)
+            .expect("resolved target should remain active");
+        assert_eq!(active.display_path, target_path);
+        assert!(active.alias_paths.iter().any(|path| path == &shim_path));
+
+        let _ = fs::remove_file(shim_path);
+        let _ = fs::remove_file(mise_binary);
+        let _ = fs::remove_file(root.join(".local/share/mise/installs/node/26/bin/npm"));
+        let _ = fs::remove_file(root.join(".local/share/mise/installs/node/24.17.0/bin/npm"));
+        let _ = fs::remove_file(node26_cli);
+        let _ = fs::remove_file(node24_cli);
+        let _ = fs::remove_file(root.join(".local/share/mise/installs/node/26"));
+        let _ = fs::remove_file(root.join(".local/share/mise/installs/node/latest"));
+        let _ = fs::remove_file(root.join(".local/share/mise/installs/node/24"));
+        let _ = fs::remove_file(root.join(".local/share/mise/installs/node/lts-krypton"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn collect_manager_install_instances_dedupes_pip_entrypoints_and_hides_shims() {
+        use std::sync::OnceLock;
+
+        static TARGET_PATH: OnceLock<String> = OnceLock::new();
+
+        fn mise_runner(program: &str, args: &[&str], _timeout: Duration) -> Option<String> {
+            assert!(
+                program.ends_with("/bin/mise"),
+                "unexpected command path: {program}"
+            );
+            assert_eq!(args, ["which", "python3"]);
+            TARGET_PATH.get().cloned()
+        }
+
+        let root = std::env::temp_dir().join(format!(
+            "helm-install-instance-pip-mise-shim-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let mise_bin_dir = root.join("opt/homebrew/bin");
+        fs::create_dir_all(&mise_bin_dir).unwrap();
+        let mise_binary = mise_bin_dir.join("mise");
+        fs::write(&mise_binary, b"binary").unwrap();
+
+        let shim_dir = root.join(".local/share/mise/shims");
+        fs::create_dir_all(&shim_dir).unwrap();
+        let python_shim = shim_dir.join("python3");
+        let pip3_shim = shim_dir.join("pip3");
+        let pip_shim = shim_dir.join("pip");
+        std::os::unix::fs::symlink(&mise_binary, &python_shim).unwrap();
+        std::os::unix::fs::symlink(&mise_binary, &pip3_shim).unwrap();
+        std::os::unix::fs::symlink(&mise_binary, &pip_shim).unwrap();
+
+        let python_dir = root.join(".local/share/mise/installs/python/3.13.5");
+        fs::create_dir_all(python_dir.join("bin")).unwrap();
+        let python3_path = python_dir.join("bin/python3");
+        let pip3_path = python_dir.join("bin/pip3");
+        let pip_path = python_dir.join("bin/pip");
+        fs::write(&python3_path, b"python3").unwrap();
+        fs::write(&pip3_path, b"pip3").unwrap();
+        fs::write(&pip_path, b"pip").unwrap();
+        let pip3_canonical = pip3_path.canonicalize().unwrap();
+        let pip_canonical = pip_path.canonicalize().unwrap();
+        std::os::unix::fs::symlink(
+            "./3.13.5",
+            root.join(".local/share/mise/installs/python/latest"),
+        )
+        .unwrap();
+
+        let target_path = root.join(".local/share/mise/installs/python/latest/bin/python3");
+        let _ = TARGET_PATH.set(format!("{}\n", target_path.to_string_lossy()));
+
+        let detection = DetectionInfo {
+            installed: true,
+            executable_path: Some(python_shim.clone()),
+            version: Some("25.2".to_string()),
+        };
+        let candidates = vec![
+            python_shim.clone(),
+            pip3_shim.clone(),
+            pip_shim.clone(),
+            root.join(".local/share/mise/installs/python/latest/bin/python3"),
+            root.join(".local/share/mise/installs/python/latest/bin/pip3"),
+            root.join(".local/share/mise/installs/python/latest/bin/pip"),
+        ];
+        let mut context = ExternalEvidenceContext::with_runner(mise_runner);
+        let instances = collect_manager_install_instances_from_candidates_with_context(
+            ManagerId::Pip,
+            &detection,
+            &candidates,
+            &mut context,
+        );
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].display_path, target_path);
+        assert_eq!(instances[0].provenance, InstallProvenance::Mise);
+        assert!(instances[0].is_active);
+        assert!(
+            instances[0]
+                .alias_paths
+                .iter()
+                .any(|path| path == &pip3_canonical)
+        );
+        assert!(
+            instances[0]
+                .alias_paths
+                .iter()
+                .any(|path| path == &pip_canonical)
+        );
+        assert!(
+            instances[0]
+                .alias_paths
+                .iter()
+                .any(|path| path == &python_shim)
+        );
+        assert!(
+            instances[0]
+                .alias_paths
+                .iter()
+                .any(|path| path == &pip3_shim)
+        );
+        assert!(
+            instances[0]
+                .alias_paths
+                .iter()
+                .any(|path| path == &pip_shim)
+        );
+
+        let _ = fs::remove_file(python_shim);
+        let _ = fs::remove_file(pip3_shim);
+        let _ = fs::remove_file(pip_shim);
+        let _ = fs::remove_file(mise_binary);
+        let _ = fs::remove_file(python3_path);
+        let _ = fs::remove_file(pip3_path);
+        let _ = fs::remove_file(pip_path);
+        let _ = fs::remove_file(root.join(".local/share/mise/installs/python/latest"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn compute_identity_fallback_hash_is_stable_for_missing_path() {
         let missing_path = std::env::temp_dir().join(format!(
             "helm-install-instance-missing-{}",
@@ -3262,8 +3770,8 @@ mod tests {
         ));
         let _ = fs::remove_file(&missing_path);
 
-        let (first_kind, first_value) = compute_identity(&missing_path, None);
-        let (second_kind, second_value) = compute_identity(&missing_path, None);
+        let (first_kind, first_value) = compute_identity(ManagerId::Rustup, &missing_path, None);
+        let (second_kind, second_value) = compute_identity(ManagerId::Rustup, &missing_path, None);
 
         assert_eq!(first_kind, InstallInstanceIdentityKind::FallbackHash);
         assert_eq!(second_kind, InstallInstanceIdentityKind::FallbackHash);
@@ -3283,8 +3791,11 @@ mod tests {
         let _ = fs::remove_file(&display_path);
         let _ = fs::remove_file(&canonical_path);
 
-        let (identity_kind, identity_value) =
-            compute_identity(&display_path, Some(canonical_path.as_path()));
+        let (identity_kind, identity_value) = compute_identity(
+            ManagerId::Rustup,
+            &display_path,
+            Some(canonical_path.as_path()),
+        );
 
         assert_eq!(identity_kind, InstallInstanceIdentityKind::CanonicalPath);
         assert_eq!(identity_value, canonical_path.to_string_lossy());
@@ -3302,10 +3813,10 @@ mod tests {
 
         let file_path = root.join("tool");
         fs::write(&file_path, b"v1").expect("write initial bytes");
-        let (first_kind, first_value) = compute_identity(&file_path, None);
+        let (first_kind, first_value) = compute_identity(ManagerId::Rustup, &file_path, None);
 
         fs::write(&file_path, b"v1-expanded").expect("write updated bytes");
-        let (second_kind, second_value) = compute_identity(&file_path, None);
+        let (second_kind, second_value) = compute_identity(ManagerId::Rustup, &file_path, None);
 
         assert_eq!(first_kind, InstallInstanceIdentityKind::FallbackHash);
         assert_eq!(second_kind, InstallInstanceIdentityKind::FallbackHash);
