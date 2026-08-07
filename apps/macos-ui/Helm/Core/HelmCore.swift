@@ -40,13 +40,23 @@ enum AppUpdateUnavailableReason: String {
 
 private protocol AppUpdateDriver {
     var canCheckForUpdates: Bool { get }
+    var automaticallyChecksForUpdates: Bool { get }
+    var updateCheckInterval: TimeInterval { get }
+    var lastUpdateCheckDate: Date? { get }
     func checkForUpdates()
+    func setAutomaticallyChecksForUpdates(_ enabled: Bool)
+    func setUpdateCheckInterval(_ interval: TimeInterval)
 }
 
 private struct NoopAppUpdateDriver: AppUpdateDriver {
     let canCheckForUpdates = false
+    let automaticallyChecksForUpdates = false
+    let updateCheckInterval: TimeInterval = 86_400
+    let lastUpdateCheckDate: Date? = nil
 
     func checkForUpdates() {}
+    func setAutomaticallyChecksForUpdates(_ enabled: Bool) {}
+    func setUpdateCheckInterval(_ interval: TimeInterval) {}
 }
 
 #if canImport(Sparkle)
@@ -78,12 +88,32 @@ private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
         updaterController.updater.canCheckForUpdates
     }
 
+    var automaticallyChecksForUpdates: Bool {
+        updaterController.updater.automaticallyChecksForUpdates
+    }
+
+    var updateCheckInterval: TimeInterval {
+        updaterController.updater.updateCheckInterval
+    }
+
+    var lastUpdateCheckDate: Date? {
+        updaterController.updater.lastUpdateCheckDate
+    }
+
     func checkForUpdates() {
         let resolvedFeedURL = updaterController.updater.feedURL?.absoluteString ?? "none"
         updateLogger.info(
             "Dispatching Sparkle update check. can_check=\(self.updaterController.updater.canCheckForUpdates, privacy: .public), feed_url=\(resolvedFeedURL, privacy: .public)"
         )
         updaterController.checkForUpdates(nil)
+    }
+
+    func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
+        updaterController.updater.automaticallyChecksForUpdates = enabled
+    }
+
+    func setUpdateCheckInterval(_ interval: TimeInterval) {
+        updaterController.updater.updateCheckInterval = interval
     }
 }
 #endif
@@ -97,6 +127,8 @@ final class AppUpdateCoordinator: ObservableObject {
     @Published private(set) var unavailableReason: AppUpdateUnavailableReason?
     @Published private(set) var isCheckingForUpdates = false
     @Published private(set) var lastCheckDate: Date?
+    @Published private(set) var autoCheckEnabled: Bool
+    @Published private(set) var checkFrequencyMinutes: Int
 
     var distributionChannel: HelmDistributionChannel {
         configuration.channel
@@ -110,6 +142,11 @@ final class AppUpdateCoordinator: ObservableObject {
         self.updateAuthority = configuration.updateAuthority
         let selection = AppUpdateCoordinator.makeDriver(for: configuration)
         self.driver = selection.driver
+        self.lastCheckDate = selection.driver.lastUpdateCheckDate
+        self.autoCheckEnabled = selection.driver.automaticallyChecksForUpdates
+        self.checkFrequencyMinutes = Self.supportedFrequencyMinutes(
+            for: selection.driver.updateCheckInterval
+        )
         if selection.driver.canCheckForUpdates {
             self.canCheckForUpdates = true
             self.unavailableReason = nil
@@ -144,6 +181,35 @@ final class AppUpdateCoordinator: ObservableObject {
         defer { isCheckingForUpdates = false }
         driver.checkForUpdates()
         lastCheckDate = Date()
+    }
+
+    func setAutoCheckEnabled(_ enabled: Bool) {
+        guard canCheckForUpdates else { return }
+        driver.setAutomaticallyChecksForUpdates(enabled)
+        refreshState()
+        updateLogger.info("Automatic Helm update checks set to \(enabled, privacy: .public)")
+    }
+
+    func setCheckFrequencyMinutes(_ minutes: Int) {
+        guard canCheckForUpdates else { return }
+        let supportedMinutes = Self.supportedFrequencyMinutes(for: TimeInterval(minutes * 60))
+        driver.setUpdateCheckInterval(TimeInterval(supportedMinutes * 60))
+        refreshState()
+        updateLogger.info(
+            "Automatic Helm update check interval set to \(supportedMinutes, privacy: .public) minutes"
+        )
+    }
+
+    func refreshState() {
+        autoCheckEnabled = driver.automaticallyChecksForUpdates
+        checkFrequencyMinutes = Self.supportedFrequencyMinutes(for: driver.updateCheckInterval)
+        lastCheckDate = driver.lastUpdateCheckDate ?? lastCheckDate
+    }
+
+    private static func supportedFrequencyMinutes(for interval: TimeInterval) -> Int {
+        let requested = max(Int(interval / 60), 60)
+        let supported = [60, 1_440, 10_080, 43_800]
+        return supported.min(by: { abs($0 - requested) < abs($1 - requested) }) ?? 1_440
     }
 
     private struct AppUpdateDriverSelection {

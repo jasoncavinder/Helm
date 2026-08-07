@@ -125,7 +125,7 @@ Managers must declare:
 Primarily for status visibility:
 
 - **Mac App Store (`mas`)**
-- **Sparkle-based updaters** (detection only)
+- **Sparkle-based apps** (inventory plus conservative update visibility from static HTTPS appcasts; individual update actions remain vendor-Sparkle-authoritative)
 - **Setapp** (detection only)
 - **Homebrew casks**
 
@@ -360,15 +360,16 @@ Requirements:
 - Version integrity verification
 - Full signed DMG updates are the current direct-channel policy; delta payloads are deferred
 - No shell-based update mechanisms
-- Manual approval required (auto-update optional)
+- Manual approval required for installation; automatic scheduled update checks are user-configurable
 
-Channel-specific update policy (planned):
+Channel-specific update policy:
 - Direct Developer ID consumer build: Sparkle-based updates.
 - Mac App Store build: App Store-managed updates.
 - Setapp build: Setapp-managed updates.
 - Helm Business fleet build: admin-controlled updates through PKG/MDM workflows.
 
 Self-update behavior must not depend on Homebrew and must remain decoupled from licensing authority.
+Helm's own bundle must not appear in the Sparkle apps manager because self-update authority belongs to the channel-aware Helm updater.
 
 ---
 

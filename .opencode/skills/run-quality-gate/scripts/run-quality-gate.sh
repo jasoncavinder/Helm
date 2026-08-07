@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 SCOPE="${1:-all}"
+XCODE_DESTINATION="$("$ROOT_DIR/apps/macos-ui/scripts/macos_xcode_destination.sh")"
 
 info() {
   printf '[quality-gate] %s\n' "$1"
@@ -39,7 +40,7 @@ run_ui() {
   run xcodebuild \
     -project apps/macos-ui/Helm.xcodeproj \
     -scheme Helm \
-    -destination "platform=macOS" \
+    -destination "$XCODE_DESTINATION" \
     -configuration Debug \
     CODE_SIGN_IDENTITY=- \
     CODE_SIGNING_REQUIRED=NO \

@@ -33,6 +33,7 @@
   "service.task.label.upgrade.homebrew_cask": "Homebrew経由で{package}をアップグレード (cask)",
   "service.task.label.upgrade.mise": "mise経由で{package}をアップグレード",
   "service.task.label.upgrade.rustup_toolchain": "rustupツールチェーン{toolchain}をアップグレード",
+  "service.task.label.upgrade.mas_all": "mas経由でApp Storeアップデートを適用",
   "service.task.label.upgrade.package": "{manager}経由で{package}をアップグレード",
   "service.task.label.upgrade.softwareupdate_all": "macOSソフトウェアアップデートを適用",
   "service.task.status.cancelled": "キャンセル済み",

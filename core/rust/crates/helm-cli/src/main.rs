@@ -5624,7 +5624,9 @@ fn self_update_http_agent() -> ureq::Agent {
         .timeout_recv_response(Some(Duration::from_secs(
             SELF_UPDATE_HTTP_READ_TIMEOUT_SECS,
         )))
-        .timeout_recv_body(Some(Duration::from_secs(SELF_UPDATE_HTTP_READ_TIMEOUT_SECS)))
+        .timeout_recv_body(Some(Duration::from_secs(
+            SELF_UPDATE_HTTP_READ_TIMEOUT_SECS,
+        )))
         .timeout_send_request(Some(Duration::from_secs(
             SELF_UPDATE_HTTP_WRITE_TIMEOUT_SECS,
         )))
@@ -11581,6 +11583,7 @@ fn active_install_instances_by_manager(
 
     let mut active = HashMap::new();
     for (manager, mut instances) in grouped {
+        instances = normalize_manager_install_instances(&instances);
         instances.sort_by(|left, right| {
             if left.is_active != right.is_active {
                 return right.is_active.cmp(&left.is_active);
@@ -12383,8 +12386,26 @@ fn list_manager_install_instances(
         .list_install_instances(manager)
         .map_err(|error| format!("failed to list manager install instances: {error}"))?;
 
-    let mut result = rows
-        .into_iter()
+    let mut rows_by_manager: HashMap<ManagerId, Vec<ManagerInstallInstance>> = HashMap::new();
+    for instance in rows {
+        rows_by_manager
+            .entry(instance.manager)
+            .or_default()
+            .push(instance);
+    }
+    for instances in rows_by_manager.values_mut() {
+        *instances = normalize_manager_install_instances(instances);
+        instances.sort_by(|left, right| {
+            right
+                .is_active
+                .cmp(&left.is_active)
+                .then_with(|| left.instance_id.cmp(&right.instance_id))
+        });
+    }
+
+    let mut result = rows_by_manager
+        .into_values()
+        .flatten()
         .map(|instance| {
             let instance = apply_manager_automation_policy(&instance);
             CliManagerInstallInstance {
@@ -12492,6 +12513,7 @@ fn acknowledge_manager_multi_instance_state(
     let instances = store
         .list_install_instances(Some(manager))
         .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+    let instances = normalize_manager_install_instances(&instances);
     let Some(fingerprint) = install_instance_fingerprint(&instances) else {
         return Err(format!(
             "manager '{}' does not currently have multiple install instances to acknowledge",
@@ -14189,6 +14211,7 @@ fn active_manager_install_instance(
     let mut instances = store
         .list_install_instances(Some(manager))
         .map_err(|error| format!("failed to list manager install instances: {error}"))?;
+    instances = normalize_manager_install_instances(&instances);
     instances.sort_by(|left, right| {
         right
             .is_active

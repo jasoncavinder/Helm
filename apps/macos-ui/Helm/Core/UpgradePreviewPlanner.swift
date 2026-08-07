@@ -23,6 +23,7 @@ struct UpgradePreviewPlanner {
         let authority: String
         let packageName: String
         let reasonLabelKey: String
+        let reasonLabelArgs: [String: String]
     }
 
     struct Candidate {
@@ -126,6 +127,9 @@ struct UpgradePreviewPlanner {
             let packageMatches = trimmedFilter.isEmpty
                 || step.packageName.lowercased().contains(trimmedFilter)
                 || step.reasonLabelKey.lowercased().contains(trimmedFilter)
+                || step.reasonLabelArgs.values.contains {
+                    $0.lowercased().contains(trimmedFilter)
+                }
             return managerMatches && packageMatches
         }
     }

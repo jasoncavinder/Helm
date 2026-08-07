@@ -64,6 +64,14 @@ impl RunningProcess for FakeProcess {
     }
 }
 
+fn unwrap_command(request: &ProcessSpawnRequest) -> (String, Vec<String>, bool) {
+    (
+        request.command.program.to_string_lossy().to_string(),
+        request.command.args.clone(),
+        request.requires_elevation,
+    )
+}
+
 impl ProcessExecutor for MasFakeExecutor {
     fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
         let now = SystemTime::now();
@@ -80,8 +88,7 @@ impl ProcessExecutor for MasFakeExecutor {
             }));
         }
 
-        let program = request.command.program.to_string_lossy().to_string();
-        let args = &request.command.args;
+        let (program, args, sudo_wrapped) = unwrap_command(&request);
 
         let stdout: Vec<u8> = if program.ends_with("which") {
             b"/opt/homebrew/bin/mas".to_vec()
@@ -101,14 +108,25 @@ impl ProcessExecutor for MasFakeExecutor {
                 [arg0, query] if arg0 == "search" && query == "Keynote" => {
                     SEARCH_FIXTURE.as_bytes().to_vec()
                 }
-                [arg0, app_id] if arg0 == "install" && app_id == "409183694" => Vec::new(),
+                [arg0, app_id] if arg0 == "install" && app_id == "409183694" => {
+                    assert!(sudo_wrapped, "mas install should require elevation");
+                    Vec::new()
+                }
                 [arg0, app_id] if arg0 == "get" && app_id == "409183694" => Vec::new(),
-                [arg0, app_id] if arg0 == "uninstall" && app_id == "409183694" => Vec::new(),
+                [arg0, app_id] if arg0 == "uninstall" && app_id == "409183694" => {
+                    assert!(sudo_wrapped, "mas uninstall should require elevation");
+                    Vec::new()
+                }
                 [arg0, app_id] if arg0 == "upgrade" && app_id == "409183694" => {
+                    assert!(
+                        sudo_wrapped,
+                        "mas targeted upgrade should require elevation"
+                    );
                     self.keynote_upgraded.store(true, Ordering::SeqCst);
                     Vec::new()
                 }
                 [arg0] if arg0 == "upgrade" => {
+                    assert!(sudo_wrapped, "mas bulk upgrade should require elevation");
                     self.upgrade_all_applied.store(true, Ordering::SeqCst);
                     Vec::new()
                 }

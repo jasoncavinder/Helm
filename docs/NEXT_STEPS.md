@@ -19,6 +19,7 @@ Focus:
 - maintain release-process hardening guardrails now that `v0.18.2` publication is complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
+- complete the `0.19.x` manager/updater integration: preserve the v0.18 migration-safety baseline while landing npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, dependency modernization, and the macOS 13 Ventura baseline
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
 - retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs
@@ -66,7 +67,7 @@ Current checkpoint:
 - `v0.18.2` is the current public stable release; doctor/repair, local security groundwork, migration recovery/safety, package workflow hardening, and planning-only pre-1.0 experience contracts are published:
   - bulk and scoped upgrade phase coordination now resides in Rust/FFI/XPC. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
   - all current manager adapters are considered complete for Helm's intended scope
-  - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
+  - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `setapp` and `parallels_desktop`; Sparkle apps inventory with static-appcast update visibility and vendor-authoritative individual GUI actions; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
     - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, SQLite-backed repair knowledge, and a storeless compatibility fallback constrained by the typed-action registry

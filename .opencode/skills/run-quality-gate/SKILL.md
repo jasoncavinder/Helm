@@ -24,6 +24,7 @@ Run merge-readiness checks in a stable order and report exactly what failed.
 
 - `scope`: `rust`, `i18n`, `ui`, `release-contracts`, or `all`
 - optional env: `HELM_SKIP_XCODE=1` to skip `xcodebuild test`
+- optional env: `HELM_XCODE_ARCH=arm64|x86_64` to override the detected macOS Xcode test destination arch
 
 ## Outputs
 

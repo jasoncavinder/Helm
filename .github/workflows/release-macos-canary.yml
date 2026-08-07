@@ -52,11 +52,12 @@ jobs:
       - name: Run Swift release gate
         run: |
           set -euo pipefail
+          XCODE_DESTINATION="$(apps/macos-ui/scripts/macos_xcode_destination.sh)"
           HELM_CHANNEL_PROFILE=developer_id \
           xcodebuild \
             -project apps/macos-ui/Helm.xcodeproj \
             -scheme Helm \
-            -destination "platform=macOS" \
+            -destination "$XCODE_DESTINATION" \
             -configuration Debug \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \

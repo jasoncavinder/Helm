@@ -248,6 +248,8 @@ extension L10n {
                 static let every30Min = "app.settings.frequency.every_30_min"
                 static let every1Hour = "app.settings.frequency.every_1_hour"
                 static let daily = "app.settings.frequency.daily"
+                static let weekly = "app.settings.frequency.weekly"
+                static let monthly = "app.settings.frequency.monthly"
             }
             struct Action {
                 static let refreshNow = "app.settings.action.refresh_now"

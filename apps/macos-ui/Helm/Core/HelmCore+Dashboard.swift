@@ -347,6 +347,12 @@ extension HelmCore {
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {
+        if package.managerId == "sparkle" {
+            return package.status == .upgradable
+                && package.packageIdentifier?.hasSuffix(".app") == true
+                && !package.pinned
+                && isManagerEnabled(package.managerId)
+        }
         return package.status == .upgradable
             && (managerStatuses[package.managerId]?.supportsPackageUpgrade ?? false)
             && !package.pinned

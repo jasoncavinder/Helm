@@ -192,12 +192,17 @@ struct RedesignUpdatesSectionView: View {
 
     private var requiresPrivileges: Bool {
         scopedPlanSteps.contains { step in
-            step.managerId == "homebrew_formula" || step.managerId == "softwareupdate"
+            step.managerId == "homebrew_formula"
+                || step.managerId == "softwareupdate"
+                || step.managerId == "mas"
         }
     }
 
     private func planStepTitle(_ step: CoreUpgradePlanStep) -> String {
         if step.managerId == "softwareupdate", step.packageName == "__confirm_os_updates__" {
+            return core.localizedUpgradePlanReason(for: step)
+        }
+        if step.managerId == "mas", step.packageName == "__all__" {
             return core.localizedUpgradePlanReason(for: step)
         }
         return step.packageName
@@ -213,6 +218,9 @@ struct RedesignUpdatesSectionView: View {
             .map { package in
                 if managerId == "softwareupdate", package == "__confirm_os_updates__" {
                     return L10n.Service.Task.Label.upgradeSoftwareUpdateAll.localized
+                }
+                if managerId == "mas", package == "__all__" {
+                    return "service.task.label.upgrade.mas_all".localized
                 }
                 return package
             }

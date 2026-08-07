@@ -2679,7 +2679,7 @@ private struct InspectorManagerDetailView: View {
                                             }
                                             Text(instance.displayPath)
                                                 .font(.system(.caption, design: .monospaced))
-                                                .lineLimit(2)
+                                                .fixedSize(horizontal: false, vertical: true)
                                                 .multilineTextAlignment(.leading)
                                             Spacer(minLength: 0)
                                             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -2689,6 +2689,7 @@ private struct InspectorManagerDetailView: View {
                                         }
                                     }
                                     .buttonStyle(.plain)
+                                    .help(instance.displayPath)
                                     .helmPointer()
 
                                     if isExpanded {
