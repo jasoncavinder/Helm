@@ -46,6 +46,8 @@ for workflow in "$CLI_WORKFLOW" "$DMG_WORKFLOW"; do
   expect_pattern 'FALLBACK_GH_TOKEN: \$\{\{ github\.token \}\}' "$workflow" "metadata publication must retry with github.token"
   expect_pattern 'PUBLISH_AUTH_MODE=github_token_fallback' "$workflow" "metadata publication must record fallback authentication"
   expect_pattern 'publish_pr_handoff_state\.py' "$workflow" "metadata publication must classify the full publish PR JSON snapshot"
+  expect_pattern 'HANDOFF_STATUS.*=.*merged' "$workflow" "metadata publication must recognize a merged publish PR"
+  expect_pattern 'HANDOFF_STATUS.*=.*open' "$workflow" "metadata publication must preserve an open publish PR while polling"
   expect_pattern 'HANDOFF_STATUS.*closed_unmerged' "$workflow" "metadata publication must preserve a non-red closed-PR follow-up state"
   reject_pattern 'mergedAt.*@tsv' "$workflow" "metadata publication must not parse nullable mergedAt through collapsing TSV fields"
 done

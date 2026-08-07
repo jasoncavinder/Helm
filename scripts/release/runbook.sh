@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-PREFLIGHT_SCRIPT="${HELM_RELEASE_PREFLIGHT_SCRIPT:-${SCRIPT_DIR}/preflight.sh}"
+PREFLIGHT_SCRIPT="${SCRIPT_DIR}/preflight.sh"
 
 usage() {
   cat <<'EOF'

@@ -2,11 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-RUNBOOK_PATH="${ROOT_DIR}/scripts/release/runbook.sh"
+RUNBOOK_SOURCE="${ROOT_DIR}/scripts/release/runbook.sh"
 TMP_DIR="$(mktemp -d)"
 STUB_BIN="${TMP_DIR}/bin"
 CALL_LOG="${TMP_DIR}/calls.log"
-PREFLIGHT_STUB="${TMP_DIR}/preflight.sh"
+TEST_REPO="${TMP_DIR}/repo"
+RUNBOOK_PATH="${TEST_REPO}/scripts/release/runbook.sh"
+PREFLIGHT_STUB="${TEST_REPO}/scripts/release/preflight.sh"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 fail() {
@@ -34,7 +36,12 @@ reset_log() {
   : >"$CALL_LOG"
 }
 
-mkdir -p "$STUB_BIN"
+if grep -Fq 'HELM_RELEASE_PREFLIGHT_SCRIPT' "$RUNBOOK_SOURCE"; then
+  fail "mutating runbook permits replacing its required preflight script"
+fi
+
+mkdir -p "$STUB_BIN" "$(dirname "$RUNBOOK_PATH")"
+cp "$RUNBOOK_SOURCE" "$RUNBOOK_PATH"
 
 cat >"${STUB_BIN}/git" <<'EOF'
 #!/usr/bin/env bash
@@ -79,18 +86,19 @@ cat >"$PREFLIGHT_STUB" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'preflight %s\n' "$*" >>"$HELM_STUB_CALL_LOG"
+exit "${HELM_STUB_PREFLIGHT_EXIT_CODE:-0}"
 EOF
 
-chmod +x "${STUB_BIN}/git" "$PREFLIGHT_STUB"
+chmod +x "${STUB_BIN}/git" "$PREFLIGHT_STUB" "$RUNBOOK_PATH"
 
 runbook() {
-  HELM_RELEASE_PREFLIGHT_SCRIPT="$PREFLIGHT_STUB" \
-    HELM_STUB_CALL_LOG="$CALL_LOG" \
+  HELM_STUB_CALL_LOG="$CALL_LOG" \
     HELM_STUB_HEAD_SHA="${HELM_STUB_HEAD_SHA:-same-sha}" \
     HELM_STUB_MAIN_SHA="${HELM_STUB_MAIN_SHA:-same-sha}" \
     HELM_STUB_DIRTY="${HELM_STUB_DIRTY:-0}" \
     HELM_STUB_UNTRACKED="${HELM_STUB_UNTRACKED:-0}" \
     HELM_STUB_FETCH_FAIL="${HELM_STUB_FETCH_FAIL:-0}" \
+    HELM_STUB_PREFLIGHT_EXIT_CODE="${HELM_STUB_PREFLIGHT_EXIT_CODE:-0}" \
     PATH="${STUB_BIN}:$PATH" \
     "$RUNBOOK_PATH" "$@"
 }
@@ -131,6 +139,17 @@ HELM_STUB_FETCH_FAIL=1 runbook tag --tag v99.99.99 --allow-release-worktree >/de
 reject_log '^git rev-parse ' "failed origin refresh reached commit validation"
 reject_log '^git tag ' "failed origin refresh created a tag"
 reject_log '^git push ' "failed origin refresh pushed a tag"
+
+reset_log
+HELM_STUB_PREFLIGHT_EXIT_CODE=42 \
+  runbook tag --tag v99.99.99 --allow-release-worktree >/dev/null 2>&1 &&
+  fail "worktree mode continued after release preflight failed"
+reject_log '^git ' "failed release preflight reached a git mutation or validation"
+
+reset_log
+HELM_STUB_PREFLIGHT_EXIT_CODE=42 runbook tag --tag v99.99.99 >/dev/null 2>&1 &&
+  fail "strict mode continued after release preflight failed"
+reject_log '^git ' "failed strict release preflight reached a git mutation"
 
 reset_log
 runbook tag --tag v99.99.99 >/dev/null

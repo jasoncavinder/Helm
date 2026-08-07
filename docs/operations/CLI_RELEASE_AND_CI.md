@@ -447,12 +447,12 @@ Promotion path after each release:
    - operator/runbook/checklist updates -> this file and `docs/RELEASE_CHECKLIST.md`
 4. link the fixing PR/commit in the promoted entry and close the temporary friction item
 
-`v0.18.1` closeout identified two follow-up items:
+`v0.18.1` closeout identified two follow-up items now resolved for the v0.19 candidate:
 
-- `scripts/release/runbook.sh tag` requires a branch named `main`, while agent policy requires release work in an isolated linked worktree and reserves the primary `main` checkout for coordination. Add a worktree-safe tag path that requires a clean `HEAD` exactly equal to `origin/main` before mutation ([#333](https://github.com/jasoncavinder/Helm/issues/333)).
-- The direct CLI and DMG workflows successfully uploaded artifacts and opened publish PRs, but their immediate metadata checks still concluded as failures while `main` intentionally remained behind those PRs. Align the workflow result and publication summary with the documented non-red follow-up-required state; hard failures must remain unchanged for build, signing, notarization, verification, upload, or PR-creation faults ([#332](https://github.com/jasoncavinder/Helm/issues/332)).
+- `scripts/release/runbook.sh tag` retains strict current-`main` behavior by default and now offers explicit `--allow-release-worktree` mode. That mode reruns full preflight, refuses local changes, fetches `origin`, and requires `HEAD` to equal `origin/main` exactly before mutation ([#333](https://github.com/jasoncavinder/Helm/issues/333)).
+- The direct CLI and DMG workflows now classify complete publish-PR JSON snapshots, preserving an open PR with nullable `mergedAt` as a non-red follow-up-required outcome. Hard failures remain unchanged for build, signing, notarization, verification, upload, credential, or PR-creation faults ([#332](https://github.com/jasoncavinder/Helm/issues/332)).
 
-`v0.18.2` confirmed that [#332](https://github.com/jasoncavinder/Helm/issues/332) remains active: both artifact workflows opened auto-merge publication PRs and uploaded valid assets, but set `PUBLISH_FOLLOWUP_REQUIRED=no` before checking the still-old `main` metadata, producing red terminal runs. Operators must continue treating this specific post-upload metadata race as the documented merge-and-`verify_only=true` path until the workflow-state fix lands; all earlier build, signing, notarization, upload, or PR-creation failures remain blocking.
+`v0.18.2` reproduced the historical [#332](https://github.com/jasoncavinder/Helm/issues/332) failure before this fix: both artifact workflows opened auto-merge publication PRs and uploaded valid assets, but nullable TSV field collapse made the open PR appear merged before the still-old `main` metadata check. The v0.19 contracts now preserve the documented merge-and-`verify_only=true` handoff state while keeping all earlier build, signing, notarization, upload, credential, or PR-creation failures blocking.
 
 ---
 
