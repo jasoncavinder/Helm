@@ -78,7 +78,7 @@ This checklist is required before creating a release tag on `main`.
 - [x] SQLite migration compatibility gate passes with `rusqlite 0.40.1`, including backup and tamper/recovery coverage.
 - [x] Sparkle appcast/recovery checklist and arm64 Xcode tests pass.
 - [x] Third-party dependency licenses are re-audited for the candidate dependency graph.
-- [ ] Non-mutating `v0.19.0-rc.1` release rehearsal and preflight complete without unresolved errors.
+- [x] Non-mutating `v0.19.0-rc.1` release rehearsal and preflight complete without unresolved errors.
 
 ### Protected Integration and Publication
 
