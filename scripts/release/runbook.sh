@@ -9,13 +9,14 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/release/runbook.sh prepare --tag <tag> [--allow-non-main] [--allow-dirty] [--no-fetch] [--skip-secrets] [--skip-workflows] [--skip-ruleset-policy]
-  scripts/release/runbook.sh tag --tag <tag>
+  scripts/release/runbook.sh tag --tag <tag> [--allow-release-worktree]
   scripts/release/runbook.sh publish --tag <tag>
   scripts/release/runbook.sh verify --tag <tag>
 
 Commands:
   prepare   Run release preflight checks.
-  tag       Create and push an annotated release tag.
+  tag       Create and push an annotated release tag. The optional worktree mode
+            still requires a clean HEAD exactly equal to freshly fetched origin/main.
   publish   Create (or confirm) GitHub release for the tag.
   verify    Verify release assets and update metadata on main.
 EOF
@@ -104,13 +105,62 @@ cmd_prepare() {
   "${PREFLIGHT_SCRIPT}" "${args[@]}"
 }
 
+require_release_worktree_matches_main() {
+  local dirty=0
+  if ! git diff --quiet --ignore-submodules --; then
+    dirty=1
+  fi
+  if ! git diff --cached --quiet --ignore-submodules --; then
+    dirty=1
+  fi
+  if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    dirty=1
+  fi
+  if [ "$dirty" -eq 1 ]; then
+    fail "release worktree is not clean"
+  fi
+
+  phase_info "preflight" "fetching origin before release-worktree tag validation"
+  git fetch origin --quiet || fail "failed to fetch origin"
+
+  local head_sha origin_main_sha
+  head_sha="$(git rev-parse HEAD)" || fail "unable to resolve release worktree HEAD"
+  origin_main_sha="$(git rev-parse --verify origin/main)" || fail "unable to resolve origin/main after fetch"
+  if [ "$head_sha" != "$origin_main_sha" ]; then
+    fail "release worktree HEAD must equal origin/main exactly (HEAD=${head_sha} origin/main=${origin_main_sha})"
+  fi
+
+  phase_info "preflight" "release worktree HEAD matches origin/main exactly (${head_sha})"
+}
+
 cmd_tag() {
-  local tag
-  tag="$(parse_common_tag_args "$@")"
+  local tag=""
+  local allow_release_worktree=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --tag)
+      [ $# -ge 2 ] || fail "--tag requires a value"
+      tag="$2"
+      shift 2
+      ;;
+    --allow-release-worktree)
+      allow_release_worktree=1
+      shift
+      ;;
+    *)
+      fail "unknown argument for tag: $1"
+      ;;
+    esac
+  done
   require_tag_arg "$tag"
 
   phase_info "preflight" "running release preflight for ${tag}"
-  "${PREFLIGHT_SCRIPT}" --tag "$tag"
+  if [ "$allow_release_worktree" -eq 1 ]; then
+    "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main
+    require_release_worktree_matches_main
+  else
+    "${PREFLIGHT_SCRIPT}" --tag "$tag"
+  fi
 
   phase_info "publish" "creating annotated tag ${tag}"
   git tag -a "$tag" -m "Helm ${tag#v}"

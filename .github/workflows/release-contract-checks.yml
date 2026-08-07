@@ -41,6 +41,12 @@ jobs:
       - name: Validate prerelease GUI and CLI pair-state contracts
         run: scripts/release/tests/publish_verify_prerelease_pair_state_contract.sh
 
+      - name: Validate publish PR handoff-state contracts
+        run: scripts/release/tests/publish_pr_handoff_state_contract.sh
+
+      - name: Validate release-worktree tagging contracts
+        run: scripts/release/tests/runbook_release_worktree_tag_contract.sh
+
       - name: Validate release-line copy drift contracts
         run: scripts/release/check_release_line_copy.sh
 

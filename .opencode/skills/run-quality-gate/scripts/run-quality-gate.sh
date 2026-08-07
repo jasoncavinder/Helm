@@ -53,6 +53,8 @@ run_release_contracts() {
   run scripts/release/tests/publish_verify_state_contract.sh
   run scripts/release/tests/publish_verify_prerelease_state_contract.sh
   run scripts/release/tests/publish_verify_prerelease_pair_state_contract.sh
+  run scripts/release/tests/publish_pr_handoff_state_contract.sh
+  run scripts/release/tests/runbook_release_worktree_tag_contract.sh
   run scripts/release/tests/ci_toolchain_contract.sh
   run scripts/release/tests/provenance_manifest_contract.sh
   run scripts/release/tests/sparkle_recovery_contract.sh

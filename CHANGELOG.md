@@ -24,6 +24,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Manager install-instance normalization now hides runtime shims and groups helper entry points without collapsing intentionally distinct installations, improving npm and related manager multi-install reporting.
 - Mac App Store refresh handling now treats expected all-package outcomes consistently and preserves actionable diagnostics for authentication or command failures.
 - Swift settings and manager surfaces now reflect the expanded Sparkle and multi-instance behavior without admitting Sparkle work into bulk upgrade plans.
+- Release automation now preserves open publish PRs when GitHub returns a nullable merge timestamp, and the release runbook supports explicit clean worktree tagging only when `HEAD` exactly matches freshly fetched `origin/main`.
 
 This release candidate preserves the `v0.18.2` append-only migration ledger, verified pre-migration backups, debug/release database separation, and affected-database recovery guarantees. It does not claim delivery of the broader native-experience or Project WOW implementation planned across `0.19.x` and later milestones.
 
