@@ -303,6 +303,9 @@ Current checkpoint:
     - release scripts/workflows now normalize locale environment defaults for operator/CI consistency
     - release logs now use phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage
     - recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs
+  - post-`v0.17.5` release-process hardening phase 6 delivered on `dev`:
+    - publish-PR polling now classifies complete GitHub JSON snapshots so nullable `mergedAt` fields cannot turn an open handoff PR into a false merged state
+    - release tagging now has an explicit isolated-worktree path that still requires a clean checkout and exact equality with freshly fetched `origin/main`; strict current-`main` tagging remains the default
   - pre-1.0 remediation batch delivered on `dev` (`SEC-004`, `BUILD-003`, `BUILD-002`):
     - `scripts/release/build_unsigned_variant.sh` now rejects invalid tag formats and enforces canonical output-root containment for generated zip/pkg paths
     - `Release Contract Checks` CI now runs non-destructive `preflight` + `runbook prepare` contract checks on PRs and validates unsigned-build script safety regressions

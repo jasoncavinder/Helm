@@ -407,17 +407,31 @@ jobs:
           MERGED_AT=""
           PR_URL=""
           for i in {1..24}; do
-            read -r PR_STATE MERGED_AT PR_URL <<<"$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url --jq '[.state, (.mergedAt // ""), .url] | @tsv')"
-            if [ -n "$MERGED_AT" ]; then
+            PR_HANDOFF_STATE="$(
+              scripts/release/publish_pr_handoff_state.py "$(
+                gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url
+              )"
+            )"
+            PR_STATE="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="PR_STATE" {print substr($0, index($0, "=") + 1)}')"
+            MERGED_AT="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="MERGED_AT" {print substr($0, index($0, "=") + 1)}')"
+            PR_URL="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="PR_URL" {print substr($0, index($0, "=") + 1)}')"
+            HANDOFF_STATUS="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="HANDOFF_STATUS" {print substr($0, index($0, "=") + 1)}')"
+
+            if [ "$HANDOFF_STATUS" = "merged" ]; then
               echo "[publish] CLI publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
               break
             fi
 
-            if [ "$PR_STATE" != "OPEN" ]; then
+            if [ "$HANDOFF_STATUS" = "closed_unmerged" ]; then
               echo "::warning::CLI publish PR #${PR_NUMBER} is no longer open but not merged."
               echo "::warning::PR URL: ${PR_URL}"
               echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
               exit 0
+            fi
+
+            if [ "$HANDOFF_STATUS" != "open" ]; then
+              echo "::error::Unexpected CLI publish PR handoff state: ${HANDOFF_STATUS:-<empty>} (state=${PR_STATE:-<empty>})"
+              exit 1
             fi
 
             echo "[publish] Waiting for CLI publish PR #${PR_NUMBER} to merge (attempt ${i}/24)..."

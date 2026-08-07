@@ -82,6 +82,8 @@ This checklist is required before creating a release tag on `main`.
 - [x] Appcast channel contracts verify stable/RC coexistence, replacement, malformed or explicit-`default` channel rejection, channel-specific verification, and per-channel downgrade refusal.
 - [x] Appcast publication merges against current `main` at generation and again immediately before publication, preventing stale-tag reruns and publication races from rolling back either channel.
 - [x] Prerelease publication verification rejects missing or mismatched GUI/CLI metadata unless the exact counterpart publication PR remains open.
+- [x] Publish-PR handoff contracts preserve an open PR with nullable `mergedAt` as a non-red follow-up-required state.
+- [x] Release runbook contracts preserve strict `main` tagging by default and permit only clean, exact-`origin/main` isolated worktrees through the explicit override.
 - [x] Third-party dependency licenses are re-audited for the candidate dependency graph.
 - [x] Non-mutating `v0.19.0-rc.1` release rehearsal and preflight complete without unresolved errors.
 

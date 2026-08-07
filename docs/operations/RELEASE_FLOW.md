@@ -12,7 +12,9 @@ This is the mandatory release sequence for maintainers and agents. It supplement
 
 ## Required Gates
 
-Run these from a clean, current `main` checkout before creating a tag:
+Run these from a clean, current `main` checkout before creating a tag. An isolated
+release worktree is also permitted when its clean `HEAD` exactly equals freshly
+fetched `origin/main`; this exception does not permit tagging a candidate branch:
 
 1. Confirm release changes and release-workflow changes have merged to `main`.
 2. Run the non-mutating rehearsal:
@@ -27,6 +29,10 @@ Run these from a clean, current `main` checkout before creating a tag:
    scripts/release/runbook.sh prepare --tag vX.Y.Z
    ```
 
+   In an isolated release worktree whose branch is not named `main`, use
+   `--allow-non-main`. The mutating tag command repeats stricter exact-commit
+   validation immediately before creating the tag.
+
 4. Confirm the scheduled or manually dispatched `Release macOS Canary` is green on `macos-26` after the latest workflow/toolchain change.
 5. With explicit maintainer approval, dispatch `Release Publish Auth Check` with `write_probe=true`. Require a passing probe that creates and cleans up an empty branch/PR to validate effective Git contents-write and pull-request permissions.
 6. Resolve every error before tagging. `RELEASE_PUBLISH_PAT` is required by stable release preflight; its authentication check must pass before publication.
@@ -40,6 +46,16 @@ After explicit maintainer approval:
    ```bash
    scripts/release/runbook.sh tag --tag vX.Y.Z
    ```
+
+   From an isolated release worktree, use:
+
+   ```bash
+   scripts/release/runbook.sh tag --tag vX.Y.Z --allow-release-worktree
+   ```
+
+   This explicit mode refuses dirty worktrees, fetches `origin`, and requires
+   `HEAD` to equal `origin/main` exactly. The default command remains strict and
+   requires the current branch to be `main`.
 
 2. Create or confirm the GitHub release:
 
@@ -66,7 +82,7 @@ After explicit maintainer approval:
 - A failed build, signing, notarization, DMG verification, or asset upload is a hard release failure. Fix the confirmed defect and rerun the affected workflow for the existing tag.
 - An existing-tag rerun is idempotent only while its channel is still current. If newer metadata exists in that channel, the appcast merge fails closed instead of rolling the feed back; verify the intended tag and do not bypass the monotonic guard.
 - Post-publication prerelease verification requires matching GUI `beta` and CLI `rc` versions. A temporary one-sided or version-mismatched state is accepted only when the exact counterpart `chore/publish-*` PR for the newer candidate is open.
-- If `RELEASE_PUBLISH_PAT` is invalid, workflows retry metadata branch/PR creation with `github.token`. That fallback requires a maintainer to merge the resulting publish PR and run `verify_only`.
+- If `RELEASE_PUBLISH_PAT` is invalid, workflows retry metadata branch/PR creation with `github.token`. An open fallback PR, including a GitHub snapshot with `mergedAt: null`, is a successful non-red handoff that requires a maintainer to merge the resulting publish PR and run `verify_only`.
 - If neither credential can create the publish branch/PR, retrieve the generated metadata from the workflow artifact, open the documented `chore/publish-*` PR manually, merge it, then run `verify_only`. Do not regenerate or replace release artifacts.
 - If a workflow/runtime upgrade fails the canary, update the runner label, expected Xcode major, and immutable action pin together in a dedicated workflow-maintenance PR before the next tag.
 - Record recurring friction in `TMP_RELEASE_FRICTION` and promote it to durable docs or contracts before the next release.
