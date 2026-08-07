@@ -19,6 +19,7 @@
   "service.task.label.upgrade.homebrew_cask": "Upgrade {package} via Homebrew (cask)",
   "service.task.label.upgrade.mise": "Upgrade {package} via mise",
   "service.task.label.upgrade.rustup_toolchain": "Upgrade rustup toolchain {toolchain}",
+  "service.task.label.upgrade.mas_all": "Upgrade App Store updates via mas",
   "service.task.label.upgrade.package": "Upgrade {package} via {manager}",
   "service.task.label.upgrade.softwareupdate_all": "Upgrade macOS software updates",
   "service.task.label.pin.homebrew": "Pin {package} via Homebrew",

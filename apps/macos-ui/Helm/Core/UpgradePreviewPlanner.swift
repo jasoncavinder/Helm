@@ -23,6 +23,7 @@ struct UpgradePreviewPlanner {
         let authority: String
         let packageName: String
         let reasonLabelKey: String
+        let reasonLabelArgs: [String: String]
     }
 
     struct Candidate {
@@ -126,6 +127,9 @@ struct UpgradePreviewPlanner {
             let packageMatches = trimmedFilter.isEmpty
                 || step.packageName.lowercased().contains(trimmedFilter)
                 || step.reasonLabelKey.lowercased().contains(trimmedFilter)
+                || step.reasonLabelArgs.values.contains {
+                    $0.lowercased().contains(trimmedFilter)
+                }
             return managerMatches && packageMatches
         }
     }
@@ -291,6 +295,35 @@ struct UpgradeWorkflowStatusReconciliationState {
 }
 
 struct PackageConsolidationPolicy {
+    static func snapshotReplacementKey(
+        managerId: String,
+        packageName: String,
+        packageIdentifier: String?
+    ) -> String {
+        let normalizedManagerId = managerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedPackageName = packageName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let baseKey = "\(normalizedManagerId)|\(normalizedPackageName)"
+        guard normalizedManagerId == "sparkle",
+              let packageIdentifier,
+              !packageIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return baseKey
+        }
+        return "\(baseKey)|\(packageIdentifier.trimmingCharacters(in: .whitespacesAndNewlines))"
+    }
+
+    static func instanceDisambiguationLabel(
+        managerId: String,
+        packageIdentifier: String?
+    ) -> String? {
+        guard managerId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "sparkle",
+              let packageIdentifier else {
+            return nil
+        }
+        let path = packageIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return nil }
+        return NSString(string: path).abbreviatingWithTildeInPath
+    }
+
     static func statusRank(_ rawStatus: String) -> Int {
         switch rawStatus.lowercased() {
         case "upgradable":

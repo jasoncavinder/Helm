@@ -11,14 +11,16 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.x native-experience foundation and first-run value
+v0.19.0-rc.1 manager/updater integration and release-candidate validation
 ```
 
 Focus:
+- validate the prepared `v0.19.0-rc.1` source without tagging or publishing until the protected integration path and explicit release authorization are complete
 - begin production `v0.19.x` work from the closed Native Mac Experience and Project WOW contracts
 - maintain release-process hardening guardrails now that `v0.18.2` publication is complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
+- complete the `0.19.x` manager/updater integration: preserve the v0.18 migration-safety baseline while landing npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, dependency modernization, and the macOS 13 Ventura baseline
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
 - retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs
@@ -66,7 +68,7 @@ Current checkpoint:
 - `v0.18.2` is the current public stable release; doctor/repair, local security groundwork, migration recovery/safety, package workflow hardening, and planning-only pre-1.0 experience contracts are published:
   - bulk and scoped upgrade phase coordination now resides in Rust/FFI/XPC. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
   - all current manager adapters are considered complete for Helm's intended scope
-  - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `sparkle`, `setapp`, and `parallels_desktop`; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
+  - intentionally narrower manager scopes remain explicit (`nix_darwin` detect/refresh-only; detection-only adapters such as `setapp` and `parallels_desktop`; Sparkle apps inventory with static-appcast update visibility and vendor-authoritative individual GUI actions; guarded/status adapters such as `docker_desktop`, `podman`, `colima`, `rosetta2`, `firmware_updates`, and `xcode_command_line_tools`)
   - no additional manager-adapter implementation gaps remain beyond those intentional product boundaries
   - post-`v0.17.7` doctor/repair foundation scaffold delivered on `dev`:
     - added `helm-core` doctor/repair modules with deterministic finding fingerprints, local health report model, SQLite-backed repair knowledge, and a storeless compatibility fallback constrained by the typed-action registry
@@ -201,7 +203,7 @@ Current checkpoint:
     - Control Center drag-to-move now applies across the full window background (interactive controls still take precedence)
     - settings top metric cards now deep-link to Managers/Updates/Tasks
     - inspector selection now clears when sections change and selected rows/cards are visually highlighted
-    - launch-at-login setting added for supported systems (macOS 13+), with localized unsupported messaging on older systems
+    - launch-at-login setting added through `SMAppService.mainApp` on the macOS 13+ baseline
     - manager/popover count rendering paths precompute per-manager counts to reduce repeated filtering work in hot UI update loops
   - pre-rc.4 stabilization follow-up delivered on `dev`:
     - popover outside-click close handling now only reacts to click events (not hover/drag movement)
@@ -475,7 +477,7 @@ Delivered:
 - Added `AppUpdateCoordinator` with strict channel isolation and manual update-check entry point plumbing
 - Added optional Sparkle bridge (`#if canImport(Sparkle)`) while preserving non-Sparkle build compatibility
 - Wired Sparkle SPM package linkage into the Helm app target for direct-channel runtime update checks
-- Pinned Sparkle SPM dependency to exact `2.8.1` to keep compatibility aligned with macOS 11+ targets.
+- Pinned Sparkle SPM dependency to exact `2.9.5` to keep compatibility aligned with macOS 13+ targets.
 - Added user entry points:
   - status menu `Check for Updates`
   - popover About overlay `Check for Updates`

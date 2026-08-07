@@ -786,12 +786,12 @@ struct ManagerInfo: Identifiable {
         ),
         ManagerInfo(
             id: "sparkle",
-            displayName: "Sparkle Updaters",
+            displayName: "Sparkle Apps",
             shortName: "sparkle",
             category: "App Store",
             isImplemented: true,
             isOptional: false,
-            isDetectionOnly: true,
+            isDetectionOnly: false,
             installMethod: .notManageable,
             installMethodOptions: [methodOption(.notManageable, recommended: true, preferred: true)]
         ),

@@ -71,11 +71,10 @@
 		K200000000000000000000002 /* SupportRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000001 /* SupportRedactor.swift */; };
 		K200000000000000000000003 /* SupportRedactorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000002 /* SupportRedactorTests.swift */; };
 		L200000000000000000000001 /* helm-cli in Resources */ = {isa = PBXBuildFile; fileRef = L100000000000000000000001 /* helm-cli */; };
-		M200000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = M100000000000000000000002 /* main.swift */; };
-		M200000000000000000000002 /* HelmLoginHelper.app in Embed Login Items */ = {isa = PBXBuildFile; fileRef = M100000000000000000000001 /* HelmLoginHelper.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		N100000000000000000000001 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
 		N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
 		N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */; };
+		P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -85,13 +84,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = 8CE1FDBF2F3D2AD7000A3945;
 			remoteInfo = HelmService;
-		};
-		M800000000000000000000001 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A10000080000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = M500000000000000000000001;
-			remoteInfo = HelmLoginHelper;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -104,15 +96,6 @@
 				8CE1FDCB2F3D2AD8000A3945 /* HelmService.xpc in Embed XPC Services */,
 			);
 			name = "Embed XPC Services";
-		};
-		M400000000000000000000001 /* Embed Login Items */ = {
-			isa = PBXCopyFilesBuildPhase;
-			dstPath = "$(CONTENTS_FOLDER_PATH)/Library/LoginItems";
-			dstSubfolder = Product;
-			files = (
-				M200000000000000000000002 /* HelmLoginHelper.app in Embed Login Items */,
-			);
-			name = "Embed Login Items";
 		};
 /* End PBXCopyFilesBuildPhase section */
 
@@ -186,12 +169,9 @@
 		K100000000000000000000001 /* SupportRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportRedactor.swift; sourceTree = "<group>"; };
 		K100000000000000000000002 /* SupportRedactorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportRedactorTests.swift; sourceTree = "<group>"; };
 		L100000000000000000000001 /* helm-cli */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; name = "helm-cli"; path = "Generated/helm-cli"; sourceTree = SOURCE_ROOT; };
-		M100000000000000000000001 /* HelmLoginHelper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HelmLoginHelper.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		M100000000000000000000002 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		M100000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		M100000000000000000000004 /* HelmLoginHelper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HelmLoginHelper.entitlements; sourceTree = "<group>"; };
 		N100000000000000000000002 /* HelmCliShimCommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunner.swift; sourceTree = "<group>"; };
 		N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunnerTests.swift; sourceTree = "<group>"; };
+		P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSparkleUpdateCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -208,11 +188,6 @@
 			);
 		};
 		C10000000000000000000007 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			files = (
-			);
-		};
-		M400000000000000000000003 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
 			);
@@ -269,6 +244,7 @@
 			isa = PBXGroup;
 			children = (
 				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
+				P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */,
 				8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
 				D10000000000000000000006 /* HelmCore+Actions.swift */,
 				D10000000000000000000004 /* HelmCore+Dashboard.swift */,
@@ -355,7 +331,6 @@
 				A10000040000000000000002 /* Helm */,
 				C10000000000000000000006 /* HelmTests */,
 				8CE1FDC12F3D2AD7000A3945 /* HelmService */,
-				M300000000000000000000001 /* HelmLoginHelper */,
 				A10000040000000000000003 /* Products */,
 				8CFB6D472F3D1B24002372B8 /* Frameworks */,
 				8CEC4C9B2F3DA4B500CA3470 /* Recovered References */,
@@ -391,7 +366,6 @@
 			children = (
 				A10000020000000000000006 /* Helm.app */,
 				8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */,
-				M100000000000000000000001 /* HelmLoginHelper.app */,
 				C10000000000000000000004 /* HelmTests.xctest */,
 			);
 			name = Products;
@@ -443,16 +417,6 @@
 			path = HelmTests;
 			sourceTree = "<group>";
 		};
-		M300000000000000000000001 /* HelmLoginHelper */ = {
-			isa = PBXGroup;
-			children = (
-				M100000000000000000000004 /* HelmLoginHelper.entitlements */,
-				M100000000000000000000002 /* main.swift */,
-				M100000000000000000000003 /* Info.plist */,
-			);
-			path = HelmLoginHelper;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -479,14 +443,12 @@
 				A10000060000000000000001 /* Sources */,
 				A10000030000000000000001 /* Frameworks */,
 				A10000060000000000000002 /* Resources */,
-				M400000000000000000000001 /* Embed Login Items */,
 				8CE1FDCC2F3D2AD8000A3945 /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				8CE1FDCA2F3D2AD8000A3945 /* PBXTargetDependency */,
-				M800000000000000000000002 /* PBXTargetDependency */,
 			);
 			name = Helm;
 			packageProductDependencies = (
@@ -511,21 +473,6 @@
 			productReference = C10000000000000000000004 /* HelmTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		M500000000000000000000001 /* HelmLoginHelper */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = M700000000000000000000001 /* Build configuration list for PBXNativeTarget "HelmLoginHelper" */;
-			buildPhases = (
-				M400000000000000000000002 /* Sources */,
-				M400000000000000000000003 /* Frameworks */,
-				M400000000000000000000004 /* Resources */,
-			);
-			buildRules = (
-			);
-			name = HelmLoginHelper;
-			productName = HelmLoginHelper;
-			productReference = M100000000000000000000001 /* HelmLoginHelper.app */;
-			productType = "com.apple.product-type.application";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -543,9 +490,6 @@
 						CreatedOnToolsVersion = 14.0;
 					};
 					C10000000000000000000009 = {
-						CreatedOnToolsVersion = 14.0;
-					};
-					M500000000000000000000001 = {
 						CreatedOnToolsVersion = 14.0;
 					};
 				};
@@ -568,7 +512,6 @@
 			targets = (
 				A10000050000000000000001 /* Helm */,
 				8CE1FDBF2F3D2AD7000A3945 /* HelmService */,
-				M500000000000000000000001 /* HelmLoginHelper */,
 				C10000000000000000000009 /* HelmTests */,
 			);
 		};
@@ -589,11 +532,6 @@
 			);
 		};
 		C10000000000000000000016 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			files = (
-			);
-		};
-		M400000000000000000000004 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -635,6 +573,7 @@
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
@@ -698,12 +637,6 @@
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
 			);
 		};
-		M400000000000000000000002 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			files = (
-				M200000000000000000000001 /* main.swift in Sources */,
-			);
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -711,11 +644,6 @@
 			isa = PBXTargetDependency;
 			target = 8CE1FDBF2F3D2AD7000A3945 /* HelmService */;
 			targetProxy = 8CE1FDC92F3D2AD8000A3945 /* PBXContainerItemProxy */;
-		};
-		M800000000000000000000002 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = M500000000000000000000001 /* HelmLoginHelper */;
-			targetProxy = M800000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -740,7 +668,7 @@
 					"$(SRCROOT)/Generated",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -774,7 +702,7 @@
 					"$(SRCROOT)/Generated",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				PRODUCT_BUNDLE_IDENTIFIER = app.jasoncavinder.Helm.HelmService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -841,7 +769,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "";
 				LIBRARY_SEARCH_PATHS = "";
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -902,7 +830,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "";
 				LIBRARY_SEARCH_PATHS = "";
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -947,7 +875,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -992,7 +920,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Generated",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1015,7 +943,7 @@
 					"$(inherited)",
 					"@loader_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -1034,62 +962,9 @@
 					"$(inherited)",
 					"@loader_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
-		M600000000000000000000001 /* Debug configuration for PBXNativeTarget "HelmLoginHelper" */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = HelmLoginHelper/HelmLoginHelper.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = V73WPJR9M4;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = HelmLoginHelper/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmLoginHelper;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		M600000000000000000000002 /* Release configuration for PBXNativeTarget "HelmLoginHelper" */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = HelmLoginHelper/HelmLoginHelper.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
-				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = V73WPJR9M4;
-				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = HelmLoginHelper/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				OTHER_CODE_SIGN_FLAGS = "--timestamp";
-				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.HelmLoginHelper;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -1129,14 +1004,6 @@
 			);
 			defaultConfigurationName = Release;
 		};
-		M700000000000000000000001 /* Build configuration list for PBXNativeTarget "HelmLoginHelper" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				M600000000000000000000001 /* Debug configuration for PBXNativeTarget "HelmLoginHelper" */,
-				M600000000000000000000002 /* Release configuration for PBXNativeTarget "HelmLoginHelper" */,
-			);
-			defaultConfigurationName = Release;
-		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1145,7 +1012,7 @@
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
 			requirement = {
 				kind = exactVersion;
-				version = 2.8.1;
+				version = 2.9.5;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

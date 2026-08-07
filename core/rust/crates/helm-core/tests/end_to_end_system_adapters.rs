@@ -17,7 +17,7 @@ use helm_core::adapters::parallels_desktop::{
 use helm_core::adapters::podman::{PodmanAdapter, PodmanDetectOutput, PodmanSource};
 use helm_core::adapters::rosetta2::{Rosetta2Adapter, Rosetta2DetectOutput, Rosetta2Source};
 use helm_core::adapters::setapp::{SetappAdapter, SetappDetectOutput, SetappSource};
-use helm_core::adapters::sparkle::{SparkleAdapter, SparkleDetectOutput, SparkleSource};
+use helm_core::adapters::sparkle::{SparkleAdapter, SparkleApp, SparkleSource};
 use helm_core::adapters::xcode_command_line_tools::{
     XcodeCommandLineToolsAdapter, XcodeCommandLineToolsDetectOutput, XcodeCommandLineToolsSource,
 };
@@ -237,11 +237,23 @@ impl SetappSource for StaticSetappSource {
 struct StaticSparkleSource;
 
 impl SparkleSource for StaticSparkleSource {
-    fn detect(&self) -> helm_core::adapters::AdapterResult<SparkleDetectOutput> {
-        Ok(SparkleDetectOutput {
-            executable_path: Some(PathBuf::from("/Applications/Foo.app")),
-            version_output: "2.6.4".to_string(),
-        })
+    fn apps(&self) -> helm_core::adapters::AdapterResult<Vec<SparkleApp>> {
+        Ok(vec![SparkleApp {
+            bundle_path: PathBuf::from("/Applications/Foo.app"),
+            bundle_identifier: "com.example.Foo".to_string(),
+            display_name: "Foo".to_string(),
+            short_version: Some("2.6.4".to_string()),
+            bundle_version: Some("264".to_string()),
+            feed_url: None,
+        }])
+    }
+
+    fn appcast(&self, _feed_url: &str) -> helm_core::adapters::AdapterResult<String> {
+        Ok(String::new())
+    }
+
+    fn system_version(&self) -> helm_core::adapters::AdapterResult<String> {
+        Ok("14.0".to_string())
     }
 }
 
@@ -659,7 +671,7 @@ async fn rosetta2_detect_and_install_through_orchestration() {
 }
 
 #[tokio::test]
-async fn detection_only_gui_apps_detect_through_orchestration() {
+async fn gui_app_managers_detect_through_orchestration() {
     let setapp_runtime = build_runtime(Arc::new(SetappAdapter::new(StaticSetappSource)));
     let sparkle_runtime = build_runtime(Arc::new(SparkleAdapter::new(StaticSparkleSource)));
     let parallels_runtime = build_runtime(Arc::new(ParallelsDesktopAdapter::new(
@@ -668,7 +680,7 @@ async fn detection_only_gui_apps_detect_through_orchestration() {
 
     for (manager, runtime, expected_version) in [
         (ManagerId::Setapp, &setapp_runtime, "4.7.0"),
-        (ManagerId::Sparkle, &sparkle_runtime, "2.6.4"),
+        (ManagerId::Sparkle, &sparkle_runtime, "1 app"),
         (ManagerId::ParallelsDesktop, &parallels_runtime, "20.2.0"),
     ] {
         let task = runtime

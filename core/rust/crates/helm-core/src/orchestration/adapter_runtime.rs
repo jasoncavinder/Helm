@@ -13,6 +13,7 @@ use crate::adapters::{
 };
 use crate::install_instances::collect_manager_install_instances;
 use crate::manager_dependencies::provenance_requires_manager_dependency;
+use crate::manager_instances::normalize_manager_install_instances;
 use crate::manager_policy::manager_enablement_eligibility;
 use crate::models::{
     Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction, ManagerId,
@@ -194,6 +195,11 @@ const HOMEBREW_LOCK_CONFLICT_PROBES: [&str; 4] = [
     "brew upgrade --formula --dry-run <package>",
     "brew upgrade --cask --dry-run <package>",
     "wait for the other Homebrew process to finish, then retry",
+];
+const MAS_ADMIN_AUTH_REQUIRED_PROBES: [&str; 3] = [
+    "retry the task and approve Helm's administrator authentication prompt",
+    "helm tasks logs <task-id> --limit 250",
+    "helm tasks output <task-id>",
 ];
 
 impl AdapterRuntime {
@@ -1392,6 +1398,7 @@ async fn persist_detection_response(
                 &mut instances,
                 selected_executable_path.as_deref(),
             );
+            let instances = normalize_manager_install_instances(&instances);
 
             detection_store.replace_install_instances(manager, &instances)?;
             match selected_path_update {
@@ -1731,6 +1738,19 @@ fn classify_failure_issue(manager: ManagerId, combined_text: &str) -> FailureIss
             confidence: "high",
             summary: "Another Homebrew process already holds a lock for this target.",
             recommended_probes: &HOMEBREW_LOCK_CONFLICT_PROBES,
+        };
+    }
+
+    if manager == ManagerId::Mas
+        && normalized.contains("sudo: a terminal is required to read the password")
+        && normalized.contains("sudo: a password is required")
+    {
+        return FailureIssueClassification {
+            key: "mas.admin_authentication_required",
+            owner: "local_runtime",
+            confidence: "high",
+            summary: "mas requires administrator authentication to continue the requested change.",
+            recommended_probes: &MAS_ADMIN_AUTH_REQUIRED_PROBES,
         };
     }
 
@@ -2838,6 +2858,17 @@ mod tests {
             "Error: A `brew upgrade --cask iterm2` process has already locked /opt/homebrew/Caskroom/iterm2.",
         );
         assert_eq!(issue.key, "homebrew.cellar_lock_conflict");
+        assert_eq!(issue.owner, "local_runtime");
+        assert_eq!(issue.confidence, "high");
+    }
+
+    #[test]
+    fn classify_failure_issue_detects_mas_admin_auth_signature() {
+        let issue = classify_failure_issue(
+            ManagerId::Mas,
+            "process exited with code 1: sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required",
+        );
+        assert_eq!(issue.key, "mas.admin_authentication_required");
         assert_eq!(issue.owner, "local_runtime");
         assert_eq!(issue.confidence, "high");
     }

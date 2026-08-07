@@ -679,6 +679,13 @@ Exit Criteria:
 
 Goal:
 
+- Complete the manager/updater modernization slice:
+  - inventory Sparkle apps in standard application roots while excluding Helm by bundle identifier
+  - surface bounded static-HTTPS-appcast update visibility with per-feed failure isolation
+  - delegate individual GUI update checks to Sparkle's external-bundle updater and keep Sparkle out of bulk/lifecycle automation
+  - expose scheduled Sparkle checks for eligible direct-channel Helm builds
+  - harden npm multi-install normalization and MAS refresh outcomes
+  - adopt macOS 13 Ventura as the minimum supported release
 - Establish the native macOS application foundation defined in `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`:
   - native window, titlebar, toolbar, menu-command, sidebar/split-view, selection, and focus behavior
   - standard semantic component layer with documented exceptions for Helm-specific controls
