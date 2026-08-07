@@ -240,6 +240,8 @@ extension L10n {
                 static let launchAtLogin = "app.settings.label.launch_at_login"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
+                static let prereleaseUpdates = "app.settings.label.prerelease_updates"
+                static let prereleaseUpdatesDescription = "app.settings.label.prerelease_updates_description"
                 static let safeMode = "app.settings.label.safe_mode"
                 static let autoCleanKegs = "app.settings.label.auto_clean_kegs"
             }

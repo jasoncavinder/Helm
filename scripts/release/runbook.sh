@@ -9,13 +9,14 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/release/runbook.sh prepare --tag <tag> [--allow-non-main] [--allow-dirty] [--no-fetch] [--skip-secrets] [--skip-workflows] [--skip-ruleset-policy]
-  scripts/release/runbook.sh tag --tag <tag>
+  scripts/release/runbook.sh tag --tag <tag> [--allow-release-worktree]
   scripts/release/runbook.sh publish --tag <tag>
   scripts/release/runbook.sh verify --tag <tag>
 
 Commands:
   prepare   Run release preflight checks.
-  tag       Create and push an annotated release tag.
+  tag       Create and push an annotated release tag. The optional worktree mode
+            still requires a clean HEAD exactly equal to freshly fetched origin/main.
   publish   Create (or confirm) GitHub release for the tag.
   verify    Verify release assets and update metadata on main.
 EOF
@@ -104,13 +105,62 @@ cmd_prepare() {
   "${PREFLIGHT_SCRIPT}" "${args[@]}"
 }
 
+require_release_worktree_matches_main() {
+  local dirty=0
+  if ! git diff --quiet --ignore-submodules --; then
+    dirty=1
+  fi
+  if ! git diff --cached --quiet --ignore-submodules --; then
+    dirty=1
+  fi
+  if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    dirty=1
+  fi
+  if [ "$dirty" -eq 1 ]; then
+    fail "release worktree is not clean"
+  fi
+
+  phase_info "preflight" "fetching origin before release-worktree tag validation"
+  git fetch origin --quiet || fail "failed to fetch origin"
+
+  local head_sha origin_main_sha
+  head_sha="$(git rev-parse HEAD)" || fail "unable to resolve release worktree HEAD"
+  origin_main_sha="$(git rev-parse --verify origin/main)" || fail "unable to resolve origin/main after fetch"
+  if [ "$head_sha" != "$origin_main_sha" ]; then
+    fail "release worktree HEAD must equal origin/main exactly (HEAD=${head_sha} origin/main=${origin_main_sha})"
+  fi
+
+  phase_info "preflight" "release worktree HEAD matches origin/main exactly (${head_sha})"
+}
+
 cmd_tag() {
-  local tag
-  tag="$(parse_common_tag_args "$@")"
+  local tag=""
+  local allow_release_worktree=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --tag)
+      [ $# -ge 2 ] || fail "--tag requires a value"
+      tag="$2"
+      shift 2
+      ;;
+    --allow-release-worktree)
+      allow_release_worktree=1
+      shift
+      ;;
+    *)
+      fail "unknown argument for tag: $1"
+      ;;
+    esac
+  done
   require_tag_arg "$tag"
 
   phase_info "preflight" "running release preflight for ${tag}"
-  "${PREFLIGHT_SCRIPT}" --tag "$tag"
+  if [ "$allow_release_worktree" -eq 1 ]; then
+    "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main
+    require_release_worktree_matches_main
+  else
+    "${PREFLIGHT_SCRIPT}" --tag "$tag"
+  fi
 
   phase_info "publish" "creating annotated tag ${tag}"
   git tag -a "$tag" -m "Helm ${tag#v}"
@@ -168,21 +218,28 @@ PY
 }
 
 extract_appcast_version() {
+  local expected_channel="$1"
   local payload
   payload="$(git show origin/main:web/public/updates/appcast.xml || true)"
-  APPCAST_PAYLOAD="$payload" python3 - <<'PY'
+  APPCAST_PAYLOAD="$payload" EXPECTED_CHANNEL="$expected_channel" python3 - <<'PY'
 import os
 import sys
 import xml.etree.ElementTree as ET
 
 sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 payload = os.environ.get("APPCAST_PAYLOAD", "")
+expected_channel = os.environ["EXPECTED_CHANNEL"]
 if not payload:
     print("")
     raise SystemExit(0)
 
 root = ET.fromstring(payload)
-item = root.find("./channel/item")
+item = None
+for candidate in root.findall("./channel/item"):
+    channel = (candidate.findtext(f"{{{sparkle_ns}}}channel") or "").strip() or "default"
+    if channel == expected_channel:
+        item = candidate
+        break
 if item is None:
     print("")
     raise SystemExit(0)
@@ -265,17 +322,18 @@ cmd_verify() {
     phase_info "verify" "${cli_path} matches ${expected_version}"
   fi
 
-  if ! is_rc_tag "$tag"; then
-    local appcast_version
-    appcast_version="$(extract_appcast_version || true)"
-    if [ "$appcast_version" != "$expected_version" ]; then
-      printf '[verify] error: appcast version mismatch on main (expected=%s actual=%s)\n' "$expected_version" "${appcast_version:-<empty>}" >&2
-      errors=$((errors + 1))
-    else
-      phase_info "verify" "appcast version matches ${expected_version}"
-    fi
+  local appcast_channel appcast_version
+  if is_rc_tag "$tag"; then
+    appcast_channel="beta"
   else
-    phase_info "verify" "rc tag detected; skipping stable appcast version verification"
+    appcast_channel="default"
+  fi
+  appcast_version="$(extract_appcast_version "$appcast_channel" || true)"
+  if [ "$appcast_version" != "$expected_version" ]; then
+    printf '[verify] error: appcast %s channel mismatch on main (expected=%s actual=%s)\n' "$appcast_channel" "$expected_version" "${appcast_version:-<empty>}" >&2
+    errors=$((errors + 1))
+  else
+    phase_info "verify" "appcast ${appcast_channel} channel matches ${expected_version}"
   fi
 
   local open_publish_prs pr_json

@@ -29,6 +29,8 @@
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Helm indítása bejelentkezéskor",
   "app.settings.label.auto_check": "Frissítések automatikus ellenőrzése",
+  "app.settings.label.prerelease_updates": "Béta- és kiadásra jelölt frissítések fogadása",
+  "app.settings.label.prerelease_updates_description": "A stabil frissítések továbbra is elérhetők.",
   "app.settings.label.check_frequency": "Ellenőrzés gyakorisága",
   "app.settings.label.safe_mode": "Biztonságos mód (macOS-frissítések blokkolása)",
   "app.settings.label.auto_clean_kegs": "Régi Homebrew keg-ek automatikus törlése",

@@ -506,6 +506,9 @@ jobs:
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           DMG_PATH="$PWD/build/release-assets/Helm-${TAG_NAME}-macos-universal.dmg"
           APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          APPCAST_CANDIDATE_PATH="$PWD/build/release-assets/appcast-candidate.xml"
+          APPCAST_BASE_PATH="$RUNNER_TEMP/appcast-base-main.xml"
+          FEED_PATH="web/public/updates/appcast.xml"
           RELEASE_NOTES_PATH="$PWD/build/release-assets/release-notes/${TAG_NAME}.html"
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/Helm-${TAG_NAME}-macos-universal.dmg"
           RELEASE_NOTES_URL="$(
@@ -533,6 +536,11 @@ jobs:
           )"
           GITHUB_RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
           DISPLAY_VERSION="${TAG_NAME#v}"
+          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
+            APPCAST_CHANNEL="beta"
+          else
+            APPCAST_CHANNEL="default"
+          fi
 
           apps/macos-ui/scripts/generate_release_notes_html.py \
             --changelog-path "$PWD/CHANGELOG.md" \
@@ -544,17 +552,37 @@ jobs:
           apps/macos-ui/scripts/generate_sparkle_appcast.sh \
             --app-path "$APP_PATH" \
             --dmg-path "$DMG_PATH" \
-            --output-path "$APPCAST_PATH" \
+            --output-path "$APPCAST_CANDIDATE_PATH" \
             --download-url "$DOWNLOAD_URL" \
             --appcast-url "$HELM_SPARKLE_FEED_URL" \
+            --channel "$APPCAST_CHANNEL" \
             --display-version "$DISPLAY_VERSION" \
             --release-notes-url "$RELEASE_NOTES_URL"
+
+          # Tags are immutable, so merge against the currently published feed rather
+          # than the historical appcast from the tag checkout.
+          git fetch --no-tags --depth=1 origin main
+          git show "FETCH_HEAD:${FEED_PATH}" > "$APPCAST_BASE_PATH"
+
+          apps/macos-ui/scripts/merge_sparkle_appcast.py \
+            --base-appcast "$APPCAST_BASE_PATH" \
+            --candidate-appcast "$APPCAST_CANDIDATE_PATH" \
+            --output "$APPCAST_PATH"
 
       - name: Enforce Sparkle appcast policy (full installer only)
         if: ${{ env.VERIFY_ONLY != 'true' }}
         run: |
           set -euo pipefail
-          apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh "$PWD/build/release-assets/appcast.xml"
+          EXPECTED_VERSION="${TAG_NAME#v}"
+          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
+            EXPECTED_CHANNEL="beta"
+          else
+            EXPECTED_CHANNEL="default"
+          fi
+          apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh \
+            "$PWD/build/release-assets/appcast.xml" \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-channel "$EXPECTED_CHANNEL"
 
       - name: Generate DMG release provenance manifest
         if: ${{ env.VERIFY_ONLY != 'true' }}
@@ -604,6 +632,7 @@ jobs:
           set -euo pipefail
 
           APPCAST_PATH="$PWD/build/release-assets/appcast.xml"
+          APPCAST_CANDIDATE_PATH="$PWD/build/release-assets/appcast-candidate.xml"
           RELEASE_NOTES_PATH="$PWD/build/release-assets/release-notes/${TAG_NAME}.html"
           FEED_PATH="web/public/updates/appcast.xml"
           RELEASE_NOTES_FEED_PATH="web/public/updates/release-notes/${TAG_NAME}.html"
@@ -629,6 +658,25 @@ jobs:
           fi
           mkdir -p "$PUBLISH_DIR/$(dirname "$FEED_PATH")"
           mkdir -p "$PUBLISH_DIR/$(dirname "$RELEASE_NOTES_FEED_PATH")"
+
+          # Re-merge against the freshly cloned publication base to close the race
+          # between appcast generation and creation of the publication branch.
+          apps/macos-ui/scripts/merge_sparkle_appcast.py \
+            --base-appcast "$PUBLISH_DIR/$FEED_PATH" \
+            --candidate-appcast "$APPCAST_CANDIDATE_PATH" \
+            --output "$APPCAST_PATH"
+
+          EXPECTED_VERSION="${TAG_NAME#v}"
+          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
+            EXPECTED_CHANNEL="beta"
+          else
+            EXPECTED_CHANNEL="default"
+          fi
+          apps/macos-ui/scripts/verify_sparkle_appcast_policy.sh \
+            "$APPCAST_PATH" \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-channel "$EXPECTED_CHANNEL"
+
           cp "$APPCAST_PATH" "$PUBLISH_DIR/$FEED_PATH"
           cp "$RELEASE_NOTES_PATH" "$PUBLISH_DIR/$RELEASE_NOTES_FEED_PATH"
 
@@ -736,17 +784,31 @@ jobs:
           MERGED_AT=""
           PR_URL=""
           for i in {1..24}; do
-            read -r PR_STATE MERGED_AT PR_URL <<<"$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url --jq '[.state, (.mergedAt // ""), .url] | @tsv')"
-            if [ -n "$MERGED_AT" ]; then
+            PR_HANDOFF_STATE="$(
+              scripts/release/publish_pr_handoff_state.py "$(
+                gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,mergedAt,url
+              )"
+            )"
+            PR_STATE="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="PR_STATE" {print substr($0, index($0, "=") + 1)}')"
+            MERGED_AT="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="MERGED_AT" {print substr($0, index($0, "=") + 1)}')"
+            PR_URL="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="PR_URL" {print substr($0, index($0, "=") + 1)}')"
+            HANDOFF_STATUS="$(printf '%s\n' "$PR_HANDOFF_STATE" | awk -F= '$1=="HANDOFF_STATUS" {print substr($0, index($0, "=") + 1)}')"
+
+            if [ "$HANDOFF_STATUS" = "merged" ]; then
               echo "[publish] Publish PR #${PR_NUMBER} merged at ${MERGED_AT}."
               break
             fi
 
-            if [ "$PR_STATE" != "OPEN" ]; then
+            if [ "$HANDOFF_STATUS" = "closed_unmerged" ]; then
               echo "::warning::Publish PR #${PR_NUMBER} is no longer open but not merged."
               echo "::warning::PR URL: ${PR_URL}"
               echo "PUBLISH_FOLLOWUP_REQUIRED=yes" >> "$GITHUB_ENV"
               exit 0
+            fi
+
+            if [ "$HANDOFF_STATUS" != "open" ]; then
+              echo "::error::Unexpected publish PR handoff state: ${HANDOFF_STATUS:-<empty>} (state=${PR_STATE:-<empty>})"
+              exit 1
             fi
 
             echo "[publish] Waiting for publish PR #${PR_NUMBER} to merge (attempt ${i}/24)..."
@@ -771,6 +833,11 @@ jobs:
           FEED_PATH="web/public/updates/appcast.xml"
           VERIFY_DIR="$RUNNER_TEMP/appcast-verify-main"
           EXPECTED_VERSION="${TAG_NAME#v}"
+          if [[ "$TAG_NAME" =~ -rc\.[0-9]+$ ]]; then
+            EXPECTED_CHANNEL="beta"
+          else
+            EXPECTED_CHANNEL="default"
+          fi
 
           git clone --depth 1 --branch main "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$VERIFY_DIR"
           MAIN_FEED="$VERIFY_DIR/$FEED_PATH"
@@ -786,15 +853,21 @@ jobs:
           fi
 
           ACTUAL_VERSION="$(
-          MAIN_FEED="$MAIN_FEED" python3 - <<'PY'
+          MAIN_FEED="$MAIN_FEED" EXPECTED_CHANNEL="$EXPECTED_CHANNEL" python3 - <<'PY'
           import os
           import xml.etree.ElementTree as ET
 
           sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
           feed_path = os.environ["MAIN_FEED"]
+          expected_channel = os.environ["EXPECTED_CHANNEL"]
 
           root = ET.parse(feed_path).getroot()
-          item = root.find("./channel/item")
+          item = None
+          for candidate in root.findall("./channel/item"):
+              channel = (candidate.findtext(f"{{{sparkle_ns}}}channel") or "").strip() or "default"
+              if channel == expected_channel:
+                  item = candidate
+                  break
           if item is None:
               print("")
               raise SystemExit(0)
@@ -815,23 +888,23 @@ jobs:
 
           if [ -z "$ACTUAL_VERSION" ]; then
             if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
-              echo "::warning::Unable to read top appcast version from main while publish PR follow-up is pending."
+              echo "::warning::Unable to read ${EXPECTED_CHANNEL} appcast version from main while publish PR follow-up is pending."
               echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
               exit 0
             fi
-            echo "::error::Unable to read top appcast version from main at ${FEED_PATH}"
+            echo "::error::Unable to read ${EXPECTED_CHANNEL} appcast version from main at ${FEED_PATH}"
             exit 1
           fi
 
           if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
             if [ "${PUBLISH_FOLLOWUP_REQUIRED}" = "yes" ]; then
-              echo "::warning::Appcast on main does not yet match release tag while publish PR follow-up is pending."
-              echo "::warning::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${FEED_PATH}"
+              echo "::warning::Appcast ${EXPECTED_CHANNEL} channel on main does not yet match release tag while publish PR follow-up is pending."
+              echo "::warning::channel=${EXPECTED_CHANNEL} expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${FEED_PATH}"
               echo "MAIN_METADATA_SYNCED=no" >> "$GITHUB_ENV"
               exit 0
             fi
-            echo "::error::Appcast on main does not match release tag."
-            echo "::error::expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${FEED_PATH}"
+            echo "::error::Appcast ${EXPECTED_CHANNEL} channel on main does not match release tag."
+            echo "::error::channel=${EXPECTED_CHANNEL} expected=${EXPECTED_VERSION} actual=${ACTUAL_VERSION} file=${FEED_PATH}"
             echo "::error::If fallback publishing was required, merge branch chore/publish-updates-${TAG_NAME} and run workflow_dispatch with verify_only=true."
             exit 1
           fi
@@ -840,7 +913,7 @@ jobs:
             echo "PUBLISH_FOLLOWUP_REQUIRED=no" >> "$GITHUB_ENV"
           fi
           echo "MAIN_METADATA_SYNCED=yes" >> "$GITHUB_ENV"
-          echo "[verify] Verified appcast on main matches release tag: ${ACTUAL_VERSION}"
+          echo "[verify] Verified appcast ${EXPECTED_CHANNEL} channel on main matches release tag: ${ACTUAL_VERSION}"
 
       - name: Release publication summary
         if: ${{ always() }}

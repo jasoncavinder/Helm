@@ -931,6 +931,28 @@ Raise Helm's minimum supported macOS release from macOS 11 Big Sur to macOS 13 V
 This decision supersedes Decision 023 and Decision 042 only where they retain macOS 11 as the active platform baseline.
 
 ---
+## Decision 044 — Sparkle Prereleases Require Explicit Opt-In
+
+**Decision:**
+Publish direct-channel stable releases as unchanneled Sparkle items and beta/release-candidate builds in the `beta` channel. Helm enables that channel only after an explicit, persisted user opt-in.
+
+**Consequences:**
+
+- Stable users never receive a prerelease through Helm's automatic or manual update checks.
+- Opted-in users remain eligible for both stable and `beta` items, using Sparkle's normal version ordering.
+- The shared appcast retains one signed item per supported channel; release publication replaces only the matching item, merges against current `main`, and rejects per-channel build regressions.
+- Stable items omit `sparkle:channel`; an explicit `default` value is invalid because Sparkle treats every explicit channel name as a custom channel.
+- Published GUI beta and CLI RC metadata must identify the same candidate, except while the exact missing counterpart publication PR remains open.
+- Helm remains excluded from the separate Sparkle Apps manager because its self-update authority stays with the channel-aware Helm updater.
+- MAS, Setapp, and fleet distributions remain unaffected because they cannot use Helm's Sparkle updater.
+
+**Rationale:**
+
+- Sparkle channels provide native feed filtering without separate updater implementations or mutable feed URL preferences.
+- Keeping stable and prerelease items together preserves one canonical signed feed while preventing RC publication from displacing the public stable path.
+- A default-off preference makes prerelease risk an informed user choice and keeps existing installations on stable behavior.
+
+---
 ## Summary
 
 Helm prioritizes:

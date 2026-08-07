@@ -361,6 +361,7 @@ Requirements:
 - Full signed DMG updates are the current direct-channel policy; delta payloads are deferred
 - No shell-based update mechanisms
 - Manual approval required for installation; automatic scheduled update checks are user-configurable
+- Beta and release-candidate updates are explicit opt-in; stable updates remain the default
 
 Channel-specific update policy:
 - Direct Developer ID consumer build: Sparkle-based updates.
@@ -370,6 +371,7 @@ Channel-specific update policy:
 
 Self-update behavior must not depend on Homebrew and must remain decoupled from licensing authority.
 Helm's own bundle must not appear in the Sparkle apps manager because self-update authority belongs to the channel-aware Helm updater.
+The direct-channel Sparkle feed keeps stable releases in the default channel and prereleases in the `beta` channel so prerelease publication cannot displace the stable update path.
 
 ---
 

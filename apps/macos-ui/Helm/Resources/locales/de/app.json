@@ -29,6 +29,8 @@
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Helm beim Anmelden starten",
   "app.settings.label.auto_check": "Automatisch nach Updates suchen",
+  "app.settings.label.prerelease_updates": "Beta- und Release-Candidate-Updates erhalten",
+  "app.settings.label.prerelease_updates_description": "Stabile Updates bleiben verfügbar.",
   "app.settings.label.check_frequency": "Prüfen alle",
   "app.settings.label.safe_mode": "Sicherer Modus (macOS-Updates blockieren)",
   "app.settings.label.auto_clean_kegs": "Alte Homebrew-Kegs automatisch bereinigen",

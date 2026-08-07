@@ -9,6 +9,7 @@ Usage: generate_sparkle_appcast.sh \
   --output-path <appcast.xml> \
   --download-url <https://.../Helm.dmg> \
   --appcast-url <https://.../appcast.xml> \
+  [--channel <default|beta>] \
   [--display-version <X.Y.Z[-prerelease]>] \
   [--release-notes-url <https://...>] \
   [--sparkle-bin-dir <Sparkle bin directory>] \
@@ -28,6 +29,7 @@ RELEASE_NOTES_URL=""
 DISPLAY_VERSION=""
 SPARKLE_PACKAGE_PATH=""
 SPARKLE_BIN_DIR=""
+APPCAST_CHANNEL="default"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --appcast-url)
       APPCAST_URL="$2"
+      shift 2
+      ;;
+    --channel)
+      APPCAST_CHANNEL="$2"
       shift 2
       ;;
     --release-notes-url)
@@ -161,6 +167,27 @@ BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIS
 MIN_SYSTEM_VERSION=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$INFO_PLIST" 2>/dev/null || true)
 APPCAST_DISPLAY_VERSION="${DISPLAY_VERSION:-$SHORT_VERSION}"
 
+case "$APPCAST_CHANNEL" in
+  default)
+    if [[ "$APPCAST_DISPLAY_VERSION" == *-* ]]; then
+      echo "error: prerelease version ${APPCAST_DISPLAY_VERSION} must use the beta appcast channel" >&2
+      exit 1
+    fi
+    CHANNEL_ELEMENT=""
+    ;;
+  beta)
+    if [[ "$APPCAST_DISPLAY_VERSION" != *-* ]]; then
+      echo "error: beta appcast channel requires a prerelease display version" >&2
+      exit 1
+    fi
+    CHANNEL_ELEMENT="      <sparkle:channel>beta</sparkle:channel>"
+    ;;
+  *)
+    echo "error: unsupported appcast channel: ${APPCAST_CHANNEL}" >&2
+    exit 1
+    ;;
+esac
+
 if [[ -z "$RELEASE_NOTES_URL" ]]; then
   RELEASE_NOTES_URL="$APPCAST_URL"
 fi
@@ -203,6 +230,7 @@ cat > "$OUTPUT_PATH" <<XML
     <item>
       <title>Helm $APPCAST_DISPLAY_VERSION</title>
       <pubDate>$PUB_DATE</pubDate>
+$CHANNEL_ELEMENT
       <sparkle:releaseNotesLink>$RELEASE_NOTES_URL</sparkle:releaseNotesLink>
       <enclosure
         url="$DOWNLOAD_URL"

@@ -20,7 +20,7 @@ Focus:
 - maintain release-process hardening guardrails now that `v0.18.2` publication is complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
-- complete the `0.19.x` manager/updater integration: preserve the v0.18 migration-safety baseline while landing npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, dependency modernization, and the macOS 13 Ventura baseline
+- complete the `0.19.x` manager/updater integration: preserve the v0.18 migration-safety baseline while landing npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, explicit beta/RC opt-in with stable-channel isolation, dependency modernization, and the macOS 13 Ventura baseline
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
 - retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs
@@ -303,6 +303,9 @@ Current checkpoint:
     - release scripts/workflows now normalize locale environment defaults for operator/CI consistency
     - release logs now use phase prefixes (`[preflight]`, `[build]`, `[publish]`, `[verify]`) for faster triage
     - recurring release friction now has a documented promotion path from `TMP_RELEASE_FRICTION` into permanent decision/runbook/checklist docs
+  - post-`v0.17.5` release-process hardening phase 6 delivered on `dev`:
+    - publish-PR polling now classifies complete GitHub JSON snapshots so nullable `mergedAt` fields cannot turn an open handoff PR into a false merged state
+    - release tagging now has an explicit isolated-worktree path that still requires a clean checkout and exact equality with freshly fetched `origin/main`; strict current-`main` tagging remains the default
   - pre-1.0 remediation batch delivered on `dev` (`SEC-004`, `BUILD-003`, `BUILD-002`):
     - `scripts/release/build_unsigned_variant.sh` now rejects invalid tag formats and enforces canonical output-root containment for generated zip/pkg paths
     - `Release Contract Checks` CI now runs non-destructive `preflight` + `runbook prepare` contract checks on PRs and validates unsigned-build script safety regressions
