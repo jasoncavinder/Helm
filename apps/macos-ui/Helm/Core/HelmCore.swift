@@ -46,6 +46,7 @@ private protocol AppUpdateDriver {
     func checkForUpdates()
     func setAutomaticallyChecksForUpdates(_ enabled: Bool)
     func setUpdateCheckInterval(_ interval: TimeInterval)
+    func setPrereleaseUpdatesEnabled(_ enabled: Bool)
 }
 
 private struct NoopAppUpdateDriver: AppUpdateDriver {
@@ -57,16 +58,36 @@ private struct NoopAppUpdateDriver: AppUpdateDriver {
     func checkForUpdates() {}
     func setAutomaticallyChecksForUpdates(_ enabled: Bool) {}
     func setUpdateCheckInterval(_ interval: TimeInterval) {}
+    func setPrereleaseUpdatesEnabled(_ enabled: Bool) {}
 }
 
 #if canImport(Sparkle)
+private final class SparkleAppUpdateChannelDelegate: NSObject, SPUUpdaterDelegate {
+    var prereleaseUpdatesEnabled: Bool
+
+    init(prereleaseUpdatesEnabled: Bool) {
+        self.prereleaseUpdatesEnabled = prereleaseUpdatesEnabled
+    }
+
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+        HelmSparkleUpdateChannel.allowedChannels(
+            prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
+        )
+    }
+}
+
 private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
+    private let channelDelegate: SparkleAppUpdateChannelDelegate
     private let updaterController: SPUStandardUpdaterController
 
-    init(configuration: AppUpdateConfiguration) {
+    init(configuration: AppUpdateConfiguration, prereleaseUpdatesEnabled: Bool) {
+        let channelDelegate = SparkleAppUpdateChannelDelegate(
+            prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
+        )
+        self.channelDelegate = channelDelegate
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
-            updaterDelegate: nil,
+            updaterDelegate: channelDelegate,
             userDriverDelegate: nil
         )
         super.init()
@@ -115,11 +136,17 @@ private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
     func setUpdateCheckInterval(_ interval: TimeInterval) {
         updaterController.updater.updateCheckInterval = interval
     }
+
+    func setPrereleaseUpdatesEnabled(_ enabled: Bool) {
+        channelDelegate.prereleaseUpdatesEnabled = enabled
+        updaterController.updater.resetUpdateCycleAfterShortDelay()
+    }
 }
 #endif
 
 final class AppUpdateCoordinator: ObservableObject {
     static let shared = AppUpdateCoordinator()
+    private static let prereleaseUpdatesEnabledKey = "appUpdate.prereleaseUpdatesEnabled"
 
     @Published private(set) var configuration: AppUpdateConfiguration
     @Published private(set) var updateAuthority: HelmUpdateAuthority
@@ -129,6 +156,7 @@ final class AppUpdateCoordinator: ObservableObject {
     @Published private(set) var lastCheckDate: Date?
     @Published private(set) var autoCheckEnabled: Bool
     @Published private(set) var checkFrequencyMinutes: Int
+    @Published private(set) var prereleaseUpdatesEnabled: Bool
 
     var distributionChannel: HelmDistributionChannel {
         configuration.channel
@@ -138,9 +166,16 @@ final class AppUpdateCoordinator: ObservableObject {
 
     private init() {
         let configuration = AppUpdateConfiguration.from()
+        let prereleaseUpdatesEnabled = UserDefaults.standard.bool(
+            forKey: Self.prereleaseUpdatesEnabledKey
+        )
         self.configuration = configuration
         self.updateAuthority = configuration.updateAuthority
-        let selection = AppUpdateCoordinator.makeDriver(for: configuration)
+        self.prereleaseUpdatesEnabled = prereleaseUpdatesEnabled
+        let selection = AppUpdateCoordinator.makeDriver(
+            for: configuration,
+            prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
+        )
         self.driver = selection.driver
         self.lastCheckDate = selection.driver.lastUpdateCheckDate
         self.autoCheckEnabled = selection.driver.automaticallyChecksForUpdates
@@ -200,6 +235,14 @@ final class AppUpdateCoordinator: ObservableObject {
         )
     }
 
+    func setPrereleaseUpdatesEnabled(_ enabled: Bool) {
+        guard canCheckForUpdates else { return }
+        UserDefaults.standard.set(enabled, forKey: Self.prereleaseUpdatesEnabledKey)
+        prereleaseUpdatesEnabled = enabled
+        driver.setPrereleaseUpdatesEnabled(enabled)
+        updateLogger.info("Prerelease Helm updates set to \(enabled, privacy: .public)")
+    }
+
     func refreshState() {
         autoCheckEnabled = driver.automaticallyChecksForUpdates
         checkFrequencyMinutes = Self.supportedFrequencyMinutes(for: driver.updateCheckInterval)
@@ -217,7 +260,10 @@ final class AppUpdateCoordinator: ObservableObject {
         let unavailableReason: AppUpdateUnavailableReason?
     }
 
-    private static func makeDriver(for configuration: AppUpdateConfiguration) -> AppUpdateDriverSelection {
+    private static func makeDriver(
+        for configuration: AppUpdateConfiguration,
+        prereleaseUpdatesEnabled: Bool
+    ) -> AppUpdateDriverSelection {
         if let failure = configuration.eligibilityFailureReason {
             return AppUpdateDriverSelection(
                 driver: NoopAppUpdateDriver(),
@@ -227,7 +273,10 @@ final class AppUpdateCoordinator: ObservableObject {
 
         #if canImport(Sparkle)
         return AppUpdateDriverSelection(
-            driver: SparkleAppUpdateDriver(configuration: configuration),
+            driver: SparkleAppUpdateDriver(
+                configuration: configuration,
+                prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
+            ),
             unavailableReason: nil
         )
         #else

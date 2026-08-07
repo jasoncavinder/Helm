@@ -55,7 +55,12 @@ jobs:
 
           sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
           root = ET.parse(os.environ["APPCAST_FILE"]).getroot()
-          item = root.find("./channel/item")
+          item = None
+          for candidate in root.findall("./channel/item"):
+              channel = (candidate.findtext(f"{{{sparkle_ns}}}channel") or "").strip() or "default"
+              if channel == "default":
+                  item = candidate
+                  break
           if item is None:
               print("")
               raise SystemExit(0)
@@ -98,7 +103,7 @@ jobs:
           )"
 
           if [ -z "$APPCAST_VERSION" ]; then
-            echo "::error::Unable to parse top appcast version from ${APPCAST_FILE}"
+            echo "::error::Unable to parse default-channel appcast version from ${APPCAST_FILE}"
             exit 1
           fi
           if [ -z "$STABLE_CLI_VERSION" ]; then
@@ -203,20 +208,37 @@ jobs:
 
           echo "[verify] Stable publish metadata is consistent for ${STABLE_TAG}."
 
-      - name: Verify prerelease CLI metadata maps to a prerelease release
+      - name: Verify prerelease GUI and CLI metadata map to a prerelease release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
+          APPCAST_FILE="web/public/updates/appcast.xml"
           RC_CLI_FILE="web/public/updates/cli/latest-rc.json"
-          if [ ! -f "$RC_CLI_FILE" ]; then
-            echo "[verify] No rc metadata file found; skipping prerelease metadata verification."
-            exit 0
-          fi
+          APPCAST_BETA_VERSION="$(APPCAST_FILE="$APPCAST_FILE" python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
 
-          RC_CLI_VERSION="$(
-          python3 - "$RC_CLI_FILE" <<'PY'
+          sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+          root = ET.parse(os.environ["APPCAST_FILE"]).getroot()
+          for item in root.findall("./channel/item"):
+              channel = (item.findtext(f"{{{sparkle_ns}}}channel") or "").strip() or "default"
+              if channel != "beta":
+                  continue
+              enclosure = item.find("enclosure")
+              version = "" if enclosure is None else enclosure.attrib.get(
+                  f"{{{sparkle_ns}}}shortVersionString", ""
+              ).strip()
+              print(version)
+              break
+          PY
+          )"
+
+          RC_CLI_VERSION=""
+          RC_CLI_CHANNEL=""
+          if [ -f "$RC_CLI_FILE" ]; then
+            RC_CLI_VERSION="$(python3 - "$RC_CLI_FILE" <<'PY'
           import json
           import sys
 
@@ -224,10 +246,8 @@ jobs:
               payload = json.load(f)
           print(str(payload.get("version", "")).strip())
           PY
-          )"
-
-          RC_CLI_CHANNEL="$(
-          python3 - "$RC_CLI_FILE" <<'PY'
+            )"
+            RC_CLI_CHANNEL="$(python3 - "$RC_CLI_FILE" <<'PY'
           import json
           import sys
 
@@ -235,19 +255,44 @@ jobs:
               payload = json.load(f)
           print(str(payload.get("channel", "")).strip())
           PY
-          )"
+            )"
+          fi
 
-          if [ -z "$RC_CLI_VERSION" ]; then
+          if [ -z "$APPCAST_BETA_VERSION" ] && [ -z "$RC_CLI_VERSION" ]; then
+            echo "[verify] No prerelease GUI or CLI metadata found; skipping prerelease verification."
+            exit 0
+          fi
+
+          if [ -f "$RC_CLI_FILE" ] && [ -z "$RC_CLI_VERSION" ]; then
             echo "::error::Unable to parse prerelease CLI version from ${RC_CLI_FILE}"
             exit 1
           fi
-          if [ "$RC_CLI_CHANNEL" != "rc" ]; then
+          if [ -n "$RC_CLI_VERSION" ] && [ "$RC_CLI_CHANNEL" != "rc" ]; then
             echo "::error::Prerelease CLI metadata must declare channel=rc."
             echo "::error::actual channel=${RC_CLI_CHANNEL}"
             exit 1
           fi
+          if [ -n "$APPCAST_BETA_VERSION" ] && [ -n "$RC_CLI_VERSION" ] && [ "$APPCAST_BETA_VERSION" != "$RC_CLI_VERSION" ]; then
+            OPEN_PUBLISH_HEADS="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open --json headRefName --jq '.[].headRefName' || true)"
+            EXPECTED_GUI_HEAD="chore/publish-updates-v${RC_CLI_VERSION}"
+            EXPECTED_CLI_HEAD="chore/publish-cli-updates-v${APPCAST_BETA_VERSION}-rc"
+            if grep -Fxq "$EXPECTED_GUI_HEAD" <<< "$OPEN_PUBLISH_HEADS" || grep -Fxq "$EXPECTED_CLI_HEAD" <<< "$OPEN_PUBLISH_HEADS"; then
+              echo "::notice::Prerelease GUI/CLI mismatch is pending the matching publish PR merge."
+              echo "::notice::appcast_beta=${APPCAST_BETA_VERSION} cli_latest_rc=${RC_CLI_VERSION}"
+              {
+                echo "- Prerelease metadata status: follow-up required (pending publish PR merge)"
+                echo "- GUI beta-channel version: ${APPCAST_BETA_VERSION}"
+                echo "- RC CLI metadata version: ${RC_CLI_VERSION}"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::Prerelease GUI and CLI metadata versions differ."
+            echo "::error::appcast_beta=${APPCAST_BETA_VERSION} cli_latest_rc=${RC_CLI_VERSION}"
+            exit 1
+          fi
 
-          RC_TAG="v${RC_CLI_VERSION}"
+          RC_VERSION="${APPCAST_BETA_VERSION:-$RC_CLI_VERSION}"
+          RC_TAG="v${RC_VERSION}"
           RC_RELEASE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}" --jq '{tag_name, draft, prerelease}')"
           RC_RELEASE_DRAFT="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("draft") else "false")')"
           RC_RELEASE_PRERELEASE="$(printf '%s' "$RC_RELEASE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("prerelease") else "false")')"
@@ -262,8 +307,13 @@ jobs:
           fi
 
           {
-            echo "- RC metadata version: ${RC_CLI_VERSION}"
+            if [ -n "$APPCAST_BETA_VERSION" ]; then
+              echo "- GUI beta-channel version: ${APPCAST_BETA_VERSION}"
+            fi
+            if [ -n "$RC_CLI_VERSION" ]; then
+              echo "- RC CLI metadata version: ${RC_CLI_VERSION}"
+            fi
             echo "- RC metadata tag: ${RC_TAG}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "[verify] Prerelease CLI metadata is consistent for ${RC_TAG}."
+          echo "[verify] Prerelease publish metadata is consistent for ${RC_TAG}."

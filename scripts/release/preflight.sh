@@ -200,7 +200,12 @@ except ET.ParseError:
     print("")
     raise SystemExit(0)
 
-item = root.find("./channel/item")
+item = None
+for candidate in root.findall("./channel/item"):
+    channel = (candidate.findtext(f"{{{sparkle_ns}}}channel") or "").strip() or "default"
+    if channel == "default":
+        item = candidate
+        break
 if item is None:
     print("")
     raise SystemExit(0)
@@ -295,7 +300,7 @@ check_pre_tag_metadata_snapshot() {
   cli_version="$(extract_json_version_from_origin_main "web/public/updates/cli/latest.json")"
 
   if [ -z "$appcast_version" ]; then
-    fail "unable to read top appcast stable version from origin/main:web/public/updates/appcast.xml"
+    fail "unable to read default-channel stable version from origin/main:web/public/updates/appcast.xml"
     return
   fi
 

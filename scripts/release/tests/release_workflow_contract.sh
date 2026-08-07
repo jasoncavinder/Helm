@@ -6,6 +6,7 @@ WORKFLOWS_DIR="${ROOT_DIR}/.github/workflows"
 ALL_VARIANTS_WORKFLOW="${WORKFLOWS_DIR}/release-all-variants.yml"
 CLI_WORKFLOW="${WORKFLOWS_DIR}/release-cli-direct.yml"
 DMG_WORKFLOW="${WORKFLOWS_DIR}/release-macos-dmg.yml"
+PUBLISH_VERIFY_WORKFLOW="${WORKFLOWS_DIR}/release-publish-verify.yml"
 CANARY_WORKFLOW="${WORKFLOWS_DIR}/release-macos-canary.yml"
 AUTH_CHECK_WORKFLOW="${WORKFLOWS_DIR}/release-publish-auth-check.yml"
 PREFLIGHT_SCRIPT="${ROOT_DIR}/scripts/release/preflight.sh"
@@ -45,6 +46,14 @@ for workflow in "$CLI_WORKFLOW" "$DMG_WORKFLOW"; do
   expect_pattern 'FALLBACK_GH_TOKEN: \$\{\{ github\.token \}\}' "$workflow" "metadata publication must retry with github.token"
   expect_pattern 'PUBLISH_AUTH_MODE=github_token_fallback' "$workflow" "metadata publication must record fallback authentication"
 done
+
+expect_pattern 'APPCAST_CHANNEL="beta"' "$DMG_WORKFLOW" "RC releases must select the Sparkle beta channel"
+expect_pattern '--channel "\$APPCAST_CHANNEL"' "$DMG_WORKFLOW" "appcast generation must receive the selected channel"
+expect_pattern 'merge_sparkle_appcast\.py' "$DMG_WORKFLOW" "appcast publication must merge the candidate with the existing feed"
+expect_pattern '--base-appcast "\$APPCAST_BASE_PATH"' "$DMG_WORKFLOW" "appcast publication must preserve items from the existing feed"
+expect_pattern 'EXPECTED_CHANNEL="beta"' "$DMG_WORKFLOW" "RC publication verification must select the beta channel"
+expect_pattern 'APPCAST_BETA_VERSION' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must inspect GUI beta metadata"
+expect_pattern 'Prerelease GUI and CLI metadata versions differ' "$PUBLISH_VERIFY_WORKFLOW" "post-publication verification must reject unexplained GUI/CLI RC drift"
 
 expect_pattern 'runs-on: macos-26' "$CANARY_WORKFLOW" "release canary must use the supported macOS runner"
 expect_pattern 'EXPECTED_XCODE_MAJOR: "26"' "$CANARY_WORKFLOW" "release canary must pin the expected Xcode major"

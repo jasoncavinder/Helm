@@ -561,6 +561,8 @@ Architectural invariants for distribution remain:
 - update authority stays decoupled from licensing authority
 - Sparkle is direct-channel GUI only
 - Sparkle is excluded from MAS, Setapp, and business/fleet builds
+- direct-channel stable releases use Sparkle's default channel; beta and release-candidate builds use the explicit `beta` channel and require user opt-in
+- appcast publication replaces only the matching channel item, preserving stable availability when a prerelease is published
 - business PKG lifecycle remains separately managed from consumer channels
 
 ### 10.2 Implementation Phasing Strategy

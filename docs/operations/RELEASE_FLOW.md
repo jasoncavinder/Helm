@@ -48,6 +48,7 @@ After explicit maintainer approval:
    ```
 
 3. Watch `Release macOS DMG` and `Release CLI Direct Installer` to completion. Do not run auxiliary variants until direct GUI and CLI artifacts have published.
+   Stable tags replace the appcast's default-channel item. RC tags replace only the `beta` item and must preserve the current stable item.
 4. Read both publication summaries. Artifact upload and metadata synchronization are separate states.
 5. If either workflow opens a publish PR, wait for required checks, merge it through the protected-branch flow, then dispatch that workflow with `verify_only=true`.
 6. Run the final release verification:
@@ -58,7 +59,7 @@ After explicit maintainer approval:
 
    The verify command uses an explicit post-publication preflight mode that permits stable metadata to equal the released tag. Standalone preflight and tag preparation remain strict and reject that state.
 
-7. Confirm public `https://helmapp.dev/updates/appcast.xml` and `https://helmapp.dev/updates/cli/latest.json` reference the released version.
+7. Confirm public metadata references the released version: stable releases in the appcast default channel plus `cli/latest.json`, or RC releases in the appcast `beta` channel plus `cli/latest-rc.json`.
 
 ## Recovery Rules
 

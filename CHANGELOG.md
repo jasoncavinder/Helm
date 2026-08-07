@@ -12,11 +12,13 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - The Sparkle apps manager now inventories apps in standard system and user application roots, exposes conservative update availability from bounded static HTTPS appcasts, and isolates individual vendor-feed failures.
 - Individual Sparkle app updates now use Sparkle's external-bundle updater API, while Helm remains excluded by bundle identifier and Sparkle apps remain outside bulk and manager-lifecycle automation.
 - Eligible direct Developer ID builds now expose user-configurable automatic Helm update checks backed by Sparkle's persisted scheduler, with hourly, daily, weekly, and monthly intervals.
+- Direct Developer ID builds now offer a persisted, default-off beta/RC update opt-in using Sparkle's `beta` channel; stable updates remain available in either mode.
 
 ### Changed
 - The minimum supported platform is now macOS 13 Ventura, removing obsolete compatibility branches and the legacy login-helper fallback.
 - Rust and website dependencies have been modernized, including `rusqlite 0.40.1` while preserving the released online-backup migration safety path.
 - Scripted Xcode validation now selects `arch=arm64` explicitly while retaining Ventura deployment-target compatibility.
+- Sparkle release publication now preserves the stable default-channel item when adding or replacing a signed beta/RC item, with channel-aware drift and post-publication verification.
 
 ### Fixed
 - Manager install-instance normalization now hides runtime shims and groups helper entry points without collapsing intentionally distinct installations, improving npm and related manager multi-install reporting.

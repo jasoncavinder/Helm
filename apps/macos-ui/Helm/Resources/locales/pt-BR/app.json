@@ -124,6 +124,8 @@
   "app.settings.frequency.every_1_hour": "1 hora",
   "app.settings.frequency.every_30_min": "30 min",
   "app.settings.label.auto_check": "Verificar atualizações automaticamente",
+  "app.settings.label.prerelease_updates": "Receber atualizações beta e candidatas",
+  "app.settings.label.prerelease_updates_description": "As atualizações estáveis continuam disponíveis.",
   "app.settings.label.auto_clean_kegs": "Limpar automaticamente kegs antigos do Homebrew",
   "app.settings.label.check_frequency": "Verificar a cada",
   "app.settings.label.language": "Idioma",

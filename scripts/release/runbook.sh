@@ -168,21 +168,28 @@ PY
 }
 
 extract_appcast_version() {
+  local expected_channel="$1"
   local payload
   payload="$(git show origin/main:web/public/updates/appcast.xml || true)"
-  APPCAST_PAYLOAD="$payload" python3 - <<'PY'
+  APPCAST_PAYLOAD="$payload" EXPECTED_CHANNEL="$expected_channel" python3 - <<'PY'
 import os
 import sys
 import xml.etree.ElementTree as ET
 
 sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 payload = os.environ.get("APPCAST_PAYLOAD", "")
+expected_channel = os.environ["EXPECTED_CHANNEL"]
 if not payload:
     print("")
     raise SystemExit(0)
 
 root = ET.fromstring(payload)
-item = root.find("./channel/item")
+item = None
+for candidate in root.findall("./channel/item"):
+    channel = (candidate.findtext(f"{{{sparkle_ns}}}channel") or "").strip() or "default"
+    if channel == expected_channel:
+        item = candidate
+        break
 if item is None:
     print("")
     raise SystemExit(0)
@@ -265,17 +272,18 @@ cmd_verify() {
     phase_info "verify" "${cli_path} matches ${expected_version}"
   fi
 
-  if ! is_rc_tag "$tag"; then
-    local appcast_version
-    appcast_version="$(extract_appcast_version || true)"
-    if [ "$appcast_version" != "$expected_version" ]; then
-      printf '[verify] error: appcast version mismatch on main (expected=%s actual=%s)\n' "$expected_version" "${appcast_version:-<empty>}" >&2
-      errors=$((errors + 1))
-    else
-      phase_info "verify" "appcast version matches ${expected_version}"
-    fi
+  local appcast_channel appcast_version
+  if is_rc_tag "$tag"; then
+    appcast_channel="beta"
   else
-    phase_info "verify" "rc tag detected; skipping stable appcast version verification"
+    appcast_channel="default"
+  fi
+  appcast_version="$(extract_appcast_version "$appcast_channel" || true)"
+  if [ "$appcast_version" != "$expected_version" ]; then
+    printf '[verify] error: appcast %s channel mismatch on main (expected=%s actual=%s)\n' "$appcast_channel" "$expected_version" "${appcast_version:-<empty>}" >&2
+    errors=$((errors + 1))
+  else
+    phase_info "verify" "appcast ${appcast_channel} channel matches ${expected_version}"
   fi
 
   local open_publish_prs pr_json

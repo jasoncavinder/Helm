@@ -47,6 +47,9 @@ jobs:
       - name: Validate release workflow safety contracts
         run: scripts/release/tests/release_workflow_contract.sh
 
+      - name: Validate Sparkle appcast channel contracts
+        run: scripts/release/tests/sparkle_appcast_channels_contract.sh
+
       - name: Validate post-publication preflight contract
         run: scripts/release/tests/preflight_post_publish_contract.sh
 

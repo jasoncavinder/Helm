@@ -124,6 +124,8 @@
   "app.settings.frequency.every_1_hour": "1時間",
   "app.settings.frequency.every_30_min": "30分",
   "app.settings.label.auto_check": "更新を自動確認",
+  "app.settings.label.prerelease_updates": "ベータ版とリリース候補版のアップデートを受け取る",
+  "app.settings.label.prerelease_updates_description": "安定版のアップデートも引き続き利用できます。",
   "app.settings.label.auto_clean_kegs": "古いHomebrew kegを自動削除",
   "app.settings.label.check_frequency": "確認間隔",
   "app.settings.label.language": "言語",
