@@ -10,13 +10,14 @@ It reflects reality, not intention.
 
 Current documentation baseline: **0.18.2 is the latest public stable release on `main`**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
 
-Implementation baseline: **0.18.x doctor/repair, local security groundwork, and migration-safety hardening are released on `main` through `v0.18.2`**. The design-definition additions are planning contracts and do not implement the planned first-run or redesigned UI behavior.
+Implementation baseline: **`0.19.0-rc.1` source preparation on the v0.18.2 lineage**, combining manager/updater reliability, dependency modernization, and the macOS 13 baseline while preserving released migration safety. The broader native-experience and Project WOW implementation remains staged work rather than part of this candidate.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.18.2**
+- prepared source candidate: **0.19.0-rc.1** (not tagged or published; public update metadata remains on `v0.18.2`)
 - `v0.18.0` was published on 2026-08-03 and then withdrawn after discovery of a critical SQLite migration defect; its immutable tag is retained for auditability while its release is not publicly distributed.
 - public GUI and CLI update metadata points to the signed `v0.18.2` artifacts.
 - delivered in `v0.18.1`: reconciliation of the known development migration `17` collision before released doctor/repair migrations run, plus prevention of historical DDL replay for already-current databases, preserving package identifiers and user data.

@@ -11,10 +11,11 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.x native-experience foundation and first-run value
+v0.19.0-rc.1 manager/updater integration and release-candidate validation
 ```
 
 Focus:
+- validate the prepared `v0.19.0-rc.1` source without tagging or publishing until the protected integration path and explicit release authorization are complete
 - begin production `v0.19.x` work from the closed Native Mac Experience and Project WOW contracts
 - maintain release-process hardening guardrails now that `v0.18.2` publication is complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
