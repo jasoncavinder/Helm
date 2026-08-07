@@ -777,7 +777,8 @@ extension HelmCore {
                 managerId: $0.managerId,
                 authority: $0.authority,
                 packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey
+                reasonLabelKey: $0.reasonLabelKey,
+                reasonLabelArgs: $0.reasonLabelArgs
             )
         }
         var stepById: [String: CoreUpgradePlanStep] = [:]
@@ -799,7 +800,8 @@ extension HelmCore {
                 managerId: $0.managerId,
                 authority: $0.authority,
                 packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey
+                reasonLabelKey: $0.reasonLabelKey,
+                reasonLabelArgs: $0.reasonLabelArgs
             )
         }
         var stepById: [String: CoreUpgradePlanStep] = [:]

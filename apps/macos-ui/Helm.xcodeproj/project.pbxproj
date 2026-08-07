@@ -74,6 +74,7 @@
 		N100000000000000000000001 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
 		N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
 		N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */; };
+		P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -170,6 +171,7 @@
 		L100000000000000000000001 /* helm-cli */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; name = "helm-cli"; path = "Generated/helm-cli"; sourceTree = SOURCE_ROOT; };
 		N100000000000000000000002 /* HelmCliShimCommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunner.swift; sourceTree = "<group>"; };
 		N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmCliShimCommandRunnerTests.swift; sourceTree = "<group>"; };
+		P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSparkleUpdateCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -242,6 +244,7 @@
 			isa = PBXGroup;
 			children = (
 				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
+				P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */,
 				8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
 				D10000000000000000000006 /* HelmCore+Actions.swift */,
 				D10000000000000000000004 /* HelmCore+Dashboard.swift */,
@@ -570,6 +573,7 @@
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,

@@ -197,7 +197,10 @@ pub use softwareupdate::{
     softwareupdate_list_request, softwareupdate_upgrade_request,
 };
 pub use softwareupdate_process::ProcessSoftwareUpdateSource;
-pub use sparkle::{SparkleAdapter, SparkleSource, sparkle_detect_request};
+pub use sparkle::{
+    SparkleAdapter, SparkleSource, sparkle_appcast_request, sparkle_plist_request,
+    sparkle_system_version_request,
+};
 pub use sparkle_process::ProcessSparkleSource;
 pub use xcode_command_line_tools::{
     XcodeCommandLineToolsAdapter, XcodeCommandLineToolsSource,

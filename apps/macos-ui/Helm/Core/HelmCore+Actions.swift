@@ -103,6 +103,21 @@ extension HelmCore {
     func upgradePackage(_ package: PackageItem) {
         guard canUpgradeIndividually(package), !upgradeActionPackageIds.contains(package.id) else { return }
 
+        if package.managerId == "sparkle" {
+            guard let bundlePath = package.packageIdentifier,
+                  ExternalSparkleUpdateCoordinator.shared.checkForUpdates(bundlePath: bundlePath) else {
+                logger.error("upgradePackage(sparkle:\(package.name)) failed to start external updater")
+                recordLastError(
+                    source: "core.actions",
+                    action: "upgradePackage.external_sparkle_failed",
+                    managerId: package.managerId,
+                    taskType: "upgrade"
+                )
+                return
+            }
+            return
+        }
+
         DispatchQueue.main.async {
             self.upgradeActionPackageIds.insert(package.id)
         }

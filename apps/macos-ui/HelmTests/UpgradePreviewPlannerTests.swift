@@ -306,7 +306,8 @@ final class UpgradePreviewPlannerTests: XCTestCase {
             managerId: manager,
             authority: authority,
             packageName: package,
-            reasonLabelKey: "service.task.label.upgrade.package"
+            reasonLabelKey: "service.task.label.upgrade.package",
+            reasonLabelArgs: [:]
         )
     }
 }

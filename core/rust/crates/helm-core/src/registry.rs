@@ -262,10 +262,10 @@ const ALL_MANAGERS: [ManagerDescriptor; 28] = [
     },
     ManagerDescriptor {
         id: ManagerId::Sparkle,
-        display_name: "Sparkle updater",
+        display_name: "Sparkle apps",
         category: ManagerCategory::GuiApp,
-        authority: ManagerAuthority::DetectionOnly,
-        capabilities: DETECT_ONLY_CAPABILITIES,
+        authority: ManagerAuthority::Standard,
+        capabilities: STATUS_CAPABILITIES,
     },
     ManagerDescriptor {
         id: ManagerId::Setapp,

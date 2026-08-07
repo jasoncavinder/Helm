@@ -25,7 +25,7 @@ Use this subtree guidance for:
 
 ## Fast Verification Commands
 
-- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -configuration Debug CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO test`
+- `xcodebuild -project apps/macos-ui/Helm.xcodeproj -scheme Helm -destination "$(apps/macos-ui/scripts/macos_xcode_destination.sh)" -configuration Debug CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO test`
 - `apps/macos-ui/scripts/check_channel_policy.sh`
 - `apps/macos-ui/scripts/check_locale_integrity.sh`
 - `apps/macos-ui/scripts/check_locale_lengths.sh`

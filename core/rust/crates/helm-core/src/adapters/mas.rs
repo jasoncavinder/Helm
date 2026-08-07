@@ -274,6 +274,7 @@ pub fn mas_install_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpaw
         CommandSpec::new(MAS_COMMAND).args(["install", app_id]),
         MUTATION_TIMEOUT,
     )
+    .requires_elevation(true)
 }
 
 pub fn mas_get_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpawnRequest {
@@ -284,6 +285,7 @@ pub fn mas_get_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpawnReq
         CommandSpec::new(MAS_COMMAND).args(["get", app_id]),
         MUTATION_TIMEOUT,
     )
+    .requires_elevation(true)
 }
 
 pub fn mas_uninstall_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpawnRequest {
@@ -294,6 +296,7 @@ pub fn mas_uninstall_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSp
         CommandSpec::new(MAS_COMMAND).args(["uninstall", app_id]),
         MUTATION_TIMEOUT,
     )
+    .requires_elevation(true)
 }
 
 pub fn mas_upgrade_request(task_id: Option<TaskId>, app_id: Option<&str>) -> ProcessSpawnRequest {
@@ -309,6 +312,7 @@ pub fn mas_upgrade_request(task_id: Option<TaskId>, app_id: Option<&str>) -> Pro
         command,
         MUTATION_TIMEOUT,
     )
+    .requires_elevation(true)
 }
 
 fn mas_request(
@@ -867,33 +871,39 @@ mod tests {
             search.command.args,
             vec!["search".to_string(), "Xcode".to_string()]
         );
+        assert!(!search.requires_elevation);
 
         let install = mas_install_request(None, "497799835");
         assert_eq!(
             install.command.args,
             vec!["install".to_string(), "497799835".to_string()]
         );
+        assert!(install.requires_elevation);
 
         let get = mas_get_request(None, "497799835");
         assert_eq!(
             get.command.args,
             vec!["get".to_string(), "497799835".to_string()]
         );
+        assert!(get.requires_elevation);
 
         let uninstall = mas_uninstall_request(None, "497799835");
         assert_eq!(
             uninstall.command.args,
             vec!["uninstall".to_string(), "497799835".to_string()]
         );
+        assert!(uninstall.requires_elevation);
 
         let targeted_upgrade = mas_upgrade_request(None, Some("497799835"));
         assert_eq!(
             targeted_upgrade.command.args,
             vec!["upgrade".to_string(), "497799835".to_string()]
         );
+        assert!(targeted_upgrade.requires_elevation);
 
         let all_upgrade = mas_upgrade_request(None, None);
         assert_eq!(all_upgrade.command.args, vec!["upgrade".to_string()]);
+        assert!(all_upgrade.requires_elevation);
     }
 
     #[derive(Clone)]

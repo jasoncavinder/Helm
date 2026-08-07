@@ -19,6 +19,7 @@
   "service.task.label.upgrade.homebrew_cask": "{package} frissítése Homebrew-val (cask)",
   "service.task.label.upgrade.mise": "{package} frissítése mise használatával",
   "service.task.label.upgrade.rustup_toolchain": "{toolchain} rustup toolchain frissítése",
+  "service.task.label.upgrade.mas_all": "App Store-frissítések telepítése mas használatával",
   "service.task.label.upgrade.package": "{package} frissítése {manager} használatával",
   "service.task.label.upgrade.softwareupdate_all": "macOS szoftverfrissítések telepítése",
   "service.task.label.pin.homebrew": "{package} rögzítése Homebrew-val",
