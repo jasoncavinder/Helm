@@ -3112,13 +3112,14 @@ impl AdvisoryCacheStore for SqliteStore {
     }
 
     fn count(&self) -> Result<usize, String> {
-        let count = self.with_connection("count_advisories", |connection| {
-            ensure_schema_ready(connection)?;
-            connection.query_row("SELECT COUNT(*) FROM security_advisories", [], |row| {
-                row.get::<_, i64>(0)
+        let count = self
+            .with_connection("count_advisories", |connection| {
+                ensure_schema_ready(connection)?;
+                connection.query_row("SELECT COUNT(*) FROM security_advisories", [], |row| {
+                    row.get::<_, i64>(0)
+                })
             })
-        })
-        .map_err(|error| error.to_string())?;
+            .map_err(|error| error.to_string())?;
         usize::try_from(count).map_err(|_| "advisory count does not fit in usize".to_string())
     }
 }

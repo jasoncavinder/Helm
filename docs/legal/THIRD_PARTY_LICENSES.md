@@ -18,26 +18,23 @@ The Helm project license (`LICENSE`) does not replace third-party license obliga
 
 ---
 
-## Snapshot (Audited 2026-02-22)
+## Snapshot (Audited 2026-08-06)
 
 Release context:
 
-- docs baseline: `v0.17.0-rc.5`
-- app release baseline: `v0.17.0-rc.5` (RC branch on `dev`)
+- source candidate: `v0.19.0-rc.1`
+- published stable baseline: `v0.18.2`
 
 ### 1) macOS App Runtime Dependencies
 
 #### Rust core/runtime (`helm-ffi` normal dependency graph)
 
-- Third-party crates: **45**
-- License families observed:
-  - `MIT OR Apache-2.0` (24)
-  - `MIT` (15)
-  - `MIT/Apache-2.0` (2)
-  - `Zlib` (1)
-  - `(MIT OR Apache-2.0) AND Unicode-3.0` (1)
-  - `Unlicense OR MIT` (1)
-  - `Apache-2.0 OR MIT` (1)
+- Third-party package versions in the macOS target tree: **80**
+- License families observed include MIT, Apache-2.0, BSD-3-Clause, ISC,
+  Zlib, 0BSD, BSL-1.0, CDLA-Permissive-2.0, Unicode-3.0, and Unlicense
+  under permissive single- or multi-license expressions.
+- Notable updated direct dependencies include `rusqlite` `0.40.1` (MIT),
+  `quick-xml` `0.41.0` (MIT), and `ureq` `3.3.0` (MIT OR Apache-2.0).
 
 Implication:
 - Current app runtime crates are permissive licenses.
@@ -45,7 +42,7 @@ Implication:
 
 #### Swift Package Dependency
 
-- `Sparkle` `2.8.1` (`apps/macos-ui/Helm.xcodeproj/project.pbxproj`)
+- `Sparkle` `2.9.5` (`apps/macos-ui/Helm.xcodeproj/project.pbxproj`)
 - Sparkle license is MIT-style and includes an `EXTERNAL LICENSES` section.
 
 Implication:
@@ -53,7 +50,7 @@ Implication:
 
 ### 2) Build-Only Dependencies (Not App Runtime)
 
-- `cbindgen` `0.29.2` (`core/rust/crates/helm-ffi/Cargo.toml` build-dependency)
+- `cbindgen` `0.29.4` (`core/rust/crates/helm-ffi/Cargo.toml` build-dependency)
 - License: `MPL-2.0`
 
 Implication:
@@ -64,14 +61,14 @@ Implication:
 
 Direct dependencies:
 
-- `astro` (MIT)
-- `@astrojs/starlight` (MIT)
-- `sharp` (Apache-2.0)
+- `astro` `^7.1.6` (MIT)
+- `@astrojs/starlight` `^0.41.7` (MIT)
+- `sharp` `^0.35.3` (Apache-2.0)
 
 Additional lockfile notes:
 
 - Platform `@img/sharp-libvips-*` packages appear under `LGPL-3.0-or-later`.
-- `web/package-lock.json` marks `zod-to-ts` as `UNKNOWN`; local package license file is MIT.
+- The lockfile scan found no `UNKNOWN` or `NOASSERTION` package licenses.
 
 Implication:
 - Current macOS app release artifacts do not ship `node_modules`.

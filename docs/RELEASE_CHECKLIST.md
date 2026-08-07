@@ -62,6 +62,32 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.19.0-rc.1 (Manager and Updater Modernization RC)
+
+### Scope and Versioning
+
+- [x] Workspace and local Rust package versions identify `0.19.0-rc.1`.
+- [x] `CHANGELOG.md`, current-state, next-steps, roadmap, and platform-policy documentation describe the candidate without changing public stable pointers from `v0.18.2`.
+- [x] The macOS 13 Ventura baseline is explicit and the obsolete macOS 11/12 login-helper fallback is removed.
+- [x] Dependency modernization retains the `v0.18.2` SQLite online-backup and migration-ledger safety contract.
+- [x] npm/related install-instance normalization, MAS refresh handling, Sparkle inventory/update visibility, external-bundle GUI update actions, and scheduled eligible-channel Helm checks are included.
+
+### Required Validation
+
+- [x] Full repository quality gate passes on the v0.18.2-based integration branch.
+- [x] SQLite migration compatibility gate passes with `rusqlite 0.40.1`, including backup and tamper/recovery coverage.
+- [x] Sparkle appcast/recovery checklist and arm64 Xcode tests pass.
+- [x] Third-party dependency licenses are re-audited for the candidate dependency graph.
+- [ ] Non-mutating `v0.19.0-rc.1` release rehearsal and preflight complete without unresolved errors.
+
+### Protected Integration and Publication
+
+- [ ] Merge the candidate through the protected branch path and rerun required checks from current `main`.
+- [ ] Confirm a fresh successful `Release macOS Canary` after the final workflow/toolchain changes.
+- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` under explicit maintainer authorization.
+- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.1` or publishing artifacts.
+- [ ] Complete signed/notarized GUI and direct CLI prerelease publication and post-publication verification.
+
 ## v0.18.2 (Final v0.18 Containment Release Gate, Completed)
 
 ### Scope
