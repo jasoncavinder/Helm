@@ -52,6 +52,17 @@ final class ControlCenterSearchTextUpdateGateTests: XCTestCase {
             gate.shouldPublishControlValue("model value", modelValue: "model value")
         )
     }
+
+    func testControlUpdatesCoalesceWithoutBeingOverwrittenByStaleModel() {
+        let gate = ControlCenterSearchTextUpdateGate()
+
+        XCTAssertTrue(gate.stageControlValue("h", modelValue: ""))
+        XCTAssertFalse(gate.stageControlValue("he", modelValue: ""))
+        XCTAssertEqual(gate.displayedValue(modelValue: ""), "he")
+        XCTAssertEqual(gate.takePendingControlValue(), "he")
+        XCTAssertFalse(gate.hasScheduledControlPublish)
+        XCTAssertEqual(gate.displayedValue(modelValue: "he"), "he")
+    }
 }
 
 private final class SearchFocusTargetSpy: ControlCenterSearchFocusTarget {

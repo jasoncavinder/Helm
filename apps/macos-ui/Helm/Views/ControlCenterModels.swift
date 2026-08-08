@@ -173,6 +173,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var popoverOverlayDismissToken: Int = 0
     @Published var popoverSearchFocusToken: Int = 0
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
+    let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isPopoverOverlayVisible: Bool = false
     @Published var suppressWindowBackgroundDragging: Bool = false
     @Published var isSidebarVisible: Bool = true

@@ -36,6 +36,8 @@ final class ControlCenterSearchFocusRouter {
 
 final class ControlCenterSearchTextUpdateGate {
     private(set) var isApplyingModelValue = false
+    private(set) var hasScheduledControlPublish = false
+    private var pendingControlValue: String?
 
     func applyModelValue(_ update: () -> Void) {
         isApplyingModelValue = true
@@ -45,5 +47,23 @@ final class ControlCenterSearchTextUpdateGate {
 
     func shouldPublishControlValue(_ controlValue: String, modelValue: String) -> Bool {
         !isApplyingModelValue && controlValue != modelValue
+    }
+
+    func stageControlValue(_ controlValue: String, modelValue: String) -> Bool {
+        guard shouldPublishControlValue(controlValue, modelValue: modelValue) else { return false }
+        pendingControlValue = controlValue
+        guard !hasScheduledControlPublish else { return false }
+        hasScheduledControlPublish = true
+        return true
+    }
+
+    func displayedValue(modelValue: String) -> String {
+        pendingControlValue ?? modelValue
+    }
+
+    func takePendingControlValue() -> String? {
+        hasScheduledControlPublish = false
+        defer { pendingControlValue = nil }
+        return pendingControlValue
     }
 }

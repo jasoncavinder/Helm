@@ -74,6 +74,9 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
+        .background(
+            HelmSettingsOpeningBridge(router: context.settingsOpenRouter)
+        )
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -93,18 +96,13 @@ struct ControlCenterWindowView: View {
                 )
             }
 
-            ToolbarItem(placement: .principal) {
-                Text(selectedSection.title)
-                    .font(.headline)
-            }
-
             ToolbarItem(placement: .automatic) {
                 ControlCenterToolbarSearchField(
                     text: searchQuery,
                     placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
                     focusRouter: context.controlCenterSearchFocusRouter
                 )
-                .frame(width: 260)
+                .frame(width: 320)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
@@ -134,12 +132,20 @@ struct ControlCenterWindowView: View {
                 .help(L10n.App.Settings.Action.refreshNow.localized)
                 .disabled(core.isRefreshing)
 
-                Button(L10n.App.ControlCenter.upgradeAll.localized) {
-                    context.presentUpgradeSheet(in: .controlCenter)
-                    context.selectedSection = .updates
+                if !core.outdatedPackages.isEmpty {
+                    Button {
+                        context.presentUpgradeSheet(in: .controlCenter)
+                        context.selectedSection = .updates
+                    } label: {
+                        Label(
+                            L10n.App.ControlCenter.upgradeAll.localized,
+                            systemImage: "arrow.up.circle.fill"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .fixedSize()
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(core.outdatedPackages.isEmpty)
             }
         }
         .sheet(
@@ -232,9 +238,10 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
 
-        if searchField.stringValue != text {
+        let displayedText = context.coordinator.updateGate.displayedValue(modelValue: text)
+        if searchField.stringValue != displayedText {
             context.coordinator.updateGate.applyModelValue {
-                searchField.stringValue = text
+                searchField.stringValue = displayedText
             }
         }
     }
@@ -259,11 +266,15 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
 
         func controlTextDidChange(_ notification: Notification) {
             guard let searchField = notification.object as? NSSearchField else { return }
-            guard updateGate.shouldPublishControlValue(
+            guard updateGate.stageControlValue(
                 searchField.stringValue,
                 modelValue: text.wrappedValue
             ) else { return }
-            text.wrappedValue = searchField.stringValue
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let value = updateGate.takePendingControlValue() else { return }
+                guard text.wrappedValue != value else { return }
+                text.wrappedValue = value
+            }
         }
     }
 }
@@ -333,7 +344,7 @@ private struct ControlCenterSidebarView: View {
                     isSelected: false,
                     accessibilityLabel: ControlCenterSection.settings.title,
                     action: {
-                        HelmApplicationWindowCommands.openSettings()
+                        context.settingsOpenRouter.requestOpen()
                     }
                 ) {
                     Label(ControlCenterSection.settings.title, systemImage: ControlCenterSection.settings.icon)
