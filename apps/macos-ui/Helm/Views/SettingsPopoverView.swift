@@ -8,6 +8,9 @@ struct SettingsSectionView: View {
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
 
+    let showsNavigationSummary: Bool
+    let onResetCompleted: () -> Void
+
     @State private var showResetConfirmation = false
     @State private var isResetting = false
     @State private var includeDiagnostics = false
@@ -18,6 +21,14 @@ struct SettingsSectionView: View {
     @State private var supportBottomButtonHeight: CGFloat = 0
 
     private let supportButtonSpacing: CGFloat = 8
+
+    init(
+        showsNavigationSummary: Bool = true,
+        onResetCompleted: @escaping () -> Void = {}
+    ) {
+        self.showsNavigationSummary = showsNavigationSummary
+        self.onResetCompleted = onResetCompleted
+    }
     private static let healthTimestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -81,6 +92,7 @@ struct SettingsSectionView: View {
         if let window = NSApp.windows.first(where: { $0 is ControlCenterWindow }) {
             window.performClose(nil)
         }
+        onResetCompleted()
     }
 
     private var serviceConnectionStatusLabel: String {
@@ -113,46 +125,48 @@ struct SettingsSectionView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text(ControlCenterSection.settings.title)
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    HealthBadgeView(status: overviewState.aggregateHealth)
-                }
-
-                HStack(spacing: 8) {
-                    Button {
-                        context.selectedSection = .managers
-                    } label: {
-                        SettingsMetricPill(
-                            title: L10n.App.Settings.Metric.managers.localized,
-                            value: overviewState.visibleManagers.count
-                        )
+                if showsNavigationSummary {
+                    HStack {
+                        Text(ControlCenterSection.settings.title)
+                            .font(.title2.weight(.semibold))
+                        Spacer()
+                        HealthBadgeView(status: overviewState.aggregateHealth)
                     }
-                    .buttonStyle(.plain)
-                    .helmPointer()
 
-                    Button {
-                        context.selectedSection = .updates
-                    } label: {
-                        SettingsMetricPill(
-                            title: L10n.App.Settings.Metric.updates.localized,
-                            value: overviewState.outdatedPackagesCount
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .helmPointer()
+                    HStack(spacing: 8) {
+                        Button {
+                            context.selectedSection = .managers
+                        } label: {
+                            SettingsMetricPill(
+                                title: L10n.App.Settings.Metric.managers.localized,
+                                value: overviewState.visibleManagers.count
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .helmPointer()
 
-                    Button {
-                        context.selectedSection = .tasks
-                    } label: {
-                        SettingsMetricPill(
-                            title: L10n.App.Settings.Metric.tasks.localized,
-                            value: overviewState.runningTaskCount
-                        )
+                        Button {
+                            context.selectedSection = .updates
+                        } label: {
+                            SettingsMetricPill(
+                                title: L10n.App.Settings.Metric.updates.localized,
+                                value: overviewState.outdatedPackagesCount
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .helmPointer()
+
+                        Button {
+                            context.selectedSection = .tasks
+                        } label: {
+                            SettingsMetricPill(
+                                title: L10n.App.Settings.Metric.tasks.localized,
+                                value: overviewState.runningTaskCount
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .helmPointer()
                     }
-                    .buttonStyle(.plain)
-                    .helmPointer()
                 }
 
                 SettingsCard(title: L10n.App.Settings.Section.general.localized, icon: "globe", fill: cardFill) {
@@ -621,6 +635,18 @@ struct SettingsSectionView: View {
             core.refreshLaunchAtLogin()
             core.refreshHelmCliShimStatus()
         }
+    }
+}
+
+struct SettingsWindowView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        SettingsSectionView(
+            showsNavigationSummary: false,
+            onResetCompleted: { dismiss() }
+        )
+            .frame(minWidth: 680, idealWidth: 760, minHeight: 560, idealHeight: 680)
     }
 }
 

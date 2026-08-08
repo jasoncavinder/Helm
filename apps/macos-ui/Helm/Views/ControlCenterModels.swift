@@ -50,6 +50,15 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
             return "gearshape"
         }
     }
+
+    var supportsInspector: Bool {
+        switch self {
+        case .overview, .settings:
+            return false
+        case .updates, .packages, .managers, .tasks:
+            return true
+        }
+    }
 }
 
 enum ManagerAuthority: CaseIterable {
@@ -166,6 +175,8 @@ final class ControlCenterContext: ObservableObject {
     @Published var controlCenterSearchFocusToken: Int = 0
     @Published var isPopoverOverlayVisible: Bool = false
     @Published var suppressWindowBackgroundDragging: Bool = false
+    @Published var isSidebarVisible: Bool = true
+    @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?
     @Published var managerInstallSheetRequestToken: Int = 0
 
@@ -183,6 +194,19 @@ final class ControlCenterContext: ObservableObject {
         selectedPackageId = nil
         selectedTaskId = nil
         selectedUpgradePlanStepId = nil
+    }
+
+    func select(_ section: ControlCenterSection) {
+        selectedSection = section
+    }
+
+    func toggleSidebar() {
+        isSidebarVisible.toggle()
+    }
+
+    func toggleInspector() {
+        guard (selectedSection ?? .overview).supportsInspector else { return }
+        isInspectorVisible.toggle()
     }
 
     func navigate(to deepLink: WayfinderDeepLink) {
@@ -247,7 +271,6 @@ final class ControlCenterContext: ObservableObject {
 
 enum PopoverOverlayRoute: String, Identifiable {
     case search
-    case quickSettings
     case about
     case confirmQuit
 
