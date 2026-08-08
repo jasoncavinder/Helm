@@ -47,6 +47,9 @@ jobs:
       - name: Validate release-worktree tagging contracts
         run: scripts/release/tests/runbook_release_worktree_tag_contract.sh
 
+      - name: Validate GitHub release-state publication contracts
+        run: scripts/release/tests/runbook_publish_release_state_contract.sh
+
       - name: Validate release-line copy drift contracts
         run: scripts/release/check_release_line_copy.sh
 

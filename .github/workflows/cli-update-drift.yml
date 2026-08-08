@@ -43,9 +43,21 @@ jobs:
             exit 1
           fi
 
-          LATEST_STABLE_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft|not) and (.prerelease|not))][0].tag_name')"
+          LATEST_STABLE_STATE="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '{tag_name, draft, prerelease, published_at}')"
+          LATEST_STABLE_TAG="$(printf '%s' "$LATEST_STABLE_STATE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name") or "")')"
+          LATEST_STABLE_DRAFT="$(printf '%s' "$LATEST_STABLE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("draft") else "false")')"
+          LATEST_STABLE_PRERELEASE="$(printf '%s' "$LATEST_STABLE_STATE" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin).get("prerelease") else "false")')"
+          LATEST_STABLE_PUBLISHED_AT="$(printf '%s' "$LATEST_STABLE_STATE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("published_at") or "")')"
           if [ -z "$LATEST_STABLE_TAG" ] || [ "$LATEST_STABLE_TAG" = "null" ]; then
             echo "::error::Unable to determine latest stable release tag."
+            exit 1
+          fi
+          if [[ ! "$LATEST_STABLE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::GitHub releases/latest must be a stable vX.Y.Z tag (actual=${LATEST_STABLE_TAG})."
+            exit 1
+          fi
+          if [ "$LATEST_STABLE_DRAFT" != "false" ] || [ "$LATEST_STABLE_PRERELEASE" != "false" ] || [ -z "$LATEST_STABLE_PUBLISHED_AT" ]; then
+            echo "::error::GitHub releases/latest must be a published, non-draft, non-prerelease release."
             exit 1
           fi
           EXPECTED_STABLE_VERSION="${LATEST_STABLE_TAG#v}"
@@ -80,7 +92,7 @@ jobs:
             exit 0
           fi
 
-          LATEST_RC_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft|not) and (.prerelease == true))][0].tag_name')"
+          LATEST_RC_TAG="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '[.[] | select((.draft == false) and (.prerelease == true) and (.published_at != null) and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$")))][0].tag_name')"
           if [ -z "$LATEST_RC_TAG" ] || [ "$LATEST_RC_TAG" = "null" ]; then
             echo "::error::RC metadata exists (${RC_FILE}) but no published prerelease tag was found."
             exit 1
