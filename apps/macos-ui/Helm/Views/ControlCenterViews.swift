@@ -273,18 +273,16 @@ private struct ControlCenterSidebarView: View {
             environmentButton
 
             HStack(spacing: 8) {
-                Button {
+                ControlCenterFooterRouteButton(
+                    isSelected: context.selectedSection == .settings,
+                    accessibilityLabel: ControlCenterSection.settings.title,
+                    action: {
                     context.selectedSection = .settings
-                } label: {
+                    }
+                ) {
                     Label(ControlCenterSection.settings.title, systemImage: ControlCenterSection.settings.icon)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(
-                    context.selectedSection == .settings
-                        ? HelmTheme.blue500
-                        : HelmTheme.textSecondary
-                )
-                .helmPointer()
 
                 Spacer()
 
@@ -318,9 +316,16 @@ private struct ControlCenterSidebarView: View {
     }
 
     private var environmentButton: some View {
-        Button {
+        ControlCenterFooterRouteButton(
+            isSelected: context.selectedSection == .managers,
+            accessibilityLabel: ControlCenterSection.managers.title,
+            accessibilityValue: "app.wayfinder.sidebar.sources_monitored".localized(
+                with: ["count": "\(overviewState.visibleManagers.count)"]
+            ),
+            action: {
             context.selectedSection = .managers
-        } label: {
+            }
+        ) {
             HStack(spacing: 10) {
                 Image(systemName: ControlCenterSection.managers.icon)
                     .frame(width: 18)
@@ -340,20 +345,11 @@ private struct ControlCenterSidebarView: View {
                     .font(.caption2.weight(.bold))
                     .foregroundColor(HelmTheme.textSecondary)
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(
-            ControlCenterSidebarButtonStyle(
-                isSelected: context.selectedSection == .managers,
-                isHovered: false
-            )
-        )
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .helmPointer()
-        .accessibilityLabel(ControlCenterSection.managers.title)
     }
 }
 
@@ -471,6 +467,44 @@ private struct ControlCenterSidebarButtonStyle: ButtonStyle {
                     : .easeOut(duration: 0.12),
                 value: configuration.isPressed
             )
+    }
+}
+
+private struct ControlCenterFooterRouteButton<Label: View>: View {
+    let isSelected: Bool
+    let accessibilityLabel: String
+    var accessibilityValue: String?
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+
+    @State private var isHovered = false
+
+    var body: some View {
+        let button = Button(action: action) {
+            label()
+                .font(.caption.weight(.medium))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(
+            ControlCenterSidebarButtonStyle(
+                isSelected: isSelected,
+                isHovered: isHovered
+            )
+        )
+        .onHover { isHovered = $0 }
+        .helmPointer()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+        if let accessibilityValue,
+           !accessibilityValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            button.accessibilityValue(accessibilityValue)
+        } else {
+            button
+        }
     }
 }
 

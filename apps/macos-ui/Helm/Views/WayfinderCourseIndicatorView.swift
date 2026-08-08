@@ -173,7 +173,6 @@ struct WayfinderCourseIndicatorView: View {
         .accessibilityIdentifier("wayfinderCourseIndicator")
         .accessibilityLabel(projection.title.localized)
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint(projection.primaryActionTitle.localized)
     }
 
     private func courseArc(at date: Date) -> some View {
