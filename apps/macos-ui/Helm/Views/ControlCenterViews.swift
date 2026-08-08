@@ -103,7 +103,15 @@ struct ControlCenterWindowView: View {
                 )
             }
 
-            ToolbarItem(placement: .primaryAction) {
+            // Keep a principal item in the native toolbar so AppKit reserves the
+            // center and places the search and actions against the trailing edge.
+            ToolbarItem(placement: .principal) {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityHidden(true)
+            }
+
+            ToolbarItem(placement: .automatic) {
                 ControlCenterToolbarSearchField(
                     text: searchQuery,
                     placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
@@ -293,6 +301,18 @@ private struct ControlCenterSidebarView: View {
     @Environment(\.colorScheme) private var colorScheme
     let sidebarWidth: CGFloat
 
+    private var workspaceSelection: Binding<ControlCenterSection?> {
+        Binding(
+            get: { context.selectedSection },
+            set: { newSelection in
+                DispatchQueue.main.async {
+                    guard context.selectedSection != newSelection else { return }
+                    context.selectedSection = newSelection
+                }
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 11) {
@@ -324,7 +344,7 @@ private struct ControlCenterSidebarView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
 
-            List(selection: $context.selectedSection) {
+            List(selection: workspaceSelection) {
                 Section {
                     ForEach(ControlCenterSection.wayfinderWorkspaces) { section in
                         HStack(spacing: 9) {
