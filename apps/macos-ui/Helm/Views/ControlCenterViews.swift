@@ -37,6 +37,13 @@ struct ControlCenterWindowView: View {
         }
     }
 
+    private func deferInspectorAlignment(for section: ControlCenterSection?) {
+        DispatchQueue.main.async {
+            guard context.selectedSection == section else { return }
+            context.alignInspectorSelection(for: section)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             if context.isSidebarVisible {
@@ -74,6 +81,9 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
+        .background(
+            HelmSettingsOpeningBridge(router: context.settingsOpenRouter)
+        )
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -93,18 +103,21 @@ struct ControlCenterWindowView: View {
                 )
             }
 
+            // Keep a principal item in the native toolbar so AppKit reserves the
+            // center and places the search and actions against the trailing edge.
             ToolbarItem(placement: .principal) {
-                Text(selectedSection.title)
-                    .font(.headline)
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityHidden(true)
             }
 
             ToolbarItem(placement: .automatic) {
                 ControlCenterToolbarSearchField(
                     text: searchQuery,
                     placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
-                    focusToken: context.controlCenterSearchFocusToken
+                    focusRouter: context.controlCenterSearchFocusRouter
                 )
-                .frame(width: 260)
+                .frame(width: 320)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
@@ -134,12 +147,20 @@ struct ControlCenterWindowView: View {
                 .help(L10n.App.Settings.Action.refreshNow.localized)
                 .disabled(core.isRefreshing)
 
-                Button(L10n.App.ControlCenter.upgradeAll.localized) {
-                    context.presentUpgradeSheet(in: .controlCenter)
-                    context.selectedSection = .updates
+                if !core.outdatedPackages.isEmpty {
+                    Button {
+                        context.presentUpgradeSheet(in: .controlCenter)
+                        context.selectedSection = .updates
+                    } label: {
+                        Label(
+                            L10n.App.ControlCenter.upgradeAll.localized,
+                            systemImage: "arrow.up.circle.fill"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .fixedSize()
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(core.outdatedPackages.isEmpty)
             }
         }
         .sheet(
@@ -166,10 +187,10 @@ struct ControlCenterWindowView: View {
             navigateToSection(for: step.targetAnchor)
         }
         .onChange(of: context.selectedSection) { newSection in
-            context.alignInspectorSelection(for: newSection)
+            deferInspectorAlignment(for: newSection)
         }
         .onAppear {
-            context.alignInspectorSelection(for: context.selectedSection)
+            deferInspectorAlignment(for: context.selectedSection)
             if core.hasCompletedOnboarding {
                 core.triggerRefresh()
             }
@@ -182,11 +203,13 @@ struct ControlCenterWindowView: View {
     }
 }
 
-private final class ControlCenterNativeSearchField: NSSearchField {
+private final class ControlCenterNativeSearchField: NSSearchField, ControlCenterSearchFocusTarget {
     private var focusRequestPending = false
+    private var focusCompletion: (() -> Void)?
 
-    func requestFocus() {
+    func requestSearchFocus(completion: @escaping () -> Void) {
         focusRequestPending = true
+        focusCompletion = completion
         fulfillFocusRequestIfPossible()
     }
 
@@ -200,6 +223,9 @@ private final class ControlCenterNativeSearchField: NSSearchField {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window?.makeFirstResponder(self) == true else { return }
             self.focusRequestPending = false
+            let completion = self.focusCompletion
+            self.focusCompletion = nil
+            completion?()
         }
     }
 }
@@ -207,10 +233,10 @@ private final class ControlCenterNativeSearchField: NSSearchField {
 private struct ControlCenterToolbarSearchField: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
-    let focusToken: Int
+    let focusRouter: ControlCenterSearchFocusRouter
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(text: $text, focusRouter: focusRouter)
     }
 
     func makeNSView(context: Context) -> ControlCenterNativeSearchField {
@@ -218,6 +244,7 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         searchField.delegate = context.coordinator
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
+        focusRouter.attach(searchField)
         return searchField
     }
 
@@ -226,26 +253,43 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
 
-        if searchField.stringValue != text {
-            searchField.stringValue = text
+        let displayedText = context.coordinator.updateGate.displayedValue(modelValue: text)
+        if searchField.stringValue != displayedText {
+            context.coordinator.updateGate.applyModelValue {
+                searchField.stringValue = displayedText
+            }
         }
+    }
 
-        guard context.coordinator.handledFocusToken != focusToken else { return }
-        context.coordinator.handledFocusToken = focusToken
-        searchField.requestFocus()
+    static func dismantleNSView(
+        _ searchField: ControlCenterNativeSearchField,
+        coordinator: Coordinator
+    ) {
+        searchField.delegate = nil
+        coordinator.focusRouter?.detach(searchField)
     }
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var text: Binding<String>
-        var handledFocusToken = 0
+        let updateGate = ControlCenterSearchTextUpdateGate()
+        weak var focusRouter: ControlCenterSearchFocusRouter?
 
-        init(text: Binding<String>) {
+        init(text: Binding<String>, focusRouter: ControlCenterSearchFocusRouter) {
             self.text = text
+            self.focusRouter = focusRouter
         }
 
         func controlTextDidChange(_ notification: Notification) {
             guard let searchField = notification.object as? NSSearchField else { return }
-            text.wrappedValue = searchField.stringValue
+            guard updateGate.stageControlValue(
+                searchField.stringValue,
+                modelValue: text.wrappedValue
+            ) else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let value = updateGate.takePendingControlValue() else { return }
+                guard text.wrappedValue != value else { return }
+                text.wrappedValue = value
+            }
         }
     }
 }
@@ -256,6 +300,18 @@ private struct ControlCenterSidebarView: View {
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @Environment(\.colorScheme) private var colorScheme
     let sidebarWidth: CGFloat
+
+    private var workspaceSelection: Binding<ControlCenterSection?> {
+        Binding(
+            get: { context.selectedSection },
+            set: { newSelection in
+                DispatchQueue.main.async {
+                    guard context.selectedSection != newSelection else { return }
+                    context.selectedSection = newSelection
+                }
+            }
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -288,7 +344,7 @@ private struct ControlCenterSidebarView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
 
-            List(selection: $context.selectedSection) {
+            List(selection: workspaceSelection) {
                 Section {
                     ForEach(ControlCenterSection.wayfinderWorkspaces) { section in
                         HStack(spacing: 9) {
@@ -315,7 +371,7 @@ private struct ControlCenterSidebarView: View {
                     isSelected: false,
                     accessibilityLabel: ControlCenterSection.settings.title,
                     action: {
-                        HelmApplicationWindowCommands.openSettings()
+                        context.settingsOpenRouter.requestOpen()
                     }
                 ) {
                     Label(ControlCenterSection.settings.title, systemImage: ControlCenterSection.settings.icon)

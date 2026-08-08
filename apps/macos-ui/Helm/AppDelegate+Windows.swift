@@ -1,16 +1,6 @@
 import Cocoa
 import SwiftUI
 
-enum HelmApplicationWindowCommands {
-    @MainActor
-    static func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
-    }
-}
-
 private func handleStandardTextEditingKeyEquivalent(_ event: NSEvent, sender: AnyObject) -> Bool {
     let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
     guard flags.contains(.command),

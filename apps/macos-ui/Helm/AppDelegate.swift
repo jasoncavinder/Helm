@@ -45,8 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             self?.openControlCenter()
             self?.closePanel()
         }, onOpenSettings: { [weak self] in
-            self?.closePanel()
-            HelmApplicationWindowCommands.openSettings()
+            guard let self else { return }
+            closePanel()
+            controlCenterContext.settingsOpenRouter.requestOpen()
         })
         .environmentObject(controlCenterContext)
         .background(VisualEffect().ignoresSafeArea())
@@ -388,7 +389,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func focusControlCenterSearch() {
         openControlCenter()
-        controlCenterContext.controlCenterSearchFocusToken += 1
+        controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
     }
 
     private func handlePopoverEscape() {
@@ -725,7 +726,7 @@ private extension AppDelegate {
 
     @MainActor @objc func openAdvancedSettingsFromMenu() {
         closePanel()
-        HelmApplicationWindowCommands.openSettings()
+        controlCenterContext.settingsOpenRouter.requestOpen()
     }
 
     @objc func openUpgradeAllFromMenu() {
