@@ -13,11 +13,11 @@ Status: approved planning handoff for v0.19-v0.22
 
 ## v0.19: Native Foundation and First-Run Value
 
-### Visual Direction Lock
+### Experience Direction Lock
 
-Before production styling begins in Slices 19.2 and 19.4, review code-rendered Control Center proposals in `docs/app-design/proposals/v019-visual-direction/` and record one explicit approved direction. Proposal work remains in the non-shipping `tools/design-lab/` package and cannot enter the application target by implication.
+Before production information-architecture or styling work begins in Slices 19.2 and 19.4, review the code-rendered Dashboard and status-item popover proposal in `docs/app-design/proposals/v019-visual-direction/` and record one explicit approved experience direction. Proposal work remains in the non-shipping `tools/design-lab/` package and cannot enter the application target by implication.
 
-Slice 19.1 command/window plumbing may proceed while this review is open because it establishes native behavior without choosing final materials, density, or product styling. The approved direction must then be validated at minimum and expanded window sizes, in light/dark and key/inactive states, before broad component migration.
+The proposal deliberately reopens the approved five-destination navigation model, but it does not change the canonical application contract until the product owner approves that change and the architecture documents are updated. Slice 19.1 command/window plumbing may proceed while this review is open because it establishes native behavior without locking the final destination model, materials, density, or product styling. The approved experience must then be validated at minimum and expanded window sizes, in light/dark and key/inactive states, across healthy, attention, failure, partial-data, offline, and active-work states before broad component migration.
 
 ### Slice 19.1: Application command and window foundation
 

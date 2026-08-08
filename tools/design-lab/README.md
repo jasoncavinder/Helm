@@ -1,8 +1,8 @@
 # Helm Design Lab
 
-The Design Lab is a non-shipping SwiftUI executable for rendering reproducible Helm visual proposals. It is deliberately separate from the Xcode application target: proposal code and assets cannot affect production behavior, bundle size, localization, signing, or release artifacts.
+The Design Lab is a non-shipping SwiftUI executable for rendering reproducible Helm experience proposals. It is deliberately separate from the Xcode application target: proposal code and assets cannot affect production behavior, bundle size, localization, signing, or release artifacts.
 
-From the repository root, render every proposal in light and dark appearance:
+From the repository root, render the Dashboard and popover workflow set:
 
 ```sh
 swift run --package-path tools/design-lab HelmDesignLab \
@@ -13,10 +13,10 @@ The renderer uses native SwiftUI and SF Symbols on the repository's macOS 13 min
 
 ## Review lifecycle
 
-1. A proposal PR defines the comparison question and holds production behavior constant.
-2. Each direction is rendered from the same fixture in light and dark appearance.
-3. Reviewers comment on the PR, the proposal document, or a specific rendered asset.
-4. The decision log records `Approved`, `Needs revision`, or `Rejected`, plus the reasoning.
-5. Only an approved direction may be translated into a production implementation slice.
+1. A proposal PR defines the experience question and the common jobs it must support.
+2. Renders demonstrate distinct workflows and states, not merely palette variations.
+3. Reviewers comment on the PR, proposal document, or a specific rendered asset.
+4. The decision log records `Approved`, `Needs revision`, or `Rejected`, plus reasoning.
+5. Only an approved experience direction may change canonical IA or enter production implementation.
 
-The Design Lab is not a second app, a component framework, or a source of business logic. It may approximate data for visual comparison only.
+The Design Lab is not a second app, a component framework, or a source of business logic. It uses synthetic fixtures for visual and workflow comparison only.

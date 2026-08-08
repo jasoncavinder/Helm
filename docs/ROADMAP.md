@@ -687,7 +687,7 @@ Goal:
   - harden npm multi-install normalization and MAS refresh outcomes
   - adopt macOS 13 Ventura as the minimum supported release
 - Establish the native macOS application foundation defined in `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`:
-  - lock a visual direction through reproducible, non-shipping SwiftUI proposals before production shell/component styling
+  - lock the two-surface experience architecture and visual direction through reproducible, non-shipping SwiftUI proposals before production shell/component styling
   - native window, titlebar, toolbar, menu-command, sidebar/split-view, selection, and focus behavior
   - standard semantic component layer with documented exceptions for Helm-specific controls
   - first-class macOS Settings window/scene with Command-Comma behavior
@@ -708,7 +708,7 @@ Exit Criteria:
 
 - Snapshot revision/reconnect behavior and consolidated XPC contracts are covered by integration tests.
 - App shell and first-run foundation are coherent in light/dark appearance at minimum and expanded window sizes.
-- The visual-direction decision is recorded before production styling begins in sidebar and semantic-component slices.
+- The Dashboard/popover experience and visual-direction decision is recorded before production information-architecture or styling work begins in sidebar and semantic-component slices.
 - Toolbar actions have application-menu command equivalents.
 - Settings are reachable through the application menu and Command-Comma and contain durable preferences rather than operational workflows.
 - No new surface introduces an ad hoc control or status semantic outside the approved component system.
