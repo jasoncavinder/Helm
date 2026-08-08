@@ -238,7 +238,7 @@ private struct ControlCenterSidebarView: View {
                 .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("HELM")
+                    Text(L10n.App.Dashboard.title.localized.uppercased())
                         .font(.system(.headline, design: .rounded, weight: .bold))
                         .tracking(1.5)
                     Text("app.wayfinder.sidebar.tagline".localized)
