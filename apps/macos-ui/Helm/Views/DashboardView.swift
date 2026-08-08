@@ -133,7 +133,7 @@ struct RedesignPopoverView: View {
     private var popoverBaseContent: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                if !core.isConnected || overviewState.failedTaskCount > 0 || overviewState.outdatedPackagesCount > 0 {
+                if overviewState.wayfinderProjection.content.condition != .healthy {
                     PopoverAttentionBanner(onOpenControlCenter: {
                         onOpenControlCenter()
                     })
@@ -150,7 +150,7 @@ struct RedesignPopoverView: View {
                 .spotlightAnchor("searchField")
 
                 Button {
-                    context.selectedSection = preferredSectionForHealthBadge
+                    context.navigate(to: overviewState.wayfinderProjection.content.primaryAction)
                     onOpenControlCenter()
                 } label: {
                     HStack(alignment: .top) {
@@ -442,19 +442,6 @@ struct RedesignPopoverView: View {
         } else if activeOverlay == nil || activeOverlay == .search {
             activeOverlay = .search
         }
-    }
-
-    private var preferredSectionForHealthBadge: ControlCenterSection {
-        if overviewState.failedTaskCount > 0 {
-            return .tasks
-        }
-        if overviewState.outdatedPackagesCount > 0 {
-            return .updates
-        }
-        if overviewState.runningTaskCount > 0 || overviewState.isRefreshing {
-            return .tasks
-        }
-        return .overview
     }
 
     @ViewBuilder

@@ -120,6 +120,29 @@ enum UpgradeSheetHost {
     case controlCenter
 }
 
+extension WayfinderLocalizedText {
+    var localized: String {
+        key.localized(with: arguments)
+    }
+}
+
+extension WayfinderDestination {
+    var legacyControlCenterSection: ControlCenterSection {
+        switch self {
+        case .dashboard:
+            return .overview
+        case .plan:
+            return .updates
+        case .library:
+            return .packages
+        case .activity:
+            return .tasks
+        case .environment:
+            return .managers
+        }
+    }
+}
+
 final class ControlCenterContext: ObservableObject {
     @Published var selectedSection: ControlCenterSection? = .overview
     @Published var selectedManagerId: String?
@@ -153,6 +176,25 @@ final class ControlCenterContext: ObservableObject {
         selectedPackageId = nil
         selectedTaskId = nil
         selectedUpgradePlanStepId = nil
+    }
+
+    func navigate(to deepLink: WayfinderDeepLink) {
+        clearInspectorSelection()
+        selectedSection = deepLink.destination.legacyControlCenterSection
+
+        guard let entityID = deepLink.entityID else { return }
+        switch deepLink.destination {
+        case .dashboard:
+            break
+        case .plan:
+            selectedUpgradePlanStepId = entityID
+        case .library:
+            selectedPackageId = entityID
+        case .activity:
+            selectedTaskId = entityID
+        case .environment:
+            selectedManagerId = entityID
+        }
     }
 
     func alignInspectorSelection(for section: ControlCenterSection?) {

@@ -21,6 +21,13 @@ The approved shell uses Dashboard, Plan, Library, and Activity as peer workspace
 
 ### Slice 19.1: Application command and window foundation
 
+Implementation checkpoint on `dev`:
+
+- The existing content host now runs in a renamed, restored, resizable Dashboard window with an `860x600` minimum, unconstrained expansion, Command-1 open, and Command-Comma Settings routing.
+- Stable `Dashboard`, `Plan`, `Library`, `Activity`, and `Environment` deep links bridge into legacy sections without moving business state into SwiftUI.
+- One revisioned Wayfinder projection now owns status priority and semantic Course Indicator mode across Dashboard, popover, and status item. It validates backend-owned determinate progress and otherwise remains indeterminate.
+- Remaining Slice 19.1 work includes the complete standard menu/toolbar surface and manual multi-Space, multi-display, key/inactive, minimize/zoom, and focus validation. Slice 19.2 still owns the native workspace sidebar and selection migration.
+
 Affected files/components:
 
 - `apps/macos-ui/Helm/HelmApp.swift`

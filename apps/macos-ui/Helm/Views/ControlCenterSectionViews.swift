@@ -6,14 +6,32 @@ struct RedesignOverviewSectionView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @State private var expandedTaskId: String?
 
+    private var projection: WayfinderProjectionContent {
+        overviewState.wayfinderProjection.content
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(ControlCenterSection.overview.title)
-                        .font(.title2.weight(.semibold))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(ControlCenterSection.overview.title)
+                            .font(.title2.weight(.semibold))
+                        Text(projection.title.localized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                     Spacer()
-                    HealthBadgeView(status: overviewState.aggregateHealth)
+                    Button {
+                        context.navigate(to: projection.primaryAction)
+                    } label: {
+                        HealthBadgeView(status: overviewState.aggregateHealth)
+                    }
+                    .buttonStyle(.plain)
+                    .helmPointer()
+                    .help(projection.explanation.localized)
+                    .accessibilityLabel(projection.title.localized)
+                    .accessibilityHint(projection.explanation.localized)
                 }
 
                 HStack(spacing: 14) {

@@ -693,6 +693,7 @@ struct PackageUninstallPreview: Codable {
 }
 
 final class HelmOverviewState: ObservableObject {
+    @Published private(set) var wayfinderProjection: WayfinderPresentationProjection = .initial
     @Published private(set) var aggregateHealth: OperationalHealth = .healthy
     @Published private(set) var failedTaskCount: Int = 0
     @Published private(set) var runningTaskCount: Int = 0
@@ -706,7 +707,7 @@ final class HelmOverviewState: ObservableObject {
     @Published private(set) var popoverManagerRows: [ManagerInfo] = []
 
     func apply(
-        aggregateHealth: OperationalHealth,
+        wayfinderInput: WayfinderProjectionInput,
         failedTaskCount: Int,
         runningTaskCount: Int,
         outdatedPackagesCount: Int,
@@ -718,7 +719,14 @@ final class HelmOverviewState: ObservableObject {
         runningTasksTop4: [TaskItem],
         popoverManagerRows: [ManagerInfo]
     ) {
-        self.aggregateHealth = aggregateHealth
+        let nextProjection = WayfinderProjectionProjector.project(
+            wayfinderInput,
+            replacing: wayfinderProjection
+        )
+        if nextProjection != wayfinderProjection {
+            wayfinderProjection = nextProjection
+        }
+        aggregateHealth = Self.operationalHealth(for: nextProjection.content.condition)
         self.failedTaskCount = failedTaskCount
         self.runningTaskCount = runningTaskCount
         self.outdatedPackagesCount = outdatedPackagesCount
@@ -729,6 +737,21 @@ final class HelmOverviewState: ObservableObject {
         self.recentTasksTop10 = recentTasksTop10
         self.runningTasksTop4 = runningTasksTop4
         self.popoverManagerRows = popoverManagerRows
+    }
+
+    private static func operationalHealth(
+        for condition: WayfinderCondition
+    ) -> OperationalHealth {
+        switch condition {
+        case .healthy:
+            return .healthy
+        case .activeWork, .refreshing:
+            return .running
+        case .failedOrInterrupted:
+            return .error
+        case .approvalRequired, .actionableFinding, .updatesReady, .serviceUnavailable:
+            return .attention
+        }
     }
 }
 
@@ -771,7 +794,9 @@ final class HelmCore: ObservableObject {
     static let managerPriorityOverridesKey = "managerPriorityOverrides"
 
     @Published var isInitialized = false
-    @Published var isConnected = false
+    @Published var isConnected = false {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var isRefreshing = false {
         didSet { scheduleDerivedViewStateRefresh() }
     }
@@ -794,7 +819,9 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
-    @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
+    @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = [] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = [] {
         didSet {
@@ -1560,7 +1587,14 @@ final class HelmCore: ObservableObject {
             }
         }
 
-        let hasManagerAttention = managerHealthById.values.contains(.attention)
+        let actionableFindingManagerIds = visibleManagers.compactMap { manager -> String? in
+            let status = managerStatuses[manager.id]
+            let requiresInstallDecision = status?.multiInstanceState == "attention_needed"
+            let requiresSetup = status?.packageStateIssues?.contains(where: { issue in
+                issue.issueCode == "post_install_setup_required"
+            }) ?? false
+            return requiresInstallDecision || requiresSetup ? manager.id : nil
+        }
 
         let popoverManagerRows = visibleManagers
             .sorted { lhs, rhs in
@@ -1572,24 +1606,24 @@ final class HelmCore: ObservableObject {
                 return lhsOutdated > rhsOutdated
             }
 
-        let failedTaskCount = activeTasks.filter { $0.status.lowercased() == "failed" }.count
+        let failedTasks = activeTasks.filter { $0.status.lowercased() == "failed" }
+        let interruptedTasks = activeTasks.filter { $0.status.lowercased() == "interrupted" }
+        let failedTaskCount = failedTasks.count
         let runningTasks = activeTasks.filter(\.isRunning)
         let runningTaskCount = runningTasks.count
-        let aggregateHealth: OperationalHealth = {
-            if failedTaskCount > 0 {
-                return .error
-            }
-            if runningTaskCount > 0 || isRefreshing {
-                return .running
-            }
-            if !outdatedPackages.isEmpty || hasManagerAttention {
-                return .attention
-            }
-            return .healthy
-        }()
+        let wayfinderInput = WayfinderProjectionInput(
+            serviceAvailable: isConnected,
+            approvalTaskIDs: taskTimeoutPrompts.map { String($0.taskId) },
+            failedTaskIDs: failedTasks.map(\.id),
+            interruptedTaskIDs: interruptedTasks.map(\.id),
+            activeTaskIDs: runningTasks.map(\.id),
+            actionableFindingIDs: actionableFindingManagerIds,
+            updateCount: outdatedPackages.count,
+            isRefreshing: isRefreshing
+        )
 
         overviewState.apply(
-            aggregateHealth: aggregateHealth,
+            wayfinderInput: wayfinderInput,
             failedTaskCount: failedTaskCount,
             runningTaskCount: runningTaskCount,
             outdatedPackagesCount: outdatedPackages.count,
