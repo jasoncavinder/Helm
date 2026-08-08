@@ -813,10 +813,14 @@ final class HelmCore: ObservableObject {
     @Published var lastError: String?
     @Published var lastErrorAttribution: CoreErrorAttribution?
     @Published var selectedManagerFilter: String?
-    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: HelmCore.onboardingCompletedKey)
+    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: HelmCore.onboardingCompletedKey) {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var acceptedLicenseTermsVersion: String? = UserDefaults.standard.string(
         forKey: HelmCore.acceptedLicenseTermsVersionKey
-    )
+    ) {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var acceptedLicenseTermsAcceptedAtUnix: Int64? = {
         guard let value = UserDefaults.standard.object(
             forKey: HelmCore.acceptedLicenseTermsAcceptedAtUnixKey
