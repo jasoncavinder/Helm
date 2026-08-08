@@ -6,13 +6,13 @@ enum WayfinderDestination: String, Codable, Equatable {
     case library
     case activity
     case environment
-    case settings
 }
 
 enum WayfinderFocusTarget: String, Codable, Equatable {
     case courseIndicator
     case primaryContent
     case selectedEntity
+    case serviceHealth
 }
 
 struct WayfinderDeepLink: Codable, Equatable {
@@ -205,7 +205,7 @@ enum WayfinderProjectionProjector {
                 titleKey: "app.wayfinder.course.unavailable.title",
                 explanationKey: "app.wayfinder.course.unavailable.explanation",
                 actionTitleKey: "app.inspector.view_diagnostics",
-                destination: .settings,
+                destination: .dashboard,
                 entityID: nil
             )
         } else {
@@ -229,7 +229,9 @@ enum WayfinderProjectionProjector {
             primaryAction: WayfinderDeepLink(
                 destination: base.destination,
                 entityID: base.entityID,
-                focus: base.entityID == nil ? .primaryContent : .selectedEntity
+                focus: base.condition == .serviceUnavailable
+                    ? .serviceHealth
+                    : (base.entityID == nil ? .primaryContent : .selectedEntity)
             ),
             progress: base.mode == .determinateWork ? input.activeProgress : nil,
             currentAuthorityStage: base.mode == .determinateWork || base.mode == .indeterminateWork

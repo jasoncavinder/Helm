@@ -103,7 +103,8 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(refreshing.content.condition, .refreshing)
         XCTAssertEqual(unavailable.content.mode, .cachedPartialOffline)
         XCTAssertEqual(unavailable.content.condition, .serviceUnavailable)
-        XCTAssertEqual(unavailable.content.primaryAction.destination, .settings)
+        XCTAssertEqual(unavailable.content.primaryAction.destination, .dashboard)
+        XCTAssertEqual(unavailable.content.primaryAction.focus, .serviceHealth)
         XCTAssertEqual(unavailable.content.primaryActionTitle.key, "app.inspector.view_diagnostics")
     }
 

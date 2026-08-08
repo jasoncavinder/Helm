@@ -139,8 +139,6 @@ extension WayfinderDestination {
             return .tasks
         case .environment:
             return .managers
-        case .settings:
-            return .settings
         }
     }
 }
@@ -182,6 +180,13 @@ final class ControlCenterContext: ObservableObject {
 
     func navigate(to deepLink: WayfinderDeepLink) {
         clearInspectorSelection()
+
+        // Remove this compatibility route when service health moves into the native Dashboard.
+        if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
+            selectedSection = .settings
+            return
+        }
+
         selectedSection = deepLink.destination.legacyControlCenterSection
 
         guard let entityID = deepLink.entityID else { return }
@@ -196,8 +201,6 @@ final class ControlCenterContext: ObservableObject {
             selectedTaskId = entityID
         case .environment:
             selectedManagerId = entityID
-        case .settings:
-            break
         }
     }
 
