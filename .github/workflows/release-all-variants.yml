@@ -30,7 +30,7 @@ jobs:
       - name: Verify release is already published
         run: |
           set -euo pipefail
-          if ! IS_DRAFT="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')"; then
+          if ! IS_DRAFT="$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"; then
             echo "::error::Release $TAG_NAME does not exist. Publish and verify the direct release before running this auxiliary workflow."
             exit 1
           fi
