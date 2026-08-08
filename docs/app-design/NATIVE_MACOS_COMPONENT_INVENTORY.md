@@ -71,6 +71,8 @@ Milestones identify the first delivery target, not permission to move business r
 
 ## Settings, Onboarding, and Domain Exceptions
 
+Implementation checkpoint: the empty scene and quick overlay have been replaced by one native Settings scene shared by Command-Comma, app/status menus, popover, and Dashboard routes. The existing card body remains temporarily hosted for behavior parity; dedicated pane migration and operational-action relocation are still required before removing the legacy in-window destination.
+
 | Component | Current implementation / source | Purpose | Native equivalent | Decision | Rationale | Accessibility/input implications | Milestone | Migration risk |
 |---|---|---|---|---|---|---|---|---|
 | Empty Settings scene | `HelmApp.swift` | Declares platform Settings | Real SwiftUI `Settings` scene/window | Replace | Current Settings is not reachable through standard app behavior. | Command-Comma, App menu, pane focus and labels. | v0.19 | High: accessory app command/menu integration. |

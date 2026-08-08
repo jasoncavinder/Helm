@@ -12,6 +12,7 @@ struct RedesignPopoverView: View {
     @State private var expandedTaskId: String?
     @State private var activeOverlay: PopoverOverlayRoute?
     let onOpenControlCenter: () -> Void
+    let onOpenSettings: () -> Void
 
     private var managerRows: [ManagerInfo] {
         overviewState.popoverManagerRows
@@ -355,7 +356,7 @@ struct RedesignPopoverView: View {
             Spacer(minLength: 10)
 
             footerIconButton(symbol: "gearshape", accessibilityText: L10n.Common.settings.localized, action: {
-                activeOverlay = .quickSettings
+                onOpenSettings()
             })
 
             footerIconButton(symbol: "power", accessibilityText: L10n.App.Settings.Action.quit.localized, action: {
@@ -376,16 +377,6 @@ struct RedesignPopoverView: View {
                     popoverSearchQuery: $popoverSearchQuery,
                     searchResults: searchResults,
                     onSyncSearchQuery: syncSearchQuery,
-                    onOpenControlCenter: onOpenControlCenter,
-                    onClose: closeOverlay
-                )
-            }
-        case .quickSettings:
-            PopoverOverlayCard(
-                title: L10n.App.Overlay.Settings.title.localized,
-                onClose: closeOverlay
-            ) {
-                PopoverSettingsOverlayContent(
                     onOpenControlCenter: onOpenControlCenter,
                     onClose: closeOverlay
                 )

@@ -26,7 +26,8 @@ Implementation checkpoint on `dev`:
 - The existing content host now runs in a renamed, restored, resizable Dashboard window with an `860x600` minimum, unconstrained expansion, Command-1 open, and Command-Comma Settings routing.
 - Stable `Dashboard`, `Plan`, `Library`, `Activity`, and `Environment` deep links bridge into legacy sections without moving business state into SwiftUI.
 - One revisioned Wayfinder projection now owns status priority and semantic Course Indicator mode across Dashboard, popover, and status item. It validates backend-owned determinate progress and otherwise remains indeterminate.
-- Remaining Slice 19.1 work includes the complete standard menu/toolbar surface and manual multi-Space, multi-display, key/inactive, minimize/zoom, and focus validation. Slice 19.2 still owns the native workspace sidebar and selection migration.
+- The Dashboard now uses a native toolbar for sidebar, contextual inspector, search, refresh, and Upgrade All controls. Localized app commands cover Dashboard open, search focus, refresh, workspace routing, and sidebar/inspector visibility without moving policy into SwiftUI.
+- Remaining Slice 19.1 work is manual multi-Space, multi-display, key/inactive, minimize/zoom, menu-placement, and focus validation. Slice 19.2 still owns destination-specific selection and contextual-detail migration.
 
 ### Slice 19.2 implementation checkpoint
 
@@ -35,7 +36,7 @@ Implementation checkpoint on `dev`:
 - Dashboard renders Original Wayfinder's Course Indicator from the shared revisioned projection. Determinate progress appears only when that projection contains validated backend-owned progress; all other modes use semantic non-percentage arcs.
 - The indicator carries text, symbol, VoiceOver label/value/hint, increased-contrast treatment, Reduce Transparency treatment, and static Reduce Motion behavior. Color is never the only state signal.
 - Dashboard intentionally suppresses the legacy inspector. Other migrated destinations retain the existing inspector until their contextual-detail contracts are redesigned.
-- Remaining Slice 19.2 work includes selection restoration/focus tests, full keyboard and VoiceOver traversal, sidebar/inspector command behavior, and manual minimum/expanded/key/inactive validation. Destination-specific visual and workflow redesign remains v0.20 work.
+- Remaining Slice 19.2 work includes selection restoration/focus tests, full keyboard and VoiceOver traversal, and manual minimum/expanded/key/inactive validation. Destination-specific visual and workflow redesign remains v0.20 work.
 
 Affected files/components:
 
@@ -116,6 +117,12 @@ Rollback/incremental strategy:
 - Preserve old section enum mapping only during migration; remove after all destinations move.
 
 ### Slice 19.3: Standard Settings window
+
+Implementation checkpoint on `dev`:
+
+- The SwiftUI `Settings` scene now owns a real single-instance Settings window. Command-Comma, the standard app menu, the status menu, the popover footer, and the Dashboard sidebar all use the same platform window route.
+- The quick-Settings popover overlay and the Basic/Advanced status-menu split are removed. Refresh remains available contextually from the Dashboard toolbar and Command-R.
+- The existing Settings card body is hosted without its Dashboard navigation summary as a parity-preserving transition. Dedicated General/Updates/Sources/CLI/Support panes, operational-card relocation, and removal of the legacy in-window Settings destination remain open until the parity checklist passes.
 
 Affected files/components:
 

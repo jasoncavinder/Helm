@@ -5,7 +5,25 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var isSearchFocused: Bool
     private let sidebarWidth: CGFloat = 232
+
+    private var selectedSection: ControlCenterSection {
+        context.selectedSection ?? .overview
+    }
+
+    private var searchQuery: Binding<String> {
+        Binding(
+            get: { context.searchQuery },
+            set: { newValue in
+                context.searchQuery = newValue
+                core.searchText = newValue
+                if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    context.selectedSection = .packages
+                }
+            }
+        )
+    }
 
     private func navigateToSection(for anchor: String) {
         switch anchor {
@@ -20,24 +38,23 @@ struct ControlCenterWindowView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ControlCenterTopBar(sidebarWidth: sidebarWidth)
-
-            HStack(spacing: 0) {
+        HStack(spacing: 0) {
+            if context.isSidebarVisible {
                 ControlCenterSidebarView(sidebarWidth: sidebarWidth)
                     .spotlightAnchor("ccSidebar")
                 Divider()
-                if context.selectedSection == .overview || context.selectedSection == .settings {
+            }
+
+            if !selectedSection.supportsInspector || !context.isInspectorVisible {
+                ControlCenterSectionHostView()
+                    .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HSplitView {
                     ControlCenterSectionHostView()
                         .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    HSplitView {
-                        ControlCenterSectionHostView()
-                            .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
 
-                        ControlCenterInspectorView()
-                            .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
-                    }
+                    ControlCenterInspectorView()
+                        .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
                 }
             }
         }
@@ -57,6 +74,75 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    context.toggleSidebar()
+                } label: {
+                    Image(systemName: "sidebar.leading")
+                }
+                .help(
+                    context.isSidebarVisible
+                        ? "app.command.hide_sidebar".localized
+                        : "app.command.show_sidebar".localized
+                )
+                .accessibilityLabel(
+                    context.isSidebarVisible
+                        ? "app.command.hide_sidebar".localized
+                        : "app.command.show_sidebar".localized
+                )
+            }
+
+            ToolbarItem(placement: .principal) {
+                Text(selectedSection.title)
+                    .font(.headline)
+            }
+
+            ToolbarItem(placement: .automatic) {
+                TextField(
+                    L10n.App.ControlCenter.searchPlaceholder.localized,
+                    text: searchQuery
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+                .focused($isSearchFocused)
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                if selectedSection.supportsInspector {
+                    Button {
+                        context.toggleInspector()
+                    } label: {
+                        Image(systemName: "sidebar.trailing")
+                    }
+                    .help(
+                        context.isInspectorVisible
+                            ? "app.command.hide_inspector".localized
+                            : "app.command.show_inspector".localized
+                    )
+                    .accessibilityLabel(
+                        context.isInspectorVisible
+                            ? "app.command.hide_inspector".localized
+                            : "app.command.show_inspector".localized
+                    )
+                }
+
+                Button {
+                    core.triggerRefresh()
+                } label: {
+                    Label(L10n.Common.refresh.localized, systemImage: "arrow.clockwise")
+                }
+                .help(L10n.App.Settings.Action.refreshNow.localized)
+                .disabled(core.isRefreshing)
+
+                Button(L10n.App.ControlCenter.upgradeAll.localized) {
+                    context.presentUpgradeSheet(in: .controlCenter)
+                    context.selectedSection = .updates
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(core.outdatedPackages.isEmpty)
+            }
+        }
         .sheet(
             isPresented: Binding(
                 get: { context.showUpgradeSheet && context.upgradeSheetHost == .controlCenter },
@@ -83,6 +169,9 @@ struct ControlCenterWindowView: View {
         .onChange(of: context.selectedSection) { newSection in
             context.alignInspectorSelection(for: newSection)
         }
+        .onChange(of: context.controlCenterSearchFocusToken) { _ in
+            isSearchFocused = true
+        }
         .onAppear {
             context.alignInspectorSelection(for: context.selectedSection)
             if core.hasCompletedOnboarding {
@@ -94,121 +183,6 @@ struct ControlCenterWindowView: View {
                 }
             }
         }
-        .ignoresSafeArea(.all, edges: .top)
-    }
-}
-
-private struct ControlCenterTopBar: View {
-    @EnvironmentObject private var context: ControlCenterContext
-    @ObservedObject private var core = HelmCore.shared
-    @Environment(\.colorScheme) private var colorScheme
-    let sidebarWidth: CGFloat
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Color.clear
-                .frame(width: sidebarWidth)
-
-            Divider()
-
-            HStack(spacing: 12) {
-                Text((context.selectedSection ?? .overview).title)
-                    .font(.headline.weight(.semibold))
-
-                Spacer(minLength: 20)
-
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                    TextField(
-                        L10n.App.ControlCenter.searchPlaceholder.localized,
-                        text: Binding(
-                            get: { context.searchQuery },
-                            set: { newValue in
-                                context.searchQuery = newValue
-                                core.searchText = newValue
-                                if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    context.selectedSection = .packages
-                                }
-                            }
-                        )
-                    )
-                    .textFieldStyle(.plain)
-                    .font(.subheadline)
-
-                    if !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button {
-                            context.searchQuery = ""
-                            core.searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .helmPointer()
-                        .accessibilityLabel(L10n.Common.clear.localized)
-                    }
-
-                    if core.isSearching {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .frame(width: 300)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(HelmTheme.surfacePanel)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
-                        )
-                )
-
-                Button {
-                    core.triggerRefresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(HelmIconButtonStyle())
-                .disabled(core.isRefreshing)
-                .helmPointer(enabled: !core.isRefreshing)
-                .accessibilityLabel(L10n.App.Settings.Action.refreshNow.localized)
-
-                Button(L10n.App.ControlCenter.upgradeAll.localized) {
-                    context.presentUpgradeSheet(in: .controlCenter)
-                    context.selectedSection = .updates
-                }
-                .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled(core.outdatedPackages.isEmpty)
-                .helmPointer(enabled: !core.outdatedPackages.isEmpty)
-            }
-            .padding(.horizontal, 14)
-        }
-        .frame(height: 52)
-        .background(
-            HStack(spacing: 0) {
-                ControlCenterTopBarSidebarSurface(colorScheme: colorScheme)
-                    .frame(width: sidebarWidth)
-                Divider()
-                Rectangle()
-                    .fill(HelmTheme.surfaceBase)
-            }
-        )
-        .overlay(
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: sidebarWidth, height: 1)
-                Rectangle()
-                    .fill(HelmTheme.statusRail)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 1)
-            }
-            .frame(height: 1),
-            alignment: .bottom
-        )
     }
 }
 
@@ -274,10 +248,10 @@ private struct ControlCenterSidebarView: View {
 
             HStack(spacing: 8) {
                 ControlCenterFooterRouteButton(
-                    isSelected: context.selectedSection == .settings,
+                    isSelected: false,
                     accessibilityLabel: ControlCenterSection.settings.title,
                     action: {
-                    context.selectedSection = .settings
+                        HelmApplicationWindowCommands.openSettings()
                     }
                 ) {
                     Label(ControlCenterSection.settings.title, systemImage: ControlCenterSection.settings.icon)
@@ -374,27 +348,6 @@ private struct ControlCenterSidebarSurface: View {
     }
 }
 
-private struct ControlCenterTopBarSidebarSurface: View {
-    let colorScheme: ColorScheme
-
-    var body: some View {
-        ZStack {
-            Rectangle().fill(HelmTheme.surfacePanel)
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            ControlCenterSidebarGradientPalette.topCapTopColor(for: colorScheme),
-                            ControlCenterSidebarGradientPalette.topColor(for: colorScheme)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        }
-    }
-}
-
 private enum ControlCenterSidebarGradientPalette {
     static func topColor(for colorScheme: ColorScheme) -> Color {
         if colorScheme == .dark {
@@ -408,13 +361,6 @@ private enum ControlCenterSidebarGradientPalette {
             return HelmTheme.surfaceBase.opacity(0.15)
         }
         return HelmTheme.surfacePanel.opacity(0.96)
-    }
-
-    static func topCapTopColor(for colorScheme: ColorScheme) -> Color {
-        if colorScheme == .dark {
-            return HelmTheme.blue900.opacity(0.32)
-        }
-        return HelmTheme.blue700.opacity(0.14)
     }
 }
 

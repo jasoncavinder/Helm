@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private let core = HelmCore.shared
     private let appUpdate = AppUpdateCoordinator.shared
-    private let controlCenterContext = ControlCenterContext()
+    let controlCenterContext = ControlCenterContext()
     private let notificationCenter = UNUserNotificationCenter.current()
     private var hasObservedInFlightTasks = false
     private var announcedTimeoutPromptIds: Set<String> = []
@@ -44,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let contentView = RedesignPopoverView(onOpenControlCenter: { [weak self] in
             self?.openControlCenter()
             self?.closePanel()
+        }, onOpenSettings: { [weak self] in
+            self?.closePanel()
+            HelmApplicationWindowCommands.openSettings()
         })
         .environmentObject(controlCenterContext)
         .background(VisualEffect().ignoresSafeArea())
@@ -114,9 +117,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         openControlCenter()
     }
 
-    func openSettingsFromApplicationMenu() {
-        controlCenterContext.selectedSection = .settings
+    func selectSectionFromApplicationMenu(_ section: ControlCenterSection) {
+        controlCenterContext.select(section)
         openControlCenter()
+    }
+
+    func toggleSidebarFromApplicationMenu() {
+        openControlCenter()
+        controlCenterContext.toggleSidebar()
+    }
+
+    func toggleInspectorFromApplicationMenu() {
+        openControlCenter()
+        controlCenterContext.toggleInspector()
+    }
+
+    func focusSearchFromApplicationMenu() {
+        focusControlCenterSearch()
+    }
+
+    func refreshFromApplicationMenu() {
+        core.triggerRefresh()
     }
 
     private func handlePanelLocalEvent(_ event: NSEvent) -> NSEvent? {
@@ -601,24 +622,12 @@ private extension AppDelegate {
         menu.addItem(upgradeItem)
         upgradeAllMenuItem = upgradeItem
 
-        let settingsItem = NSMenuItem(title: L10n.Common.settings.localized, action: nil, keyEquivalent: "")
-        let settingsMenu = NSMenu()
-        let basicSettingsItem = NSMenuItem(
-            title: "app.overlay.settings.title".localized,
-            action: #selector(openQuickSettingsFromMenu),
-            keyEquivalent: ""
-        )
-        basicSettingsItem.target = self
-        settingsMenu.addItem(basicSettingsItem)
-
-        let advancedSettingsItem = NSMenuItem(
-            title: "app.overlay.settings.open_advanced".localized,
+        let settingsItem = NSMenuItem(
+            title: L10n.Common.settings.localized,
             action: #selector(openAdvancedSettingsFromMenu),
-            keyEquivalent: ""
+            keyEquivalent: ","
         )
-        advancedSettingsItem.target = self
-        settingsMenu.addItem(advancedSettingsItem)
-        settingsItem.submenu = settingsMenu
+        settingsItem.target = self
         menu.addItem(settingsItem)
         settingsMenuItem = settingsItem
 
@@ -714,13 +723,9 @@ private extension AppDelegate {
         openControlCenter()
     }
 
-    @objc func openQuickSettingsFromMenu() {
-        openPopoverOverlay(.quickSettings)
-    }
-
-    @objc func openAdvancedSettingsFromMenu() {
-        controlCenterContext.selectedSection = .settings
-        openControlCenter()
+    @MainActor @objc func openAdvancedSettingsFromMenu() {
+        closePanel()
+        HelmApplicationWindowCommands.openSettings()
     }
 
     @objc func openUpgradeAllFromMenu() {
