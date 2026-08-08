@@ -78,6 +78,7 @@ jobs:
         id: build_variant
         run: |
           set -euo pipefail
+          mkdir -p "$PWD/apps/macos-ui/Generated"
           OUTPUT_ROOT="$PWD/build/all-variants" \
           VARIANT="${{ matrix.variant }}" \
           TAG_NAME="$TAG_NAME" \
