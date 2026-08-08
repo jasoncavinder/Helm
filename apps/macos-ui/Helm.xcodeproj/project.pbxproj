@@ -78,6 +78,11 @@
 		Q200000000000000000000001 /* WayfinderPresentationProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000001 /* WayfinderPresentationProjection.swift */; };
 		Q200000000000000000000002 /* WayfinderPresentationProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000001 /* WayfinderPresentationProjection.swift */; };
 		Q200000000000000000000003 /* WayfinderPresentationProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */; };
+		W200000000000000000000001 /* EnvironmentBriefProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000001 /* EnvironmentBriefProjection.swift */; };
+		W200000000000000000000002 /* EnvironmentBriefProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000001 /* EnvironmentBriefProjection.swift */; };
+		W200000000000000000000003 /* EnvironmentBriefProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */; };
+		X200000000000000000000001 /* HelmCore+EnvironmentBrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */; };
+		X200000000000000000000002 /* HelmOverviewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = X100000000000000000000002 /* HelmOverviewState.swift */; };
 		R200000000000000000000001 /* WayfinderCourseIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */; };
 		S200000000000000000000001 /* ControlCenterSearchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = S100000000000000000000001 /* ControlCenterSearchBridge.swift */; };
 		S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = S100000000000000000000001 /* ControlCenterSearchBridge.swift */; };
@@ -187,6 +192,10 @@
 		P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSparkleUpdateCoordinator.swift; sourceTree = "<group>"; };
 		Q100000000000000000000001 /* WayfinderPresentationProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjection.swift; sourceTree = "<group>"; };
 		Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjectionTests.swift; sourceTree = "<group>"; };
+		W100000000000000000000001 /* EnvironmentBriefProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjection.swift; sourceTree = "<group>"; };
+		W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjectionTests.swift; sourceTree = "<group>"; };
+		X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+EnvironmentBrief.swift"; sourceTree = "<group>"; };
+		X100000000000000000000002 /* HelmOverviewState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmOverviewState.swift; sourceTree = "<group>"; };
 		R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderCourseIndicatorView.swift; sourceTree = "<group>"; };
 		S100000000000000000000001 /* ControlCenterSearchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSearchBridge.swift; sourceTree = "<group>"; };
 		S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSearchBridgeTests.swift; sourceTree = "<group>"; };
@@ -273,12 +282,15 @@
 				D10000000000000000000005 /* HelmCore+Fetching.swift */,
 				D10000000000000000000007 /* HelmCore+Settings.swift */,
 				D10000000000000000000011 /* HelmCore+ManagerPriority.swift */,
+				X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */,
+				X100000000000000000000002 /* HelmOverviewState.swift */,
 				C10000000000000000000003 /* UpgradePreviewPlanner.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
 				K100000000000000000000001 /* SupportRedactor.swift */,
 				B10000000000000000000017 /* L10n.swift */,
 				G10000000000000000000001 /* L10n+App.swift */,
+				W100000000000000000000001 /* EnvironmentBriefProjection.swift */,
 				Q100000000000000000000001 /* WayfinderPresentationProjection.swift */,
 			);
 			path = Core;
@@ -435,6 +447,7 @@
 		C10000000000000000000006 /* HelmTests */ = {
 			isa = PBXGroup;
 			children = (
+				W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */,
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
 				S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */,
 				T100000000000000000000002 /* SettingsOpeningBridgeTests.swift */,
@@ -655,6 +668,9 @@
 				G20000000000000000000001 /* L10n+App.swift in Sources */,
 				G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */,
 				G20000000000000000000003 /* AppDelegate+StatusBadge.swift in Sources */,
+				W200000000000000000000001 /* EnvironmentBriefProjection.swift in Sources */,
+				X200000000000000000000001 /* HelmCore+EnvironmentBrief.swift in Sources */,
+				X200000000000000000000002 /* HelmOverviewState.swift in Sources */,
 				Q200000000000000000000001 /* WayfinderPresentationProjection.swift in Sources */,
 				R200000000000000000000001 /* WayfinderCourseIndicatorView.swift in Sources */,
 			);
@@ -677,6 +693,8 @@
 				K200000000000000000000002 /* SupportRedactor.swift in Sources */,
 				K200000000000000000000003 /* SupportRedactorTests.swift in Sources */,
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
+				W200000000000000000000002 /* EnvironmentBriefProjection.swift in Sources */,
+				W200000000000000000000003 /* EnvironmentBriefProjectionTests.swift in Sources */,
 				Q200000000000000000000002 /* WayfinderPresentationProjection.swift in Sources */,
 				Q200000000000000000000003 /* WayfinderPresentationProjectionTests.swift in Sources */,
 			);

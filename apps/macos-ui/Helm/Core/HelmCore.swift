@@ -692,69 +692,6 @@ struct PackageUninstallPreview: Codable {
     let competingConfidence: Double?
 }
 
-final class HelmOverviewState: ObservableObject {
-    @Published private(set) var wayfinderProjection: WayfinderPresentationProjection = .initial
-    @Published private(set) var aggregateHealth: OperationalHealth = .healthy
-    @Published private(set) var failedTaskCount: Int = 0
-    @Published private(set) var runningTaskCount: Int = 0
-    @Published private(set) var outdatedPackagesCount: Int = 0
-    @Published private(set) var isRefreshing: Bool = false
-    @Published private(set) var visibleManagers: [ManagerInfo] = []
-    @Published private(set) var outdatedCountByManager: [String: Int] = [:]
-    @Published private(set) var managerHealthById: [String: OperationalHealth] = [:]
-    @Published private(set) var recentTasksTop10: [TaskItem] = []
-    @Published private(set) var runningTasksTop4: [TaskItem] = []
-    @Published private(set) var popoverManagerRows: [ManagerInfo] = []
-
-    func apply(
-        wayfinderInput: WayfinderProjectionInput,
-        failedTaskCount: Int,
-        runningTaskCount: Int,
-        outdatedPackagesCount: Int,
-        isRefreshing: Bool,
-        visibleManagers: [ManagerInfo],
-        outdatedCountByManager: [String: Int],
-        managerHealthById: [String: OperationalHealth],
-        recentTasksTop10: [TaskItem],
-        runningTasksTop4: [TaskItem],
-        popoverManagerRows: [ManagerInfo]
-    ) {
-        let nextProjection = WayfinderProjectionProjector.project(
-            wayfinderInput,
-            replacing: wayfinderProjection
-        )
-        if nextProjection != wayfinderProjection {
-            wayfinderProjection = nextProjection
-        }
-        aggregateHealth = Self.operationalHealth(for: nextProjection.content.condition)
-        self.failedTaskCount = failedTaskCount
-        self.runningTaskCount = runningTaskCount
-        self.outdatedPackagesCount = outdatedPackagesCount
-        self.isRefreshing = isRefreshing
-        self.visibleManagers = visibleManagers
-        self.outdatedCountByManager = outdatedCountByManager
-        self.managerHealthById = managerHealthById
-        self.recentTasksTop10 = recentTasksTop10
-        self.runningTasksTop4 = runningTasksTop4
-        self.popoverManagerRows = popoverManagerRows
-    }
-
-    private static func operationalHealth(
-        for condition: WayfinderCondition
-    ) -> OperationalHealth {
-        switch condition {
-        case .healthy:
-            return .healthy
-        case .activeWork, .refreshing:
-            return .running
-        case .failedOrInterrupted:
-            return .error
-        case .approvalRequired, .actionableFinding, .updatesReady, .serviceUnavailable:
-            return .attention
-        }
-    }
-}
-
 final class HelmManagersState: ObservableObject {
     @Published private(set) var authoritativeManagers: [ManagerInfo] = []
     @Published private(set) var standardManagers: [ManagerInfo] = []
@@ -1621,8 +1558,16 @@ final class HelmCore: ObservableObject {
             isRefreshing: isRefreshing
         )
 
+        let implementedManagers = ManagerInfo.all.filter { manager in
+            managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
+        }
+        let environmentBriefInput = makeEnvironmentBriefInput(
+            intendedManagers: implementedManagers
+        )
+
         overviewState.apply(
             wayfinderInput: wayfinderInput,
+            environmentBriefInput: environmentBriefInput,
             failedTaskCount: failedTaskCount,
             runningTaskCount: runningTaskCount,
             outdatedPackagesCount: outdatedPackages.count,
@@ -1635,9 +1580,6 @@ final class HelmCore: ObservableObject {
             popoverManagerRows: popoverManagerRows
         )
 
-        let implementedManagers = ManagerInfo.all.filter { manager in
-            managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
-        }
         managersState.apply(
             authoritativeManagers: sortedManagersByPriority(
                 implementedManagers.filter { $0.authority == .authoritative }

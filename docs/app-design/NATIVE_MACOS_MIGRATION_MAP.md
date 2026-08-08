@@ -225,6 +225,11 @@ Validation:
 - Shell <1 s p95, first personalized result and complete brief budgets.
 - No mutation/network assertions through core integration tests.
 
+Implementation checkpoint:
+
+- The read-only Environment Brief model and revision-aware projection are wired to existing authoritative manager-status and detection-task snapshots.
+- Contract coverage includes current, partial, cached/offline, and service-failure states plus JSON field/enum alignment; first-run presentation fixtures, state restoration, setup-session/receipt mapping, and route replacement remain open.
+
 Rollback/incremental strategy:
 
 - Feature flag new first-run route for synthetic/dev profiles.
@@ -631,7 +636,7 @@ These are bounded implementation questions, not blockers to planning closure:
 | NME-19-06 | Build bounded AppKit focus bridge | Resolve current Tab key-loop gap without custom focus fork | FKA forward/reverse traversal and restoration |
 | NME-19-07 | Decide Settings pane primitive on macOS 11+ | Native scene/pane behavior and accessory activation | Single instance, pane size, localization, VoiceOver |
 | NME-19-08 | Add deterministic UI state-fixture seam | Presentation-only fixtures from versioned payloads | No production execution impact; screenshot repeatability |
-| NME-19-09 | Map Project WOW schemas to Dashboard/Activity presentation models | No duplicate view-owned workflow states | Contract fixtures for partial/offline/interrupted/receipt |
+| NME-19-09 | Extend the Environment Brief foundation into setup-session/receipt Dashboard and Activity models | No duplicate view-owned workflow states; preserve the existing read-only brief projection | Contract fixtures for first-run restoration, interrupted sessions, and receipts |
 | NME-19-10 | Define local timing signposts | FUR/CRS/search/progress without telemetry transport | Repeatable local measurements and no sensitive payloads |
 
 ## Migration Completion Rule
