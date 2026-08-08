@@ -37,6 +37,13 @@ struct ControlCenterWindowView: View {
         }
     }
 
+    private func deferInspectorAlignment(for section: ControlCenterSection?) {
+        DispatchQueue.main.async {
+            guard context.selectedSection == section else { return }
+            context.alignInspectorSelection(for: section)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             if context.isSidebarVisible {
@@ -96,7 +103,7 @@ struct ControlCenterWindowView: View {
                 )
             }
 
-            ToolbarItem(placement: .automatic) {
+            ToolbarItem(placement: .primaryAction) {
                 ControlCenterToolbarSearchField(
                     text: searchQuery,
                     placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
@@ -172,10 +179,10 @@ struct ControlCenterWindowView: View {
             navigateToSection(for: step.targetAnchor)
         }
         .onChange(of: context.selectedSection) { newSection in
-            context.alignInspectorSelection(for: newSection)
+            deferInspectorAlignment(for: newSection)
         }
         .onAppear {
-            context.alignInspectorSelection(for: context.selectedSection)
+            deferInspectorAlignment(for: context.selectedSection)
             if core.hasCompletedOnboarding {
                 core.triggerRefresh()
             }
