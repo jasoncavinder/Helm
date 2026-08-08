@@ -1,10 +1,10 @@
 # v0.19 Experience Direction Proposal
 
-Status: **Round 2, iteration 3 proposed; converging on Wayfinder**
+Status: **Approved: Original Wayfinder**
 
 Decision owner: project owner
 
-Implementation effect: none until this experience direction is explicitly approved
+Implementation effect: approved implementation input for the incremental v0.19-v0.22 migration
 
 ## Why Round 1 was reset
 
@@ -57,7 +57,7 @@ Primary workspace:
 
 **Environment** is contextual infrastructure rather than a fifth peer workflow. It lives persistently at the sidebar foot and opens source/manager coverage, provenance, policy, and repair detail when needed.
 
-This proposal intentionally reopens the currently approved Health/Updates/Packages/Activity/Sources IA. That contract remains authoritative until the owner approves this replacement and the source-of-truth IA is amended.
+Original Wayfinder and this workspace model are now approved. `NATIVE_MACOS_INFORMATION_ARCHITECTURE.md`, `NATIVE_MACOS_EXPERIENCE.md`, and the migration map carry the canonical implementation contract; legacy destination names remain migration aliases only.
 
 ## Iteration 3: Wayfinder convergence
 
@@ -68,6 +68,8 @@ Wayfinder is the strongest foundation because it balances macOS familiarity, nav
 | **Original** | The iteration 1 Wayfinder unchanged | Best overall balance and strongest visual presence | Hero may be slightly oversized for routine use |
 | **Quieter** | Smaller hero, softer boundaries, unboxed route and findings | Most native, calm, and spacious | Can feel passive and leaves less obvious grouping |
 | **Focused** | Compact hero, Plan summary, denser route, explicit row actions | Clearest operational hierarchy | Less distinctive and more dashboard-like |
+
+**Decision:** Original Wayfinder is the production foundation for both Dashboard and popover. Quieter and Focused remain rejected comparison artifacts. A compact Plan-at-a-glance summary may appear contextually when a real actionable plan exists, but it does not replace Original's hero, route, or composition.
 
 ### Dashboard: Original
 
@@ -107,6 +109,22 @@ Wayfinder is the strongest foundation because it balances macOS familiarity, nav
 
 The Original popover remains the richest ambient summary. Quieter shifts toward a low-chrome status panel. Focused treats the popover as a next-action surface. All retain `Open Dashboard`, `Find software…`, and `Check again` as the only persistent operational commands; Settings/About/Quit remain quiet utilities.
 
+## Course Indicator contract
+
+The circular instrument in Original Wayfinder is the **Course Indicator**, a functional representation of Helm's highest-priority environment state. It is not decoration, a synthetic health score, or a percentage unless the active operation provides a trustworthy denominator.
+
+| Mode | Ring behavior | Center content | Required adjacent explanation |
+|---|---|---|---|
+| Healthy/current | Complete Sea Glass course ring | Helm mark and `On course` | Freshness and coverage summary |
+| Updates ready | Attention segment without implied percentage | Ready count | What is ready and `Review Plan` |
+| Determinate work | True completed/total progress | Current authority stage or percentage | Current step, total progress, and Activity route |
+| Indeterminate work | System-standard indeterminate course motion | Current stage symbol | What Helm is checking or waiting for |
+| Approval required | Paused/open ring | Authorization symbol | Consequence and approval action |
+| Failed/interrupted | Broken semantic-red ring | Failure symbol | Unchanged state, evidence, and recovery action |
+| Cached/partial/offline | Muted or dashed incomplete ring | Cached/partial symbol | Freshness, missing coverage, and retry/defer behavior |
+
+Dashboard and popover consume the same prioritized state projection. The Course Indicator never independently recomputes manager health or operation progress in SwiftUI. Text and symbols carry the meaning without color; VoiceOver exposes state, value when determinate, freshness, and the primary action. Indeterminate motion stops under Reduce Motion, increased contrast strengthens boundaries, and Reduce Transparency preserves legibility.
+
 ## Shared workflow direction
 
 ![Wayfinder Plan workflow](renders/dashboard-plan-light.png)
@@ -141,13 +159,13 @@ Briefing and Atlas remain recorded in Git history and the renderer as useful exp
 | Understand manager/source state | Environment | Infrastructure remains discoverable without dominating daily work |
 | Complete Project WOW first run | Dashboard hero + environment route | Environment Brief becomes the populated Dashboard rather than a disposable wizard result |
 
-## Review questions
+## Implementation handoff
 
-1. Which Dashboard should be the production foundation: **Original**, **Quieter**, or **Focused**?
-2. Which popover should be the production foundation?
-3. Is there one specific refinement worth carrying into Original rather than selecting a variation wholesale?
-4. Is Environment discoverable enough at the sidebar foot?
-5. Which element would you remove before implementation begins?
+1. Treat Original Wayfinder as the shell and visual foundation.
+2. Implement the shared Dashboard/popover state projection before animating the Course Indicator.
+3. Preserve native window, sidebar, command, focus, selection, appearance, and accessibility behavior ahead of pixel matching.
+4. Validate minimum and expanded widths plus healthy, attention, approval, active, failure, cached/partial, and offline fixtures before broad migration.
+5. Keep Quieter, Focused, Briefing, and Atlas as non-shipping comparison evidence, not additional themes or user-selectable layouts.
 
 ## Decision log
 
@@ -157,6 +175,6 @@ Briefing and Atlas remain recorded in Git history and the renderer as useful exp
 | 2026-08-07 | Round 1 B/C | Rejected | Skins over the same existing layout | Remove from active review |
 | 2026-08-07 | Round 2.1: Navigator / Wayfinder | Positive direction | Two-surface, job-first structural rethink | Explore a few more compositions |
 | 2026-08-07 | Round 2.2: Wayfinder / Briefing / Atlas | Wayfinder favored | Best balance of native familiarity, scale, and identity | Compare minor Wayfinder refinements |
-| Pending | Round 2.3: Original / Quieter / Focused | Proposed | Matched light/dark convergence comparison | Owner decision |
+| 2026-08-07 | Round 2.3: Original / Quieter / Focused | Original Wayfinder approved | Best overall balance; Course Indicator adds truthful dynamic value | Canonical contract alignment and incremental implementation |
 
 If approved, the next proposal round will cover minimum-width Dashboard behavior, healthy/failure/partial/offline states, contextual detail presentation, Settings, and accessibility appearance variants before production styling begins.

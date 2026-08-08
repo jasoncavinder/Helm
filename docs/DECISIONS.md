@@ -892,7 +892,7 @@ Deliver the work incrementally:
 **Relationship to existing design work:**
 
 - Project WOW remains the internal first-run value initiative; the Native Mac Experience initiative owns the quality of its macOS presentation.
-- The approved Control Center destinations are Health, Updates, Packages, Activity, and Sources. Settings is a separate window/scene, diagnostics is contextual, and search is command-based.
+- The v0.18 planning destinations were Health, Updates, Packages, Activity, and Sources; Decision 045 supersedes that model for production implementation.
 - Repository artifact closure does not constitute human validation. The owner-run moderated study remains required before v0.20 workflow sign-off and v0.22 UI lock.
 - The earlier app redesign and `docs/ui/` artifacts remain the implemented baseline and research input.
 - Earlier restrictions that limited redesign to visual changes or prohibited layout/interaction changes no longer constrain pre-1.0 design work.
@@ -951,6 +951,36 @@ Publish direct-channel stable releases as unchanneled Sparkle items and beta/rel
 - Sparkle channels provide native feed filtering without separate updater implementations or mutable feed URL preferences.
 - Keeping stable and prerelease items together preserves one canonical signed feed while preventing RC publication from displacing the public stable path.
 - A default-off preference makes prerelease risk an informed user choice and keeps existing installations on stable behavior.
+
+---
+## Decision 045 — Original Wayfinder Is the Native Experience Direction
+
+**Decision:**
+Adopt Original Wayfinder as Helm's production Dashboard and status-item popover foundation.
+
+Helm has exactly two operational interfaces: one unified status-item popover and the Dashboard window. Dashboard, Plan, Library, and Activity are peer workspaces. Environment remains persistently discoverable at the sidebar foot and opens contextual manager/source coverage, provenance, policy, and repair detail. Settings remains a separate macOS scene; sheets and alerts remain bounded system presentations.
+
+The circular **Course Indicator** is a functional rendering of the highest-priority environment state shared by Dashboard and popover. It is not a synthetic health score. Determinate progress is permitted only when service/core supplies trustworthy completed/total values; otherwise the indicator uses semantic healthy, updates-ready, indeterminate-work, approval, failure/interruption, or cached/partial/offline modes with adjacent text.
+
+**Consequences:**
+
+- `Control Center` becomes `Dashboard` in new product copy.
+- `Health` becomes Dashboard state rather than a destination.
+- `Updates` becomes Plan for Helm's reviewed authority-ordered workflow.
+- `Packages` becomes Library at workspace level because apps and toolchains are also represented.
+- `Sources` becomes contextual Environment; manager and source remain precise domain terms in detail.
+- Legacy destination names remain compatibility aliases only during incremental migration.
+- Quieter, Focused, Briefing, and Atlas remain non-shipping design evidence, not themes or user-selectable layouts.
+- SwiftUI renders supplied state and progress but does not recompute aggregate health, authority order, planning, or terminal truth.
+
+**Rationale:**
+
+- Wayfinder best balances familiar macOS navigation, long-term workspace scale, and distinctive Helm identity.
+- One dominant truth, one next action, and progressive disclosure reduce interpretation without hiding safety evidence.
+- A truthful Course Indicator gives Helm a recognizable dynamic instrument without inventing an opaque score.
+- A unified popover removes the duplicate right-click information architecture while preserving fast commands and active-work continuity.
+
+Canonical detail: `docs/app-design/NATIVE_MACOS_INFORMATION_ARCHITECTURE.md`, `docs/app-design/proposals/v019-visual-direction/EXPERIENCE_ARCHITECTURE.md`, and `docs/app-design/proposals/v019-visual-direction/README.md`.
 
 ---
 ## Summary

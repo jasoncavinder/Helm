@@ -1,6 +1,6 @@
 # Navigator Experience Architecture
 
-Status: proposed companion contract for Round 2 visual review
+Status: approved Original Wayfinder implementation contract
 
 ## Surface contract
 
@@ -95,6 +95,18 @@ Only one state owns the hero and popover primary action:
 
 Lower-priority state remains available in `Needs you`, Activity, or the environment route without competing for the primary action.
 
+## Course Indicator
+
+Original Wayfinder's circular Course Indicator renders the single state selected by the priority model above. Dashboard and popover use one shared revisioned projection containing:
+
+- semantic mode: healthy, updates-ready, determinate-work, indeterminate-work, approval, failed/interrupted, or cached/partial/offline
+- accessible title and explanation
+- freshness and coverage context
+- primary action/deep link
+- optional backend-owned completed/total progress and current authority stage
+
+The presentation layer may interpolate a supplied determinate value, but it must not manufacture a composite health score, infer progress from elapsed time, or combine unrelated manager counts into a percentage. Updates-ready uses a semantic attention segment and explicit count, not a completion arc. Indeterminate activity uses a system-equivalent motion with a static reduced-motion alternative. Failure, approval, and partial-data modes change symbol and ring treatment as well as color.
+
 ## Terminology
 
 - `Control Center` becomes `Dashboard` in product copy.
@@ -103,4 +115,4 @@ Lower-priority state remains available in `Needs you`, Activity, or the environm
 - `Sources` becomes contextual `Environment`; manager and source remain precise domain terms in detail.
 - `Health` is a state communicated by Dashboard rather than a navigation destination.
 
-These terminology changes are proposal-only until owner approval and localization planning.
+These terminology changes are approved for incremental implementation and require canonical/mirrored locale parity as production strings are introduced.

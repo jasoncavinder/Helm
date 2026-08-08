@@ -25,7 +25,7 @@ The moderated study is an explicit **owner-run closure checkpoint**. Repository 
 
 1. Can people identify Helm's current condition and next action within 10 seconds?
 2. Do people predict that Settings is in the App menu and diagnostics is attached to failed work?
-3. Does the approved Health/Updates/Packages/Activity/Sources IA match task expectations better than the grouped alternative?
+3. Does the approved Original Wayfinder Dashboard/Plan/Library/Activity plus contextual Environment model match task expectations?
 4. Can first-time users explain what Helm inspected, changed, did not change, and needs permission/network access?
 5. Can people distinguish recommendation, reviewed plan, applied action, verification, and Action Receipt?
 6. Can users recover from partial manager failure, failed verification, interruption, and limited rollback without unsafe assumptions?
@@ -141,7 +141,7 @@ Prompt:
 
 Observe:
 
-- Activity versus Health findability.
+- Activity versus Dashboard findability.
 - Applied versus verified distinction.
 - Before/after and rollback-limit comprehension.
 - Retry Verification, Restore, Keep, and diagnostics interpretation.
@@ -160,7 +160,7 @@ Prompt:
 
 Observe:
 
-- Finds Sources and active provenance.
+- Finds Environment and active provenance.
 - Understands policy blocked versus permission blocked.
 - Uses instance/context commands and acknowledgment.
 - Finds persistent/default preference in Settings only when appropriate.

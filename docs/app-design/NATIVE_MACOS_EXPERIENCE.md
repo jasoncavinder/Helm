@@ -1,8 +1,8 @@
 # Native Mac Experience Initiative
 
-Status: approved internal direction; v0.18 design-definition artifact closure complete; runtime migration deferred
+Status: approved Original Wayfinder direction; incremental runtime migration staged for v0.19-v0.22
 Scope: Pre-1.0 product, interaction, and visual design maturation for the macOS app
-Last updated: 2026-08-04
+Last updated: 2026-08-07
 
 ## 1. Objective
 
@@ -23,7 +23,7 @@ Approved v0.18 artifact set:
 - `NATIVE_MACOS_RESEARCH_VALIDATION.md`
 - `NATIVE_MACOS_MIGRATION_MAP.md`
 
-The approved target uses Health, Updates, Packages, Activity, and Sources. Settings is a separate macOS window/scene, diagnostics is contextual, and search is command-based. No production UI behavior is changed by this artifact closure.
+The approved Original Wayfinder target uses Dashboard, Plan, Library, and Activity as peer workspaces with Environment as persistent contextual infrastructure. The status-item popover and Dashboard are the only operational interfaces. Settings is a separate macOS window/scene, diagnostics is contextual, and search is command-based. The Course Indicator communicates the highest-priority environment state without inventing a composite score. No production UI behavior changes until the incremental migration implements these contracts.
 
 ## 2. Product Standard
 
@@ -38,7 +38,7 @@ Helm should feel:
 - **Responsive** — cached or partial value appears immediately; background work never makes the app feel frozen.
 - **Accessible** — keyboard, VoiceOver, increased contrast, reduced motion, localization, and text expansion are design inputs rather than final checks.
 
-The goal is not to imitate a specific Apple app or chase an annual visual fashion. Helm should use system conventions and controls wherever they fit, add custom identity only where it improves comprehension, and preserve compatibility with the current macOS 11+ deployment baseline through availability-aware enhancement.
+The goal is not to imitate a specific Apple app or chase an annual visual fashion. Helm should use system conventions and controls wherever they fit, add custom identity only where it improves comprehension, and preserve compatibility with the macOS 13 Ventura deployment baseline through availability-aware enhancement.
 
 ## 3. Why a Broader Initiative Is Required
 
@@ -82,7 +82,7 @@ Do not turn every datum into a card. Use tables, lists, outlines, grouped forms,
 Each surface must have one obvious primary purpose:
 
 - the menu bar popover answers whether attention is needed and offers a short path to act
-- the Control Center supports inspection, planning, execution, and recovery
+- the Dashboard supports inspection, planning, execution, and recovery
 - Settings contains infrequently changed preferences, not operational work
 - sheets contain bounded decisions; inspectors contain selection context
 
@@ -121,30 +121,33 @@ Required direction:
 
 - show cached health immediately and update progressively
 - prioritize one current condition over a grid of competing metrics
-- expose the most likely action and active work without reproducing the Control Center
-- use a standard menu or popover behavior based on interaction needs, with predictable dismissal and focus behavior
-- keep right-click/context commands consistent with application-menu commands
+- expose the most likely action and active work without reproducing the Dashboard
+- use one predictable popover for left- and right-click status-item activation, with predictable dismissal and focus behavior
+- keep utility commands consistent with application-menu commands
 - avoid embedding full settings, long diagnostics, or deep package management in the popover
 
-### 5.2 Control Center
+### 5.2 Dashboard
 
-The Control Center is Helm's primary working window.
+The Dashboard is Helm's primary working window and uses the approved Original Wayfinder composition.
 
 Required direction:
 
 - use a native window/titlebar/toolbar hierarchy with resizable content and sensible minimums
-- reassess the six-section sidebar against actual user tasks and frequency
+- use Dashboard, Plan, Library, and Activity as labeled sidebar workspaces
+- keep Environment persistently discoverable at the sidebar foot as contextual manager/source infrastructure
 - support show/hide sidebar behavior and preserve the user's window configuration
-- use a content list or table plus inspector when users compare many packages, managers, updates, or tasks
+- avoid a permanent inspector on Dashboard; reveal contextual trailing detail after selection where comparison requires it
+- use a content list/table plus contextual detail when users compare many software identities, managers, plan steps, or tasks
 - keep global search, refresh, and plan actions in predictable command locations
-- prevent the inspector from becoming an unstructured second application
+- prevent contextual detail from becoming an unstructured second application
 - allow large displays to reveal context without forcing modal navigation
+- use one shared Course Indicator projection in Dashboard and popover; determinate progress requires backend-owned completed/total values
 
 ### 5.3 Settings
 
 Settings should behave as a standard macOS Settings window or scene reachable through the application menu and Command-Comma.
 
-Operational actions such as refresh, repair, inspect diagnostics, or run updates should live in the Control Center. Settings should contain durable preferences such as schedule, manager policy, update behavior, appearance/density choices, CLI integration, and support/diagnostic configuration.
+Operational actions such as refresh, repair, inspect diagnostics, or run a Plan should live in the Dashboard. Settings should contain durable preferences such as schedule, manager policy, update behavior, appearance/density choices, CLI integration, and support/diagnostic configuration.
 
 ### 5.4 First run
 
@@ -166,15 +169,15 @@ Notifications are reserved for meaningful state changes when Helm is not frontmo
 
 ### Product and workflow design
 
-- Validate the highest-frequency jobs: check health, understand updates, run a safe plan, install a package, diagnose a failure, and manage a tool source.
+- Validate the highest-frequency jobs: determine environment state, understand updates, run a safe Plan, find/manage software through Library, diagnose a failure, and manage Environment sources.
 - Remove steps and duplicated entry points that do not improve safety.
 - Define progressive disclosure for novice, returning, and expert users.
 
 ### Information architecture
 
-- Validate and preserve the approved Health, Updates, Packages, Activity, and Sources destination model while keeping Settings separate.
+- Implement and preserve the approved Dashboard, Plan, Library, Activity, and contextual Environment model while keeping Settings separate.
 - Define what belongs in list content, the inspector, a sheet, Settings, or a dedicated detail view.
-- Standardize navigation and deep-link behavior across popover, notifications, menus, and Control Center.
+- Standardize navigation and deep-link behavior across popover, notifications, menus, and Dashboard.
 
 ### macOS application model
 
@@ -241,7 +244,7 @@ Deliverables:
 - current-experience audit with screenshots and a custom-versus-native component inventory
 - task-based human-research protocol and expert cognitive-walkthrough baseline; owner-run participant sessions remain a later checkpoint
 - approved experience principles, information-architecture options, and platform-pattern decisions
-- low- and high-fidelity prototypes for the menu bar surface, Control Center, Settings, and Project WOW first run
+- low- and high-fidelity prototypes for the menu bar surface, Dashboard, Settings, and Project WOW first run
 - state matrix covering loading, success, empty, partial, failure, offline, blocked, and recovery states
 - accessibility and performance budgets
 - migration map that permits incremental delivery without duplicating business logic
@@ -258,6 +261,7 @@ Exit gate:
 Deliverables:
 
 - native window, titlebar, toolbar, menu-command, sidebar/split-view, selection, and focus foundations
+- approved Original Wayfinder shell and shared Course Indicator state projection
 - standard semantic component layer and retirement plan for redundant custom controls
 - Settings window/scene architecture with Command-Comma behavior
 - window restoration, resizing, activation, and multi-display behavior
@@ -274,12 +278,12 @@ Exit gate:
 
 Deliverables:
 
-- redesigned Health, Updates, Packages, Activity, Sources, search-command, inspector, and contextual-diagnostics workflows
+- redesigned Dashboard, Plan, Library, Activity, Environment, search-command, contextual-detail, and diagnostics workflows
 - native list/table/outline patterns where comparison and density matter
 - simplified action hierarchy and contextual commands
 - continuous plan -> execution -> verification -> recovery presentation
 - complete content-design pass for labels, empty states, errors, policy blocks, provenance, and authority
-- revised menu bar triage surface connected cleanly to Control Center context
+- revised unified status-item popover connected cleanly to Dashboard context
 
 Exit gate:
 
