@@ -45,25 +45,20 @@ struct ControlCenterWindowView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            if context.isSidebarVisible {
-                ControlCenterSidebarView(sidebarWidth: sidebarWidth)
-                    .spotlightAnchor("ccSidebar")
-                Divider()
-            }
-
-            if !selectedSection.supportsInspector || !context.isInspectorVisible {
-                ControlCenterSectionHostView()
-                    .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                HSplitView {
-                    ControlCenterSectionHostView()
-                        .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
-
-                    ControlCenterInspectorView()
-                        .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
-                }
-            }
+        ControlCenterSplitViewBridge(
+            isInspectorPresented: selectedSection.supportsInspector && context.isInspectorVisible,
+            contentMinimumThickness: sidebarWidth + 400
+        ) {
+            ControlCenterHostedContentView(
+                context: context,
+                walkthrough: walkthrough,
+                sidebarWidth: sidebarWidth
+            )
+        } inspector: {
+            ControlCenterHostedInspectorView(
+                context: context,
+                walkthrough: walkthrough
+            )
         }
         .frame(minWidth: 860, minHeight: 600)
         .background(
@@ -176,11 +171,6 @@ struct ControlCenterWindowView: View {
             RedesignUpgradeSheetView()
                 .environmentObject(context)
         }
-        .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
-            if walkthrough.isControlCenterWalkthroughActive {
-                SpotlightOverlay(manager: walkthrough, anchors: anchors)
-            }
-        }
         .onChange(of: walkthrough.currentStepIndex) { _ in
             guard walkthrough.isControlCenterWalkthroughActive,
                   let step = walkthrough.currentStep else { return }
@@ -200,6 +190,53 @@ struct ControlCenterWindowView: View {
                 }
             }
         }
+    }
+}
+
+private struct ControlCenterHostedContentView: View {
+    @ObservedObject var context: ControlCenterContext
+    @ObservedObject var walkthrough: WalkthroughManager
+    let sidebarWidth: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if context.isSidebarVisible {
+                ControlCenterSidebarView(sidebarWidth: sidebarWidth)
+                    .spotlightAnchor("ccSidebar")
+                Divider()
+            }
+
+            ControlCenterSectionHostView()
+                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .environmentObject(context)
+        .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
+            if walkthrough.isControlCenterWalkthroughActive {
+                SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
+    }
+}
+
+private struct ControlCenterHostedInspectorView: View {
+    let context: ControlCenterContext
+    @ObservedObject var walkthrough: WalkthroughManager
+
+    var body: some View {
+        ControlCenterInspectorView()
+            .frame(
+                minWidth: 220,
+                idealWidth: 280,
+                maxWidth: 320,
+                maxHeight: .infinity
+            )
+            .environmentObject(context)
+            .overlay {
+                if walkthrough.isControlCenterWalkthroughActive {
+                    Color.black.opacity(0.5)
+                        .allowsHitTesting(true)
+                }
+            }
     }
 }
 

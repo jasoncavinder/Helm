@@ -85,6 +85,9 @@
 		T200000000000000000000001 /* SettingsOpeningBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = T100000000000000000000001 /* SettingsOpeningBridge.swift */; };
 		T200000000000000000000002 /* SettingsOpeningBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = T100000000000000000000001 /* SettingsOpeningBridge.swift */; };
 		T200000000000000000000003 /* SettingsOpeningBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T100000000000000000000002 /* SettingsOpeningBridgeTests.swift */; };
+		C38200000000000000000001 /* ControlCenterSplitViewBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38200000000000000000011 /* ControlCenterSplitViewBridge.swift */; };
+		C38200000000000000000002 /* ControlCenterSplitViewBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38200000000000000000011 /* ControlCenterSplitViewBridge.swift */; };
+		C38200000000000000000003 /* ControlCenterSplitViewBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38200000000000000000012 /* ControlCenterSplitViewBridgeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -189,6 +192,8 @@
 		S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSearchBridgeTests.swift; sourceTree = "<group>"; };
 		T100000000000000000000001 /* SettingsOpeningBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsOpeningBridge.swift; sourceTree = "<group>"; };
 		T100000000000000000000002 /* SettingsOpeningBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsOpeningBridgeTests.swift; sourceTree = "<group>"; };
+		C38200000000000000000011 /* ControlCenterSplitViewBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSplitViewBridge.swift; sourceTree = "<group>"; };
+		C38200000000000000000012 /* ControlCenterSplitViewBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSplitViewBridgeTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -288,6 +293,7 @@
 				D10000000000000000000001 /* ControlCenterModels.swift */,
 				S100000000000000000000001 /* ControlCenterSearchBridge.swift */,
 				T100000000000000000000001 /* SettingsOpeningBridge.swift */,
+				C38200000000000000000011 /* ControlCenterSplitViewBridge.swift */,
 				D10000000000000000000003 /* ControlCenterViews.swift */,
 				F10000000000000000000003 /* ControlCenterSectionViews.swift */,
 				R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */,
@@ -432,6 +438,7 @@
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
 				S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */,
 				T100000000000000000000002 /* SettingsOpeningBridgeTests.swift */,
+				C38200000000000000000012 /* ControlCenterSplitViewBridgeTests.swift */,
 				N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */,
 				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
 				K100000000000000000000002 /* SupportRedactorTests.swift */,
@@ -631,6 +638,7 @@
 				D20000000000000000000001 /* ControlCenterModels.swift in Sources */,
 				S200000000000000000000001 /* ControlCenterSearchBridge.swift in Sources */,
 				T200000000000000000000001 /* SettingsOpeningBridge.swift in Sources */,
+				C38200000000000000000001 /* ControlCenterSplitViewBridge.swift in Sources */,
 				D20000000000000000000002 /* HelmButtonStyles.swift in Sources */,
 				D20000000000000000000003 /* ControlCenterViews.swift in Sources */,
 				D20000000000000000000004 /* HelmCore+Dashboard.swift in Sources */,
@@ -659,6 +667,8 @@
 				S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
 				T200000000000000000000002 /* SettingsOpeningBridge.swift in Sources */,
 				T200000000000000000000003 /* SettingsOpeningBridgeTests.swift in Sources */,
+				C38200000000000000000002 /* ControlCenterSplitViewBridge.swift in Sources */,
+				C38200000000000000000003 /* ControlCenterSplitViewBridgeTests.swift in Sources */,
 				N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */,
 				N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */,
 				H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */,
