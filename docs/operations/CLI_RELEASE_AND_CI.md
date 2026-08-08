@@ -2,7 +2,7 @@
 
 Status: Active operational guide  
 Owner: Helm Release Engineering  
-Last Updated: 2026-02-24
+Last Updated: 2026-08-07
 
 ---
 
@@ -447,8 +447,10 @@ gh run view <run-id> --log
 Notes:
 
 - Publish and verify the direct GUI and CLI release before running this workflow. It requires an existing published GitHub release and never creates or publishes a release itself.
+- The release-state precheck runs before repository checkout, so repository-scoped `gh` commands must pass `--repo "$GITHUB_REPOSITORY"` explicitly.
 - Direct channel release workflows are not invoked by this workflow, so their release-event builders cannot be duplicated.
 - MAS/Setapp/business orchestration shares one matrix-driven build path and one helper (`scripts/release/build_unsigned_variant.sh`) keyed by `docs/contracts/distribution-profiles.json`.
+- The workflow definition comes from current `main` but product source comes from the immutable tag. Workflow-level compatibility bootstraps may create ignored generated-output directories before tagged scripts run; they must not rewrite tagged source.
 - MAS/Setapp/business outputs are intentionally unsigned in the baseline orchestration workflow.
 - Unsigned auxiliary artifacts upload only to the workflow run by default. Pass `-f upload_auxiliary_assets=true` only after explicit review to attach them to the existing GitHub release.
 - signed store/vendor pipelines remain a separate follow-up.
@@ -472,6 +474,11 @@ Promotion path after each release:
 - The direct CLI and DMG workflows now classify complete publish-PR JSON snapshots, preserving an open PR with nullable `mergedAt` as a non-red follow-up-required outcome. Hard failures remain unchanged for build, signing, notarization, verification, upload, credential, or PR-creation faults ([#332](https://github.com/jasoncavinder/Helm/issues/332)).
 
 `v0.18.2` reproduced the historical [#332](https://github.com/jasoncavinder/Helm/issues/332) failure before this fix: both artifact workflows opened auto-merge publication PRs and uploaded valid assets, but nullable TSV field collapse made the open PR appear merged before the still-old `main` metadata check. The v0.19 contracts now preserve the documented merge-and-`verify_only=true` handoff state while keeping all earlier build, signing, notarization, upload, credential, or PR-creation failures blocking.
+
+`v0.19.0-rc.1` closeout promoted two auxiliary-release lessons into the permanent workflow contract:
+
+- The checkout-free published-release precheck must provide explicit repository context. PR [#367](https://github.com/jasoncavinder/Helm/pull/367) added `--repo "$GITHUB_REPOSITORY"` and contract coverage after the optional variant matrix failed before checkout.
+- Clean tag checkouts do not contain ignored `apps/macos-ui/Generated/` output. PR [#368](https://github.com/jasoncavinder/Helm/pull/368) made the renderer create parent directories for future tags, while PR [#369](https://github.com/jasoncavinder/Helm/pull/369) added a workflow-level bootstrap so the already-immutable `v0.19.0-rc.1` tag could build without retagging or source mutation.
 
 ---
 

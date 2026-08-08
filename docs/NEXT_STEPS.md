@@ -11,16 +11,16 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.1 manager/updater integration and release-candidate validation
+v0.19.0-rc.1 published-candidate validation and v0.19.x implementation
 ```
 
 Focus:
-- validate the prepared `v0.19.0-rc.1` source without tagging or publishing until the protected integration path and explicit release authorization are complete
+- validate the published opt-in `v0.19.0-rc.1` candidate, triaging release blockers and security fixes separately from planned v0.19.x product work
 - begin production `v0.19.x` work from the closed Native Mac Experience and Project WOW contracts
-- maintain release-process hardening guardrails now that `v0.18.2` publication is complete
+- maintain release-process hardening guardrails now that `v0.19.0-rc.1` publication and closeout verification are complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
-- complete the `0.19.x` manager/updater integration: preserve the v0.18 migration-safety baseline while landing npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, explicit beta/RC opt-in with stable-channel isolation, dependency modernization, and the macOS 13 Ventura baseline
+- preserve the published `0.19.0-rc.1` manager/updater baseline: v0.18 migration safety, npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, explicit beta/RC opt-in with stable-channel isolation, dependency modernization, and the macOS 13 Ventura baseline
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
 - retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs
@@ -398,6 +398,9 @@ Current checkpoint:
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
 - latest stable release on `main`: `v0.18.2`
+- latest published prerelease on `main`: `v0.19.0-rc.1`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
+- owner installation validation confirms the signed Developer ID app at `0.19.0-rc.1` build `19000601`; broader RC feedback remains pending and should not be inferred from this single installation
+- post-publication release verification is green for the GUI beta appcast, RC CLI metadata, GitHub prerelease state, and stable/RC coexistence contract
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
