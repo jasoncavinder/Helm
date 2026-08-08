@@ -2,7 +2,7 @@
 
 The Design Lab is a non-shipping SwiftUI executable for rendering reproducible Helm experience proposals. It is deliberately separate from the Xcode application target: proposal code and assets cannot affect production behavior, bundle size, localization, signing, or release artifacts.
 
-From the repository root, render the Dashboard and popover workflow set:
+From the repository root, render the Wayfinder workflow set plus the Briefing and Atlas comparison families:
 
 ```sh
 swift run --package-path tools/design-lab HelmDesignLab \

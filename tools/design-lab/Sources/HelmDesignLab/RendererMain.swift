@@ -48,7 +48,25 @@ struct HelmDesignLab {
       return popover(.attention, scheme: scheme)
     case .popoverActive:
       return popover(.active, scheme: scheme)
+    case .briefingDashboard:
+      return fixedView(BriefingDashboardProposal(), width: 1348, height: 868, scheme: scheme)
+    case .briefingPopover:
+      return fixedView(BriefingPopoverProposal(), width: 456, height: 430, scheme: scheme)
+    case .atlasDashboard:
+      return fixedView(AtlasDashboardProposal(), width: 1348, height: 868, scheme: scheme)
+    case .atlasPopover:
+      return fixedView(AtlasPopoverProposal(), width: 476, height: 410, scheme: scheme)
     }
+  }
+
+  private static func fixedView<Content: View>(
+    _ content: Content,
+    width: CGFloat,
+    height: CGFloat,
+    scheme: ColorScheme
+  ) -> (view: AnyView, width: CGFloat, height: CGFloat) {
+    let view = content.environment(\.colorScheme, scheme)
+    return (AnyView(view), width, height)
   }
 
   private static func dashboard(
