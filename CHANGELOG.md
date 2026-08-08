@@ -6,7 +6,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
-## [0.19.0-rc.1] - 2026-08-06
+## [0.19.0-rc.1] - 2026-08-07
 
 ### Added
 - The Sparkle apps manager now inventories apps in standard system and user application roots, exposes conservative update availability from bounded static HTTPS appcasts, and isolates individual vendor-feed failures.
