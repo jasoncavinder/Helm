@@ -1,6 +1,8 @@
 import Combine
 
 final class HelmOverviewState: ObservableObject {
+    private let environmentBriefFixture = EnvironmentBriefFixtureProvider.active()?.brief
+
     @Published private(set) var wayfinderProjection: WayfinderPresentationProjection = .initial
     @Published private(set) var environmentBrief: EnvironmentBrief?
     @Published private(set) var aggregateHealth: OperationalHealth = .healthy
@@ -36,10 +38,11 @@ final class HelmOverviewState: ObservableObject {
         if nextProjection != wayfinderProjection {
             wayfinderProjection = nextProjection
         }
-        let nextEnvironmentBrief = EnvironmentBriefProjector.project(
-            environmentBriefInput,
-            replacing: environmentBrief
-        )
+        let nextEnvironmentBrief = environmentBriefFixture
+            ?? EnvironmentBriefProjector.project(
+                environmentBriefInput,
+                replacing: environmentBrief
+            )
         if nextEnvironmentBrief != environmentBrief {
             environmentBrief = nextEnvironmentBrief
         }

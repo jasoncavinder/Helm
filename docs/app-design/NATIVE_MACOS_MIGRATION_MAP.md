@@ -228,7 +228,8 @@ Validation:
 Implementation checkpoint:
 
 - The read-only Environment Brief model and revision-aware projection are wired to existing authoritative manager-status and detection-task snapshots.
-- Contract coverage includes current, partial, cached/offline, and service-failure states plus JSON field/enum alignment; first-run presentation fixtures, state restoration, setup-session/receipt mapping, and route replacement remain open.
+- Contract coverage includes current, partial, cached/offline, and service-failure states plus JSON field/enum alignment.
+- Versioned debug-only first-use/current/partial/offline/service-failure fixtures inject through the shared presentation boundary, and persisted legal/discovering/brief state restores against current brief identity/revision while discarding stale manager selection; the feature-gated first-run view, setup-session/receipt mapping, and route replacement remain open.
 
 Rollback/incremental strategy:
 
@@ -635,7 +636,7 @@ These are bounded implementation questions, not blockers to planning closure:
 | NME-19-05 | Define presentation revision/deep-link model | Stable destination + entity/session IDs and focus target | Notification/popover/menu activation under stale data |
 | NME-19-06 | Build bounded AppKit focus bridge | Resolve current Tab key-loop gap without custom focus fork | FKA forward/reverse traversal and restoration |
 | NME-19-07 | Decide Settings pane primitive on macOS 11+ | Native scene/pane behavior and accessory activation | Single instance, pane size, localization, VoiceOver |
-| NME-19-08 | Add deterministic UI state-fixture seam | Presentation-only fixtures from versioned payloads | No production execution impact; screenshot repeatability |
+| NME-19-08 | Extend the deterministic Environment Brief fixture seam into rendered first-run screenshots | Preserve debug-only versioned payload injection with no production execution impact | Appearance/localization screenshot repeatability across all five first-run fixtures |
 | NME-19-09 | Extend the Environment Brief foundation into setup-session/receipt Dashboard and Activity models | No duplicate view-owned workflow states; preserve the existing read-only brief projection | Contract fixtures for first-run restoration, interrupted sessions, and receipts |
 | NME-19-10 | Define local timing signposts | FUR/CRS/search/progress without telemetry transport | Repeatable local measurements and no sensitive payloads |
 

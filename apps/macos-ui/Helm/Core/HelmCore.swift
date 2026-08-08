@@ -836,6 +836,7 @@ final class HelmCore: ObservableObject {
     @Published var helmCliBundledPath: String?
 
     let overviewState = HelmOverviewState()
+    let firstRunPresentationModel = FirstRunPresentationModel()
     let managersState = HelmManagersState()
 
     var timer: Timer?
@@ -1579,6 +1580,14 @@ final class HelmCore: ObservableObject {
             runningTasksTop4: Array(runningTasks.prefix(4)),
             popoverManagerRows: popoverManagerRows
         )
+        if hasCompletedOnboarding && !requiresLicenseTermsAcceptance {
+            firstRunPresentationModel.clear()
+        } else {
+            firstRunPresentationModel.synchronize(
+                currentBrief: overviewState.environmentBrief,
+                requiresLicenseAcceptance: requiresLicenseTermsAcceptance
+            )
+        }
 
         managersState.apply(
             authoritativeManagers: sortedManagersByPriority(
