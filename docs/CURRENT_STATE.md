@@ -8,18 +8,19 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.18.2 is the latest public stable release on `main`**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
+Current documentation baseline: **0.18.2 remains the latest public stable release on `main`**, and **0.19.0-rc.1 is the published opt-in prerelease**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
 
-Implementation baseline: **`0.19.0-rc.1` source preparation on the v0.18.2 lineage**, combining manager/updater reliability, dependency modernization, and the macOS 13 baseline while preserving released migration safety. The broader native-experience and Project WOW implementation remains staged work rather than part of this candidate.
+Implementation baseline: **published `0.19.0-rc.1` validation on the v0.18.2 lineage**, combining manager/updater reliability, dependency modernization, and the macOS 13 baseline while preserving released migration safety. The broader native-experience and Project WOW implementation remains staged work rather than part of this candidate.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.18.2**
-- prepared source candidate: **0.19.0-rc.1** (not tagged or published; public update metadata remains on `v0.18.2`)
+- published opt-in prerelease: **0.19.0-rc.1**, represented by a published GitHub prerelease with signed/notarized GUI artifacts and direct CLI artifacts; GitHub `releases/latest` remains stable-only on `v0.18.2`
 - `v0.18.0` was published on 2026-08-03 and then withdrawn after discovery of a critical SQLite migration defect; its immutable tag is retained for auditability while its release is not publicly distributed.
-- public GUI and CLI update metadata points to the signed `v0.18.2` artifacts.
+- public default-channel GUI appcast and stable CLI metadata remain on signed `v0.18.2` artifacts, while the `beta` appcast item and `latest-rc.json` point to `v0.19.0-rc.1`.
+- owner installation validation confirms `/Applications/Helm.app` is the signed Developer ID build for `0.19.0-rc.1` (`CFBundleVersion` `19000601`); this is one successful owner installation, not broad participant validation.
 - delivered in `v0.18.1`: reconciliation of the known development migration `17` collision before released doctor/repair migrations run, plus prevention of historical DDL replay for already-current databases, preserving package identifiers and user data.
 - delivered in `v0.18.2`: immutable migration identities and definition checksums, fail-closed ledger validation, verified bounded pre-migration backups, debug/release database separation, initialization-error propagation, and migration-compatibility CI/release gates.
 - approved internal product-design planning track: **Project WOW** defines the base Helm first-run value loop and product allocation at `docs/app-design/PROJECT_WOW.md`; its v0.18 machine contracts, bootstrap audit, CLI/TUI contract, native prototype, state matrix, and research protocol are complete planning artifacts, staged implementation/validation follows in `0.19.x`-`0.22.x`, and no related runtime behavior is implemented by this documentation checkpoint

@@ -62,7 +62,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.1 (Manager and Updater Modernization RC)
+## v0.19.0-rc.1 (Manager and Updater Modernization RC, Completed)
 
 ### Scope and Versioning
 
@@ -89,12 +89,20 @@ This checklist is required before creating a release tag on `main`.
 
 ### Protected Integration and Publication
 
-- [ ] Merge the candidate through the protected branch path and rerun required checks from current `main`.
-- [ ] Confirm a fresh successful `Release macOS Canary` after the final workflow/toolchain changes.
-- [ ] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` under explicit maintainer authorization.
-- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.1` or publishing artifacts.
-- [ ] Confirm the published appcast retains `v0.18.2` as the default-channel item and adds `v0.19.0-rc.1` only as the `beta` item.
-- [ ] Complete signed/notarized GUI and direct CLI prerelease publication and post-publication verification.
+- [x] Merge the candidate through the protected branch path and rerun required checks from current `main`.
+- [x] Confirm a fresh successful `Release macOS Canary` after the final workflow/toolchain changes.
+- [x] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` under explicit maintainer authorization.
+- [x] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.1` or publishing artifacts.
+- [x] Confirm the published appcast retains `v0.18.2` as the default-channel item and adds `v0.19.0-rc.1` only as the `beta` item.
+- [x] Complete signed/notarized GUI and direct CLI prerelease publication and post-publication verification.
+
+### Closeout Record
+
+- `v0.19.0-rc.1` is a published GitHub prerelease; `v0.18.2` remains the published non-prerelease returned by `releases/latest`.
+- The direct macOS DMG and CLI release workflows completed successfully, and publication PRs `#364` and `#365` merged the RC CLI metadata and beta appcast/release notes into `main`.
+- `Release Publish Verify`, the Sparkle/appcast checklist, and `scripts/release/runbook.sh verify --tag v0.19.0-rc.1` pass with no open release-publication PRs.
+- The optional all-variant workflow completed after compatibility fixes `#367`-`#369`; its unsigned auxiliary artifacts remain workflow-only by default.
+- Owner installation validation confirms the signed Developer ID app at `0.19.0-rc.1` build `19000601`; this does not claim broader participant validation.
 
 ## v0.18.2 (Final v0.18 Containment Release Gate, Completed)
 
