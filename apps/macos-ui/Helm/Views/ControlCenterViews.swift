@@ -29,14 +29,14 @@ struct ControlCenterWindowView: View {
                 Divider()
                 HSplitView {
                     ControlCenterSectionHostView()
-                        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
 
                     ControlCenterInspectorView()
-                        .frame(minWidth: 260, idealWidth: 280, maxWidth: 320)
+                        .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
                 }
             }
         }
-        .frame(minWidth: 1120, minHeight: 740)
+        .frame(minWidth: 860, minHeight: 600)
         .background(
             LinearGradient(
                 colors: colorScheme == .dark

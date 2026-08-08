@@ -103,6 +103,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
     }
 
+    func openDashboardFromApplicationMenu() {
+        controlCenterContext.navigate(
+            to: WayfinderDeepLink(
+                destination: .dashboard,
+                entityID: nil,
+                focus: .primaryContent
+            )
+        )
+        openControlCenter()
+    }
+
+    func openSettingsFromApplicationMenu() {
+        controlCenterContext.selectedSection = .settings
+        openControlCenter()
+    }
+
     private func handlePanelLocalEvent(_ event: NSEvent) -> NSEvent? {
         guard panel.isVisible else { return event }
 
@@ -197,6 +213,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             .store(in: &cancellables)
 
+        core.overviewState.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateStatusItemAppearance()
+                    self?.resizePopoverIfVisible()
+                }
+            }
+            .store(in: &cancellables)
+
         appUpdate.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -252,19 +278,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private func updateStatusItemAppearance() {
         guard let button = statusItem?.button else { return }
 
-        let outdatedCount = core.outdatedPackages.count
-        let failedTaskCount = core.failedTaskCount
-        let running = core.runningTaskCount > 0 || core.isRefreshing
+        let projection = core.overviewState.wayfinderProjection.content
 
         let anchorTint = menuBaseTint(for: button)
         let badge: StatusBadge?
-        if failedTaskCount > 0 {
+        switch projection.condition {
+        case .approvalRequired, .actionableFinding, .serviceUnavailable:
+            badge = .symbol("!", .systemOrange)
+        case .failedOrInterrupted:
             badge = .symbol("!", .systemRed)
-        } else if outdatedCount > 0 {
-            badge = .count(min(99, outdatedCount), .systemOrange)
-        } else if running {
+        case .activeWork, .refreshing:
             badge = .dot(.systemBlue)
-        } else {
+        case let .updatesReady(count):
+            badge = .count(min(99, count), .systemOrange)
+        case .healthy:
             badge = nil
         }
         button.image = statusItemImage(anchorTint: anchorTint, button: button, badge: badge)
@@ -272,16 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         button.title = ""
         button.imagePosition = .imageOnly
 
-        let statusDescription: String
-        if failedTaskCount > 0 {
-            statusDescription = "app.status_item.error".localized(with: ["count": failedTaskCount])
-        } else if outdatedCount > 0 {
-            statusDescription = "app.status_item.updates".localized(with: ["count": outdatedCount])
-        } else if running {
-            statusDescription = "app.status_item.running".localized
-        } else {
-            statusDescription = "app.status_item.healthy".localized
-        }
+        let statusDescription = projection.title.localized
         button.toolTip = statusDescription
         button.setAccessibilityLabel(statusDescription)
     }
@@ -511,12 +529,13 @@ private extension AppDelegate {
             window.contentViewController = hostingController
             window.autorecalculatesKeyViewLoop = true
             window.isReleasedWhenClosed = false
-            window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
-            window.standardWindowButton(.zoomButton)?.isEnabled = false
-            let fixedSize = NSSize(width: 1120, height: 740)
-            window.minSize = fixedSize
-            window.maxSize = fixedSize
-            window.center()
+            window.minSize = NSSize(width: 860, height: 600)
+            let frameAutosaveName = "HelmDashboardWindow"
+            let restoredFrame = window.setFrameUsingName(frameAutosaveName)
+            window.setFrameAutosaveName(frameAutosaveName)
+            if !restoredFrame {
+                window.center()
+            }
 
             controlCenterWindowController = NSWindowController(window: window)
         }

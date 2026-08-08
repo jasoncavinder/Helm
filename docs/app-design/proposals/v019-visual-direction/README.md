@@ -6,6 +6,8 @@ Decision owner: project owner
 
 Implementation effect: approved implementation input for the incremental v0.19-v0.22 migration
 
+Implementation checkpoint: the first production foundation is active on `dev`. Dashboard, popover, and status item consume one revisioned Wayfinder priority/deep-link projection; backend-owned determinate progress is validated rather than inferred; and the legacy content host now runs in a restored, resizable window presented as Dashboard. This checkpoint does not yet claim the Original Wayfinder visual composition, native workspace sidebar, rendered Course Indicator, or two-interface cleanup is complete.
+
 ## Why Round 1 was reset
 
 The owner preferred Round 1 Direction A's calm native tone, but correctly found that all three directions were skins over substantially the same sidebar/content/inspector shell Helm already has. Round 1 is rejected as an experience direction.

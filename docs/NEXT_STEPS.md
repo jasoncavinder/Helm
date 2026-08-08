@@ -17,6 +17,7 @@ v0.19.0-rc.1 published-candidate validation and v0.19.x implementation
 Focus:
 - validate the published opt-in `v0.19.0-rc.1` candidate, triaging release blockers and security fixes separately from planned v0.19.x product work
 - begin production `v0.19.x` work from the closed Project WOW contracts and approved Original Wayfinder Native Mac Experience handoff
+- continue from the first Original Wayfinder production checkpoint: shared revisioned Dashboard/popover/status projection, semantic Course Indicator modes, stable destination/deep-link bridge, Dashboard naming, and restored/resizable native window hosting are implemented; native workspace composition and the rendered Course Indicator are next
 - maintain release-process hardening guardrails now that `v0.19.0-rc.1` publication and closeout verification are complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
