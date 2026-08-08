@@ -129,6 +129,9 @@ struct RedesignPopoverView: View {
                 SpotlightOverlay(manager: walkthrough, anchors: anchors)
             }
         }
+        .background(
+            HelmSettingsOpeningBridge(router: context.settingsOpenRouter)
+        )
     }
 
     private var popoverBaseContent: some View {

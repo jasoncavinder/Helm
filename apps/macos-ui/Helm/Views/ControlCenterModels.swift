@@ -172,7 +172,8 @@ final class ControlCenterContext: ObservableObject {
     @Published var popoverOverlayRequest: PopoverOverlayRoute?
     @Published var popoverOverlayDismissToken: Int = 0
     @Published var popoverSearchFocusToken: Int = 0
-    @Published var controlCenterSearchFocusToken: Int = 0
+    let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
+    let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isPopoverOverlayVisible: Bool = false
     @Published var suppressWindowBackgroundDragging: Bool = false
     @Published var isSidebarVisible: Bool = true
@@ -190,10 +191,7 @@ final class ControlCenterContext: ObservableObject {
     }
 
     func clearInspectorSelection() {
-        selectedManagerId = nil
-        selectedPackageId = nil
-        selectedTaskId = nil
-        selectedUpgradePlanStepId = nil
+        clearInspectorSelection(except: nil)
     }
 
     func select(_ section: ControlCenterSection) {
@@ -236,36 +234,27 @@ final class ControlCenterContext: ObservableObject {
     }
 
     func alignInspectorSelection(for section: ControlCenterSection?) {
-        guard let section else {
-            clearInspectorSelection()
-            return
-        }
-
-        switch section {
-        case .overview, .settings:
-            clearInspectorSelection()
-        case .updates:
-            let retainedStepId = selectedUpgradePlanStepId
-            clearInspectorSelection()
-            selectedUpgradePlanStepId = retainedStepId
-        case .packages:
-            let retainedPackageId = selectedPackageId
-            clearInspectorSelection()
-            selectedPackageId = retainedPackageId
-        case .tasks:
-            let retainedTaskId = selectedTaskId
-            clearInspectorSelection()
-            selectedTaskId = retainedTaskId
-        case .managers:
-            let retainedManagerId = selectedManagerId
-            clearInspectorSelection()
-            selectedManagerId = retainedManagerId
-        }
+        clearInspectorSelection(except: section)
     }
 
     func requestManagerInstallSheet(for managerId: String) {
         managerInstallSheetRequestManagerId = managerId
         managerInstallSheetRequestToken += 1
+    }
+
+    private func clearInspectorSelection(except section: ControlCenterSection?) {
+        if section != .managers, selectedManagerId != nil {
+            selectedManagerId = nil
+        }
+        if section != .packages, selectedPackageId != nil {
+            selectedPackageId = nil
+        }
+        if section != .tasks, selectedTaskId != nil {
+            selectedTaskId = nil
+        }
+        if section != .updates, selectedUpgradePlanStepId != nil {
+            selectedUpgradePlanStepId = nil
+        }
     }
 }
 
