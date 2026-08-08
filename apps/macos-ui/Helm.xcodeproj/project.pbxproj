@@ -79,6 +79,9 @@
 		Q200000000000000000000002 /* WayfinderPresentationProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000001 /* WayfinderPresentationProjection.swift */; };
 		Q200000000000000000000003 /* WayfinderPresentationProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */; };
 		R200000000000000000000001 /* WayfinderCourseIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */; };
+		S200000000000000000000001 /* ControlCenterSearchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = S100000000000000000000001 /* ControlCenterSearchBridge.swift */; };
+		S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = S100000000000000000000001 /* ControlCenterSearchBridge.swift */; };
+		S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -179,6 +182,8 @@
 		Q100000000000000000000001 /* WayfinderPresentationProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjection.swift; sourceTree = "<group>"; };
 		Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjectionTests.swift; sourceTree = "<group>"; };
 		R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderCourseIndicatorView.swift; sourceTree = "<group>"; };
+		S100000000000000000000001 /* ControlCenterSearchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSearchBridge.swift; sourceTree = "<group>"; };
+		S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterSearchBridgeTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -276,6 +281,7 @@
 				B30000000000000000000002 /* Onboarding */,
 				B30000000000000000000003 /* Walkthrough */,
 				D10000000000000000000001 /* ControlCenterModels.swift */,
+				S100000000000000000000001 /* ControlCenterSearchBridge.swift */,
 				D10000000000000000000003 /* ControlCenterViews.swift */,
 				F10000000000000000000003 /* ControlCenterSectionViews.swift */,
 				R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */,
@@ -418,6 +424,7 @@
 			isa = PBXGroup;
 			children = (
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
+				S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */,
 				N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */,
 				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
 				K100000000000000000000002 /* SupportRedactorTests.swift */,
@@ -615,6 +622,7 @@
 				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
 				D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */,
 				D20000000000000000000001 /* ControlCenterModels.swift in Sources */,
+				S200000000000000000000001 /* ControlCenterSearchBridge.swift in Sources */,
 				D20000000000000000000002 /* HelmButtonStyles.swift in Sources */,
 				D20000000000000000000003 /* ControlCenterViews.swift in Sources */,
 				D20000000000000000000004 /* HelmCore+Dashboard.swift in Sources */,
@@ -639,6 +647,8 @@
 			isa = PBXSourcesBuildPhase;
 			files = (
 				J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */,
+				S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */,
+				S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
 				N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */,
 				N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */,
 				H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */,

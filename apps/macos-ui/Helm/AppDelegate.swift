@@ -388,7 +388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func focusControlCenterSearch() {
         openControlCenter()
-        controlCenterContext.controlCenterSearchFocusToken += 1
+        controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
     }
 
     private func handlePopoverEscape() {

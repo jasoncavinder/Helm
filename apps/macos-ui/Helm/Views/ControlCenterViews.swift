@@ -102,7 +102,7 @@ struct ControlCenterWindowView: View {
                 ControlCenterToolbarSearchField(
                     text: searchQuery,
                     placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
-                    focusToken: context.controlCenterSearchFocusToken
+                    focusRouter: context.controlCenterSearchFocusRouter
                 )
                 .frame(width: 260)
             }
@@ -182,11 +182,13 @@ struct ControlCenterWindowView: View {
     }
 }
 
-private final class ControlCenterNativeSearchField: NSSearchField {
+private final class ControlCenterNativeSearchField: NSSearchField, ControlCenterSearchFocusTarget {
     private var focusRequestPending = false
+    private var focusCompletion: (() -> Void)?
 
-    func requestFocus() {
+    func requestSearchFocus(completion: @escaping () -> Void) {
         focusRequestPending = true
+        focusCompletion = completion
         fulfillFocusRequestIfPossible()
     }
 
@@ -200,6 +202,9 @@ private final class ControlCenterNativeSearchField: NSSearchField {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window?.makeFirstResponder(self) == true else { return }
             self.focusRequestPending = false
+            let completion = self.focusCompletion
+            self.focusCompletion = nil
+            completion?()
         }
     }
 }
@@ -207,10 +212,10 @@ private final class ControlCenterNativeSearchField: NSSearchField {
 private struct ControlCenterToolbarSearchField: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
-    let focusToken: Int
+    let focusRouter: ControlCenterSearchFocusRouter
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(text: $text, focusRouter: focusRouter)
     }
 
     func makeNSView(context: Context) -> ControlCenterNativeSearchField {
@@ -218,6 +223,7 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         searchField.delegate = context.coordinator
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
+        focusRouter.attach(searchField)
         return searchField
     }
 
@@ -227,24 +233,36 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         searchField.setAccessibilityLabel(placeholder)
 
         if searchField.stringValue != text {
-            searchField.stringValue = text
+            context.coordinator.updateGate.applyModelValue {
+                searchField.stringValue = text
+            }
         }
+    }
 
-        guard context.coordinator.handledFocusToken != focusToken else { return }
-        context.coordinator.handledFocusToken = focusToken
-        searchField.requestFocus()
+    static func dismantleNSView(
+        _ searchField: ControlCenterNativeSearchField,
+        coordinator: Coordinator
+    ) {
+        searchField.delegate = nil
+        coordinator.focusRouter?.detach(searchField)
     }
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var text: Binding<String>
-        var handledFocusToken = 0
+        let updateGate = ControlCenterSearchTextUpdateGate()
+        weak var focusRouter: ControlCenterSearchFocusRouter?
 
-        init(text: Binding<String>) {
+        init(text: Binding<String>, focusRouter: ControlCenterSearchFocusRouter) {
             self.text = text
+            self.focusRouter = focusRouter
         }
 
         func controlTextDidChange(_ notification: Notification) {
             guard let searchField = notification.object as? NSSearchField else { return }
+            guard updateGate.shouldPublishControlValue(
+                searchField.stringValue,
+                modelValue: text.wrappedValue
+            ) else { return }
             text.wrappedValue = searchField.stringValue
         }
     }
