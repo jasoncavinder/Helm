@@ -6,6 +6,7 @@ enum WayfinderDestination: String, Codable, Equatable {
     case library
     case activity
     case environment
+    case settings
 }
 
 enum WayfinderFocusTarget: String, Codable, Equatable {
@@ -203,8 +204,8 @@ enum WayfinderProjectionProjector {
                 condition: .serviceUnavailable,
                 titleKey: "app.wayfinder.course.unavailable.title",
                 explanationKey: "app.wayfinder.course.unavailable.explanation",
-                actionTitleKey: "app.wayfinder.action.review_environment",
-                destination: .environment,
+                actionTitleKey: "app.inspector.view_diagnostics",
+                destination: .settings,
                 entityID: nil
             )
         } else {

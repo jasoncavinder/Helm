@@ -139,6 +139,8 @@ extension WayfinderDestination {
             return .tasks
         case .environment:
             return .managers
+        case .settings:
+            return .settings
         }
     }
 }
@@ -194,6 +196,8 @@ final class ControlCenterContext: ObservableObject {
             selectedTaskId = entityID
         case .environment:
             selectedManagerId = entityID
+        case .settings:
+            break
         }
     }
 
