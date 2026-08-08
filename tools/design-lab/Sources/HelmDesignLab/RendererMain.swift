@@ -56,6 +56,22 @@ struct HelmDesignLab {
       return fixedView(AtlasDashboardProposal(), width: 1348, height: 868, scheme: scheme)
     case .atlasPopover:
       return fixedView(AtlasPopoverProposal(), width: 476, height: 410, scheme: scheme)
+    case .wayfinderQuieterDashboard:
+      return fixedView(
+        WayfinderRefinementDashboard(refinement: .quieter), width: 1348, height: 868,
+        scheme: scheme)
+    case .wayfinderQuieterPopover:
+      return fixedView(
+        WayfinderRefinementPopover(refinement: .quieter), width: 456, height: 470,
+        scheme: scheme)
+    case .wayfinderFocusedDashboard:
+      return fixedView(
+        WayfinderRefinementDashboard(refinement: .focused), width: 1348, height: 868,
+        scheme: scheme)
+    case .wayfinderFocusedPopover:
+      return fixedView(
+        WayfinderRefinementPopover(refinement: .focused), width: 456, height: 460,
+        scheme: scheme)
     }
   }
 

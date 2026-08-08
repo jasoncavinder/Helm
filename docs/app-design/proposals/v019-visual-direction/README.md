@@ -1,6 +1,6 @@
 # v0.19 Experience Direction Proposal
 
-Status: **Round 2, iteration 2 proposed; awaiting product-owner review**
+Status: **Round 2, iteration 3 proposed; converging on Wayfinder**
 
 Decision owner: project owner
 
@@ -10,7 +10,7 @@ Implementation effect: none until this experience direction is explicitly approv
 
 The owner preferred Round 1 Direction A's calm native tone, but correctly found that all three directions were skins over substantially the same sidebar/content/inspector shell Helm already has. Round 1 is rejected as an experience direction.
 
-Round 2 starts from Helm's purpose and six release-critical jobs rather than its current views. Iteration 1 established the Navigator thesis. Iteration 2 tests that thesis through three genuinely different compositions rather than three palettes competing over the same layout.
+Round 2 starts from Helm's purpose and six release-critical jobs rather than its current views. Iteration 1 established the Navigator thesis. Iteration 2 tested that thesis through three genuinely different compositions. Owner feedback favored Wayfinder, so iteration 3 narrows the active decision to the original and two restrained refinements.
 
 ## Product thesis: Helm is an environment navigator
 
@@ -59,94 +59,67 @@ Primary workspace:
 
 This proposal intentionally reopens the currently approved Health/Updates/Packages/Activity/Sources IA. That contract remains authoritative until the owner approves this replacement and the source-of-truth IA is amended.
 
-## Iteration 2: three Navigator compositions
+## Iteration 3: Wayfinder convergence
 
-All three families preserve the same product truth, safety model, terminology, and two-interface contract. They vary where attention begins, how navigation scales, and how prominently Helm visualizes the environment.
+Wayfinder is the strongest foundation because it balances macOS familiarity, navigation scale, and Helm identity. This iteration tests only minor changes to hierarchy and density; the information architecture, status semantics, environment route, and two-interface contract remain identical.
 
-| Family | Composition | Strongest quality | Principal tradeoff |
+| Candidate | Refinement | Strength | Risk |
 |---|---|---|---|
-| **Wayfinder** | Native sidebar + broad workspace + contextual content | Most balanced and scalable for frequent use | Closest to a conventional macOS utility shell |
-| **Briefing** | Top workspace switcher + editorial daily brief + course card | Simplest reading order and most approachable check-in | Top navigation has less room as Helm grows |
-| **Atlas** | Compact tool rail + spatial environment map + next-move panel | Most distinctive expression of Helm's cross-manager model | Less conventional; the map must remain useful in healthy/quiet states |
+| **Original** | The iteration 1 Wayfinder unchanged | Best overall balance and strongest visual presence | Hero may be slightly oversized for routine use |
+| **Quieter** | Smaller hero, softer boundaries, unboxed route and findings | Most native, calm, and spacious | Can feel passive and leaves less obvious grouping |
+| **Focused** | Compact hero, Plan summary, denser route, explicit row actions | Clearest operational hierarchy | Less distinctive and more dashboard-like |
 
-These are deliberately ingredient-compatible. For example, an approved direction could combine Wayfinder's labeled navigation, Briefing's editorial hierarchy, and Atlas's environment visualization without inheriting every detail from one family.
+### Dashboard: Original
 
-## Family A: Wayfinder
+![Wayfinder Original Dashboard, light appearance](renders/dashboard-overview-light.png)
 
-Wayfinder is the balanced iteration from the first Navigator proposal. It keeps a labeled native sidebar for long-term scalability while replacing Helm's old metric-led overview with an environment brief.
+![Wayfinder Original Dashboard, dark appearance](renders/dashboard-overview-dark.png)
 
-### Dashboard overview
+### Dashboard: Quieter
 
-![Navigator Dashboard overview, light appearance](renders/dashboard-overview-light.png)
+![Wayfinder Quieter Dashboard, light appearance](renders/wayfinder-quieter-dashboard-light.png)
 
-![Navigator Dashboard overview, dark appearance](renders/dashboard-overview-dark.png)
+![Wayfinder Quieter Dashboard, dark appearance](renders/wayfinder-quieter-dashboard-dark.png)
 
-The overview uses four layers:
+### Dashboard: Focused
 
-1. A distinctive compass state states the single dominant truth and the next action.
-2. The environment route makes Helm's unique system/toolchain/application/package model visible without exposing manager taxonomy.
-3. `Needs you` contains only actionable or explanatory exceptions.
-4. Current activity remains visible without turning the page into a task monitor.
+![Wayfinder Focused Dashboard, light appearance](renders/wayfinder-focused-dashboard-light.png)
 
-Healthy state changes the hero to `Your environment is on course` and removes `Needs you`; it does not display zero-value cards. Failure and approval states replace the hero action while retaining the same geometry.
+![Wayfinder Focused Dashboard, dark appearance](renders/wayfinder-focused-dashboard-dark.png)
 
-### Safe Plan workflow
+### Popover: Original
 
-![Navigator Plan workflow](renders/dashboard-plan-light.png)
+![Wayfinder Original popover, light appearance](renders/popover-attention-light.png)
 
-Plan is a first-class safety object, not an Updates table. It explains execution order, authorization, exclusions, restart expectations, pins, verification, and recovery limits before final confirmation.
+![Wayfinder Original popover, dark appearance](renders/popover-attention-dark.png)
 
-### Unified Library workflow
+### Popover: Quieter
 
-![Navigator Library workflow](renders/dashboard-library-light.png)
+![Wayfinder Quieter popover, light appearance](renders/wayfinder-quieter-popover-light.png)
 
-Library begins with the user's software intent, not a manager choice. Helm returns local and cached matches immediately, explains the recommended source, and progressively enriches remote results. Manager/source detail appears only when it affects a choice.
+![Wayfinder Quieter popover, dark appearance](renders/wayfinder-quieter-popover-dark.png)
 
-### Status-item popover
+### Popover: Focused
 
-![Navigator popover, attention state](renders/popover-attention-light.png)
+![Wayfinder Focused popover, light appearance](renders/wayfinder-focused-popover-light.png)
 
-![Navigator popover, active-work state](renders/popover-active-dark.png)
+![Wayfinder Focused popover, dark appearance](renders/wayfinder-focused-popover-dark.png)
 
-Wayfinder's popover is a deliberate hybrid:
+The Original popover remains the richest ambient summary. Quieter shifts toward a low-chrome status panel. Focused treats the popover as a next-action surface. All retain `Open Dashboard`, `Find software…`, and `Check again` as the only persistent operational commands; Settings/About/Quit remain quiet utilities.
 
-- Avast-like dominant truth, but calm and factual.
-- Docker-like native command rows and keyboard shortcuts.
-- Helm-specific environment route and live task continuity.
-- No manager snapshot, metrics grid, catalog results, nested settings overlay, or separate right-click menu.
+## Shared workflow direction
 
-The hero adapts among healthy, attention, approval, active, and failed states. The route is orientation, not a second dashboard. `Open Dashboard`, `Find software…`, and `Check again` are the only persistent operational commands; Settings/About/Quit remain quiet utility commands.
+![Wayfinder Plan workflow](renders/dashboard-plan-light.png)
 
-## Family B: Briefing
+Plan remains a first-class safety object rather than an Updates table. It explains authority order, authorization, exclusions, restart expectations, verification, and recovery limits before confirmation.
 
-![Briefing Dashboard](renders/briefing-dashboard-light.png)
+![Wayfinder Library workflow](renders/dashboard-library-light.png)
 
-![Briefing popover](renders/briefing-popover-light.png)
+Library continues to begin with software intent rather than manager choice. Local and cached results appear immediately, while source rationale and remote enrichment are disclosed progressively.
 
-Briefing removes the sidebar and adopts a centered native workspace switcher. Its Dashboard reads like a concise daily report: one plain-language conclusion, one prepared next move, a chronological brief, and a persistent course card. Its popover uses the same editorial hierarchy in a more menu-like footprint.
+## Earlier structural exploration
 
-Briefing maximizes immediate comprehension and perceived calm. Its risk is navigation scalability: destinations remain obvious at four items, but future peer workspaces would require stronger restraint or a different overflow model.
-
-## Family C: Atlas
-
-![Atlas Dashboard](renders/atlas-dashboard-light.png)
-
-![Atlas popover](renders/atlas-popover-dark.png)
-
-Atlas makes Helm's environment model the workspace itself. A compact tool rail preserves access to Plan, Library, and Activity; the main canvas shows authority and coverage from System through Toolchains and Applications to Packages; the trailing panel owns the single next move and active exceptions.
-
-Atlas creates the strongest visual identity and clearest explanation of why Helm is more than a package-manager aggregator. Its risk is functional theater: the environment map must support selection, filtering, state comparison, and healthy-state value rather than becoming a decorative home screen.
-
-## Working recommendation
-
-Do not select based on the hero alone. The strongest likely synthesis is:
-
-- Wayfinder's labeled navigation when discoverability and scale matter
-- Briefing's plain-language conclusion and chronological `Today’s brief`
-- Atlas's selectable environment model when ownership, authority, or coverage matters
-- the more compact Briefing popover, with Atlas's route strip available only when it adds state
-
-This synthesis is a hypothesis for review, not a fourth proposal. The goal of this iteration is to identify which structural ingredients feel unmistakably like Helm before converging.
+Briefing and Atlas remain recorded in Git history and the renderer as useful exploration, but they are no longer active candidates. Briefing demonstrated the value of plain-language hierarchy; Atlas demonstrated the value of visualizing environment ownership. Wayfinder absorbs those lessons without adopting their less scalable navigation models.
 
 ## Visual language
 
@@ -170,12 +143,11 @@ This synthesis is a hypothesis for review, not a fourth proposal. The goal of th
 
 ## Review questions
 
-1. Which family has the strongest overall composition: **Wayfinder**, **Briefing**, or **Atlas**?
-2. Which individual ingredients should survive even if their family does not?
-3. Do `Dashboard`, `Plan`, `Library`, and `Activity` match how you think about Helm's common jobs?
-4. Should Environment be a persistent labeled destination, a visual workspace, or contextual infrastructure?
-5. Which popover is closest to the right balance between meaningful state and menu-like speed?
-6. Which element would you remove first from each preferred Dashboard or popover?
+1. Which Dashboard should be the production foundation: **Original**, **Quieter**, or **Focused**?
+2. Which popover should be the production foundation?
+3. Is there one specific refinement worth carrying into Original rather than selecting a variation wholesale?
+4. Is Environment discoverable enough at the sidebar foot?
+5. Which element would you remove before implementation begins?
 
 ## Decision log
 
@@ -184,6 +156,7 @@ This synthesis is a hypothesis for review, not a fourth proposal. The goal of th
 | 2026-08-07 | Round 1 A: Quiet Native | Preferred tone; rejected structure | Calm/native was strongest, but retained the current shell | Reset from first principles |
 | 2026-08-07 | Round 1 B/C | Rejected | Skins over the same existing layout | Remove from active review |
 | 2026-08-07 | Round 2.1: Navigator / Wayfinder | Positive direction | Two-surface, job-first structural rethink | Explore a few more compositions |
-| Pending | Round 2.2: Wayfinder / Briefing / Atlas | Proposed | Compare navigation, reading order, and environment prominence | Owner review |
+| 2026-08-07 | Round 2.2: Wayfinder / Briefing / Atlas | Wayfinder favored | Best balance of native familiarity, scale, and identity | Compare minor Wayfinder refinements |
+| Pending | Round 2.3: Original / Quieter / Focused | Proposed | Matched light/dark convergence comparison | Owner decision |
 
 If approved, the next proposal round will cover minimum-width Dashboard behavior, healthy/failure/partial/offline states, contextual detail presentation, Settings, and accessibility appearance variants before production styling begins.
