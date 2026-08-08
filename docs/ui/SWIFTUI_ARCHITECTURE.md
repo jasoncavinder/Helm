@@ -225,7 +225,7 @@ Uses `SpotlightAnchorKey` preference system with even-odd fill cutout and animat
 | `ControlCenterSection` | overview, updates, packages, tasks, managers, settings |
 | `ManagerAuthority` | authoritative, standard, guarded |
 | `OperationalHealth` | healthy, attention, error, running, notInstalled |
-| `PopoverOverlayRoute` | search, quickSettings, about, confirmQuit |
+| `PopoverOverlayRoute` | search, about, confirmQuit |
 
 ---
 

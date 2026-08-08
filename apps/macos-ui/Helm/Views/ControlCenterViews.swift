@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ControlCenterWindowView: View {
@@ -5,7 +6,6 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var isSearchFocused: Bool
     private let sidebarWidth: CGFloat = 232
 
     private var selectedSection: ControlCenterSection {
@@ -99,13 +99,12 @@ struct ControlCenterWindowView: View {
             }
 
             ToolbarItem(placement: .automatic) {
-                TextField(
-                    L10n.App.ControlCenter.searchPlaceholder.localized,
-                    text: searchQuery
+                ControlCenterToolbarSearchField(
+                    text: searchQuery,
+                    placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
+                    focusToken: context.controlCenterSearchFocusToken
                 )
-                .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
-                .focused($isSearchFocused)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
@@ -169,9 +168,6 @@ struct ControlCenterWindowView: View {
         .onChange(of: context.selectedSection) { newSection in
             context.alignInspectorSelection(for: newSection)
         }
-        .onChange(of: context.controlCenterSearchFocusToken) { _ in
-            isSearchFocused = true
-        }
         .onAppear {
             context.alignInspectorSelection(for: context.selectedSection)
             if core.hasCompletedOnboarding {
@@ -182,6 +178,74 @@ struct ControlCenterWindowView: View {
                     walkthrough.startControlCenterWalkthrough()
                 }
             }
+        }
+    }
+}
+
+private final class ControlCenterNativeSearchField: NSSearchField {
+    private var focusRequestPending = false
+
+    func requestFocus() {
+        focusRequestPending = true
+        fulfillFocusRequestIfPossible()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        fulfillFocusRequestIfPossible()
+    }
+
+    private func fulfillFocusRequestIfPossible() {
+        guard focusRequestPending, window != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window?.makeFirstResponder(self) == true else { return }
+            self.focusRequestPending = false
+        }
+    }
+}
+
+private struct ControlCenterToolbarSearchField: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let focusToken: Int
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> ControlCenterNativeSearchField {
+        let searchField = ControlCenterNativeSearchField()
+        searchField.delegate = context.coordinator
+        searchField.placeholderString = placeholder
+        searchField.setAccessibilityLabel(placeholder)
+        return searchField
+    }
+
+    func updateNSView(_ searchField: ControlCenterNativeSearchField, context: Context) {
+        context.coordinator.text = $text
+        searchField.placeholderString = placeholder
+        searchField.setAccessibilityLabel(placeholder)
+
+        if searchField.stringValue != text {
+            searchField.stringValue = text
+        }
+
+        guard context.coordinator.handledFocusToken != focusToken else { return }
+        context.coordinator.handledFocusToken = focusToken
+        searchField.requestFocus()
+    }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var text: Binding<String>
+        var handledFocusToken = 0
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let searchField = notification.object as? NSSearchField else { return }
+            text.wrappedValue = searchField.stringValue
         }
     }
 }
