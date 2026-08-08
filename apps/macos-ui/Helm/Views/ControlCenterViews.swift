@@ -27,12 +27,17 @@ struct ControlCenterWindowView: View {
                 ControlCenterSidebarView(sidebarWidth: sidebarWidth)
                     .spotlightAnchor("ccSidebar")
                 Divider()
-                HSplitView {
+                if context.selectedSection == .overview || context.selectedSection == .settings {
                     ControlCenterSectionHostView()
                         .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    HSplitView {
+                        ControlCenterSectionHostView()
+                            .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
 
-                    ControlCenterInspectorView()
-                        .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
+                        ControlCenterInspectorView()
+                            .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
+                    }
                 }
             }
         }
@@ -100,83 +105,88 @@ private struct ControlCenterTopBar: View {
     let sidebarWidth: CGFloat
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(L10n.App.Window.controlCenter.localized)
-                .font(.headline.weight(.semibold))
-                .padding(.leading, 72)
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(width: sidebarWidth)
 
-            Spacer(minLength: 20)
+            Divider()
 
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField(
-                    L10n.App.ControlCenter.searchPlaceholder.localized,
-                    text: Binding(
-                        get: { context.searchQuery },
-                        set: { newValue in
-                            context.searchQuery = newValue
-                            core.searchText = newValue
-                            if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                context.selectedSection = .packages
+            HStack(spacing: 12) {
+                Text((context.selectedSection ?? .overview).title)
+                    .font(.headline.weight(.semibold))
+
+                Spacer(minLength: 20)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField(
+                        L10n.App.ControlCenter.searchPlaceholder.localized,
+                        text: Binding(
+                            get: { context.searchQuery },
+                            set: { newValue in
+                                context.searchQuery = newValue
+                                core.searchText = newValue
+                                if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    context.selectedSection = .packages
+                                }
                             }
+                        )
+                    )
+                    .textFieldStyle(.plain)
+                    .font(.subheadline)
+
+                    if !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            context.searchQuery = ""
+                            core.searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
                         }
-                    )
-                )
-                .textFieldStyle(.plain)
-                .font(.subheadline)
-
-                if !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button {
-                        context.searchQuery = ""
-                        core.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                        .buttonStyle(.plain)
+                        .helmPointer()
+                        .accessibilityLabel(L10n.Common.clear.localized)
                     }
-                    .buttonStyle(.plain)
-                    .helmPointer()
-                    .accessibilityLabel(L10n.Common.clear.localized)
+
+                    if core.isSearching {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .frame(width: 300)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(HelmTheme.surfacePanel)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
+                        )
+                )
 
-                if core.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
+                Button {
+                    core.triggerRefresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(width: 336)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(HelmTheme.surfacePanel)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
-                    )
-            )
+                .buttonStyle(HelmIconButtonStyle())
+                .disabled(core.isRefreshing)
+                .helmPointer(enabled: !core.isRefreshing)
+                .accessibilityLabel(L10n.App.Settings.Action.refreshNow.localized)
 
-            Button {
-                core.triggerRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
+                Button(L10n.App.ControlCenter.upgradeAll.localized) {
+                    context.presentUpgradeSheet(in: .controlCenter)
+                    context.selectedSection = .updates
+                }
+                .buttonStyle(HelmPrimaryButtonStyle())
+                .disabled(core.outdatedPackages.isEmpty)
+                .helmPointer(enabled: !core.outdatedPackages.isEmpty)
             }
-            .buttonStyle(HelmIconButtonStyle())
-            .disabled(core.isRefreshing)
-            .helmPointer(enabled: !core.isRefreshing)
-            .accessibilityLabel(L10n.App.Settings.Action.refreshNow.localized)
-
-            Button(L10n.App.ControlCenter.upgradeAll.localized) {
-                context.presentUpgradeSheet(in: .controlCenter)
-                context.selectedSection = .updates
-            }
-            .buttonStyle(HelmPrimaryButtonStyle())
-            .disabled(core.outdatedPackages.isEmpty)
-            .helmPointer(enabled: !core.outdatedPackages.isEmpty)
+            .padding(.horizontal, 14)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 4)
-        .frame(height: 40)
+        .frame(height: 52)
         .background(
             HStack(spacing: 0) {
                 ControlCenterTopBarSidebarSurface(colorScheme: colorScheme)
@@ -204,30 +214,146 @@ private struct ControlCenterTopBar: View {
 
 private struct ControlCenterSidebarView: View {
     @EnvironmentObject private var context: ControlCenterContext
+    @ObservedObject private var localization = LocalizationManager.shared
+    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @Environment(\.colorScheme) private var colorScheme
     let sidebarWidth: CGFloat
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 4) {
-                ForEach(ControlCenterSection.allCases) { section in
-                    ControlCenterSidebarRow(
-                        section: section,
-                        isSelected: (context.selectedSection ?? .overview) == section
-                    ) {
-                        context.selectedSection = section
-                    }
+        VStack(spacing: 0) {
+            HStack(spacing: 11) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [HelmTheme.blue700, HelmTheme.seaGlass],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: "helm")
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("HELM")
+                        .font(.system(.headline, design: .rounded, weight: .bold))
+                        .tracking(1.5)
+                    Text("app.wayfinder.sidebar.tagline".localized)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(HelmTheme.textSecondary)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+
+            List(selection: $context.selectedSection) {
+                Section {
+                    ForEach(ControlCenterSection.wayfinderWorkspaces) { section in
+                        HStack(spacing: 9) {
+                            Label(section.title, systemImage: section.icon)
+                            Spacer()
+                            workspaceBadge(for: section)
+                        }
+                        .tag(section)
+                        .accessibilityLabel(section.title)
+                    }
+                } header: {
+                    Text("app.wayfinder.sidebar.workspace".localized)
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+
+            Divider()
+
+            environmentButton
+
+            HStack(spacing: 8) {
+                Button {
+                    context.selectedSection = .settings
+                } label: {
+                    Label(ControlCenterSection.settings.title, systemImage: ControlCenterSection.settings.icon)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(
+                    context.selectedSection == .settings
+                        ? HelmTheme.blue500
+                        : HelmTheme.textSecondary
+                )
+                .helmPointer()
+
+                Spacer()
+
+                HealthBadgeView(status: overviewState.aggregateHealth)
+            }
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 18)
+            .frame(height: 46)
         }
         .frame(width: sidebarWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(
             ControlCenterSidebarSurface(colorScheme: colorScheme)
         )
+    }
+
+    @ViewBuilder
+    private func workspaceBadge(for section: ControlCenterSection) -> some View {
+        if section == .updates, overviewState.outdatedPackagesCount > 0 {
+            Text("\(overviewState.outdatedPackagesCount)")
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(HelmTheme.surfaceElevated, in: Capsule())
+        } else if section == .tasks, overviewState.runningTaskCount > 0 {
+            Circle()
+                .fill(HelmTheme.seaGlass)
+                .frame(width: 7, height: 7)
+                .accessibilityLabel(L10n.App.Health.running.localized)
+        }
+    }
+
+    private var environmentButton: some View {
+        Button {
+            context.selectedSection = .managers
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: ControlCenterSection.managers.icon)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ControlCenterSection.managers.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(
+                        "app.wayfinder.sidebar.sources_monitored".localized(
+                            with: ["count": "\(overviewState.visibleManagers.count)"]
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundColor(HelmTheme.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(HelmTheme.textSecondary)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(
+            ControlCenterSidebarButtonStyle(
+                isSelected: context.selectedSection == .managers,
+                isHovered: false
+            )
+        )
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .helmPointer()
+        .accessibilityLabel(ControlCenterSection.managers.title)
     }
 }
 
@@ -293,38 +419,6 @@ private enum ControlCenterSidebarGradientPalette {
             return HelmTheme.blue900.opacity(0.32)
         }
         return HelmTheme.blue700.opacity(0.14)
-    }
-}
-
-private struct ControlCenterSidebarRow: View {
-    @ObservedObject private var localization = LocalizationManager.shared
-    let section: ControlCenterSection
-    let isSelected: Bool
-    let onSelect: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
-                Label(section.title, systemImage: section.icon)
-                Spacer()
-            }
-            .font(.subheadline.weight(.medium))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(
-            ControlCenterSidebarButtonStyle(
-                isSelected: isSelected,
-                isHovered: isHovered
-            )
-        )
-        .onHover { isHovered = $0 }
-        .helmPointer()
-        .accessibilityLabel(section.title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

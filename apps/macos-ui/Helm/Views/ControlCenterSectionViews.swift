@@ -13,61 +13,16 @@ struct RedesignOverviewSectionView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(ControlCenterSection.overview.title)
-                            .font(.title2.weight(.semibold))
-                        Text(projection.title.localized)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Button {
+                WayfinderDashboardHero(
+                    projection: projection,
+                    isRefreshing: core.isRefreshing,
+                    onPrimaryAction: {
                         context.navigate(to: projection.primaryAction)
-                    } label: {
-                        HealthBadgeView(status: overviewState.aggregateHealth)
+                    },
+                    onRefresh: {
+                        core.triggerRefresh()
                     }
-                    .buttonStyle(.plain)
-                    .helmPointer()
-                    .help(projection.explanation.localized)
-                    .accessibilityLabel(projection.title.localized)
-                    .accessibilityHint(projection.explanation.localized)
-                }
-
-                HStack(spacing: 14) {
-                    Button {
-                        context.selectedSection = .updates
-                    } label: {
-                        MetricCardView(
-                            title: L10n.App.Popover.pendingUpdates.localized,
-                            value: overviewState.outdatedPackagesCount
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .helmPointer()
-
-                    Button {
-                        context.selectedSection = .overview
-                    } label: {
-                        MetricCardView(
-                            title: L10n.App.Popover.failures.localized,
-                            value: overviewState.failedTaskCount
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .helmPointer()
-
-                    Button {
-                        context.selectedSection = .tasks
-                    } label: {
-                        MetricCardView(
-                            title: L10n.App.Popover.runningTasks.localized,
-                            value: overviewState.runningTaskCount
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .helmPointer()
-                }
+                )
 
                 Text(L10n.App.Overview.managerHealth.localized)
                     .font(.headline)
@@ -558,27 +513,6 @@ struct RedesignUpgradeSheetView: View {
         }
         .padding(20)
         .frame(minWidth: 460)
-    }
-}
-
-struct MetricCardView: View {
-    let title: String
-    let value: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text("\(value)")
-                .font(.title3.monospacedDigit().weight(.semibold))
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .helmCardSurface(cornerRadius: 12)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-        .accessibilityValue("\(value)")
     }
 }
 

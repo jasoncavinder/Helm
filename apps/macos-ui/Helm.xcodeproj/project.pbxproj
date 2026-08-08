@@ -78,6 +78,7 @@
 		Q200000000000000000000001 /* WayfinderPresentationProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000001 /* WayfinderPresentationProjection.swift */; };
 		Q200000000000000000000002 /* WayfinderPresentationProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000001 /* WayfinderPresentationProjection.swift */; };
 		Q200000000000000000000003 /* WayfinderPresentationProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */; };
+		R200000000000000000000001 /* WayfinderCourseIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -177,6 +178,7 @@
 		P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSparkleUpdateCoordinator.swift; sourceTree = "<group>"; };
 		Q100000000000000000000001 /* WayfinderPresentationProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjection.swift; sourceTree = "<group>"; };
 		Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjectionTests.swift; sourceTree = "<group>"; };
+		R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderCourseIndicatorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -276,6 +278,7 @@
 				D10000000000000000000001 /* ControlCenterModels.swift */,
 				D10000000000000000000003 /* ControlCenterViews.swift */,
 				F10000000000000000000003 /* ControlCenterSectionViews.swift */,
+				R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */,
 				B10000000000000000000008 /* DashboardView.swift */,
 				E10000000000000000000001 /* InspectorViews.swift */,
 				F10000000000000000000001 /* PopoverHelpers.swift */,
@@ -629,6 +632,7 @@
 				G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */,
 				G20000000000000000000003 /* AppDelegate+StatusBadge.swift in Sources */,
 				Q200000000000000000000001 /* WayfinderPresentationProjection.swift in Sources */,
+				R200000000000000000000001 /* WayfinderCourseIndicatorView.swift in Sources */,
 			);
 		};
 		C10000000000000000000008 /* Sources */ = {

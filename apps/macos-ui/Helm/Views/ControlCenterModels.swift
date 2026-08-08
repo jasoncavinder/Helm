@@ -10,18 +10,25 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static let wayfinderWorkspaces: [ControlCenterSection] = [
+        .overview,
+        .updates,
+        .packages,
+        .tasks
+    ]
+
     var title: String {
         switch self {
         case .overview:
             return L10n.App.Navigation.dashboard.localized
         case .updates:
-            return L10n.App.Section.updates.localized
+            return "app.wayfinder.destination.plan".localized
         case .packages:
-            return L10n.App.Navigation.packages.localized
+            return "app.wayfinder.destination.library".localized
         case .tasks:
-            return L10n.App.Section.tasks.localized
+            return "app.wayfinder.destination.activity".localized
         case .managers:
-            return L10n.App.Navigation.managers.localized
+            return "app.wayfinder.destination.environment".localized
         case .settings:
             return L10n.App.Settings.Tab.title.localized
         }
@@ -30,15 +37,15 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview:
-            return "speedometer"
+            return "gauge.with.dots.needle.33percent"
         case .updates:
-            return "square.and.arrow.down.on.square"
+            return "point.topleft.down.to.point.bottomright.curvepath"
         case .packages:
-            return "shippingbox.fill"
+            return "square.grid.2x2"
         case .tasks:
-            return "checklist"
+            return "waveform.path.ecg"
         case .managers:
-            return "slider.horizontal.3"
+            return "point.3.connected.trianglepath.dotted"
         case .settings:
             return "gearshape"
         }

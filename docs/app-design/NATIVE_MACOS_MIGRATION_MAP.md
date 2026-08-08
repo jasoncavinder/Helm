@@ -28,6 +28,15 @@ Implementation checkpoint on `dev`:
 - One revisioned Wayfinder projection now owns status priority and semantic Course Indicator mode across Dashboard, popover, and status item. It validates backend-owned determinate progress and otherwise remains indeterminate.
 - Remaining Slice 19.1 work includes the complete standard menu/toolbar surface and manual multi-Space, multi-display, key/inactive, minimize/zoom, and focus validation. Slice 19.2 still owns the native workspace sidebar and selection migration.
 
+### Slice 19.2 implementation checkpoint
+
+- The production shell presents Dashboard, Plan, Library, and Activity as peer rows in a native sidebar `List(selection:)`, with Environment persistent at the sidebar foot and Settings outside the peer workspace list.
+- Existing destination hosts and stable section/deep-link mappings remain in place as the rollback boundary; this checkpoint changes presentation composition rather than business state or routing authority.
+- Dashboard renders Original Wayfinder's Course Indicator from the shared revisioned projection. Determinate progress appears only when that projection contains validated backend-owned progress; all other modes use semantic non-percentage arcs.
+- The indicator carries text, symbol, VoiceOver label/value/hint, increased-contrast treatment, Reduce Transparency treatment, and static Reduce Motion behavior. Color is never the only state signal.
+- Dashboard intentionally suppresses the legacy inspector. Other migrated destinations retain the existing inspector until their contextual-detail contracts are redesigned.
+- Remaining Slice 19.2 work includes selection restoration/focus tests, full keyboard and VoiceOver traversal, sidebar/inspector command behavior, and manual minimum/expanded/key/inactive validation. Destination-specific visual and workflow redesign remains v0.20 work.
+
 Affected files/components:
 
 - `apps/macos-ui/Helm/HelmApp.swift`

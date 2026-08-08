@@ -6,7 +6,7 @@ Decision owner: project owner
 
 Implementation effect: approved implementation input for the incremental v0.19-v0.22 migration
 
-Implementation checkpoint: the first production foundation is active on `dev`. Dashboard, popover, and status item consume one revisioned Wayfinder priority/deep-link projection; backend-owned determinate progress is validated rather than inferred; and the legacy content host now runs in a restored, resizable window presented as Dashboard. This checkpoint does not yet claim the Original Wayfinder visual composition, native workspace sidebar, rendered Course Indicator, or two-interface cleanup is complete.
+Implementation checkpoint: the production foundation is active on `dev`. Dashboard, popover, and status item consume one revisioned Wayfinder priority/deep-link projection; backend-owned determinate progress is validated rather than inferred; and the legacy content host runs in a restored, resizable window presented as Dashboard. The production shell now applies Original Wayfinder's Dashboard/Plan/Library/Activity sidebar composition, persistent Environment route, separate Settings access, and rendered accessible Course Indicator. It does not yet claim destination-specific redesign, complete menu/toolbar and focus behavior, full state-fixture/manual validation, popover visual convergence, or two-interface cleanup is complete.
 
 ## Why Round 1 was reset
 
@@ -179,4 +179,4 @@ Briefing and Atlas remain recorded in Git history and the renderer as useful exp
 | 2026-08-07 | Round 2.2: Wayfinder / Briefing / Atlas | Wayfinder favored | Best balance of native familiarity, scale, and identity | Compare minor Wayfinder refinements |
 | 2026-08-07 | Round 2.3: Original / Quieter / Focused | Original Wayfinder approved | Best overall balance; Course Indicator adds truthful dynamic value | Canonical contract alignment and incremental implementation |
 
-If approved, the next proposal round will cover minimum-width Dashboard behavior, healthy/failure/partial/offline states, contextual detail presentation, Settings, and accessibility appearance variants before production styling begins.
+The next implementation/design-validation round covers minimum-width Dashboard behavior, healthy/failure/partial/offline state fixtures, contextual detail presentation, Settings, popover convergence, and accessibility appearance variants before the production styling and interaction contract is considered complete.
