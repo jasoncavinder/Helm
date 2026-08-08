@@ -1595,7 +1595,6 @@ final class HelmCore: ObservableObject {
             }) ?? false
             return requiresInstallDecision || requiresSetup ? manager.id : nil
         }
-
         let popoverManagerRows = visibleManagers
             .sorted { lhs, rhs in
                 let lhsOutdated = outdatedCountByManager[lhs.id, default: 0]
