@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
     <title>Helm Updates</title>
     <link>https://helmapp.dev/updates/appcast.xml</link>
@@ -9,14 +9,14 @@
       <title>Helm 0.18.2</title>
       <pubDate>Wed, 05 Aug 2026 05:29:50 +0000</pubDate>
       <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.18.2.html</sparkle:releaseNotesLink>
-      <enclosure
-        url="https://github.com/jasoncavinder/Helm/releases/download/v0.18.2/Helm-v0.18.2-macos-universal.dmg"
-        sparkle:version="18002900"
-        sparkle:shortVersionString="0.18.2"
-        sparkle:edSignature="PkshXlXe/7UOSpaSZXn+rs1D6tSxX88abqdoWogSZTPkN2IfhOGP9h6g/fun4jGhJg//s8YZ4gmglapUNj1GAg=="
-         sparkle:minimumSystemVersion="11.0"
-        length="31297100"
-        type="application/octet-stream"/>
+      <enclosure url="https://github.com/jasoncavinder/Helm/releases/download/v0.18.2/Helm-v0.18.2-macos-universal.dmg" sparkle:version="18002900" sparkle:shortVersionString="0.18.2" sparkle:edSignature="PkshXlXe/7UOSpaSZXn+rs1D6tSxX88abqdoWogSZTPkN2IfhOGP9h6g/fun4jGhJg//s8YZ4gmglapUNj1GAg==" sparkle:minimumSystemVersion="11.0" length="31297100" type="application/octet-stream" />
+    </item>
+    <item>
+      <title>Helm 0.19.0-rc.1</title>
+      <pubDate>Sat, 08 Aug 2026 01:42:25 +0000</pubDate>
+      <sparkle:channel>beta</sparkle:channel>
+      <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.19.0-rc.1.html</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.1/Helm-v0.19.0-rc.1-macos-universal.dmg" sparkle:version="19000601" sparkle:shortVersionString="0.19.0-rc.1" sparkle:edSignature="KUFZm3PhveuuFxi/XTZmrWQRCOxPP90fE8k6AFBUrKUuv0oM9bzfQqFVfcnvxthGrHrjcDiCl1IxokDtzbbwBw==" sparkle:minimumSystemVersion="13.0" length="30732315" type="application/octet-stream" />
     </item>
   </channel>
 </rss>

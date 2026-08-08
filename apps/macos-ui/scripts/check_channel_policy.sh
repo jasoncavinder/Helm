@@ -49,6 +49,11 @@ grep -q '^HELM_DISTRIBUTION_CHANNEL = app_store$' "$APP_STORE_OUT"
 grep -q '^HELM_SPARKLE_ENABLED = NO$' "$APP_STORE_OUT"
 grep -q '^HELM_SPARKLE_ALLOW_DOWNGRADES = NO$' "$APP_STORE_OUT"
 
+NESTED_OUT="$TMP_DIR/missing/generated/HelmChannel.xcconfig"
+assert_succeeds "renderer should create a missing output directory" \
+    run_render "$NESTED_OUT" HELM_CHANNEL_PROFILE=app_store
+grep -q '^HELM_DISTRIBUTION_CHANNEL = app_store$' "$NESTED_OUT"
+
 assert_fails "unknown channel profile should fail" \
     run_render "$TMP_DIR/invalid_unknown_profile.xcconfig" \
     HELM_CHANNEL_PROFILE=unknown_profile

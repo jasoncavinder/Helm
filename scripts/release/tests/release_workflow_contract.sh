@@ -38,8 +38,9 @@ reject_pattern() {
 }
 
 expect_pattern 'verify-published-release:' "$ALL_VARIANTS_WORKFLOW" "all-variants workflow must verify an existing release"
-expect_pattern 'gh release view "\$TAG_NAME" --json isDraft' "$ALL_VARIANTS_WORKFLOW" "all-variants workflow must inspect existing release state"
+expect_pattern 'gh release view "\$TAG_NAME" --repo "\$GITHUB_REPOSITORY" --json isDraft' "$ALL_VARIANTS_WORKFLOW" "all-variants workflow must inspect existing release state with explicit repository context"
 expect_pattern 'default: false' "$ALL_VARIANTS_WORKFLOW" "unsigned auxiliary release uploads must default off"
+expect_pattern 'mkdir -p "\$PWD/apps/macos-ui/Generated"' "$ALL_VARIANTS_WORKFLOW" "all-variants workflow must bootstrap generated output for existing tags"
 reject_pattern 'gh release create' "$ALL_VARIANTS_WORKFLOW" "all-variants workflow must not create releases"
 reject_pattern 'release-macos-dmg\.yml' "$ALL_VARIANTS_WORKFLOW" "all-variants workflow must not invoke the DMG builder"
 reject_pattern 'release-cli-direct\.yml' "$ALL_VARIANTS_WORKFLOW" "all-variants workflow must not invoke the CLI builder"
