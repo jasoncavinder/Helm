@@ -243,6 +243,21 @@ Availability caveat:
 
 - `latest-rc.json` is only expected after the first prerelease publication. Until then, stable metadata (`latest.json`) remains the only required endpoint.
 
+Channel ownership:
+
+- GitHub models these as full release (`prerelease=false`) and prerelease
+  (`prerelease=true`); Helm maps those states to stable and RC channels using the
+  tag shape.
+- `vX.Y.Z` owns the stable line: GitHub `releases/latest`, Sparkle `default`, and
+  CLI `latest.json`.
+- `vX.Y.Z-rc.N` owns only the RC line: Sparkle `beta` and CLI
+  `latest-rc.json`. It never owns GitHub `releases/latest`.
+- Stable and RC artifacts and metadata coexist. Updating one channel must not
+  overwrite the other channel's pointer.
+- Sparkle currently stores `default` and `beta` as logical channels in one
+  appcast. A future separate prerelease feed must retain the same stable/RC
+  ownership rather than changing release semantics.
+
 Payload requirements:
 
 - `version` (semver-compatible text)

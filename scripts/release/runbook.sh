@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PREFLIGHT_SCRIPT="${SCRIPT_DIR}/preflight.sh"
+RELEASE_STATE_VALIDATOR="${SCRIPT_DIR}/validate_github_release_state.sh"
 
 usage() {
   cat <<'EOF'
@@ -177,26 +178,26 @@ cmd_publish() {
   phase_info "preflight" "running release preflight for ${tag}"
   "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main --allow-existing-tag
 
-  if gh release view "$tag" >/dev/null 2>&1; then
-    phase_info "publish" "GitHub release already exists for ${tag}"
-    gh release view "$tag" --json url,isDraft,isPrerelease,publishedAt --jq '{url, draft:.isDraft, prerelease:.isPrerelease, published_at:.publishedAt}'
-    return
+  if gh release view "$tag" --json tagName >/dev/null 2>&1; then
+    phase_info "publish" "validating existing GitHub release for ${tag}"
+  else
+    phase_info "publish" "creating GitHub release ${tag}"
+    if is_rc_tag "$tag"; then
+      gh release create "$tag" \
+        --verify-tag \
+        --title "Helm ${tag#v}" \
+        --generate-notes \
+        --prerelease
+    else
+      gh release create "$tag" \
+        --verify-tag \
+        --title "Helm ${tag#v}" \
+        --generate-notes \
+        --latest
+    fi
   fi
 
-  phase_info "publish" "creating GitHub release ${tag}"
-  if is_rc_tag "$tag"; then
-    gh release create "$tag" \
-      --verify-tag \
-      --title "Helm ${tag#v}" \
-      --generate-notes \
-      --prerelease
-  else
-    gh release create "$tag" \
-      --verify-tag \
-      --title "Helm ${tag#v}" \
-      --generate-notes \
-      --latest
-  fi
+  "$RELEASE_STATE_VALIDATOR" --tag "$tag"
 }
 
 release_has_assets() {
@@ -290,9 +291,7 @@ cmd_verify() {
   phase_info "preflight" "running release preflight for ${tag}"
   "${PREFLIGHT_SCRIPT}" --tag "$tag" --allow-non-main --allow-dirty --skip-secrets --skip-workflows --allow-existing-tag --allow-published-metadata
 
-  if ! gh release view "$tag" >/dev/null 2>&1; then
-    fail "GitHub release not found for ${tag}"
-  fi
+  "$RELEASE_STATE_VALIDATOR" --tag "$tag"
 
   if ! git fetch origin --quiet; then
     fail "failed to fetch origin before verification"

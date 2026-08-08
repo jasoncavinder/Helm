@@ -37,7 +37,7 @@ jobs:
     env:
       TAG_NAME: ${{ inputs.tag || github.event.release.tag_name || github.event.inputs.tag }}
       EVENT_NAME: ${{ github.event_name }}
-      EVENT_RELEASE_PRERELEASE: ${{ github.event.release.prerelease || '' }}
+      EVENT_RELEASE_PRERELEASE: ${{ github.event_name == 'release' && (github.event.release.prerelease && 'true' || 'false') || '' }}
       VERIFY_ONLY: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.verify_only == 'true' && 'true' || 'false') || 'false' }}
       WORKFLOW_SHA: ${{ github.workflow_sha }}
       LANG: en_US.UTF-8
@@ -108,10 +108,20 @@ jobs:
           fi
 
       - name: Checkout tag
-        if: ${{ env.VERIFY_ONLY != 'true' }}
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           ref: ${{ env.TAG_NAME }}
+
+      - name: Validate published GitHub release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          args=(--tag "$TAG_NAME")
+          if [ "$EVENT_NAME" = "release" ]; then
+            args+=(--event-prerelease "$EVENT_RELEASE_PRERELEASE")
+          fi
+          scripts/release/validate_github_release_state.sh "${args[@]}"
 
       - name: Record source tag revision
         if: ${{ env.VERIFY_ONLY != 'true' }}

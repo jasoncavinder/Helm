@@ -116,6 +116,16 @@ Branch truth policy:
 - `CLI Update Metadata Drift Guard` skips non-publish refs and enforces stable metadata only on publish-truth refs.
 - prerelease pointer validation (`latest-rc.json`) runs only when that file is present; if present, it must map to the latest published prerelease tag with `channel=rc`.
 
+GitHub release-state policy:
+
+- GitHub's `releases/latest` endpoint is stable-only and must resolve to a
+  published, non-draft, non-prerelease `vX.Y.Z` release.
+- `latest.json` must resolve to that same stable release.
+- `latest-rc.json`, when present, must resolve to the newest published,
+  non-draft GitHub prerelease whose tag matches `vX.Y.Z-rc.N`.
+- Stable and RC releases may be live simultaneously; publishing an RC never
+  moves `releases/latest` or `latest.json`.
+
 Schema:
 
 ```json
@@ -354,9 +364,15 @@ gh run view <run-id> --log
 
 Tag policy used by `release-cli-direct.yml`:
 
-- stable tags: `vX.Y.Z` -> publish `web/public/updates/cli/latest.json`
-- prerelease tags: `vX.Y.Z-rc.N` -> publish `web/public/updates/cli/latest-rc.json`
+- stable tags: `vX.Y.Z` -> require a published GitHub release with
+  `prerelease=false`, require that tag to own `releases/latest`, and publish
+  `web/public/updates/cli/latest.json`
+- prerelease tags: `vX.Y.Z-rc.N` -> require a published GitHub prerelease with
+  `prerelease=true`, require that tag not to own `releases/latest`, and publish
+  `web/public/updates/cli/latest-rc.json`
 - unsupported tag formats are rejected
+- release-event `prerelease` state must match the tag-derived channel; manual and
+  verify-only runs validate the persisted GitHub release state directly
 
 ### 5.5 Interpret Release Workflow Publication Summaries
 
@@ -391,9 +407,12 @@ gh workflow run release-macos-dmg.yml -f tag=vX.Y.Z -f verify_only=true
 It verifies:
 
 - top `appcast.xml` version matches `cli/latest.json` stable version
-- matched stable version maps to a non-draft, non-prerelease GitHub release tag
+- matched stable version maps to the published, non-draft, non-prerelease GitHub
+  release returned by `releases/latest`
 - matching release-notes artifact exists under `web/public/updates/release-notes/<tag>.html`
-- `cli/latest-rc.json` (when present) maps to a non-draft prerelease tag with `channel=rc`
+- appcast `beta` and `cli/latest-rc.json` (when present) map to the same published,
+  non-draft GitHub prerelease with `channel=rc`, and that RC does not own
+  `releases/latest`
 
 Manual trigger:
 
