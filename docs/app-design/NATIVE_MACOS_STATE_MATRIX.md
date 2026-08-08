@@ -1,6 +1,6 @@
 # Native macOS Surface and Workflow State Matrix
 
-Status: approved design-definition baseline aligned with the v0.18 Project WOW schemas in `docs/contracts/first-run/`
+Status: approved Original Wayfinder state baseline aligned with Project WOW schemas in `docs/contracts/first-run/`
 
 ## State Grammar
 
@@ -41,11 +41,25 @@ Canonical presentation terms:
 | Rolled Back | A tested inverse restored and verified the declared pre-action state. | Cancelled, merely retried, or assumed restored. |
 | No Changes | Observation or plan completed without mutation. | Verified improvement. |
 
+## Course Indicator Mapping
+
+The Original Wayfinder Course Indicator consumes the same prioritized state projection as Dashboard and popover. It does not add a second state grammar.
+
+| Projected mode | Canonical states represented | Progress rule |
+|---|---|---|
+| Healthy/current | Healthy, Verified, No Changes with current complete coverage | Complete semantic ring; not a score |
+| Updates ready | Current reviewed Plan contains actionable updates | Attention segment and count; not a percentage |
+| Determinate work | Queued/Running/Applying/Verifying with trustworthy completed/total values | Backend-owned determinate progress only |
+| Indeterminate work | Loading/Refreshing/Running without trustworthy completed/total values | Indeterminate system-equivalent treatment; static under Reduce Motion |
+| Approval required | Permission Blocked at a valid just-in-time approval stage | Paused/open ring plus authorization symbol |
+| Failed/interrupted | Failed, Failed Verification, Interrupted, or actionable recovery | Broken semantic-failure ring plus recovery route |
+| Cached/partial/offline | Cached, Partial, Offline, or Deferred coverage | Muted/dashed incomplete ring plus exact freshness/coverage text |
+
 ## Cross-Surface Matrix
 
 Each cell describes the minimum visible behavior. `N/A` means the state does not belong on that surface and should deep-link elsewhere.
 
-| State | Status item / popover | Health | Updates | Packages | Activity | Sources | Settings | First run / Receipt |
+| State | Status item / popover | Dashboard | Plan | Library | Activity | Environment | Settings | First run / Receipt |
 |---|---|---|---|---|---|---|---|---|
 | Loading | Stable shell; `Starting Helm...` only if no cached condition | Structure and stage label; no zero-value metrics | Plan placeholder and `Building plan` | Table structure and local-cache query state | Activity structure | Source structure and detection stage | Local form renders; saving state is inline | Shell + trust statement + first stage |
 | Cached-first | Condition + age; refresh nonblocking | Cached findings and exact freshness/coverage | Cached plan is review-only until revalidated | Cached package rows usable per contract; age shown | Persisted tasks/receipts visible | Cached source status with age | N/A for local settings | Cached context can seed brief but labeled cached |
@@ -73,7 +87,7 @@ Each cell describes the minimum visible behavior. `N/A` means the state does not
 
 | State | Trigger | Visible contract | Actions | Persistence/recovery | Announcement |
 |---|---|---|---|---|---|
-| Initial loading | Legal gate complete, no useful result | Real Health shell; `Local scan / No changes / No network` | Cancel Scan, Use Cached Results if present | Create/read setup session without mutation | `Local discovery started.` |
+| Initial loading | Legal gate complete, no useful result | Real Dashboard shell; `Local scan / No changes / No network` | Cancel Scan, Use Cached Results if present | Create/read setup session without mutation | `Local discovery started.` |
 | First useful | Stage A or first manager result | Personalized OS/shell/source facts; coverage `n of total` | Use Helm Now, What Helm Checked | Persist stage and result revision | One summary, not every fact |
 | Streaming | Additional manager/package results | Stable sorted groups, freshness and stage | Cancel, inspect finding | Cursor/focus/scroll remain stable | Batch no more often than every 2 seconds |
 | Healthy complete | All intended local scopes succeed, no findings | Complete coverage, No Changes | Use Helm Now, optional Check Now | Session can close with no-change receipt | `Local mapping complete; no action required.` |
@@ -155,8 +169,8 @@ Forbidden:
 - First useful render reserves stable geometry for status, primary action, and selection list.
 - Streaming or polling cannot reset destination, selection, expanded disclosure, filters, sort, scroll anchor, or inspector tab.
 - A removed selected entity produces a nonmodal `No longer available` state and returns focus to the collection; it does not select an unrelated row.
-- Closing Control Center never means Cancel. Cancellation requires an explicit action.
-- A notification deep link revalidates the target and opens the exact Activity/Health context or the nearest valid fallback.
+- Closing Dashboard never means Cancel. Cancellation requires an explicit action.
+- A notification deep link revalidates the target and opens the exact Activity/Dashboard context or the nearest valid fallback.
 - Error banners do not cover the primary content or duplicate an inspector explanation.
 - Healthy and empty states include coverage; zero findings with incomplete coverage is Partial, not Healthy.
 
@@ -164,10 +178,10 @@ Forbidden:
 
 Before v0.22 UI lock, deterministic fixtures must render at least:
 
-- Health: loading, cached refreshing, healthy, partial, policy blocked, offline, failure.
-- Updates: loading, empty, plan ready, stale, running, partial failure, cancelled, failed verification.
-- Packages: local results, remote searching, no results, offline deferred, source partial failure, selected inactive window.
+- Dashboard: loading, cached refreshing, healthy, partial, policy blocked, offline, failure, and every Course Indicator mode.
+- Plan: loading, empty, plan ready, stale, running, partial failure, cancelled, failed verification.
+- Library: local results, remote searching, no results, offline deferred, source partial failure, selected inactive window.
 - Activity: empty, queued, running, cancelling, cancelled, interrupted, verified, failed verification, recovery.
-- Sources: not installed, healthy, disabled, policy blocked, permission blocked, multi-instance attention, setup required, operation progress.
+- Environment: not installed, healthy, disabled, policy blocked, permission blocked, multi-instance attention, setup required, operation progress.
 - First run: first useful, complete, no managers, partial, offline, service failure, plan, confirmation, applying, verifying, receipt variants.
 - Settings: local save success/failure, managed setting, all current locales at narrow and expanded content.

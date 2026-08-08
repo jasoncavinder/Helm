@@ -13,6 +13,12 @@ Status: approved planning handoff for v0.19-v0.22
 
 ## v0.19: Native Foundation and First-Run Value
 
+### Experience Direction Lock
+
+Original Wayfinder is the approved Dashboard and status-item popover direction. The decision, comparison evidence, Course Indicator contract, and implementation handoff are recorded in `docs/app-design/proposals/v019-visual-direction/`. Proposal code remains in the non-shipping `tools/design-lab/` package and cannot enter the application target by implication.
+
+The approved shell uses Dashboard, Plan, Library, and Activity as peer workspaces with Environment at the sidebar foot as persistent contextual infrastructure. Implement the Course Indicator from one shared revisioned Dashboard/popover state projection; never synthesize health or progress in SwiftUI. Validate minimum and expanded window sizes, light/dark and key/inactive states, plus healthy, attention, approval, failure, partial-data, offline, determinate-work, and indeterminate-work fixtures before broad component migration.
+
 ### Slice 19.1: Application command and window foundation
 
 Affected files/components:
@@ -70,7 +76,7 @@ Native primitives:
 
 Dependencies:
 
-- Approved five-destination IA.
+- Approved Original Wayfinder IA.
 - Stable selection IDs and restoration payload.
 
 Boundary risks:
@@ -80,7 +86,7 @@ Boundary risks:
 
 Localization/accessibility:
 
-- Health, Updates, Packages, Activity, Sources labels and shortcuts.
+- Dashboard, Plan, Library, Activity, Environment labels and shortcuts.
 - Arrow/type selection, FKA groups, focus restoration, inactive selection.
 
 Validation:
@@ -169,12 +175,12 @@ Affected files/components:
 
 - Replace `Views/Onboarding/Onboarding*.swift` flow presentation.
 - Retire mandatory launch path in `Views/Walkthrough/*`.
-- Health destination and first-run session presentation.
+- Dashboard destination and first-run session presentation.
 - XPC/FFI presentation models affected by the Project WOW contract commit.
 
 Native primitives:
 
-- Real Control Center shell, grouped list/outline, system progress, legal sheet, contextual help.
+- Real Dashboard shell, grouped list/outline, Course Indicator/system progress, legal sheet, contextual help.
 
 Dependencies:
 
@@ -203,7 +209,7 @@ Rollback/incremental strategy:
 
 ## v0.20: Core Workflow and IA Migration
 
-### Slice 20.1: Health destination and popover triage
+### Slice 20.1: Dashboard state and popover triage
 
 Affected files/components:
 
@@ -214,11 +220,11 @@ Affected files/components:
 Native primitives:
 
 - Constrained status-item panel/popover decision from v0.19 prototype.
-- Native list/status summary and Health finding selection.
+- Native Dashboard status summary, Course Indicator, and finding selection.
 
 Dependencies:
 
-- Five-destination shell and deep-link model.
+- Original Wayfinder shell and deep-link model.
 - Coverage/freshness/finding projections.
 
 Boundary risks:
@@ -236,9 +242,9 @@ Validation:
 Rollback/incremental strategy:
 
 - Replace popover regions from bottom up; retain Open Helm throughout.
-- Feature switch can route status action directly to Control Center if panel activation regresses.
+- Feature switch can route status action directly to Dashboard if panel activation regresses.
 
-### Slice 20.2: Updates reviewed plan
+### Slice 20.2: Plan reviewed workflow
 
 Affected files/components:
 
@@ -269,9 +275,9 @@ Validation:
 
 Rollback/incremental strategy:
 
-- New Updates destination consumes same plan contract; old sheet removed only after parity.
+- New Plan destination consumes the same plan contract; old Updates route/sheet is removed only after parity.
 
-### Slice 20.3: Packages and global search
+### Slice 20.3: Library and global search
 
 Affected files/components:
 
@@ -302,7 +308,7 @@ Validation:
 
 Rollback/incremental strategy:
 
-- New table behind destination route; inspector reuses current action methods until contract migration.
+- New Library table behind the destination route; contextual detail reuses current action methods until contract migration.
 
 ### Slice 20.4: Activity, diagnostics, and workflow continuity
 
@@ -337,7 +343,7 @@ Rollback/incremental strategy:
 
 - Current task IDs map to Activity records; preserve old Tasks route alias until deep links migrate.
 
-### Slice 20.5: Sources and manager lifecycle
+### Slice 20.5: Environment and manager lifecycle
 
 Affected files/components:
 
@@ -372,7 +378,7 @@ Rollback/incremental strategy:
 
 Affected files/components:
 
-- Health/Updates/Activity shared workflow presentation.
+- Dashboard/Plan/Activity shared workflow presentation.
 - First-run plan/progress route replacing later onboarding pages.
 - XPC/FFI contract models from Project WOW package.
 
@@ -602,7 +608,7 @@ These are bounded implementation questions, not blockers to planning closure:
 | NME-19-06 | Build bounded AppKit focus bridge | Resolve current Tab key-loop gap without custom focus fork | FKA forward/reverse traversal and restoration |
 | NME-19-07 | Decide Settings pane primitive on macOS 11+ | Native scene/pane behavior and accessory activation | Single instance, pane size, localization, VoiceOver |
 | NME-19-08 | Add deterministic UI state-fixture seam | Presentation-only fixtures from versioned payloads | No production execution impact; screenshot repeatability |
-| NME-19-09 | Map Project WOW schemas to Health/Activity presentation models | No duplicate view-owned workflow states | Contract fixtures for partial/offline/interrupted/receipt |
+| NME-19-09 | Map Project WOW schemas to Dashboard/Activity presentation models | No duplicate view-owned workflow states | Contract fixtures for partial/offline/interrupted/receipt |
 | NME-19-10 | Define local timing signposts | FUR/CRS/search/progress without telemetry transport | Repeatable local measurements and no sensitive payloads |
 
 ## Migration Completion Rule
