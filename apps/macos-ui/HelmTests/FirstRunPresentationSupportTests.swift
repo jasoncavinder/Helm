@@ -104,6 +104,24 @@ final class FirstRunPresentationSupportTests: XCTestCase {
                 dismissedPreview: true
             )
         )
+        XCTAssertFalse(
+            EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: .preview,
+                fixtureActive: true
+            )
+        )
+        XCTAssertTrue(
+            EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: .preview,
+                fixtureActive: false
+            )
+        )
+        XCTAssertTrue(
+            EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: .enabled,
+                fixtureActive: true
+            )
+        )
     }
 
     func testFixtureSummariesCoverAllRenderedBriefStates() {

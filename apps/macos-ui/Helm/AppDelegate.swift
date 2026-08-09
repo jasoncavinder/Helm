@@ -102,11 +102,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         core.refreshLaunchAtLogin()
         core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: false)
 
-        if core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance {
+        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
+        let fixtureActive = EnvironmentBriefFixtureProvider.active() != nil
+
+        if core.hasCompletedOnboarding
+            && !core.requiresLicenseTermsAcceptance
+            && EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: firstRunMode,
+                fixtureActive: fixtureActive
+            ) {
             core.triggerRefresh()
         }
 
-        if EnvironmentBriefFirstRunConfiguration.mode() == .preview {
+        if firstRunMode == .preview {
             DispatchQueue.main.async { [weak self] in
                 self?.openControlCenter()
             }

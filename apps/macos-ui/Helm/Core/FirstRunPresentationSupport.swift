@@ -197,6 +197,13 @@ enum EnvironmentBriefFirstRunConfiguration {
         }
     }
 
+    static func allowsAutomaticRefresh(
+        mode: EnvironmentBriefFirstRunMode,
+        fixtureActive: Bool
+    ) -> Bool {
+        !(mode == .preview && fixtureActive)
+    }
+
     static func previewAppearance(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> EnvironmentBriefPreviewAppearance {
