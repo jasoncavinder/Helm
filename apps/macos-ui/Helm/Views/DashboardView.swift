@@ -84,7 +84,7 @@ struct RedesignPopoverView: View {
                 )
                 .onAppear {
                     popoverSearchQuery = context.searchQuery
-                    if core.hasCompletedOnboarding {
+                    if core.hasCompletedOnboarding && !core.isRefreshing {
                         core.triggerRefresh()
                     }
                 }

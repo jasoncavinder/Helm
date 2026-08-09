@@ -16,9 +16,9 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .sources:
             return "app.settings.pane.sources"
         case .cli:
-            return "app.settings.cli.section"
+            return "app.settings.section.cli"
         case .support:
-            return "app.settings.support_feedback.section"
+            return "app.settings.section.support_feedback"
         }
     }
 

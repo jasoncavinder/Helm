@@ -1227,25 +1227,34 @@ final class HelmCore: ObservableObject {
         self.lastFullSnapshotRefreshAt = .distantPast
         self.isRefreshing = true
         postAccessibilityAnnouncement(L10n.Common.refresh.localized)
-        service()?.triggerRefresh { success in
+        guard let service = connection?.remoteObjectProxyWithErrorHandler({ [weak self] error in
+            logger.error("triggerRefresh XPC error: \(error.localizedDescription)")
+            self?.completeFailedRefresh(action: "triggerRefresh.xpc")
+        }) as? HelmServiceProtocol else {
+            logger.error("triggerRefresh failed: service unavailable")
+            completeFailedRefresh(action: "triggerRefresh.service_unavailable")
+            return
+        }
+        service.triggerRefresh { success in
             if !success {
                 logger.error("triggerRefresh failed")
-                self.recordLastError(
-                    source: "core",
-                    action: "triggerRefresh",
-                    taskType: "refresh"
-                )
-                DispatchQueue.main.async {
-                    self.isRefreshing = false
-                    self.lastRefreshTrigger = nil
-                    self.completeOnboardingDetectionProgress()
-                    self.postAccessibilityAnnouncement(L10n.Common.error.localized)
-                }
+                self.completeFailedRefresh(action: "triggerRefresh")
             } else {
                 DispatchQueue.main.async {
                     self.triggerFullSnapshotRefresh()
                 }
             }
+        }
+    }
+
+    private func completeFailedRefresh(action: String) {
+        recordLastError(source: "core", action: action, taskType: "refresh")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isRefreshing = false
+            self.lastRefreshTrigger = nil
+            self.completeOnboardingDetectionProgress()
+            self.postAccessibilityAnnouncement(L10n.Common.error.localized)
         }
     }
 

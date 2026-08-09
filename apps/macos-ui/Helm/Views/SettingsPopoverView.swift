@@ -616,11 +616,23 @@ struct SettingsWindowView: View {
     @ObservedObject private var localization = LocalizationManager.shared
     @State private var selectedPane: SettingsPane? = .general
 
+    private var paneSelection: Binding<SettingsPane?> {
+        Binding(
+            get: { selectedPane },
+            set: { newSelection in
+                DispatchQueue.main.async {
+                    guard selectedPane != newSelection else { return }
+                    selectedPane = newSelection
+                }
+            }
+        )
+    }
+
     var body: some View {
         NavigationSplitView {
-            List(SettingsPane.allCases, selection: $selectedPane) { pane in
+            List(SettingsPane.allCases, selection: paneSelection) { pane in
                 Label(pane.title, systemImage: pane.icon)
-                    .tag(Optional(pane))
+                    .tag(pane)
             }
             .navigationTitle(L10n.App.Settings.Tab.title.localized)
             .navigationSplitViewColumnWidth(min: 150, ideal: 180, max: 220)

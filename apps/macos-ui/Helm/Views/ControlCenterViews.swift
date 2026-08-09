@@ -202,7 +202,7 @@ struct ControlCenterWindowView: View {
         }
         .onAppear {
             deferInspectorAlignment(for: context.selectedSection)
-            if core.hasCompletedOnboarding && !presentsFirstRun {
+            if core.hasCompletedOnboarding && !presentsFirstRun && !core.isRefreshing {
                 core.triggerRefresh()
             }
             if !presentsFirstRun && !walkthrough.hasCompletedControlCenterWalkthrough {
