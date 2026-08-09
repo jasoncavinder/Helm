@@ -62,22 +62,24 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.2 (Native Experience Foundation RC, Planned)
+## v0.19.0-rc.2 (Native Experience Foundation RC, Source Candidate Prepared)
 
 ### Candidate Scope
 
-- [ ] Include the coherent Original Wayfinder Dashboard/window/sidebar/toolbar and native Settings cohort merged after `v0.19.0-rc.1`.
-- [ ] Complete dedicated native Settings panes, operational-card relocation, and legacy Settings parity removal selected for this candidate.
+- [x] Include the coherent Original Wayfinder Dashboard/window/sidebar/toolbar and native Settings cohort merged after `v0.19.0-rc.1`.
+- [x] Complete dedicated native Settings panes and remove the accidental duplicate CLI card without hiding existing actions.
+- [x] Explicitly defer operational-card relocation and removal of the legacy in-window Settings compatibility destination until after this candidate; do not improvise broader Dashboard/diagnostics placement during release preparation.
 - [ ] Complete the remaining release-critical shell/window validation selected for this candidate, including minimum/expanded, key/inactive, restoration, and multi-display behavior.
-- [ ] Keep the Environment Brief behind its debug gate if Issue #388 remains unresolved; do not switch the production first-run route without a separate reviewed change and passing owner-assisted VoiceOver/Full Keyboard Access retest.
-- [ ] State any debug-gated Environment Brief limitation explicitly in candidate release notes.
+- [x] Keep the Environment Brief behind its debug gate because Issue #388 remains unresolved; do not switch the production first-run route without a separate reviewed change and passing owner-assisted VoiceOver/Full Keyboard Access retest.
+- [x] State the debug-gated Environment Brief and deferred Settings-cleanup limitations explicitly in candidate release notes.
 
 ### Required Validation
 
-- [ ] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
+- [x] Re-audit the Rust runtime/build and website dependency-license inventory for the candidate and update `docs/legal/THIRD_PARTY_LICENSES.md`.
 - [ ] Owner manual QA passes for Dashboard workspace routing, toolbar/app commands, Settings single-instance routing, window restoration/resizing, and installed-candidate updater behavior.
-- [ ] No release-critical regression remains open; Issue #388 is either resolved and retested or explicitly excluded from production routing by the retained debug gate.
-- [ ] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.2` before any tag or publication mutation.
+- [x] No known release-critical regression remains open; Issue #388 is explicitly excluded from production routing by the retained debug gate.
+- [x] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.2` before any tag or publication mutation.
 
 ### Publication
 

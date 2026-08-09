@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0-rc.2] - 2026-08-08
+
+### Added
+- Original Wayfinder now provides Helm's native Dashboard foundation: a restored and resizable window, Dashboard/Plan/Library/Activity sidebar workspaces, persistent Environment access, and one shared semantic Course Indicator projection across Dashboard, popover, and status routing.
+- The macOS Settings scene now presents dedicated General, Updates, Sources, CLI, and Support panes, with all existing preference and support actions preserved and the duplicate CLI card removed.
+- A read-only Project WOW Environment Brief projection, resumable presentation state, and deterministic current/partial/offline/failure fixtures support local development and presentation validation without adding network or mutation behavior.
+
+### Changed
+- Dashboard search, refresh, workspace navigation, sidebar/inspector visibility, and Upgrade All now use native toolbar and application-command routes with conventional keyboard equivalents.
+- Command-Comma, the application and status menus, the popover, and the Dashboard sidebar now converge on one single-instance Settings scene.
+- Scripted native-experience validation covers the shared Wayfinder projection, window/search/Settings bridges, Environment Brief contracts, pane metadata, localization, and macOS 13 arm64 builds.
+
+### Fixed
+- Dashboard workspace switching no longer publishes selection changes during SwiftUI view updates, toolbar search focus remains stable, and split-view geometry is clamped before reaching AppKit.
+- Settings links consistently use the platform Settings scene, while toolbar search placement and native window controls retain their intended macOS layout.
+- The website dependency graph includes the patched `nanoid` release addressing CVE-2026-67213, and release-variant automation now creates required output directories before tagged builds.
+
+The Environment Brief remains available only behind its development gate in this candidate. Issue #388 tracks its unresolved VoiceOver Headings-rotor and bidirectional Full Keyboard Access behavior, so the existing onboarding remains the production first-run route. Operational-card relocation and removal of the legacy in-window Settings compatibility destination are explicitly deferred until after `v0.19.0-rc.2` rather than rushed into this prerelease.
+
+This candidate preserves the stable `v0.18.2` release line, the `v0.19.0-rc.1` public metadata until publication completes, and all released SQLite migration and recovery guarantees.
+
 ## [0.19.0-rc.1] - 2026-08-07
 
 ### Added
