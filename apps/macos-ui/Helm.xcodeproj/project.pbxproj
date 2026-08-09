@@ -43,9 +43,12 @@
 		B20000000000000000000017 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* L10n.swift */; };
 		C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
 		C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */; };
-		C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
-		C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */; };
-		D20000000000000000000001 /* ControlCenterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000001 /* ControlCenterModels.swift */; };
+			C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* UpgradePreviewPlanner.swift */; };
+			C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */; };
+			U200000000000000000000001 /* SettingsPaneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = U100000000000000000000001 /* SettingsPaneTests.swift */; };
+			V200000000000000000000001 /* SettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = V100000000000000000000001 /* SettingsPane.swift */; };
+			V200000000000000000000002 /* SettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = V100000000000000000000001 /* SettingsPane.swift */; };
+			D20000000000000000000001 /* ControlCenterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000001 /* ControlCenterModels.swift */; };
 		D20000000000000000000002 /* HelmButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000002 /* HelmButtonStyles.swift */; };
 		D20000000000000000000003 /* ControlCenterViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000003 /* ControlCenterViews.swift */; };
 		D20000000000000000000004 /* HelmCore+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000004 /* HelmCore+Dashboard.swift */; };
@@ -167,8 +170,10 @@
 		C10000000000000000000003 /* UpgradePreviewPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePreviewPlanner.swift; sourceTree = "<group>"; };
 		C10000000000000000000004 /* HelmTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HelmTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePreviewPlannerTests.swift; sourceTree = "<group>"; };
-		C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationOverflowValidationTests.swift; sourceTree = "<group>"; };
-		D10000000000000000000001 /* ControlCenterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterModels.swift; sourceTree = "<group>"; };
+			C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationOverflowValidationTests.swift; sourceTree = "<group>"; };
+			U100000000000000000000001 /* SettingsPaneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPaneTests.swift; sourceTree = "<group>"; };
+			V100000000000000000000001 /* SettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPane.swift; sourceTree = "<group>"; };
+			D10000000000000000000001 /* ControlCenterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterModels.swift; sourceTree = "<group>"; };
 		D10000000000000000000002 /* HelmButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmButtonStyles.swift; sourceTree = "<group>"; };
 		D10000000000000000000003 /* ControlCenterViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterViews.swift; sourceTree = "<group>"; };
 		D10000000000000000000004 /* HelmCore+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Dashboard.swift"; sourceTree = "<group>"; };
@@ -320,13 +325,14 @@
 				B10000000000000000000008 /* DashboardView.swift */,
 				E10000000000000000000001 /* InspectorViews.swift */,
 				F10000000000000000000001 /* PopoverHelpers.swift */,
-				F10000000000000000000002 /* PopoverOverlayViews.swift */,
-				B10000000000000000000010 /* ManagersView.swift */,
-				B10000000000000000000007 /* NavigationBarView.swift */,
-				8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
-				B10000000000000000000009 /* SettingsPopoverView.swift */,
-				8CFB6D4D2F3D1D1D002372B8 /* TaskListView.swift */,
-			);
+					F10000000000000000000002 /* PopoverOverlayViews.swift */,
+					B10000000000000000000010 /* ManagersView.swift */,
+					B10000000000000000000007 /* NavigationBarView.swift */,
+					8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
+					V100000000000000000000001 /* SettingsPane.swift */,
+					B10000000000000000000009 /* SettingsPopoverView.swift */,
+					8CFB6D4D2F3D1D1D002372B8 /* TaskListView.swift */,
+				);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -461,6 +467,7 @@
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
 				S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */,
 				T100000000000000000000002 /* SettingsOpeningBridgeTests.swift */,
+				U100000000000000000000001 /* SettingsPaneTests.swift */,
 				C38200000000000000000012 /* ControlCenterSplitViewBridgeTests.swift */,
 				N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */,
 				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
@@ -650,10 +657,11 @@
 				B20000000000000000000005 /* PackageRowView.swift in Sources */,
 				B20000000000000000000006 /* TaskRowView.swift in Sources */,
 				B20000000000000000000007 /* NavigationBarView.swift in Sources */,
-				B20000000000000000000008 /* DashboardView.swift in Sources */,
-				B20000000000000000000009 /* SettingsPopoverView.swift in Sources */,
-				B20000000000000000000010 /* ManagersView.swift in Sources */,
-				B20000000000000000000011 /* OnboardingContainerView.swift in Sources */,
+					B20000000000000000000008 /* DashboardView.swift in Sources */,
+					B20000000000000000000009 /* SettingsPopoverView.swift in Sources */,
+					V200000000000000000000001 /* SettingsPane.swift in Sources */,
+					B20000000000000000000010 /* ManagersView.swift in Sources */,
+					B20000000000000000000011 /* OnboardingContainerView.swift in Sources */,
 				B20000000000000000000012 /* OnboardingWelcomeView.swift in Sources */,
 				B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */,
 				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
@@ -692,10 +700,12 @@
 			files = (
 				J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */,
 				S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */,
-				S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
-				T200000000000000000000002 /* SettingsOpeningBridge.swift in Sources */,
-				T200000000000000000000003 /* SettingsOpeningBridgeTests.swift in Sources */,
-				C38200000000000000000002 /* ControlCenterSplitViewBridge.swift in Sources */,
+					S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
+					T200000000000000000000002 /* SettingsOpeningBridge.swift in Sources */,
+					T200000000000000000000003 /* SettingsOpeningBridgeTests.swift in Sources */,
+					V200000000000000000000002 /* SettingsPane.swift in Sources */,
+					U200000000000000000000001 /* SettingsPaneTests.swift in Sources */,
+					C38200000000000000000002 /* ControlCenterSplitViewBridge.swift in Sources */,
 				C38200000000000000000003 /* ControlCenterSplitViewBridgeTests.swift in Sources */,
 				N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */,
 				N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */,

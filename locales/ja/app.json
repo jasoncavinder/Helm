@@ -176,6 +176,7 @@
   "app.settings.section.general": "一般",
   "app.settings.section.managers": "マネージャー",
   "app.settings.tab.title": "設定",
+  "app.settings.pane.sources": "ソース",
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "キャンセルはまだ利用できません",
   "app.tasks.action.cancel": "タスクをキャンセル",

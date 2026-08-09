@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension SettingsPane {
+    var title: String { titleKey.localized }
+}
+
 struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
@@ -9,6 +13,7 @@ struct SettingsSectionView: View {
     @EnvironmentObject private var context: ControlCenterContext
 
     let showsNavigationSummary: Bool
+    let selectedPane: SettingsPane?
     let onResetCompleted: () -> Void
 
     @State private var showResetConfirmation = false
@@ -24,9 +29,11 @@ struct SettingsSectionView: View {
 
     init(
         showsNavigationSummary: Bool = true,
+        selectedPane: SettingsPane? = nil,
         onResetCompleted: @escaping () -> Void = {}
     ) {
         self.showsNavigationSummary = showsNavigationSummary
+        self.selectedPane = selectedPane
         self.onResetCompleted = onResetCompleted
     }
     private static let healthTimestampFormatter: DateFormatter = {
@@ -122,6 +129,10 @@ struct SettingsSectionView: View {
         return (enabled, detected, max(enabled - detected, 0))
     }
 
+    private func showsPane(_ pane: SettingsPane) -> Bool {
+        selectedPane == nil || selectedPane == pane
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
@@ -169,190 +180,151 @@ struct SettingsSectionView: View {
                     }
                 }
 
-                SettingsCard(title: L10n.App.Settings.Section.general.localized, icon: "globe", fill: cardFill) {
-                    HStack {
-                        Text(L10n.App.Settings.Label.language.localized)
-                        Spacer()
-                        Picker("", selection: $localization.currentLocale) {
-                            Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
-                            Text(L10n.App.Settings.Label.spanish.localized).tag("es")
-                            Text(L10n.App.Settings.Label.german.localized).tag("de")
-                            Text(L10n.App.Settings.Label.french.localized).tag("fr")
-                            Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
-                            Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
-                            Text(L10n.App.Settings.Label.hungarian.localized).tag("hu")
+                if showsPane(.general) {
+                    SettingsCard(title: L10n.App.Settings.Section.general.localized, icon: "gearshape", fill: cardFill) {
+                        HStack {
+                            Text(L10n.App.Settings.Label.language.localized)
+                            Spacer()
+                            Picker("", selection: $localization.currentLocale) {
+                                Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
+                                Text(L10n.App.Settings.Label.spanish.localized).tag("es")
+                                Text(L10n.App.Settings.Label.german.localized).tag("de")
+                                Text(L10n.App.Settings.Label.french.localized).tag("fr")
+                                Text(L10n.App.Settings.Label.portugueseBrazilian.localized).tag("pt-BR")
+                                Text(L10n.App.Settings.Label.japanese.localized).tag("ja")
+                                Text(L10n.App.Settings.Label.hungarian.localized).tag("hu")
+                            }
+                            .labelsHidden()
+                            .frame(width: 220)
                         }
-                        .labelsHidden()
-                        .frame(width: 220)
+
+                        Divider()
+
+                        Toggle(L10n.App.Settings.Label.launchAtLogin.localized, isOn: Binding(
+                            get: { core.launchAtLoginEnabled },
+                            set: { core.setLaunchAtLogin($0) }
+                        ))
+                        .toggleStyle(.switch)
                     }
+                }
 
-                    Divider()
-
-                    Toggle(L10n.App.Settings.Label.launchAtLogin.localized, isOn: Binding(
-                        get: { core.launchAtLoginEnabled },
-                        set: { core.setLaunchAtLogin($0) }
-                    ))
-                    .toggleStyle(.switch)
-
-                    Divider()
-
-                    Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: Binding(
-                        get: { appUpdate.autoCheckEnabled },
-                        set: { appUpdate.setAutoCheckEnabled($0) }
-                    ))
-                    .toggleStyle(.switch)
-                    .disabled(!appUpdate.canCheckForUpdates)
-
-                    HStack {
-                        Text(L10n.App.Settings.Label.checkFrequency.localized)
-                        Spacer()
-                        Picker("", selection: Binding(
-                            get: { appUpdate.checkFrequencyMinutes },
-                            set: { appUpdate.setCheckFrequencyMinutes($0) }
-                        )) {
-                            Text(L10n.App.Settings.Frequency.every1Hour.localized).tag(60)
-                            Text(L10n.App.Settings.Frequency.daily.localized).tag(1_440)
-                            Text(L10n.App.Settings.Frequency.weekly.localized).tag(10_080)
-                            Text(L10n.App.Settings.Frequency.monthly.localized).tag(43_800)
-                        }
-                        .labelsHidden()
-                        .frame(width: 150)
-                        .disabled(!appUpdate.canCheckForUpdates || !appUpdate.autoCheckEnabled)
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Toggle(L10n.App.Settings.Label.prereleaseUpdates.localized, isOn: Binding(
-                            get: { appUpdate.prereleaseUpdatesEnabled },
-                            set: { appUpdate.setPrereleaseUpdatesEnabled($0) }
+                if showsPane(.updates) {
+                    SettingsCard(title: L10n.App.Section.updates.localized, icon: "arrow.triangle.2.circlepath", fill: cardFill) {
+                        Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: Binding(
+                            get: { appUpdate.autoCheckEnabled },
+                            set: { appUpdate.setAutoCheckEnabled($0) }
                         ))
                         .toggleStyle(.switch)
                         .disabled(!appUpdate.canCheckForUpdates)
 
-                        Text(L10n.App.Settings.Label.prereleaseUpdatesDescription.localized)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
+                        HStack {
+                            Text(L10n.App.Settings.Label.checkFrequency.localized)
+                            Spacer()
+                            Picker("", selection: Binding(
+                                get: { appUpdate.checkFrequencyMinutes },
+                                set: { appUpdate.setCheckFrequencyMinutes($0) }
+                            )) {
+                                Text(L10n.App.Settings.Frequency.every1Hour.localized).tag(60)
+                                Text(L10n.App.Settings.Frequency.daily.localized).tag(1_440)
+                                Text(L10n.App.Settings.Frequency.weekly.localized).tag(10_080)
+                                Text(L10n.App.Settings.Frequency.monthly.localized).tag(43_800)
+                            }
+                            .labelsHidden()
+                            .frame(width: 150)
+                            .disabled(!appUpdate.canCheckForUpdates || !appUpdate.autoCheckEnabled)
+                        }
 
-                SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {
-                    ServiceHealthStatusRow(
-                        title: L10n.App.Settings.CLI.status.localized,
-                        value: helmCliStatusLabel
-                    )
-                    ServiceHealthStatusRow(
-                        title: L10n.App.Settings.CLI.shimPath.localized,
-                        value: core.helmCliShimPath,
-                        multiline: true
-                    )
-                    if let bundledPath = core.helmCliBundledPath, !bundledPath.isEmpty {
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.CLI.bundledPath.localized,
-                            value: bundledPath,
-                            multiline: true
-                        )
-                    }
+                        Divider()
 
-                    Text(L10n.App.Settings.CLI.description.localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(L10n.App.Settings.Label.prereleaseUpdates.localized, isOn: Binding(
+                                get: { appUpdate.prereleaseUpdatesEnabled },
+                                set: { appUpdate.setPrereleaseUpdatesEnabled($0) }
+                            ))
+                            .toggleStyle(.switch)
+                            .disabled(!appUpdate.canCheckForUpdates)
 
-                    Divider()
-
-                    SettingsActionButton(
-                        title: helmCliActionTitle,
-                        badges: [],
-                        isProminent: false,
-                        useSystemStyle: true
-                    ) {
-                        if core.helmCliShimInstalled {
-                            core.removeHelmCliShim()
-                        } else {
-                            core.installHelmCliShim()
+                            Text(L10n.App.Settings.Label.prereleaseUpdatesDescription.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
-                    .disabled(
-                        core.helmCliShimOperationInProgress ||
-                        (!core.helmCliBundledAvailable && !core.helmCliShimInstalled)
-                    )
-
-                    if let statusMessage = core.helmCliShimStatusMessage, !statusMessage.isEmpty {
-                        Text(statusMessage)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
                 }
 
-                SettingsCard(title: L10n.App.Settings.Section.managers.localized, icon: "shield.lefthalf.filled", fill: cardFill) {
-                    Toggle(L10n.App.Settings.Label.safeMode.localized, isOn: Binding(
-                        get: { core.safeModeEnabled },
-                        set: { core.setSafeMode($0) }
-                    ))
-                    .toggleStyle(.switch)
-
-                    Divider()
-
-                    Toggle(L10n.App.Settings.Label.autoCleanKegs.localized, isOn: Binding(
-                        get: { core.homebrewKegAutoCleanupEnabled },
-                        set: { core.setHomebrewKegAutoCleanup($0) }
-                    ))
-                    .toggleStyle(.switch)
-                }
-
-                SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {
-                    ServiceHealthStatusRow(
-                        title: L10n.App.Settings.CLI.status.localized,
-                        value: helmCliStatusLabel
-                    )
-                    ServiceHealthStatusRow(
-                        title: L10n.App.Settings.CLI.shimPath.localized,
-                        value: core.helmCliShimPath,
-                        multiline: true
-                    )
-                    if let bundledPath = core.helmCliBundledPath, !bundledPath.isEmpty {
+                if showsPane(.cli) {
+                    SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {
                         ServiceHealthStatusRow(
-                            title: L10n.App.Settings.CLI.bundledPath.localized,
-                            value: bundledPath,
+                            title: L10n.App.Settings.CLI.status.localized,
+                            value: helmCliStatusLabel
+                        )
+                        ServiceHealthStatusRow(
+                            title: L10n.App.Settings.CLI.shimPath.localized,
+                            value: core.helmCliShimPath,
                             multiline: true
                         )
-                    }
-
-                    Text(L10n.App.Settings.CLI.description.localized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Divider()
-
-                    SettingsActionButton(
-                        title: helmCliActionTitle,
-                        badges: [],
-                        isProminent: false,
-                        useSystemStyle: true
-                    ) {
-                        if core.helmCliShimInstalled {
-                            core.removeHelmCliShim()
-                        } else {
-                            core.installHelmCliShim()
+                        if let bundledPath = core.helmCliBundledPath, !bundledPath.isEmpty {
+                            ServiceHealthStatusRow(
+                                title: L10n.App.Settings.CLI.bundledPath.localized,
+                                value: bundledPath,
+                                multiline: true
+                            )
                         }
-                    }
-                    .disabled(
-                        core.helmCliShimOperationInProgress ||
-                        (!core.helmCliBundledAvailable && !core.helmCliShimInstalled)
-                    )
 
-                    if let statusMessage = core.helmCliShimStatusMessage, !statusMessage.isEmpty {
-                        Text(statusMessage)
+                        Text(L10n.App.Settings.CLI.description.localized)
                             .font(.caption)
                             .foregroundColor(.secondary)
+
+                        Divider()
+
+                        SettingsActionButton(
+                            title: helmCliActionTitle,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            if core.helmCliShimInstalled {
+                                core.removeHelmCliShim()
+                            } else {
+                                core.installHelmCliShim()
+                            }
+                        }
+                        .disabled(
+                            core.helmCliShimOperationInProgress ||
+                            (!core.helmCliBundledAvailable && !core.helmCliShimInstalled)
+                        )
+
+                        if let statusMessage = core.helmCliShimStatusMessage, !statusMessage.isEmpty {
+                            Text(statusMessage)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
 
-                SettingsCard(
-                    title: L10n.App.Settings.ServiceHealth.section.localized,
-                    icon: "stethoscope",
-                    fill: cardFill
-                ) {
+                if showsPane(.sources) {
+                    SettingsCard(title: L10n.App.Settings.Pane.sources.localized, icon: "point.3.connected.trianglepath.dotted", fill: cardFill) {
+                        Toggle(L10n.App.Settings.Label.safeMode.localized, isOn: Binding(
+                            get: { core.safeModeEnabled },
+                            set: { core.setSafeMode($0) }
+                        ))
+                        .toggleStyle(.switch)
+
+                        Divider()
+
+                        Toggle(L10n.App.Settings.Label.autoCleanKegs.localized, isOn: Binding(
+                            get: { core.homebrewKegAutoCleanupEnabled },
+                            set: { core.setHomebrewKegAutoCleanup($0) }
+                        ))
+                        .toggleStyle(.switch)
+                    }
+                }
+
+                if showsPane(.support) {
+                    SettingsCard(
+                        title: L10n.App.Settings.ServiceHealth.section.localized,
+                        icon: "stethoscope",
+                        fill: cardFill
+                    ) {
                     HStack {
                         HealthBadgeView(status: overviewState.aggregateHealth)
                         Spacer()
@@ -553,8 +525,8 @@ struct SettingsSectionView: View {
                     }
                 }
 
-                SettingsCard(title: L10n.App.Settings.Section.advanced.localized, icon: "bolt.fill", fill: cardFill) {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    SettingsCard(title: L10n.App.Settings.Section.advanced.localized, icon: "bolt.fill", fill: cardFill) {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                         SettingsActionButton(
                             title: L10n.App.Settings.Action.refreshNow.localized,
                             badges: [],
@@ -602,6 +574,7 @@ struct SettingsSectionView: View {
                         ) {
                             core.restoreDefaultManagerPriorities()
                         }
+                        }
                     }
                 }
             }
@@ -640,13 +613,28 @@ struct SettingsSectionView: View {
 
 struct SettingsWindowView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var localization = LocalizationManager.shared
+    @State private var selectedPane: SettingsPane? = .general
 
     var body: some View {
-        SettingsSectionView(
-            showsNavigationSummary: false,
-            onResetCompleted: { dismiss() }
-        )
-            .frame(minWidth: 680, idealWidth: 760, minHeight: 560, idealHeight: 680)
+        NavigationSplitView {
+            List(SettingsPane.allCases, selection: $selectedPane) { pane in
+                Label(pane.title, systemImage: pane.icon)
+                    .tag(Optional(pane))
+            }
+            .navigationTitle(L10n.App.Settings.Tab.title.localized)
+            .navigationSplitViewColumnWidth(min: 150, ideal: 180, max: 220)
+            .id(localization.currentLocale)
+        } detail: {
+            let pane = selectedPane ?? .general
+            SettingsSectionView(
+                showsNavigationSummary: false,
+                selectedPane: pane,
+                onResetCompleted: { dismiss() }
+            )
+            .navigationTitle(pane.title)
+        }
+        .frame(minWidth: 680, idealWidth: 760, minHeight: 560, idealHeight: 680)
     }
 }
 

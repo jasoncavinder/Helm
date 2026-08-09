@@ -122,7 +122,8 @@ Implementation checkpoint on `dev`:
 
 - The SwiftUI `Settings` scene now owns a real single-instance Settings window. Command-Comma, the standard app menu, the status menu, the popover footer, and the Dashboard sidebar all use the same platform window route.
 - The quick-Settings popover overlay and the Basic/Advanced status-menu split are removed. Refresh remains available contextually from the Dashboard toolbar and Command-R.
-- The existing Settings card body is hosted without its Dashboard navigation summary as a parity-preserving transition. Dedicated General/Updates/Sources/CLI/Support panes, operational-card relocation, and removal of the legacy in-window Settings destination remain open until the parity checklist passes.
+- The Settings window now presents General, Updates, Sources, CLI, and Support as native sidebar panes. General and update preferences are separated, the accidental duplicate CLI card is removed, and the existing cards/actions remain the parity boundary while destination migration continues.
+- Operational-card relocation and removal of the legacy in-window Settings destination remain open until the parity checklist passes; this pane slice does not hide or duplicate those actions.
 
 Affected files/components:
 

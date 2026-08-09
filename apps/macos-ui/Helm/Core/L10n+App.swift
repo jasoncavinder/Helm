@@ -276,6 +276,9 @@ extension L10n {
             struct Tab {
                 static let title = "app.settings.tab.title"
             }
+            struct Pane {
+                static let sources = "app.settings.pane.sources"
+            }
             struct Section {
                 static let general = "app.settings.section.general"
                 static let managers = "app.settings.section.managers"

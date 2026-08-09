@@ -176,6 +176,7 @@
   "app.settings.section.general": "Geral",
   "app.settings.section.managers": "Gerenciadores",
   "app.settings.tab.title": "Configurações",
+  "app.settings.pane.sources": "Fontes",
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "Cancelamento ainda não implementado",
   "app.tasks.action.cancel": "Cancelar Tarefa",
