@@ -211,6 +211,61 @@ extension L10n {
             }
         }
 
+        struct FirstRun {
+            static let eyebrow = "app.first_run.environment_brief.eyebrow"
+
+            struct Title {
+                static let mapping = "app.first_run.environment_brief.title.mapping"
+                static let current = "app.first_run.environment_brief.title.current"
+                static let cached = "app.first_run.environment_brief.title.cached"
+                static let partial = "app.first_run.environment_brief.title.partial"
+                static let serviceFailure = "app.first_run.environment_brief.title.service_failure"
+            }
+
+            struct Summary {
+                static let mapping = "app.first_run.environment_brief.summary.mapping"
+                static let current = "app.first_run.environment_brief.summary.current"
+                static let cached = "app.first_run.environment_brief.summary.cached"
+                static let partial = "app.first_run.environment_brief.summary.partial"
+                static let serviceFailure = "app.first_run.environment_brief.summary.service_failure"
+            }
+
+            struct Trust {
+                static let local = "app.first_run.environment_brief.trust.local"
+                static let noChanges = "app.first_run.environment_brief.trust.no_changes"
+                static let noNetwork = "app.first_run.environment_brief.trust.no_network"
+                static let disclosedNetwork = "app.first_run.environment_brief.trust.disclosed_network"
+            }
+
+            struct Section {
+                static let thisMac = "app.first_run.environment_brief.section.this_mac"
+                static let sources = "app.first_run.environment_brief.section.sources"
+            }
+
+            struct Status {
+                static let ready = "app.first_run.environment_brief.status.ready"
+                static let cached = "app.first_run.environment_brief.status.cached"
+                static let setupRequired = "app.first_run.environment_brief.status.setup_required"
+                static let multipleInstances = "app.first_run.environment_brief.status.multiple_instances"
+                static let protected = "app.first_run.environment_brief.status.protected"
+                static let reviewing = "app.first_run.environment_brief.status.reviewing"
+                static let failed = "app.first_run.environment_brief.status.failed"
+                static let cancelled = "app.first_run.environment_brief.status.cancelled"
+                static let deferred = "app.first_run.environment_brief.status.deferred"
+            }
+
+            struct Action {
+                static let useHelm = "app.first_run.environment_brief.action.use_helm"
+                static let scanAgain = "app.first_run.environment_brief.action.scan_again"
+            }
+
+            static let discovering = "app.first_run.environment_brief.discovering"
+            static let architecture = "app.first_run.environment_brief.label.architecture"
+            static let shell = "app.first_run.environment_brief.label.shell"
+            static let architectureAppleSilicon = "app.first_run.environment_brief.architecture.apple_silicon"
+            static let architectureIntel = "app.first_run.environment_brief.architecture.intel"
+        }
+
         struct Legal {
             struct Action {
                 static let viewTerms = "app.legal.action.view_terms"

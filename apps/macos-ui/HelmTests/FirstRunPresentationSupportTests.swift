@@ -44,6 +44,146 @@ final class FirstRunPresentationSupportTests: XCTestCase {
         #endif
     }
 
+    func testFirstRunRouteConfigurationIsDebugOnlyAndSupportsPreview() {
+        XCTAssertEqual(
+            EnvironmentBriefFirstRunConfiguration.mode(environment: [:]),
+            .disabled
+        )
+
+        #if DEBUG
+        XCTAssertEqual(
+            EnvironmentBriefFirstRunConfiguration.mode(
+                environment: [EnvironmentBriefFirstRunConfiguration.environmentKey: "true"]
+            ),
+            .enabled
+        )
+        XCTAssertEqual(
+            EnvironmentBriefFirstRunConfiguration.mode(
+                environment: [EnvironmentBriefFirstRunConfiguration.environmentKey: "preview"]
+            ),
+            .preview
+        )
+        XCTAssertEqual(
+            EnvironmentBriefFirstRunConfiguration.previewAppearance(
+                environment: [EnvironmentBriefFirstRunConfiguration.appearanceEnvironmentKey: "dark"]
+            ),
+            .dark
+        )
+        #endif
+
+        XCTAssertEqual(
+            EnvironmentBriefFirstRunConfiguration.previewAppearance(environment: [:]),
+            .system
+        )
+
+        XCTAssertTrue(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+                mode: .enabled,
+                hasCompletedOnboarding: false,
+                dismissedPreview: false
+            )
+        )
+        XCTAssertFalse(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+                mode: .enabled,
+                hasCompletedOnboarding: true,
+                dismissedPreview: false
+            )
+        )
+        XCTAssertTrue(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+                mode: .preview,
+                hasCompletedOnboarding: true,
+                dismissedPreview: false
+            )
+        )
+        XCTAssertFalse(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+                mode: .preview,
+                hasCompletedOnboarding: true,
+                dismissedPreview: true
+            )
+        )
+        XCTAssertFalse(
+            EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: .preview,
+                fixtureActive: true
+            )
+        )
+        XCTAssertTrue(
+            EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: .preview,
+                fixtureActive: false
+            )
+        )
+        XCTAssertTrue(
+            EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: .enabled,
+                fixtureActive: true
+            )
+        )
+    }
+
+    func testFixtureSummariesCoverAllRenderedBriefStates() {
+        let summaries = Dictionary(
+            uniqueKeysWithValues: EnvironmentBriefFixtureName.allCases.map { fixtureName in
+                let brief = EnvironmentBriefFixtureProvider.fixture(named: fixtureName).brief
+                return (fixtureName, EnvironmentBriefPresentationSummary.make(from: brief))
+            }
+        )
+
+        XCTAssertEqual(summaries[.firstUseful]?.kind, .mapping)
+        XCTAssertEqual(
+            summaries[.firstUseful]?.completionFraction ?? 0,
+            1.0 / 3.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(summaries[.current]?.kind, .current)
+        XCTAssertEqual(summaries[.current]?.readyManagerCount, 3)
+        XCTAssertEqual(summaries[.partial]?.kind, .partial)
+        XCTAssertEqual(summaries[.partial]?.mappedManagerCount, 2)
+        XCTAssertEqual(summaries[.offline]?.kind, .cached)
+        XCTAssertEqual(summaries[.serviceFailure]?.kind, .serviceFailure)
+        XCTAssertEqual(summaries[.serviceFailure]?.attentionCount, 3)
+    }
+
+    func testSummaryDoesNotDoubleCountManagersWithObservationAndFailure() {
+        let input = EnvironmentBriefProjectionInput(
+            system: EnvironmentBriefSystem(
+                osVersion: "26.6.0",
+                architecture: .arm64,
+                activeShell: "zsh",
+                distributionChannel: "developer_id",
+                updateAuthority: "sparkle"
+            ),
+            intendedManagerIDs: ["homebrew_formula", "rustup"],
+            observations: [
+                EnvironmentBriefManagerObservation(
+                    manager: "homebrew_formula",
+                    detected: true,
+                    eligibility: .eligible,
+                    managementState: .ready,
+                    activeInstallationMethod: nil,
+                    provenance: .homebrew,
+                    freshness: .cached
+                )
+            ],
+            failedManagerIDs: ["homebrew_formula", "rustup"],
+            cancelledManagerIDs: [],
+            deferredManagerIDs: [],
+            observationClass: .localOnly
+        )
+
+        let summary = EnvironmentBriefPresentationSummary.make(
+            from: EnvironmentBriefProjector.project(input)
+        )
+
+        XCTAssertEqual(summary.kind, .partial)
+        XCTAssertEqual(summary.mappedManagerCount, 1)
+        XCTAssertEqual(summary.attentionCount, 2)
+        XCTAssertEqual(summary.completionFraction, 1)
+    }
+
     func testRestorationHonorsLegalGateBeforeAvailableBrief() {
         let brief = EnvironmentBriefFixtureProvider.fixture(named: .current).brief
         let saved = FirstRunPresentationState(

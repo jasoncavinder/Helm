@@ -102,8 +102,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         core.refreshLaunchAtLogin()
         core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: false)
 
-        if core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance {
+        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
+        let fixtureActive = EnvironmentBriefFixtureProvider.active() != nil
+
+        if core.hasCompletedOnboarding
+            && !core.requiresLicenseTermsAcceptance
+            && EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: firstRunMode,
+                fixtureActive: fixtureActive
+            ) {
             core.triggerRefresh()
+        }
+
+        if firstRunMode == .preview {
+            DispatchQueue.main.async { [weak self] in
+                self?.openControlCenter()
+            }
         }
     }
 
@@ -180,6 +194,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     @objc private func togglePanel(_ sender: AnyObject?) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             showStatusMenu()
+            return
+        }
+
+        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
+        if EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            mode: firstRunMode,
+            hasCompletedOnboarding: core.hasCompletedOnboarding,
+            dismissedPreview: false
+        ) {
+            openControlCenter()
             return
         }
 
