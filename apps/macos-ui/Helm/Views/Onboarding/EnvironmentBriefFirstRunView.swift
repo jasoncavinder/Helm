@@ -428,7 +428,8 @@ private struct EnvironmentBriefFact: View {
                 .foregroundColor(HelmTheme.textSecondary)
             Text(value)
                 .font(.headline.monospacedDigit())
-                .lineLimit(1)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

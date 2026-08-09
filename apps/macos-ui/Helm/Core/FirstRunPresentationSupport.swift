@@ -282,7 +282,7 @@ struct EnvironmentBriefPresentationSummary: Equatable {
             completionFraction = kind == .current ? 1 : 0
         } else {
             completionFraction = min(
-                Double(terminalCount) / Double(coverage.intendedManagerCount),
+                Double(mappedCount) / Double(coverage.intendedManagerCount),
                 1
             )
         }
