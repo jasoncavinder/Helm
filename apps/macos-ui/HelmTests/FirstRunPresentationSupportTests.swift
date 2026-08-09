@@ -142,9 +142,11 @@ final class FirstRunPresentationSupportTests: XCTestCase {
         XCTAssertEqual(summaries[.current]?.readyManagerCount, 3)
         XCTAssertEqual(summaries[.partial]?.kind, .partial)
         XCTAssertEqual(summaries[.partial]?.mappedManagerCount, 2)
+        XCTAssertEqual(summaries[.partial]?.completionFraction, 0.5)
         XCTAssertEqual(summaries[.offline]?.kind, .cached)
         XCTAssertEqual(summaries[.serviceFailure]?.kind, .serviceFailure)
         XCTAssertEqual(summaries[.serviceFailure]?.attentionCount, 3)
+        XCTAssertEqual(summaries[.serviceFailure]?.completionFraction, 0)
     }
 
     func testSummaryDoesNotDoubleCountManagersWithObservationAndFailure() {
@@ -181,7 +183,7 @@ final class FirstRunPresentationSupportTests: XCTestCase {
         XCTAssertEqual(summary.kind, .partial)
         XCTAssertEqual(summary.mappedManagerCount, 1)
         XCTAssertEqual(summary.attentionCount, 2)
-        XCTAssertEqual(summary.completionFraction, 1)
+        XCTAssertEqual(summary.completionFraction, 0.5)
     }
 
     func testRestorationHonorsLegalGateBeforeAvailableBrief() {

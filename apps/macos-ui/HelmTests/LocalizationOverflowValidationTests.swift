@@ -311,4 +311,83 @@ final class LocalizationOverflowValidationTests: XCTestCase {
 
         }
     }
+
+    func testEnvironmentBriefCompactLabelsFitMinimumLayoutAcrossLocales() throws {
+        let actionFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let statusFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        let trustFont = NSFont.systemFont(ofSize: 13)
+
+        let actionMaxWidth: CGFloat = 180
+        let statusMaxWidth: CGFloat = 180
+        let trustStripMaxWidth: CGFloat = 780
+        let trustLabelChrome: CGFloat = 22
+        let trustSpacing: CGFloat = 36
+
+        let actionKeys = [
+            "app.first_run.environment_brief.action.use_helm",
+            "app.first_run.environment_brief.action.scan_again",
+        ]
+        let statusKeys = [
+            "app.first_run.environment_brief.status.ready",
+            "app.first_run.environment_brief.status.cached",
+            "app.first_run.environment_brief.status.setup_required",
+            "app.first_run.environment_brief.status.multiple_instances",
+            "app.first_run.environment_brief.status.protected",
+            "app.first_run.environment_brief.status.reviewing",
+            "app.first_run.environment_brief.status.failed",
+            "app.first_run.environment_brief.status.cancelled",
+            "app.first_run.environment_brief.status.deferred",
+        ]
+        let localTrustKeys = [
+            "app.first_run.environment_brief.trust.local",
+            "app.first_run.environment_brief.trust.no_changes",
+            "app.first_run.environment_brief.trust.no_network",
+        ]
+        let networkTrustKeys = [
+            "app.first_run.environment_brief.trust.local",
+            "app.first_run.environment_brief.trust.no_changes",
+            "app.first_run.environment_brief.trust.disclosed_network",
+        ]
+
+        for locale in locales {
+            let strings = try localeAppStrings(locale)
+
+            for key in actionKeys {
+                guard let text = strings[key] else {
+                    XCTFail("Missing key \(key) in locale \(locale)")
+                    continue
+                }
+                XCTAssertLessThanOrEqual(
+                    width(for: text, font: actionFont),
+                    actionMaxWidth,
+                    "Environment Brief action overflow risk for locale \(locale): \(key) -> \(text)"
+                )
+            }
+
+            for key in statusKeys {
+                guard let text = strings[key] else {
+                    XCTFail("Missing key \(key) in locale \(locale)")
+                    continue
+                }
+                XCTAssertLessThanOrEqual(
+                    width(for: text, font: statusFont),
+                    statusMaxWidth,
+                    "Environment Brief status overflow risk for locale \(locale): \(key) -> \(text)"
+                )
+            }
+
+            for keys in [localTrustKeys, networkTrustKeys] {
+                let labels = keys.compactMap { strings[$0] }
+                XCTAssertEqual(labels.count, keys.count, "Missing trust label(s) in locale \(locale)")
+                let renderedWidth = labels.reduce(0) {
+                    $0 + width(for: $1, font: trustFont) + trustLabelChrome
+                } + trustSpacing
+                XCTAssertLessThanOrEqual(
+                    renderedWidth,
+                    trustStripMaxWidth,
+                    "Environment Brief trust strip overflow risk for locale \(locale)"
+                )
+            }
+        }
+    }
 }
