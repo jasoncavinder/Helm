@@ -15,6 +15,7 @@
   "app.packages.filter.all_managers": "Alle Manager",
   "app.managers.tab.title": "Manager",
   "app.settings.tab.title": "Einstellungen",
+  "app.settings.pane.sources": "Quellen",
   "app.settings.section.general": "Allgemein",
   "app.settings.section.managers": "Manager",
   "app.settings.section.advanced": "Erweitert",

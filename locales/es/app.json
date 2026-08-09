@@ -15,6 +15,7 @@
   "app.packages.filter.all_managers": "Todos los gestores",
   "app.managers.tab.title": "Gestores",
   "app.settings.tab.title": "Ajustes",
+  "app.settings.pane.sources": "Fuentes",
   "app.settings.section.general": "General",
   "app.settings.section.managers": "Gestores",
   "app.settings.section.advanced": "Avanzado",
