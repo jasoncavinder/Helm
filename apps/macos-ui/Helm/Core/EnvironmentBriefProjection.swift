@@ -180,7 +180,7 @@ enum EnvironmentBriefProjector {
                 managementState: observation.detected ? observation.managementState : .notInstalled,
                 activeInstallationMethod: nonEmpty(observation.activeInstallationMethod),
                 provenance: observation.detected ? (observation.provenance ?? .unknown) : nil,
-                freshness: observation.freshness
+                freshness: observation.detected ? observation.freshness : .unknown
             )
         }
         return byManager.values.sorted { $0.manager < $1.manager }

@@ -115,9 +115,11 @@ final class EnvironmentBriefProjectionTests: XCTestCase {
         )
 
         XCTAssertEqual(brief.coverage.intendedManagerCount, 2)
+        XCTAssertEqual(brief.coverage.currentManagerCount, 1)
         XCTAssertEqual(brief.discoveredManagers.map(\.manager), ["mise", "npm"])
         XCTAssertEqual(brief.discoveredManagers[0].provenance, .unknown)
         XCTAssertEqual(brief.discoveredManagers[1].managementState, .notInstalled)
+        XCTAssertEqual(brief.discoveredManagers[1].freshness, .unknown)
         XCTAssertNil(brief.discoveredManagers[1].provenance)
     }
 

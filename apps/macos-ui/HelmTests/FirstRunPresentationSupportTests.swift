@@ -186,6 +186,53 @@ final class FirstRunPresentationSupportTests: XCTestCase {
         XCTAssertEqual(summary.completionFraction, 0.5)
     }
 
+    func testSummaryIgnoresUndetectedManagersWhenComputingMappedProgress() {
+        let brief = EnvironmentBriefProjector.project(
+            EnvironmentBriefProjectionInput(
+                system: EnvironmentBriefSystem(
+                    osVersion: "26.6.0",
+                    architecture: .arm64,
+                    activeShell: "zsh",
+                    distributionChannel: "developer_id",
+                    updateAuthority: "sparkle"
+                ),
+                intendedManagerIDs: ["homebrew_formula", "mise"],
+                observations: [
+                    EnvironmentBriefManagerObservation(
+                        manager: "homebrew_formula",
+                        detected: true,
+                        eligibility: .eligible,
+                        managementState: .ready,
+                        activeInstallationMethod: nil,
+                        provenance: .homebrew,
+                        freshness: .current
+                    ),
+                    EnvironmentBriefManagerObservation(
+                        manager: "mise",
+                        detected: false,
+                        eligibility: .unknown,
+                        managementState: .ready,
+                        activeInstallationMethod: nil,
+                        provenance: .mise,
+                        freshness: .current
+                    ),
+                ],
+                failedManagerIDs: [],
+                cancelledManagerIDs: [],
+                deferredManagerIDs: [],
+                observationClass: .localOnly
+            )
+        )
+
+        let summary = EnvironmentBriefPresentationSummary.make(from: brief)
+
+        XCTAssertEqual(brief.coverage.currentManagerCount, 1)
+        XCTAssertEqual(summary.kind, .mapping)
+        XCTAssertEqual(summary.mappedManagerCount, 1)
+        XCTAssertEqual(summary.attentionCount, 0)
+        XCTAssertEqual(summary.completionFraction, 0.5)
+    }
+
     func testRestorationHonorsLegalGateBeforeAvailableBrief() {
         let brief = EnvironmentBriefFixtureProvider.fixture(named: .current).brief
         let saved = FirstRunPresentationState(

@@ -240,7 +240,9 @@ struct EnvironmentBriefPresentationSummary: Equatable {
         let coverage = brief.coverage
         let mappedManagerIDs = Set(
             brief.discoveredManagers.compactMap { observation in
-                observation.freshness == .unknown ? nil : observation.manager
+                observation.detected && observation.freshness != .unknown
+                    ? observation.manager
+                    : nil
             }
         )
         let terminalManagerIDs = mappedManagerIDs
@@ -249,7 +251,9 @@ struct EnvironmentBriefPresentationSummary: Equatable {
             .union(coverage.deferredManagers)
         let attentionManagerIDs = Set(
             brief.discoveredManagers.compactMap { observation in
-                observation.eligibility != .eligible || observation.managementState != .ready
+                observation.detected
+                    && (observation.eligibility != .eligible
+                        || observation.managementState != .ready)
                     ? observation.manager
                     : nil
             }
