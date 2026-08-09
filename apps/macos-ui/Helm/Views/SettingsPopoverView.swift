@@ -1,38 +1,7 @@
 import SwiftUI
 
-enum SettingsPane: String, CaseIterable, Identifiable {
-    case general
-    case updates
-    case sources
-    case cli
-    case support
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .general:
-            return L10n.App.Settings.Section.general.localized
-        case .updates:
-            return L10n.App.Section.updates.localized
-        case .sources:
-            return L10n.App.Settings.Pane.sources.localized
-        case .cli:
-            return L10n.App.Settings.CLI.section.localized
-        case .support:
-            return L10n.App.Settings.SupportFeedback.section.localized
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .general: return "gearshape"
-        case .updates: return "arrow.triangle.2.circlepath"
-        case .sources: return "point.3.connected.trianglepath.dotted"
-        case .cli: return "terminal"
-        case .support: return "lifepreserver"
-        }
-    }
+extension SettingsPane {
+    var title: String { titleKey.localized }
 }
 
 struct SettingsSectionView: View {
