@@ -62,6 +62,30 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.19.0-rc.2 (Native Experience Foundation RC, Planned)
+
+### Candidate Scope
+
+- [ ] Include the coherent Original Wayfinder Dashboard/window/sidebar/toolbar and native Settings cohort merged after `v0.19.0-rc.1`.
+- [ ] Complete dedicated native Settings panes, operational-card relocation, and legacy Settings parity removal selected for this candidate.
+- [ ] Complete the remaining release-critical shell/window validation selected for this candidate, including minimum/expanded, key/inactive, restoration, and multi-display behavior.
+- [ ] Keep the Environment Brief behind its debug gate if Issue #388 remains unresolved; do not switch the production first-run route without a separate reviewed change and passing owner-assisted VoiceOver/Full Keyboard Access retest.
+- [ ] State any debug-gated Environment Brief limitation explicitly in candidate release notes.
+
+### Required Validation
+
+- [ ] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
+- [ ] Owner manual QA passes for Dashboard workspace routing, toolbar/app commands, Settings single-instance routing, window restoration/resizing, and installed-candidate updater behavior.
+- [ ] No release-critical regression remains open; Issue #388 is either resolved and retested or explicitly excluded from production routing by the retained debug gate.
+- [ ] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.2` before any tag or publication mutation.
+
+### Publication
+
+- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.2` or publishing artifacts.
+- [ ] Publish `v0.19.0-rc.2` as a GitHub prerelease that does not become latest.
+- [ ] Confirm the stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.2`.
+- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
 ## v0.19.0-rc.1 (Manager and Updater Modernization RC, Completed)
 
 ### Scope and Versioning
