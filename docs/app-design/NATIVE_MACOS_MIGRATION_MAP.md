@@ -36,7 +36,7 @@ Implementation checkpoint on `dev`:
 - Dashboard renders Original Wayfinder's Course Indicator from the shared revisioned projection. Determinate progress appears only when that projection contains validated backend-owned progress; all other modes use semantic non-percentage arcs.
 - The indicator carries text, symbol, VoiceOver label/value/hint, increased-contrast treatment, Reduce Transparency treatment, and static Reduce Motion behavior. Color is never the only state signal.
 - Dashboard intentionally suppresses the legacy inspector. Other migrated destinations retain the existing inspector until their contextual-detail contracts are redesigned.
-- Remaining Slice 19.2 work includes selection restoration/focus tests, full keyboard and VoiceOver traversal, and manual minimum/expanded/key/inactive validation. Destination-specific visual and workflow redesign remains v0.20 work.
+- Remaining Slice 19.2 work includes selection restoration/focus tests and manual minimum/expanded/key/inactive validation. Owner-assisted VoiceOver and Full Keyboard Access QA exposed a missing Headings-rotor entry and asymmetric noninteractive-header traversal in the debug-gated Environment Brief; Issue #388 tracks the unresolved accessibility gate. Destination-specific visual and workflow redesign remains v0.20 work.
 
 Affected files/components:
 
@@ -233,7 +233,7 @@ Implementation checkpoint:
 - Versioned debug-only first-use/current/partial/offline/service-failure fixtures inject through the shared presentation boundary, and persisted legal/discovering/brief state restores against current brief identity/revision while discarding stale manager selection.
 - A debug-only `HELM_ENVIRONMENT_BRIEF_FIRST_RUN=enabled|preview` route now hosts legal, discovering, current, cached, partial, and service-failure presentation in the real Dashboard window. `enabled` applies only to unfinished onboarding; `preview` supports non-destructive review on a completed development profile, and `HELM_ENVIRONMENT_BRIEF_APPEARANCE=light|dark` makes fixture screenshots appearance-deterministic. Fixture previews remain service-independent, the surface performs no mutation or network work, and the existing onboarding remains the production route.
 - The 2026-08-08 presentation checkpoint rendered all five fixtures at minimum/expanded sizes in light/dark, plus German/Hungarian/Japanese and +40% text expansion at minimum size. It corrected the Course Indicator to represent mapped coverage and allowed system facts to wrap without truncation; see `docs/validation/v0.19-environment-brief-presentation-validation.md`.
-- Owner-assisted Full Keyboard Access and VoiceOver execution, setup-session/receipt mapping, contextual manager inspection, and the separately reviewed default-route replacement remain open.
+- Owner-assisted Full Keyboard Access and VoiceOver execution found the unresolved header rotor/traversal defect tracked in Issue #388. Setup-session/receipt mapping, contextual manager inspection, remediation and retest of #388, and the separately reviewed default-route replacement remain open.
 
 Rollback/incremental strategy:
 
