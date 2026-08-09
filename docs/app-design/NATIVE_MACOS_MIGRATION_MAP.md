@@ -229,7 +229,9 @@ Implementation checkpoint:
 
 - The read-only Environment Brief model and revision-aware projection are wired to existing authoritative manager-status and detection-task snapshots.
 - Contract coverage includes current, partial, cached/offline, and service-failure states plus JSON field/enum alignment.
-- Versioned debug-only first-use/current/partial/offline/service-failure fixtures inject through the shared presentation boundary, and persisted legal/discovering/brief state restores against current brief identity/revision while discarding stale manager selection; the feature-gated first-run view, setup-session/receipt mapping, and route replacement remain open.
+- Versioned debug-only first-use/current/partial/offline/service-failure fixtures inject through the shared presentation boundary, and persisted legal/discovering/brief state restores against current brief identity/revision while discarding stale manager selection.
+- A debug-only `HELM_ENVIRONMENT_BRIEF_FIRST_RUN=enabled|preview` route now hosts legal, discovering, current, cached, partial, and service-failure presentation in the real Dashboard window. `enabled` applies only to unfinished onboarding; `preview` supports non-destructive review on a completed development profile, and `HELM_ENVIRONMENT_BRIEF_APPEARANCE=light|dark` makes fixture screenshots appearance-deterministic. Fixture previews remain service-independent, the surface performs no mutation or network work, and the existing onboarding remains the production route.
+- Manual appearance/accessibility validation, setup-session/receipt mapping, contextual manager inspection, and the separately reviewed default-route replacement remain open.
 
 Rollback/incremental strategy:
 

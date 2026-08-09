@@ -105,6 +105,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance {
             core.triggerRefresh()
         }
+
+        if EnvironmentBriefFirstRunConfiguration.mode() == .preview {
+            DispatchQueue.main.async { [weak self] in
+                self?.openControlCenter()
+            }
+        }
     }
 
     func openDashboardFromApplicationMenu() {
@@ -180,6 +186,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     @objc private func togglePanel(_ sender: AnyObject?) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             showStatusMenu()
+            return
+        }
+
+        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
+        if EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            mode: firstRunMode,
+            hasCompletedOnboarding: core.hasCompletedOnboarding,
+            dismissedPreview: false
+        ) {
+            openControlCenter()
             return
         }
 

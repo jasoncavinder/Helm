@@ -6,7 +6,20 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
+    @State private var dismissedFirstRunPreview = false
     private let sidebarWidth: CGFloat = 232
+
+    private var firstRunMode: EnvironmentBriefFirstRunMode {
+        EnvironmentBriefFirstRunConfiguration.mode()
+    }
+
+    private var presentsFirstRun: Bool {
+        EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            mode: firstRunMode,
+            hasCompletedOnboarding: core.hasCompletedOnboarding,
+            dismissedPreview: dismissedFirstRunPreview
+        )
+    }
 
     private var selectedSection: ControlCenterSection {
         context.selectedSection ?? .overview
@@ -45,20 +58,26 @@ struct ControlCenterWindowView: View {
     }
 
     var body: some View {
-        ControlCenterSplitViewBridge(
-            isInspectorPresented: selectedSection.supportsInspector && context.isInspectorVisible,
-            contentMinimumThickness: sidebarWidth + 400
-        ) {
-            ControlCenterHostedContentView(
-                context: context,
-                walkthrough: walkthrough,
-                sidebarWidth: sidebarWidth
-            )
-        } inspector: {
-            ControlCenterHostedInspectorView(
-                context: context,
-                walkthrough: walkthrough
-            )
+        Group {
+            if presentsFirstRun {
+                EnvironmentBriefFirstRunView(onComplete: completeFirstRun)
+            } else {
+                ControlCenterSplitViewBridge(
+                    isInspectorPresented: selectedSection.supportsInspector && context.isInspectorVisible,
+                    contentMinimumThickness: sidebarWidth + 400
+                ) {
+                    ControlCenterHostedContentView(
+                        context: context,
+                        walkthrough: walkthrough,
+                        sidebarWidth: sidebarWidth
+                    )
+                } inspector: {
+                    ControlCenterHostedInspectorView(
+                        context: context,
+                        walkthrough: walkthrough
+                    )
+                }
+            }
         }
         .frame(minWidth: 860, minHeight: 600)
         .background(
@@ -80,81 +99,83 @@ struct ControlCenterWindowView: View {
             HelmSettingsOpeningBridge(router: context.settingsOpenRouter)
         )
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    context.toggleSidebar()
-                } label: {
-                    Image(systemName: "sidebar.leading")
-                }
-                .help(
-                    context.isSidebarVisible
-                        ? "app.command.hide_sidebar".localized
-                        : "app.command.show_sidebar".localized
-                )
-                .accessibilityLabel(
-                    context.isSidebarVisible
-                        ? "app.command.hide_sidebar".localized
-                        : "app.command.show_sidebar".localized
-                )
-            }
-
-            // Keep a principal item in the native toolbar so AppKit reserves the
-            // center and places the search and actions against the trailing edge.
-            ToolbarItem(placement: .principal) {
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .accessibilityHidden(true)
-            }
-
-            ToolbarItem(placement: .automatic) {
-                ControlCenterToolbarSearchField(
-                    text: searchQuery,
-                    placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
-                    focusRouter: context.controlCenterSearchFocusRouter
-                )
-                .frame(width: 320)
-            }
-
-            ToolbarItemGroup(placement: .primaryAction) {
-                if selectedSection.supportsInspector {
+            if !presentsFirstRun {
+                ToolbarItem(placement: .navigation) {
                     Button {
-                        context.toggleInspector()
+                        context.toggleSidebar()
                     } label: {
-                        Image(systemName: "sidebar.trailing")
+                        Image(systemName: "sidebar.leading")
                     }
                     .help(
-                        context.isInspectorVisible
-                            ? "app.command.hide_inspector".localized
-                            : "app.command.show_inspector".localized
+                        context.isSidebarVisible
+                            ? "app.command.hide_sidebar".localized
+                            : "app.command.show_sidebar".localized
                     )
                     .accessibilityLabel(
-                        context.isInspectorVisible
-                            ? "app.command.hide_inspector".localized
-                            : "app.command.show_inspector".localized
+                        context.isSidebarVisible
+                            ? "app.command.hide_sidebar".localized
+                            : "app.command.show_sidebar".localized
                     )
                 }
 
-                Button {
-                    core.triggerRefresh()
-                } label: {
-                    Label(L10n.Common.refresh.localized, systemImage: "arrow.clockwise")
+                // Keep a principal item in the native toolbar so AppKit reserves the
+                // center and places the search and actions against the trailing edge.
+                ToolbarItem(placement: .principal) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityHidden(true)
                 }
-                .help(L10n.App.Settings.Action.refreshNow.localized)
-                .disabled(core.isRefreshing)
 
-                if !core.outdatedPackages.isEmpty {
-                    Button {
-                        context.presentUpgradeSheet(in: .controlCenter)
-                        context.selectedSection = .updates
-                    } label: {
-                        Label(
-                            L10n.App.ControlCenter.upgradeAll.localized,
-                            systemImage: "arrow.up.circle.fill"
+                ToolbarItem(placement: .automatic) {
+                    ControlCenterToolbarSearchField(
+                        text: searchQuery,
+                        placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
+                        focusRouter: context.controlCenterSearchFocusRouter
+                    )
+                    .frame(width: 320)
+                }
+
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if selectedSection.supportsInspector {
+                        Button {
+                            context.toggleInspector()
+                        } label: {
+                            Image(systemName: "sidebar.trailing")
+                        }
+                        .help(
+                            context.isInspectorVisible
+                                ? "app.command.hide_inspector".localized
+                                : "app.command.show_inspector".localized
+                        )
+                        .accessibilityLabel(
+                            context.isInspectorVisible
+                                ? "app.command.hide_inspector".localized
+                                : "app.command.show_inspector".localized
                         )
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                    .fixedSize()
+
+                    Button {
+                        core.triggerRefresh()
+                    } label: {
+                        Label(L10n.Common.refresh.localized, systemImage: "arrow.clockwise")
+                    }
+                    .help(L10n.App.Settings.Action.refreshNow.localized)
+                    .disabled(core.isRefreshing)
+
+                    if !core.outdatedPackages.isEmpty {
+                        Button {
+                            context.presentUpgradeSheet(in: .controlCenter)
+                            context.selectedSection = .updates
+                        } label: {
+                            Label(
+                                L10n.App.ControlCenter.upgradeAll.localized,
+                                systemImage: "arrow.up.circle.fill"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        .fixedSize()
+                    }
                 }
             }
         }
@@ -181,14 +202,22 @@ struct ControlCenterWindowView: View {
         }
         .onAppear {
             deferInspectorAlignment(for: context.selectedSection)
-            if core.hasCompletedOnboarding {
+            if core.hasCompletedOnboarding && !presentsFirstRun {
                 core.triggerRefresh()
             }
-            if !walkthrough.hasCompletedControlCenterWalkthrough {
+            if !presentsFirstRun && !walkthrough.hasCompletedControlCenterWalkthrough {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     walkthrough.startControlCenterWalkthrough()
                 }
             }
+        }
+    }
+
+    private func completeFirstRun() {
+        dismissedFirstRunPreview = true
+        if !core.hasCompletedOnboarding {
+            core.completeOnboarding()
+            core.triggerRefresh()
         }
     }
 }

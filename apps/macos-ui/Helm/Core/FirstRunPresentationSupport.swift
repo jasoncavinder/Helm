@@ -146,6 +146,155 @@ enum EnvironmentBriefFixtureProvider {
     }
 }
 
+enum EnvironmentBriefFirstRunMode: String, Equatable {
+    case disabled
+    case enabled
+    case preview
+}
+
+enum EnvironmentBriefPreviewAppearance: String, Equatable {
+    case system
+    case light
+    case dark
+}
+
+enum EnvironmentBriefFirstRunConfiguration {
+    static let environmentKey = "HELM_ENVIRONMENT_BRIEF_FIRST_RUN"
+    static let appearanceEnvironmentKey = "HELM_ENVIRONMENT_BRIEF_APPEARANCE"
+
+    static func mode(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> EnvironmentBriefFirstRunMode {
+        #if DEBUG
+        let rawMode = environment[environmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        switch rawMode {
+        case "1", "true", "on", "enabled":
+            return .enabled
+        case "preview":
+            return .preview
+        default:
+            return .disabled
+        }
+        #else
+        return .disabled
+        #endif
+    }
+
+    static func shouldPresent(
+        mode: EnvironmentBriefFirstRunMode,
+        hasCompletedOnboarding: Bool,
+        dismissedPreview: Bool
+    ) -> Bool {
+        switch mode {
+        case .disabled:
+            return false
+        case .enabled:
+            return !hasCompletedOnboarding
+        case .preview:
+            return !dismissedPreview
+        }
+    }
+
+    static func previewAppearance(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> EnvironmentBriefPreviewAppearance {
+        #if DEBUG
+        guard let rawAppearance = environment[appearanceEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() else {
+            return .system
+        }
+        return EnvironmentBriefPreviewAppearance(rawValue: rawAppearance) ?? .system
+        #else
+        return .system
+        #endif
+    }
+}
+
+enum EnvironmentBriefPresentationKind: Equatable {
+    case mapping
+    case current
+    case cached
+    case partial
+    case serviceFailure
+}
+
+struct EnvironmentBriefPresentationSummary: Equatable {
+    let kind: EnvironmentBriefPresentationKind
+    let intendedManagerCount: Int
+    let mappedManagerCount: Int
+    let readyManagerCount: Int
+    let attentionCount: Int
+    let completionFraction: Double
+
+    static func make(from brief: EnvironmentBrief) -> EnvironmentBriefPresentationSummary {
+        let coverage = brief.coverage
+        let mappedManagerIDs = Set(
+            brief.discoveredManagers.compactMap { observation in
+                observation.freshness == .unknown ? nil : observation.manager
+            }
+        )
+        let terminalManagerIDs = mappedManagerIDs
+            .union(coverage.failedManagers)
+            .union(coverage.cancelledManagers)
+            .union(coverage.deferredManagers)
+        let attentionManagerIDs = Set(
+            brief.discoveredManagers.compactMap { observation in
+                observation.eligibility != .eligible || observation.managementState != .ready
+                    ? observation.manager
+                    : nil
+            }
+        )
+        .union(coverage.failedManagers)
+        .union(coverage.cancelledManagers)
+        let mappedCount = mappedManagerIDs.count
+        let terminalCount = terminalManagerIDs.count
+        let attentionCount = attentionManagerIDs.count
+
+        let kind: EnvironmentBriefPresentationKind
+        if coverage.intendedManagerCount > 0,
+           mappedCount == 0,
+           coverage.failedManagers.count >= coverage.intendedManagerCount {
+            kind = .serviceFailure
+        } else if !coverage.failedManagers.isEmpty
+            || !coverage.cancelledManagers.isEmpty
+            || !coverage.deferredManagers.isEmpty {
+            kind = .partial
+        } else if coverage.currentManagerCount == 0 && coverage.cachedManagerCount > 0 {
+            kind = .cached
+        } else if terminalCount < coverage.intendedManagerCount {
+            kind = .mapping
+        } else {
+            kind = .current
+        }
+
+        let completionFraction: Double
+        if coverage.intendedManagerCount == 0 {
+            completionFraction = kind == .current ? 1 : 0
+        } else {
+            completionFraction = min(
+                Double(terminalCount) / Double(coverage.intendedManagerCount),
+                1
+            )
+        }
+
+        return EnvironmentBriefPresentationSummary(
+            kind: kind,
+            intendedManagerCount: coverage.intendedManagerCount,
+            mappedManagerCount: mappedCount,
+            readyManagerCount: brief.discoveredManagers.filter { observation in
+                observation.detected
+                    && observation.eligibility == .eligible
+                    && observation.managementState == .ready
+            }.count,
+            attentionCount: attentionCount,
+            completionFraction: completionFraction
+        )
+    }
+}
+
 enum FirstRunPresentationStage: String, Codable, Equatable {
     case legal
     case discovering

@@ -83,6 +83,7 @@
 		W200000000000000000000003 /* EnvironmentBriefProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */; };
 		X200000000000000000000001 /* HelmCore+EnvironmentBrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */; };
 		X200000000000000000000002 /* HelmOverviewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = X100000000000000000000002 /* HelmOverviewState.swift */; };
+		Y200000000000000000000001 /* EnvironmentBriefFirstRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Y100000000000000000000001 /* EnvironmentBriefFirstRunView.swift */; };
 		Z200000000000000000000001 /* FirstRunPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z100000000000000000000001 /* FirstRunPresentationSupport.swift */; };
 		Z200000000000000000000002 /* FirstRunPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z100000000000000000000001 /* FirstRunPresentationSupport.swift */; };
 		Z200000000000000000000003 /* FirstRunPresentationSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z100000000000000000000002 /* FirstRunPresentationSupportTests.swift */; };
@@ -199,6 +200,7 @@
 		W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjectionTests.swift; sourceTree = "<group>"; };
 		X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+EnvironmentBrief.swift"; sourceTree = "<group>"; };
 		X100000000000000000000002 /* HelmOverviewState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmOverviewState.swift; sourceTree = "<group>"; };
+		Y100000000000000000000001 /* EnvironmentBriefFirstRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefFirstRunView.swift; sourceTree = "<group>"; };
 		Z100000000000000000000001 /* FirstRunPresentationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunPresentationSupport.swift; sourceTree = "<group>"; };
 		Z100000000000000000000002 /* FirstRunPresentationSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunPresentationSupportTests.swift; sourceTree = "<group>"; };
 		R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderCourseIndicatorView.swift; sourceTree = "<group>"; };
@@ -432,6 +434,7 @@
 		B30000000000000000000002 /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
+				Y100000000000000000000001 /* EnvironmentBriefFirstRunView.swift */,
 				B10000000000000000000011 /* OnboardingContainerView.swift */,
 				B10000000000000000000014 /* OnboardingConfigureView.swift */,
 				D10000000000000000000010 /* OnboardingSettingsView.swift */,
@@ -655,6 +658,7 @@
 				B20000000000000000000013 /* OnboardingDetectionView.swift in Sources */,
 				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
 				D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */,
+				Y200000000000000000000001 /* EnvironmentBriefFirstRunView.swift in Sources */,
 				D20000000000000000000001 /* ControlCenterModels.swift in Sources */,
 				S200000000000000000000001 /* ControlCenterSearchBridge.swift in Sources */,
 				T200000000000000000000001 /* SettingsOpeningBridge.swift in Sources */,
