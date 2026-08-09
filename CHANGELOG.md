@@ -21,6 +21,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 ### Fixed
 - Dashboard workspace switching no longer publishes selection changes during SwiftUI view updates, toolbar search focus remains stable, and split-view geometry is clamped before reaching AppKit.
 - Settings links consistently use the platform Settings scene, while toolbar search placement and native window controls retain their intended macOS layout.
+- Native Settings pane selection no longer publishes during SwiftUI view updates, and every pane title resolves through the localized catalog instead of exposing raw localization keys.
+- Refresh requests now fail closed when the XPC service or proxy is unavailable, and reopening the menu-bar popover no longer resubmits an already-running refresh.
 - The website dependency graph includes the patched `nanoid` release addressing CVE-2026-67213, and release-variant automation now creates required output directories before tagged builds.
 
 The Environment Brief remains available only behind its development gate in this candidate. Issue #388 tracks its unresolved VoiceOver Headings-rotor and bidirectional Full Keyboard Access behavior, so the existing onboarding remains the production first-run route. Operational-card relocation and removal of the legacy in-window Settings compatibility destination are explicitly deferred until after `v0.19.0-rc.2` rather than rushed into this prerelease.

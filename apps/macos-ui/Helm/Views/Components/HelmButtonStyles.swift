@@ -330,9 +330,6 @@ private struct HelmPointerModifier: ViewModifier {
                     NSCursor.arrow.set()
                 }
             }
-            .onDisappear {
-                NSCursor.arrow.set()
-            }
     }
 }
 
