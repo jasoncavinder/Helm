@@ -54,6 +54,7 @@ struct TimestampedAdapter {
     descriptor: ManagerDescriptor,
     delay: Duration,
     completion_order: Arc<AtomicU64>,
+    concurrency_probe: Option<Arc<ConcurrencyProbe>>,
 }
 
 impl TimestampedAdapter {
@@ -77,7 +78,34 @@ impl TimestampedAdapter {
             },
             delay,
             completion_order,
+            concurrency_probe: None,
         }
+    }
+
+    fn with_concurrency_probe(mut self, concurrency_probe: Arc<ConcurrencyProbe>) -> Self {
+        self.concurrency_probe = Some(concurrency_probe);
+        self
+    }
+}
+
+#[derive(Default)]
+struct ConcurrencyProbe {
+    active: AtomicU64,
+    peak: AtomicU64,
+}
+
+impl ConcurrencyProbe {
+    fn enter(&self) {
+        let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(active, Ordering::SeqCst);
+    }
+
+    fn exit(&self) {
+        self.active.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    fn peak(&self) -> u64 {
+        self.peak.load(Ordering::SeqCst)
     }
 }
 
@@ -91,8 +119,16 @@ impl ManagerAdapter for TimestampedAdapter {
     }
 
     fn execute(&self, request: AdapterRequest) -> AdapterResult<AdapterResponse> {
+        if let Some(probe) = &self.concurrency_probe {
+            probe.enter();
+        }
+
         // Simulate work with a blocking sleep
         std::thread::sleep(self.delay);
+
+        if let Some(probe) = &self.concurrency_probe {
+            probe.exit();
+        }
 
         match request {
             AdapterRequest::Detect(_) => Ok(AdapterResponse::Detection(DetectionInfo {
@@ -307,20 +343,27 @@ async fn failure_isolation_one_manager_failing_does_not_block_others() {
 #[tokio::test]
 async fn parallel_within_authoritative_phase() {
     let completion_order = Arc::new(AtomicU64::new(0));
+    let concurrency_probe = Arc::new(ConcurrencyProbe::default());
 
-    let mise: Arc<dyn ManagerAdapter> = Arc::new(TimestampedAdapter::new(
-        ManagerId::Mise,
-        ManagerAuthority::Authoritative,
-        Duration::from_millis(50),
-        completion_order.clone(),
-    ));
+    let mise: Arc<dyn ManagerAdapter> = Arc::new(
+        TimestampedAdapter::new(
+            ManagerId::Mise,
+            ManagerAuthority::Authoritative,
+            Duration::from_millis(50),
+            completion_order.clone(),
+        )
+        .with_concurrency_probe(concurrency_probe.clone()),
+    );
 
-    let rustup: Arc<dyn ManagerAdapter> = Arc::new(TimestampedAdapter::new(
-        ManagerId::Rustup,
-        ManagerAuthority::Authoritative,
-        Duration::from_millis(50),
-        completion_order.clone(),
-    ));
+    let rustup: Arc<dyn ManagerAdapter> = Arc::new(
+        TimestampedAdapter::new(
+            ManagerId::Rustup,
+            ManagerAuthority::Authoritative,
+            Duration::from_millis(50),
+            completion_order.clone(),
+        )
+        .with_concurrency_probe(concurrency_probe.clone()),
+    );
 
     let runtime = runtime_with_detection_rows(
         "authority-ordering-parallel-authoritative-phase",
@@ -328,21 +371,16 @@ async fn parallel_within_authoritative_phase() {
         &[(ManagerId::Mise, true), (ManagerId::Rustup, true)],
     );
 
-    let start = std::time::Instant::now();
     let results = runtime.refresh_all_ordered().await;
-    let elapsed = start.elapsed();
 
     assert_eq!(results.len(), 2);
     for (_, result) in &results {
         assert!(result.is_ok());
     }
 
-    // If truly parallel, both should complete in roughly 50ms * 2 tasks per manager
-    // (ListInstalled + ListOutdated, serialized per manager), not 50ms * 4 tasks
-    // Give generous margin for CI
     assert!(
-        elapsed < Duration::from_millis(1000),
-        "Expected parallel execution within single phase, took {elapsed:?}"
+        concurrency_probe.peak() >= 2,
+        "expected manager execution to overlap within a single authority phase"
     );
     assert_eq!(completion_order.load(Ordering::SeqCst), 2);
 }
