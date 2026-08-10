@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Fixed
+- A fresh install or update now starts with a true System Default language preference that follows macOS, rather than persisting whichever localized value SwiftUI first projected through the former English-backed setting. Existing ambiguous legacy preferences are reset once to System Default; language choices made after this migration, including explicit English, persist normally.
+
 ## [0.19.0-rc.2] - 2026-08-08
 
 ### Added

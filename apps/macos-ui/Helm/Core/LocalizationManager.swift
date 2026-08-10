@@ -11,31 +11,64 @@ class LocalizationManager: ObservableObject {
         options: []
     )
     
-    @Published var currentLocale: String = "en" {
+    @Published private(set) var currentLocale: String
+    @Published var localePreference: String {
         didSet {
-            if oldValue != currentLocale {
-                loadLocale(currentLocale)
-                UserDefaults.standard.set(currentLocale, forKey: kLocaleKey)
+            guard oldValue != localePreference else {
+                return
+            }
+
+            let normalized = LocalizationPreferenceStore.normalized(localePreference)
+            if normalized != localePreference {
+                localePreference = normalized
+                return
+            }
+
+            preferenceStore.save(normalized)
+            let effectiveLocale = resolvedLocale(for: normalized)
+            if effectiveLocale != currentLocale {
+                currentLocale = effectiveLocale
+                loadLocale(effectiveLocale)
             }
         }
     }
 
     private let defaultLocale = "en"
     private let localeFiles = ["common", "app", "service"]
+    private let preferenceStore: LocalizationPreferenceStore
+    private let preferredLanguages: () -> [String]
     private var strings: [String: String] = [:]
     private var fallbackStrings: [String: String] = [:]
-    private let kLocaleKey = "user_locale_preference"
-    
-    private init() {
-        let saved = UserDefaults.standard.string(forKey: kLocaleKey)
-        let locale = saved ?? preferredSystemLocale()
+
+    private init(
+        defaults: UserDefaults = .standard,
+        preferredLanguages: @escaping () -> [String] = { Locale.preferredLanguages }
+    ) {
+        let preferenceStore = LocalizationPreferenceStore(defaults: defaults)
+        let selection = preferenceStore.initialSelection()
+        let locale = LocalizationPreferenceStore.effectiveLocale(
+            for: selection,
+            preferredLanguages: preferredLanguages()
+        )
+
+        self.preferenceStore = preferenceStore
+        self.preferredLanguages = preferredLanguages
+        self.localePreference = selection
+        self.currentLocale = locale
         fallbackStrings = loadStrings(for: defaultLocale)
-        currentLocale = locale
         loadLocale(locale)
+
+        localizationLogger.info(
+            "Resolved language preference \(selection, privacy: .public) to locale \(locale, privacy: .public)"
+        )
     }
 
-    private func preferredSystemLocale() -> String {
-        Locale.preferredLanguages.first ?? Locale.current.identifier
+    private func resolvedLocale(for selection: String) -> String {
+        LocalizationPreferenceStore.effectiveLocale(
+            for: selection,
+            preferredLanguages: preferredLanguages(),
+            fallback: defaultLocale
+        )
     }
     
     private func loadLocale(_ locale: String) {

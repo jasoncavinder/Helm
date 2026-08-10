@@ -185,8 +185,10 @@ struct SettingsSectionView: View {
                         HStack {
                             Text(L10n.App.Settings.Label.language.localized)
                             Spacer()
-                            Picker("", selection: $localization.currentLocale) {
-                                Text(L10n.App.Settings.Label.systemDefaultWithEnglish.localized).tag("en")
+                            Picker("", selection: $localization.localePreference) {
+                                Text(L10n.App.Settings.Label.systemDefault.localized)
+                                    .tag(LocalizationPreferenceStore.systemSelection)
+                                Text(L10n.App.Settings.Label.english.localized).tag("en")
                                 Text(L10n.App.Settings.Label.spanish.localized).tag("es")
                                 Text(L10n.App.Settings.Label.german.localized).tag("de")
                                 Text(L10n.App.Settings.Label.french.localized).tag("fr")

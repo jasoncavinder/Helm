@@ -74,6 +74,8 @@
 		K200000000000000000000002 /* SupportRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000001 /* SupportRedactor.swift */; };
 		K200000000000000000000003 /* SupportRedactorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K100000000000000000000002 /* SupportRedactorTests.swift */; };
 		L200000000000000000000001 /* helm-cli in Resources */ = {isa = PBXBuildFile; fileRef = L100000000000000000000001 /* helm-cli */; };
+		M200000000000000000000001 /* LocalizationPreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = M100000000000000000000001 /* LocalizationPreference.swift */; };
+		M200000000000000000000002 /* LocalizationPreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = M100000000000000000000001 /* LocalizationPreference.swift */; };
 		N100000000000000000000001 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
 		N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000002 /* HelmCliShimCommandRunner.swift */; };
 		N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N100000000000000000000005 /* HelmCliShimCommandRunnerTests.swift */; };
@@ -165,6 +167,7 @@
 		B10000000000000000000013 /* OnboardingDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDetectionView.swift; sourceTree = "<group>"; };
 		B10000000000000000000014 /* OnboardingConfigureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConfigureView.swift; sourceTree = "<group>"; };
 		B10000000000000000000015 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
+		M100000000000000000000001 /* LocalizationPreference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationPreference.swift; sourceTree = "<group>"; };
 		B10000000000000000000016 /* String+Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Localization.swift"; sourceTree = "<group>"; };
 		B10000000000000000000017 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		C10000000000000000000003 /* UpgradePreviewPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePreviewPlanner.swift; sourceTree = "<group>"; };
@@ -298,6 +301,7 @@
 				X100000000000000000000002 /* HelmOverviewState.swift */,
 				Z100000000000000000000001 /* FirstRunPresentationSupport.swift */,
 				C10000000000000000000003 /* UpgradePreviewPlanner.swift */,
+				M100000000000000000000001 /* LocalizationPreference.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
 				K100000000000000000000001 /* SupportRedactor.swift */,
@@ -640,6 +644,7 @@
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
 				C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */,
 				K200000000000000000000001 /* SupportRedactor.swift in Sources */,
+				M200000000000000000000001 /* LocalizationPreference.swift in Sources */,
 				B20000000000000000000015 /* LocalizationManager.swift in Sources */,
 				B20000000000000000000016 /* String+Localization.swift in Sources */,
 				B20000000000000000000017 /* L10n.swift in Sources */,
@@ -710,6 +715,7 @@
 				N100000000000000000000003 /* HelmCliShimCommandRunner.swift in Sources */,
 				N100000000000000000000004 /* HelmCliShimCommandRunnerTests.swift in Sources */,
 				H200000000000000000000001 /* AppUpdateConfigurationTests.swift in Sources */,
+				M200000000000000000000002 /* LocalizationPreference.swift in Sources */,
 				C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */,
 				C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */,
 				K200000000000000000000002 /* SupportRedactor.swift in Sources */,
