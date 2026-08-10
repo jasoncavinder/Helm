@@ -12,11 +12,11 @@
       <enclosure url="https://github.com/jasoncavinder/Helm/releases/download/v0.18.2/Helm-v0.18.2-macos-universal.dmg" sparkle:version="18002900" sparkle:shortVersionString="0.18.2" sparkle:edSignature="PkshXlXe/7UOSpaSZXn+rs1D6tSxX88abqdoWogSZTPkN2IfhOGP9h6g/fun4jGhJg//s8YZ4gmglapUNj1GAg==" sparkle:minimumSystemVersion="11.0" length="31297100" type="application/octet-stream" />
     </item>
     <item>
-      <title>Helm 0.19.0-rc.1</title>
-      <pubDate>Sat, 08 Aug 2026 01:42:25 +0000</pubDate>
+      <title>Helm 0.19.0-rc.2</title>
+      <pubDate>Mon, 10 Aug 2026 07:28:47 +0000</pubDate>
       <sparkle:channel>beta</sparkle:channel>
-      <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.19.0-rc.1.html</sparkle:releaseNotesLink>
-      <enclosure url="https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.1/Helm-v0.19.0-rc.1-macos-universal.dmg" sparkle:version="19000601" sparkle:shortVersionString="0.19.0-rc.1" sparkle:edSignature="KUFZm3PhveuuFxi/XTZmrWQRCOxPP90fE8k6AFBUrKUuv0oM9bzfQqFVfcnvxthGrHrjcDiCl1IxokDtzbbwBw==" sparkle:minimumSystemVersion="13.0" length="30732315" type="application/octet-stream" />
+      <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.19.0-rc.2.html</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.2/Helm-v0.19.0-rc.2-macos-universal.dmg" sparkle:version="19000602" sparkle:shortVersionString="0.19.0-rc.2" sparkle:edSignature="xKKxATBZ6BfxzdeAvmt2lvqIFOZQhZztFuit0ZO0Afzc9af3iqJoGaEOw+Riad+c2rzpZsB54IjV5rFp9OnAAQ==" sparkle:minimumSystemVersion="13.0" length="31410255" type="application/octet-stream" />
     </item>
   </channel>
 </rss>
