@@ -42,7 +42,8 @@ final class LocalizationOverflowValidationTests: XCTestCase {
 
     func testLanguagePickerOptionsFitConfiguredWidthAcrossLocales() throws {
         let keys = [
-            "app.settings.label.language.system_default_with_english",
+            "app.settings.label.language.system_default",
+            "app.settings.label.language.english",
             "app.settings.label.language.spanish",
             "app.settings.label.language.german",
             "app.settings.label.language.french",
@@ -389,5 +390,85 @@ final class LocalizationOverflowValidationTests: XCTestCase {
                 )
             }
         }
+    }
+}
+
+final class LocalizationPreferenceTests: XCTestCase {
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "LocalizationPreferenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    func testFreshInstallUsesSystemSelectionAndPreferredLanguage() {
+        let defaults = makeDefaults()
+        let store = LocalizationPreferenceStore(defaults: defaults)
+
+        let selection = store.initialSelection()
+
+        XCTAssertEqual(selection, LocalizationPreferenceStore.systemSelection)
+        XCTAssertEqual(
+            LocalizationPreferenceStore.effectiveLocale(
+                for: selection,
+                preferredLanguages: ["en-US"]
+            ),
+            "en-US"
+        )
+    }
+
+    func testLegacyPreferenceResetsOnceToSystemSelection() {
+        let defaults = makeDefaults()
+        defaults.set("de", forKey: LocalizationPreferenceStore.legacyPreferenceKey)
+        let store = LocalizationPreferenceStore(defaults: defaults)
+
+        XCTAssertEqual(store.initialSelection(), LocalizationPreferenceStore.systemSelection)
+        XCTAssertNil(defaults.object(forKey: LocalizationPreferenceStore.legacyPreferenceKey))
+        XCTAssertEqual(
+            defaults.string(forKey: LocalizationPreferenceStore.preferenceKey),
+            LocalizationPreferenceStore.systemSelection
+        )
+    }
+
+    func testExplicitLanguagePersistsAcrossLaunches() {
+        let defaults = makeDefaults()
+        let store = LocalizationPreferenceStore(defaults: defaults)
+        store.save("de")
+
+        XCTAssertEqual(store.initialSelection(), "de")
+        XCTAssertEqual(
+            LocalizationPreferenceStore.effectiveLocale(
+                for: store.initialSelection(),
+                preferredLanguages: ["en-US"]
+            ),
+            "de"
+        )
+    }
+
+    func testSystemSelectionTracksChangedPreferredLanguage() {
+        XCTAssertEqual(
+            LocalizationPreferenceStore.effectiveLocale(
+                for: LocalizationPreferenceStore.systemSelection,
+                preferredLanguages: ["de-DE"]
+            ),
+            "de-DE"
+        )
+        XCTAssertEqual(
+            LocalizationPreferenceStore.effectiveLocale(
+                for: LocalizationPreferenceStore.systemSelection,
+                preferredLanguages: ["en-US"]
+            ),
+            "en-US"
+        )
+    }
+
+    func testUnsupportedStoredSelectionFallsBackToSystem() {
+        let defaults = makeDefaults()
+        defaults.set("not-a-locale", forKey: LocalizationPreferenceStore.preferenceKey)
+
+        XCTAssertEqual(
+            LocalizationPreferenceStore(defaults: defaults).initialSelection(),
+            LocalizationPreferenceStore.systemSelection
+        )
     }
 }

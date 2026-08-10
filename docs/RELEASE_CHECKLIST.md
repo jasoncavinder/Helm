@@ -78,8 +78,8 @@ This checklist is required before creating a release tag on `main`.
 - [x] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
 - [x] Re-audit the Rust runtime/build and website dependency-license inventory for the candidate and update `docs/legal/THIRD_PARTY_LICENSES.md`.
 - [x] Owner manual QA passes for Dashboard workspace routing, non-refresh toolbar/app commands, Settings single-instance routing, and window restoration/resizing; findings for Settings selection/localization and refresh failure handling are remediated on the candidate branch, while the refresh route is contract-covered and a correctly signed development run reached idle without XPC errors.
-- [ ] Validate installed-candidate Sparkle update behavior against the signed/notarized `v0.19.0-rc.2` artifact after publication; a source-build run cannot satisfy this distribution-boundary check.
-- [x] No known release-critical regression remains open; Issue #388 is explicitly excluded from production routing by the retained debug gate.
+- [x] Validate installed-candidate Sparkle update behavior against the signed/notarized `v0.19.0-rc.2` artifact after publication; Sparkle detected, installed, and relaunched RC2 from RC1 successfully.
+- [ ] No known release-critical regression remains open; installed-candidate validation exposed an unintended German locale after relaunch, and the post-RC2 source hotfix must ship in a new immutable candidate. Issue #388 remains explicitly excluded from production routing by the retained debug gate.
 - [x] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.2` before any tag or publication mutation.
 
 ### Publication
@@ -95,7 +95,7 @@ This checklist is required before creating a release tag on `main`.
 - Release canary run `31363833023` and publish-auth write-probe run `31363837968` passed before the tag was created from final `main` revision `2ef4b692a9850494e8d48e93156838b9831c02a8`.
 - Direct CLI run `31364877903` and signed/notarized macOS DMG run `31364877916` completed successfully. Publication PRs `#397` and `#398` merged RC CLI metadata and the beta appcast/release notes into `main`.
 - `Release Publish Verify` run `31366731563`, `CLI Update Metadata Drift Guard` run `31366680922`, the Sparkle/appcast checklist, and `scripts/release/runbook.sh verify --tag v0.19.0-rc.2` pass with no open release-publication PRs.
-- Installed-candidate Sparkle validation remains an explicit owner action and is not implied by successful source, workflow, or metadata verification.
+- Owner-installed Sparkle validation passed the RC1-to-RC2 detection, installation, and relaunch boundary. The relaunched app selected German instead of the system-default English because the legacy language preference could not distinguish System Default from an explicit locale; the post-RC2 hotfix introduces a versioned, true system-following preference and requires a new candidate before stable release.
 
 ## v0.19.0-rc.1 (Manager and Updater Modernization RC, Completed)
 
