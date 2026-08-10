@@ -8,19 +8,19 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.18.2 remains the latest public stable release on `main`**, and **0.19.0-rc.1 is the published opt-in prerelease**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
+Current documentation baseline: **0.18.2 remains the latest public stable release on `main`**, and **0.19.0-rc.2 is the published opt-in prerelease**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
 
-Implementation baseline: **prepared `0.19.0-rc.2` source candidate on the published `0.19.0-rc.1` lineage**, combining the Original Wayfinder native Dashboard/window/sidebar/toolbar foundation with dedicated native Settings panes while preserving the manager/updater and migration-safety baseline. The read-only Project WOW Environment Brief runtime projection, deterministic debug fixtures, and resumable presentation state remain development-gated. Issue #388 tracks its unresolved VoiceOver Headings-rotor and bidirectional Full Keyboard Access behavior, so the production first-run route remains on the existing onboarding flow. Operational-card relocation and removal of the legacy in-window Settings compatibility destination are explicitly deferred until after this candidate.
+Implementation baseline: **published `0.19.0-rc.2` opt-in candidate on the `0.19.0-rc.1` lineage**, combining the Original Wayfinder native Dashboard/window/sidebar/toolbar foundation with dedicated native Settings panes while preserving the manager/updater and migration-safety baseline. The read-only Project WOW Environment Brief runtime projection, deterministic debug fixtures, and resumable presentation state remain development-gated. Issue #388 tracks its unresolved VoiceOver Headings-rotor and bidirectional Full Keyboard Access behavior, so the production first-run route remains on the existing onboarding flow. Operational-card relocation and removal of the legacy in-window Settings compatibility destination are explicitly deferred until after this candidate.
 
 See:
 - CHANGELOG.md
 
 Active milestone:
 - latest stable release currently published on `main`: **0.18.2**
-- published opt-in prerelease: **0.19.0-rc.1**, represented by a published GitHub prerelease with signed/notarized GUI artifacts and direct CLI artifacts; GitHub `releases/latest` remains stable-only on `v0.18.2`
-- prepared source candidate: **0.19.0-rc.2**; it is not tagged or published, and public beta/RC metadata remains on `v0.19.0-rc.1` until publication completes
+- published opt-in prerelease: **0.19.0-rc.2**, represented by a published GitHub prerelease with signed/notarized GUI artifacts and direct CLI artifacts; GitHub `releases/latest` remains stable-only on `v0.18.2`
+- `v0.19.0-rc.2` publication completed from final `main` revision `2ef4b692a9850494e8d48e93156838b9831c02a8`; generated CLI and appcast/release-notes PRs `#397` and `#398` are merged, and post-publication release/drift verification is green
 - `v0.18.0` was published on 2026-08-03 and then withdrawn after discovery of a critical SQLite migration defect; its immutable tag is retained for auditability while its release is not publicly distributed.
-- public default-channel GUI appcast and stable CLI metadata remain on signed `v0.18.2` artifacts, while the `beta` appcast item and `latest-rc.json` point to `v0.19.0-rc.1`.
+- public default-channel GUI appcast and stable CLI metadata remain on signed `v0.18.2` artifacts, while the `beta` appcast item and `latest-rc.json` point to `v0.19.0-rc.2`.
 - owner installation validation confirms `/Applications/Helm.app` is the signed Developer ID build for `0.19.0-rc.1` (`CFBundleVersion` `19000601`); this is one successful owner installation, not broad participant validation.
 - delivered in `v0.18.1`: reconciliation of the known development migration `17` collision before released doctor/repair migrations run, plus prevention of historical DDL replay for already-current databases, preserving package identifiers and user data.
 - delivered in `v0.18.2`: immutable migration identities and definition checksums, fail-closed ledger validation, verified bounded pre-migration backups, debug/release database separation, initialization-error propagation, and migration-compatibility CI/release gates.

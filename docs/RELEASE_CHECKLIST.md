@@ -62,7 +62,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.2 (Native Experience Foundation RC, Source Candidate Prepared)
+## v0.19.0-rc.2 (Native Experience Foundation RC, Published)
 
 ### Candidate Scope
 
@@ -84,10 +84,18 @@ This checklist is required before creating a release tag on `main`.
 
 ### Publication
 
-- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.2` or publishing artifacts.
-- [ ] Publish `v0.19.0-rc.2` as a GitHub prerelease that does not become latest.
-- [ ] Confirm the stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.2`.
-- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+- [x] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.2` or publishing artifacts.
+- [x] Publish `v0.19.0-rc.2` as a GitHub prerelease that does not become latest.
+- [x] Confirm the stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.2`.
+- [x] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
+### Closeout Record
+
+- `v0.19.0-rc.2` is a published GitHub prerelease; `v0.18.2` remains the published non-prerelease returned by `releases/latest`.
+- Release canary run `31363833023` and publish-auth write-probe run `31363837968` passed before the tag was created from final `main` revision `2ef4b692a9850494e8d48e93156838b9831c02a8`.
+- Direct CLI run `31364877903` and signed/notarized macOS DMG run `31364877916` completed successfully. Publication PRs `#397` and `#398` merged RC CLI metadata and the beta appcast/release notes into `main`.
+- `Release Publish Verify` run `31366731563`, `CLI Update Metadata Drift Guard` run `31366680922`, the Sparkle/appcast checklist, and `scripts/release/runbook.sh verify --tag v0.19.0-rc.2` pass with no open release-publication PRs.
+- Installed-candidate Sparkle validation remains an explicit owner action and is not implied by successful source, workflow, or metadata verification.
 
 ## v0.19.0-rc.1 (Manager and Updater Modernization RC, Completed)
 
