@@ -417,9 +417,9 @@ final class LocalizationPreferenceTests: XCTestCase {
         )
     }
 
-    func testLegacyPreferenceResetsOnceToSystemSelection() {
+    func testLegacyEnglishSelectionMigratesToSystemSelection() {
         let defaults = makeDefaults()
-        defaults.set("de", forKey: LocalizationPreferenceStore.legacyPreferenceKey)
+        defaults.set("en", forKey: LocalizationPreferenceStore.legacyPreferenceKey)
         let store = LocalizationPreferenceStore(defaults: defaults)
 
         XCTAssertEqual(store.initialSelection(), LocalizationPreferenceStore.systemSelection)
@@ -427,6 +427,19 @@ final class LocalizationPreferenceTests: XCTestCase {
         XCTAssertEqual(
             defaults.string(forKey: LocalizationPreferenceStore.preferenceKey),
             LocalizationPreferenceStore.systemSelection
+        )
+    }
+
+    func testLegacyExplicitLanguageSelectionIsPreserved() {
+        let defaults = makeDefaults()
+        defaults.set("de", forKey: LocalizationPreferenceStore.legacyPreferenceKey)
+        let store = LocalizationPreferenceStore(defaults: defaults)
+
+        XCTAssertEqual(store.initialSelection(), "de")
+        XCTAssertNil(defaults.object(forKey: LocalizationPreferenceStore.legacyPreferenceKey))
+        XCTAssertEqual(
+            defaults.string(forKey: LocalizationPreferenceStore.preferenceKey),
+            "de"
         )
     }
 

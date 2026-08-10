@@ -18,19 +18,23 @@ struct LocalizationPreferenceStore {
     let defaults: UserDefaults
 
     func initialSelection() -> String {
-        // The legacy key conflated System Default with English and did not record
-        // whether a value was user-selected. Reset it once to the truthful default.
-        defaults.removeObject(forKey: Self.legacyPreferenceKey)
-
-        guard
-            let stored = defaults.string(forKey: Self.preferenceKey),
-            Self.supportedSelections.contains(stored)
-        else {
-            defaults.set(Self.systemSelection, forKey: Self.preferenceKey)
-            return Self.systemSelection
+        if let stored = defaults.string(forKey: Self.preferenceKey) {
+            let normalizedStored = Self.normalized(stored)
+            if normalizedStored != stored {
+                defaults.set(normalizedStored, forKey: Self.preferenceKey)
+            }
+            return normalizedStored
         }
 
-        return stored
+        if let legacy = defaults.string(forKey: Self.legacyPreferenceKey) {
+            let migrated = Self.migratedLegacySelection(legacy)
+            defaults.set(migrated, forKey: Self.preferenceKey)
+            defaults.removeObject(forKey: Self.legacyPreferenceKey)
+            return migrated
+        }
+
+        defaults.set(Self.systemSelection, forKey: Self.preferenceKey)
+        return Self.systemSelection
     }
 
     func save(_ selection: String) {
@@ -39,6 +43,11 @@ struct LocalizationPreferenceStore {
 
     static func normalized(_ selection: String) -> String {
         supportedSelections.contains(selection) ? selection : systemSelection
+    }
+
+    static func migratedLegacySelection(_ legacySelection: String) -> String {
+        let normalizedLegacySelection = normalized(legacySelection)
+        return normalizedLegacySelection == "en" ? systemSelection : normalizedLegacySelection
     }
 
     static func effectiveLocale(
