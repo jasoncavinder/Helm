@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private let core = HelmCore.shared
     private let appUpdate = AppUpdateCoordinator.shared
-    private let controlCenterContext = ControlCenterContext()
+    let controlCenterContext = ControlCenterContext()
     private let notificationCenter = UNUserNotificationCenter.current()
     private var hasObservedInFlightTasks = false
     private var announcedTimeoutPromptIds: Set<String> = []
@@ -44,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let contentView = RedesignPopoverView(onOpenControlCenter: { [weak self] in
             self?.openControlCenter()
             self?.closePanel()
+        }, onOpenSettings: { [weak self] in
+            guard let self else { return }
+            closePanel()
+            controlCenterContext.settingsOpenRouter.requestOpen()
         })
         .environmentObject(controlCenterContext)
         .background(VisualEffect().ignoresSafeArea())
@@ -98,9 +102,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         core.refreshLaunchAtLogin()
         core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: false)
 
-        if core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance {
+        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
+        let fixtureActive = EnvironmentBriefFixtureProvider.active() != nil
+
+        if core.hasCompletedOnboarding
+            && !core.requiresLicenseTermsAcceptance
+            && EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
+                mode: firstRunMode,
+                fixtureActive: fixtureActive
+            ) {
             core.triggerRefresh()
         }
+
+        if firstRunMode == .preview {
+            DispatchQueue.main.async { [weak self] in
+                self?.openControlCenter()
+            }
+        }
+    }
+
+    func openDashboardFromApplicationMenu() {
+        controlCenterContext.navigate(
+            to: WayfinderDeepLink(
+                destination: .dashboard,
+                entityID: nil,
+                focus: .primaryContent
+            )
+        )
+        openControlCenter()
+    }
+
+    func selectSectionFromApplicationMenu(_ section: ControlCenterSection) {
+        controlCenterContext.select(section)
+        openControlCenter()
+    }
+
+    func toggleSidebarFromApplicationMenu() {
+        openControlCenter()
+        controlCenterContext.toggleSidebar()
+    }
+
+    func toggleInspectorFromApplicationMenu() {
+        openControlCenter()
+        controlCenterContext.toggleInspector()
+    }
+
+    func focusSearchFromApplicationMenu() {
+        focusControlCenterSearch()
+    }
+
+    func refreshFromApplicationMenu() {
+        core.triggerRefresh()
     }
 
     private func handlePanelLocalEvent(_ event: NSEvent) -> NSEvent? {
@@ -142,6 +194,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     @objc private func togglePanel(_ sender: AnyObject?) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             showStatusMenu()
+            return
+        }
+
+        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
+        if EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            mode: firstRunMode,
+            hasCompletedOnboarding: core.hasCompletedOnboarding,
+            dismissedPreview: false
+        ) {
+            openControlCenter()
             return
         }
 
@@ -194,6 +256,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 self?.updateStatusItemAppearance()
                 self?.updateStatusMenuState()
                 self?.resizePopoverIfVisible()
+            }
+            .store(in: &cancellables)
+
+        core.overviewState.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateStatusItemAppearance()
+                    self?.resizePopoverIfVisible()
+                }
             }
             .store(in: &cancellables)
 
@@ -252,19 +324,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private func updateStatusItemAppearance() {
         guard let button = statusItem?.button else { return }
 
-        let outdatedCount = core.outdatedPackages.count
-        let failedTaskCount = core.failedTaskCount
-        let running = core.runningTaskCount > 0 || core.isRefreshing
+        let projection = core.overviewState.wayfinderProjection.content
 
         let anchorTint = menuBaseTint(for: button)
         let badge: StatusBadge?
-        if failedTaskCount > 0 {
+        switch projection.condition {
+        case .approvalRequired, .actionableFinding, .serviceUnavailable:
+            badge = .symbol("!", .systemOrange)
+        case .failedOrInterrupted:
             badge = .symbol("!", .systemRed)
-        } else if outdatedCount > 0 {
-            badge = .count(min(99, outdatedCount), .systemOrange)
-        } else if running {
+        case .activeWork, .refreshing:
             badge = .dot(.systemBlue)
-        } else {
+        case let .updatesReady(count):
+            badge = .count(min(99, count), .systemOrange)
+        case .healthy:
             badge = nil
         }
         button.image = statusItemImage(anchorTint: anchorTint, button: button, badge: badge)
@@ -272,16 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         button.title = ""
         button.imagePosition = .imageOnly
 
-        let statusDescription: String
-        if failedTaskCount > 0 {
-            statusDescription = "app.status_item.error".localized(with: ["count": failedTaskCount])
-        } else if outdatedCount > 0 {
-            statusDescription = "app.status_item.updates".localized(with: ["count": outdatedCount])
-        } else if running {
-            statusDescription = "app.status_item.running".localized
-        } else {
-            statusDescription = "app.status_item.healthy".localized
-        }
+        let statusDescription = projection.title.localized
         button.toolTip = statusDescription
         button.setAccessibilityLabel(statusDescription)
     }
@@ -349,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func focusControlCenterSearch() {
         openControlCenter()
-        controlCenterContext.controlCenterSearchFocusToken += 1
+        controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
     }
 
     private func handlePopoverEscape() {
@@ -511,12 +575,13 @@ private extension AppDelegate {
             window.contentViewController = hostingController
             window.autorecalculatesKeyViewLoop = true
             window.isReleasedWhenClosed = false
-            window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
-            window.standardWindowButton(.zoomButton)?.isEnabled = false
-            let fixedSize = NSSize(width: 1120, height: 740)
-            window.minSize = fixedSize
-            window.maxSize = fixedSize
-            window.center()
+            window.minSize = NSSize(width: 860, height: 600)
+            let frameAutosaveName = "HelmDashboardWindow"
+            let restoredFrame = window.setFrameUsingName(frameAutosaveName)
+            window.setFrameAutosaveName(frameAutosaveName)
+            if !restoredFrame {
+                window.center()
+            }
 
             controlCenterWindowController = NSWindowController(window: window)
         }
@@ -582,24 +647,12 @@ private extension AppDelegate {
         menu.addItem(upgradeItem)
         upgradeAllMenuItem = upgradeItem
 
-        let settingsItem = NSMenuItem(title: L10n.Common.settings.localized, action: nil, keyEquivalent: "")
-        let settingsMenu = NSMenu()
-        let basicSettingsItem = NSMenuItem(
-            title: "app.overlay.settings.title".localized,
-            action: #selector(openQuickSettingsFromMenu),
-            keyEquivalent: ""
-        )
-        basicSettingsItem.target = self
-        settingsMenu.addItem(basicSettingsItem)
-
-        let advancedSettingsItem = NSMenuItem(
-            title: "app.overlay.settings.open_advanced".localized,
+        let settingsItem = NSMenuItem(
+            title: L10n.Common.settings.localized,
             action: #selector(openAdvancedSettingsFromMenu),
-            keyEquivalent: ""
+            keyEquivalent: ","
         )
-        advancedSettingsItem.target = self
-        settingsMenu.addItem(advancedSettingsItem)
-        settingsItem.submenu = settingsMenu
+        settingsItem.target = self
         menu.addItem(settingsItem)
         settingsMenuItem = settingsItem
 
@@ -695,13 +748,9 @@ private extension AppDelegate {
         openControlCenter()
     }
 
-    @objc func openQuickSettingsFromMenu() {
-        openPopoverOverlay(.quickSettings)
-    }
-
-    @objc func openAdvancedSettingsFromMenu() {
-        controlCenterContext.selectedSection = .settings
-        openControlCenter()
+    @MainActor @objc func openAdvancedSettingsFromMenu() {
+        closePanel()
+        controlCenterContext.settingsOpenRouter.requestOpen()
     }
 
     @objc func openUpgradeAllFromMenu() {

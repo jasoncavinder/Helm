@@ -13,7 +13,30 @@ Status: approved planning handoff for v0.19-v0.22
 
 ## v0.19: Native Foundation and First-Run Value
 
+### Experience Direction Lock
+
+Original Wayfinder is the approved Dashboard and status-item popover direction. The decision, comparison evidence, Course Indicator contract, and implementation handoff are recorded in `docs/app-design/proposals/v019-visual-direction/`. Proposal code remains in the non-shipping `tools/design-lab/` package and cannot enter the application target by implication.
+
+The approved shell uses Dashboard, Plan, Library, and Activity as peer workspaces with Environment at the sidebar foot as persistent contextual infrastructure. Implement the Course Indicator from one shared revisioned Dashboard/popover state projection; never synthesize health or progress in SwiftUI. Validate minimum and expanded window sizes, light/dark and key/inactive states, plus healthy, attention, approval, failure, partial-data, offline, determinate-work, and indeterminate-work fixtures before broad component migration.
+
 ### Slice 19.1: Application command and window foundation
+
+Implementation checkpoint on `dev`:
+
+- The existing content host now runs in a renamed, restored, resizable Dashboard window with an `860x600` minimum, unconstrained expansion, Command-1 open, and Command-Comma Settings routing.
+- Stable `Dashboard`, `Plan`, `Library`, `Activity`, and `Environment` deep links bridge into legacy sections without moving business state into SwiftUI.
+- One revisioned Wayfinder projection now owns status priority and semantic Course Indicator mode across Dashboard, popover, and status item. It validates backend-owned determinate progress and otherwise remains indeterminate.
+- The Dashboard now uses a native toolbar for sidebar, contextual inspector, search, refresh, and Upgrade All controls. Localized app commands cover Dashboard open, search focus, refresh, workspace routing, and sidebar/inspector visibility without moving policy into SwiftUI.
+- Remaining Slice 19.1 work is manual multi-Space, multi-display, key/inactive, minimize/zoom, menu-placement, and focus validation. Slice 19.2 still owns destination-specific selection and contextual-detail migration.
+
+### Slice 19.2 implementation checkpoint
+
+- The production shell presents Dashboard, Plan, Library, and Activity as peer rows in a native sidebar `List(selection:)`, with Environment persistent at the sidebar foot and Settings outside the peer workspace list.
+- Existing destination hosts and stable section/deep-link mappings remain in place as the rollback boundary; this checkpoint changes presentation composition rather than business state or routing authority.
+- Dashboard renders Original Wayfinder's Course Indicator from the shared revisioned projection. Determinate progress appears only when that projection contains validated backend-owned progress; all other modes use semantic non-percentage arcs.
+- The indicator carries text, symbol, VoiceOver label/value/hint, increased-contrast treatment, Reduce Transparency treatment, and static Reduce Motion behavior. Color is never the only state signal.
+- Dashboard intentionally suppresses the legacy inspector. Other migrated destinations retain the existing inspector until their contextual-detail contracts are redesigned.
+- Remaining Slice 19.2 work includes selection restoration/focus tests and manual minimum/expanded/key/inactive validation. Owner-assisted VoiceOver and Full Keyboard Access QA exposed a missing Headings-rotor entry and asymmetric noninteractive-header traversal in the debug-gated Environment Brief; Issue #388 tracks the unresolved accessibility gate. Destination-specific visual and workflow redesign remains v0.20 work.
 
 Affected files/components:
 
@@ -70,7 +93,7 @@ Native primitives:
 
 Dependencies:
 
-- Approved five-destination IA.
+- Approved Original Wayfinder IA.
 - Stable selection IDs and restoration payload.
 
 Boundary risks:
@@ -80,7 +103,7 @@ Boundary risks:
 
 Localization/accessibility:
 
-- Health, Updates, Packages, Activity, Sources labels and shortcuts.
+- Dashboard, Plan, Library, Activity, Environment labels and shortcuts.
 - Arrow/type selection, FKA groups, focus restoration, inactive selection.
 
 Validation:
@@ -94,6 +117,13 @@ Rollback/incremental strategy:
 - Preserve old section enum mapping only during migration; remove after all destinations move.
 
 ### Slice 19.3: Standard Settings window
+
+Implementation checkpoint on `dev`:
+
+- The SwiftUI `Settings` scene now owns a real single-instance Settings window. Command-Comma, the standard app menu, the status menu, the popover footer, and the Dashboard sidebar all use the same platform window route.
+- The quick-Settings popover overlay and the Basic/Advanced status-menu split are removed. Refresh remains available contextually from the Dashboard toolbar and Command-R.
+- The Settings window now presents General, Updates, Sources, CLI, and Support as native sidebar panes. General and update preferences are separated, the accidental duplicate CLI card is removed, and the existing cards/actions remain the parity boundary while destination migration continues.
+- Operational-card relocation and removal of the legacy in-window Settings destination remain open until the parity checklist passes. They are explicitly deferred until after `v0.19.0-rc.2` so the candidate can validate the native pane architecture without rushing broader Dashboard/diagnostics placement; this pane slice does not hide or duplicate those actions.
 
 Affected files/components:
 
@@ -169,12 +199,12 @@ Affected files/components:
 
 - Replace `Views/Onboarding/Onboarding*.swift` flow presentation.
 - Retire mandatory launch path in `Views/Walkthrough/*`.
-- Health destination and first-run session presentation.
+- Dashboard destination and first-run session presentation.
 - XPC/FFI presentation models affected by the Project WOW contract commit.
 
 Native primitives:
 
-- Real Control Center shell, grouped list/outline, system progress, legal sheet, contextual help.
+- Real Dashboard shell, grouped list/outline, Course Indicator/system progress, legal sheet, contextual help.
 
 Dependencies:
 
@@ -196,6 +226,15 @@ Validation:
 - Shell <1 s p95, first personalized result and complete brief budgets.
 - No mutation/network assertions through core integration tests.
 
+Implementation checkpoint:
+
+- The read-only Environment Brief model and revision-aware projection are wired to existing authoritative manager-status and detection-task snapshots.
+- Contract coverage includes current, partial, cached/offline, and service-failure states plus JSON field/enum alignment.
+- Versioned debug-only first-use/current/partial/offline/service-failure fixtures inject through the shared presentation boundary, and persisted legal/discovering/brief state restores against current brief identity/revision while discarding stale manager selection.
+- A debug-only `HELM_ENVIRONMENT_BRIEF_FIRST_RUN=enabled|preview` route now hosts legal, discovering, current, cached, partial, and service-failure presentation in the real Dashboard window. `enabled` applies only to unfinished onboarding; `preview` supports non-destructive review on a completed development profile, and `HELM_ENVIRONMENT_BRIEF_APPEARANCE=light|dark` makes fixture screenshots appearance-deterministic. Fixture previews remain service-independent, the surface performs no mutation or network work, and the existing onboarding remains the production route.
+- The 2026-08-08 presentation checkpoint rendered all five fixtures at minimum/expanded sizes in light/dark, plus German/Hungarian/Japanese and +40% text expansion at minimum size. It corrected the Course Indicator to represent mapped coverage and allowed system facts to wrap without truncation; see `docs/validation/v0.19-environment-brief-presentation-validation.md`.
+- Owner-assisted Full Keyboard Access and VoiceOver execution found the unresolved header rotor/traversal defect tracked in Issue #388. Setup-session/receipt mapping, contextual manager inspection, remediation and retest of #388, and the separately reviewed default-route replacement remain open.
+
 Rollback/incremental strategy:
 
 - Feature flag new first-run route for synthetic/dev profiles.
@@ -203,7 +242,7 @@ Rollback/incremental strategy:
 
 ## v0.20: Core Workflow and IA Migration
 
-### Slice 20.1: Health destination and popover triage
+### Slice 20.1: Dashboard state and popover triage
 
 Affected files/components:
 
@@ -214,11 +253,11 @@ Affected files/components:
 Native primitives:
 
 - Constrained status-item panel/popover decision from v0.19 prototype.
-- Native list/status summary and Health finding selection.
+- Native Dashboard status summary, Course Indicator, and finding selection.
 
 Dependencies:
 
-- Five-destination shell and deep-link model.
+- Original Wayfinder shell and deep-link model.
 - Coverage/freshness/finding projections.
 
 Boundary risks:
@@ -236,9 +275,9 @@ Validation:
 Rollback/incremental strategy:
 
 - Replace popover regions from bottom up; retain Open Helm throughout.
-- Feature switch can route status action directly to Control Center if panel activation regresses.
+- Feature switch can route status action directly to Dashboard if panel activation regresses.
 
-### Slice 20.2: Updates reviewed plan
+### Slice 20.2: Plan reviewed workflow
 
 Affected files/components:
 
@@ -269,9 +308,9 @@ Validation:
 
 Rollback/incremental strategy:
 
-- New Updates destination consumes same plan contract; old sheet removed only after parity.
+- New Plan destination consumes the same plan contract; old Updates route/sheet is removed only after parity.
 
-### Slice 20.3: Packages and global search
+### Slice 20.3: Library and global search
 
 Affected files/components:
 
@@ -302,7 +341,7 @@ Validation:
 
 Rollback/incremental strategy:
 
-- New table behind destination route; inspector reuses current action methods until contract migration.
+- New Library table behind the destination route; contextual detail reuses current action methods until contract migration.
 
 ### Slice 20.4: Activity, diagnostics, and workflow continuity
 
@@ -337,7 +376,7 @@ Rollback/incremental strategy:
 
 - Current task IDs map to Activity records; preserve old Tasks route alias until deep links migrate.
 
-### Slice 20.5: Sources and manager lifecycle
+### Slice 20.5: Environment and manager lifecycle
 
 Affected files/components:
 
@@ -372,7 +411,7 @@ Rollback/incremental strategy:
 
 Affected files/components:
 
-- Health/Updates/Activity shared workflow presentation.
+- Dashboard/Plan/Activity shared workflow presentation.
 - First-run plan/progress route replacing later onboarding pages.
 - XPC/FFI contract models from Project WOW package.
 
@@ -601,8 +640,8 @@ These are bounded implementation questions, not blockers to planning closure:
 | NME-19-05 | Define presentation revision/deep-link model | Stable destination + entity/session IDs and focus target | Notification/popover/menu activation under stale data |
 | NME-19-06 | Build bounded AppKit focus bridge | Resolve current Tab key-loop gap without custom focus fork | FKA forward/reverse traversal and restoration |
 | NME-19-07 | Decide Settings pane primitive on macOS 11+ | Native scene/pane behavior and accessory activation | Single instance, pane size, localization, VoiceOver |
-| NME-19-08 | Add deterministic UI state-fixture seam | Presentation-only fixtures from versioned payloads | No production execution impact; screenshot repeatability |
-| NME-19-09 | Map Project WOW schemas to Health/Activity presentation models | No duplicate view-owned workflow states | Contract fixtures for partial/offline/interrupted/receipt |
+| NME-19-08 | Extend the deterministic Environment Brief fixture seam into rendered first-run screenshots | Preserve debug-only versioned payload injection with no production execution impact | Appearance/localization screenshot repeatability across all five first-run fixtures |
+| NME-19-09 | Extend the Environment Brief foundation into setup-session/receipt Dashboard and Activity models | No duplicate view-owned workflow states; preserve the existing read-only brief projection | Contract fixtures for first-run restoration, interrupted sessions, and receipts |
 | NME-19-10 | Define local timing signposts | FUR/CRS/search/progress without telemetry transport | Repeatable local measurements and no sensitive payloads |
 
 ## Migration Completion Rule

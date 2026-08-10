@@ -666,7 +666,7 @@ Goal:
 
 Exit Criteria:
 
-- Target Health/Updates/Packages/Activity/Sources information architecture and core workflows are approved for implementation and covered by testable prototypes before production UI migration.
+- The v0.18 Health/Updates/Packages/Activity/Sources planning model is complete historical input; Original Wayfinder's Dashboard/Plan/Library/Activity plus contextual Environment model now supersedes it for production migration.
 - Accessibility, localization, motion, perceived-performance, window, input, and state-quality gates are approved.
 - Project WOW and whole-app navigation share one compatible experience model.
 - Intentional departures from macOS conventions have documented Helm-specific rationale.
@@ -676,6 +676,8 @@ Exit Criteria:
 ---
 
 ## 0.19.x — Native Experience Foundation & First-Run Value (rc)
+
+Status: `v0.19.0-rc.2` source preparation includes the Original Wayfinder native shell and dedicated Settings panes. The Environment Brief remains debug-gated pending Issue #388, and operational-card relocation plus legacy Settings destination removal continue after this candidate.
 
 Goal:
 
@@ -687,6 +689,7 @@ Goal:
   - harden npm multi-install normalization and MAS refresh outcomes
   - adopt macOS 13 Ventura as the minimum supported release
 - Establish the native macOS application foundation defined in `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`:
+  - implement the approved Original Wayfinder two-surface experience and Course Indicator contract captured by the reproducible, non-shipping SwiftUI design lab
   - native window, titlebar, toolbar, menu-command, sidebar/split-view, selection, and focus behavior
   - standard semantic component layer with documented exceptions for Helm-specific controls
   - first-class macOS Settings window/scene with Command-Comma behavior
@@ -707,6 +710,7 @@ Exit Criteria:
 
 - Snapshot revision/reconnect behavior and consolidated XPC contracts are covered by integration tests.
 - App shell and first-run foundation are coherent in light/dark appearance at minimum and expanded window sizes.
+- Original Wayfinder is recorded as the approved Dashboard/popover foundation, and the Course Indicator uses one backend-projected semantic/progress state with complete accessibility and appearance fixtures.
 - Toolbar actions have application-menu command equivalents.
 - Settings are reachable through the application menu and Command-Comma and contain durable preferences rather than operational workflows.
 - No new surface introduces an ad hoc control or status semantic outside the approved component system.
@@ -718,13 +722,13 @@ Exit Criteria:
 
 Goal:
 
-- Redesign Health, Updates, Packages, Activity, Sources, command-based search, inspector, and contextual diagnostics around native macOS patterns.
-- Revalidate the top-level information architecture against task frequency and user research.
+- Redesign Dashboard, Plan, Library, Activity, contextual Environment, command-based search, contextual detail, and diagnostics around native macOS patterns.
+- Validate the approved Wayfinder information architecture against task frequency and owner-moderated research without reopening it through incidental implementation choices.
 - Use native list, table, outline, split-view, toolbar, menu, contextual-menu, and inspector behavior where comparison and density matter.
 - Simplify action hierarchy and remove duplicated or misplaced entry points.
 - Preserve one continuous plan -> execution -> verification -> recovery presentation.
 - Complete content-design passes for labels, empty states, errors, policy blocks, provenance, authority, and recovery.
-- Revise the menu bar triage surface so it remains glanceable and routes cleanly into Control Center context.
+- Implement the unified Wayfinder status-item popover so it remains glanceable and routes cleanly into Dashboard context.
 - Continue Project WOW through personalized plan preview and one supported safe, verified improvement.
 
 Exit Criteria:
@@ -732,7 +736,7 @@ Exit Criteria:
 - Moderated users complete the primary health, upgrade, install, failure-recovery, and manager-source tasks without assistance or avoidable navigation reversals.
 - Destructive, privileged, guarded, and policy-blocked actions remain explicit and attributable.
 - Each release-critical domain covers loading, success, empty, partial, failure, offline, blocked, cancellation, and recovery states.
-- Control Center remains responsive and preserves selection/context while tasks and snapshot updates arrive.
+- Dashboard remains responsive and preserves selection/context while tasks and snapshot updates arrive.
 - Presentation changes do not move business or orchestration logic out of service/core boundaries.
 
 ---

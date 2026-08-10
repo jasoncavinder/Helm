@@ -62,6 +62,33 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.19.0-rc.2 (Native Experience Foundation RC, Source Candidate Prepared)
+
+### Candidate Scope
+
+- [x] Include the coherent Original Wayfinder Dashboard/window/sidebar/toolbar and native Settings cohort merged after `v0.19.0-rc.1`.
+- [x] Complete dedicated native Settings panes and remove the accidental duplicate CLI card without hiding existing actions.
+- [x] Explicitly defer operational-card relocation and removal of the legacy in-window Settings compatibility destination until after this candidate; do not improvise broader Dashboard/diagnostics placement during release preparation.
+- [x] Complete the release-critical shell/window validation selected for this candidate, including minimum/expanded, key/inactive, and restoration behavior; defer multi-display hardware validation to the existing v0.22 validation milestone because no second display was available for owner QA.
+- [x] Keep the Environment Brief behind its debug gate because Issue #388 remains unresolved; do not switch the production first-run route without a separate reviewed change and passing owner-assisted VoiceOver/Full Keyboard Access retest.
+- [x] State the debug-gated Environment Brief and deferred Settings-cleanup limitations explicitly in candidate release notes.
+
+### Required Validation
+
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
+- [x] Re-audit the Rust runtime/build and website dependency-license inventory for the candidate and update `docs/legal/THIRD_PARTY_LICENSES.md`.
+- [x] Owner manual QA passes for Dashboard workspace routing, non-refresh toolbar/app commands, Settings single-instance routing, and window restoration/resizing; findings for Settings selection/localization and refresh failure handling are remediated on the candidate branch, while the refresh route is contract-covered and a correctly signed development run reached idle without XPC errors.
+- [ ] Validate installed-candidate Sparkle update behavior against the signed/notarized `v0.19.0-rc.2` artifact after publication; a source-build run cannot satisfy this distribution-boundary check.
+- [x] No known release-critical regression remains open; Issue #388 is explicitly excluded from production routing by the retained debug gate.
+- [x] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.2` before any tag or publication mutation.
+
+### Publication
+
+- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.2` or publishing artifacts.
+- [ ] Publish `v0.19.0-rc.2` as a GitHub prerelease that does not become latest.
+- [ ] Confirm the stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.2`.
+- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
 ## v0.19.0-rc.1 (Manager and Updater Modernization RC, Completed)
 
 ### Scope and Versioning

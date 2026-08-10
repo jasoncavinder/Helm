@@ -1,7 +1,9 @@
 # Native macOS Experience Prototypes
 
-Status: annotated low/high-fidelity planning prototypes
+Status: historical v0.18 low/high-fidelity planning prototypes; superseded for production layout/IA by Original Wayfinder
 Implementation: no production SwiftUI is included
+
+Current implementation direction: `docs/app-design/proposals/v019-visual-direction/README.md` and `NATIVE_MACOS_INFORMATION_ARCHITECTURE.md`. This document remains state/workflow research input where it does not conflict with the approved Dashboard/Plan/Library/Activity plus contextual Environment model.
 
 These wireframes specify hierarchy, state, input, and adaptive behavior. They intentionally use repository-native text so contracts can be reviewed before production implementation. Visual styling follows system typography, colors, controls, source lists, toolbars, tables, forms, sheets, and inspectors. Helm Blue is an accent; Rope Gold is not used for ordinary updates or warnings.
 

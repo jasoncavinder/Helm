@@ -10,18 +10,25 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static let wayfinderWorkspaces: [ControlCenterSection] = [
+        .overview,
+        .updates,
+        .packages,
+        .tasks
+    ]
+
     var title: String {
         switch self {
         case .overview:
             return L10n.App.Navigation.dashboard.localized
         case .updates:
-            return L10n.App.Section.updates.localized
+            return "app.wayfinder.destination.plan".localized
         case .packages:
-            return L10n.App.Navigation.packages.localized
+            return "app.wayfinder.destination.library".localized
         case .tasks:
-            return L10n.App.Section.tasks.localized
+            return "app.wayfinder.destination.activity".localized
         case .managers:
-            return L10n.App.Navigation.managers.localized
+            return "app.wayfinder.destination.environment".localized
         case .settings:
             return L10n.App.Settings.Tab.title.localized
         }
@@ -30,17 +37,26 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview:
-            return "speedometer"
+            return "gauge.with.dots.needle.33percent"
         case .updates:
-            return "square.and.arrow.down.on.square"
+            return "point.topleft.down.to.point.bottomright.curvepath"
         case .packages:
-            return "shippingbox.fill"
+            return "square.grid.2x2"
         case .tasks:
-            return "checklist"
+            return "waveform.path.ecg"
         case .managers:
-            return "slider.horizontal.3"
+            return "point.3.connected.trianglepath.dotted"
         case .settings:
             return "gearshape"
+        }
+    }
+
+    var supportsInspector: Bool {
+        switch self {
+        case .overview, .settings:
+            return false
+        case .updates, .packages, .managers, .tasks:
+            return true
         }
     }
 }
@@ -120,6 +136,29 @@ enum UpgradeSheetHost {
     case controlCenter
 }
 
+extension WayfinderLocalizedText {
+    var localized: String {
+        key.localized(with: arguments)
+    }
+}
+
+extension WayfinderDestination {
+    var legacyControlCenterSection: ControlCenterSection {
+        switch self {
+        case .dashboard:
+            return .overview
+        case .plan:
+            return .updates
+        case .library:
+            return .packages
+        case .activity:
+            return .tasks
+        case .environment:
+            return .managers
+        }
+    }
+}
+
 final class ControlCenterContext: ObservableObject {
     @Published var selectedSection: ControlCenterSection? = .overview
     @Published var selectedManagerId: String?
@@ -133,9 +172,12 @@ final class ControlCenterContext: ObservableObject {
     @Published var popoverOverlayRequest: PopoverOverlayRoute?
     @Published var popoverOverlayDismissToken: Int = 0
     @Published var popoverSearchFocusToken: Int = 0
-    @Published var controlCenterSearchFocusToken: Int = 0
+    let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
+    let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isPopoverOverlayVisible: Bool = false
     @Published var suppressWindowBackgroundDragging: Bool = false
+    @Published var isSidebarVisible: Bool = true
+    @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?
     @Published var managerInstallSheetRequestToken: Int = 0
 
@@ -149,49 +191,75 @@ final class ControlCenterContext: ObservableObject {
     }
 
     func clearInspectorSelection() {
-        selectedManagerId = nil
-        selectedPackageId = nil
-        selectedTaskId = nil
-        selectedUpgradePlanStepId = nil
+        clearInspectorSelection(except: nil)
     }
 
-    func alignInspectorSelection(for section: ControlCenterSection?) {
-        guard let section else {
-            clearInspectorSelection()
+    func select(_ section: ControlCenterSection) {
+        selectedSection = section
+    }
+
+    func toggleSidebar() {
+        isSidebarVisible.toggle()
+    }
+
+    func toggleInspector() {
+        guard (selectedSection ?? .overview).supportsInspector else { return }
+        isInspectorVisible.toggle()
+    }
+
+    func navigate(to deepLink: WayfinderDeepLink) {
+        clearInspectorSelection()
+
+        // Remove this compatibility route when service health moves into the native Dashboard.
+        if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
+            selectedSection = .settings
             return
         }
 
-        switch section {
-        case .overview, .settings:
-            clearInspectorSelection()
-        case .updates:
-            let retainedStepId = selectedUpgradePlanStepId
-            clearInspectorSelection()
-            selectedUpgradePlanStepId = retainedStepId
-        case .packages:
-            let retainedPackageId = selectedPackageId
-            clearInspectorSelection()
-            selectedPackageId = retainedPackageId
-        case .tasks:
-            let retainedTaskId = selectedTaskId
-            clearInspectorSelection()
-            selectedTaskId = retainedTaskId
-        case .managers:
-            let retainedManagerId = selectedManagerId
-            clearInspectorSelection()
-            selectedManagerId = retainedManagerId
+        selectedSection = deepLink.destination.legacyControlCenterSection
+
+        guard let entityID = deepLink.entityID else { return }
+        switch deepLink.destination {
+        case .dashboard:
+            break
+        case .plan:
+            selectedUpgradePlanStepId = entityID
+        case .library:
+            selectedPackageId = entityID
+        case .activity:
+            selectedTaskId = entityID
+        case .environment:
+            selectedManagerId = entityID
         }
+    }
+
+    func alignInspectorSelection(for section: ControlCenterSection?) {
+        clearInspectorSelection(except: section)
     }
 
     func requestManagerInstallSheet(for managerId: String) {
         managerInstallSheetRequestManagerId = managerId
         managerInstallSheetRequestToken += 1
     }
+
+    private func clearInspectorSelection(except section: ControlCenterSection?) {
+        if section != .managers, selectedManagerId != nil {
+            selectedManagerId = nil
+        }
+        if section != .packages, selectedPackageId != nil {
+            selectedPackageId = nil
+        }
+        if section != .tasks, selectedTaskId != nil {
+            selectedTaskId = nil
+        }
+        if section != .updates, selectedUpgradePlanStepId != nil {
+            selectedUpgradePlanStepId = nil
+        }
+    }
 }
 
 enum PopoverOverlayRoute: String, Identifiable {
     case search
-    case quickSettings
     case about
     case confirmQuit
 

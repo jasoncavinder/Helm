@@ -692,46 +692,6 @@ struct PackageUninstallPreview: Codable {
     let competingConfidence: Double?
 }
 
-final class HelmOverviewState: ObservableObject {
-    @Published private(set) var aggregateHealth: OperationalHealth = .healthy
-    @Published private(set) var failedTaskCount: Int = 0
-    @Published private(set) var runningTaskCount: Int = 0
-    @Published private(set) var outdatedPackagesCount: Int = 0
-    @Published private(set) var isRefreshing: Bool = false
-    @Published private(set) var visibleManagers: [ManagerInfo] = []
-    @Published private(set) var outdatedCountByManager: [String: Int] = [:]
-    @Published private(set) var managerHealthById: [String: OperationalHealth] = [:]
-    @Published private(set) var recentTasksTop10: [TaskItem] = []
-    @Published private(set) var runningTasksTop4: [TaskItem] = []
-    @Published private(set) var popoverManagerRows: [ManagerInfo] = []
-
-    func apply(
-        aggregateHealth: OperationalHealth,
-        failedTaskCount: Int,
-        runningTaskCount: Int,
-        outdatedPackagesCount: Int,
-        isRefreshing: Bool,
-        visibleManagers: [ManagerInfo],
-        outdatedCountByManager: [String: Int],
-        managerHealthById: [String: OperationalHealth],
-        recentTasksTop10: [TaskItem],
-        runningTasksTop4: [TaskItem],
-        popoverManagerRows: [ManagerInfo]
-    ) {
-        self.aggregateHealth = aggregateHealth
-        self.failedTaskCount = failedTaskCount
-        self.runningTaskCount = runningTaskCount
-        self.outdatedPackagesCount = outdatedPackagesCount
-        self.isRefreshing = isRefreshing
-        self.visibleManagers = visibleManagers
-        self.outdatedCountByManager = outdatedCountByManager
-        self.managerHealthById = managerHealthById
-        self.recentTasksTop10 = recentTasksTop10
-        self.runningTasksTop4 = runningTasksTop4
-        self.popoverManagerRows = popoverManagerRows
-    }
-}
-
 final class HelmManagersState: ObservableObject {
     @Published private(set) var authoritativeManagers: [ManagerInfo] = []
     @Published private(set) var standardManagers: [ManagerInfo] = []
@@ -771,7 +731,9 @@ final class HelmCore: ObservableObject {
     static let managerPriorityOverridesKey = "managerPriorityOverrides"
 
     @Published var isInitialized = false
-    @Published var isConnected = false
+    @Published var isConnected = false {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var isRefreshing = false {
         didSet { scheduleDerivedViewStateRefresh() }
     }
@@ -794,7 +756,9 @@ final class HelmCore: ObservableObject {
     @Published var activeTasks: [TaskItem] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
-    @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = []
+    @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = [] {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var searchResults: [PackageItem] = []
     @Published var cachedAvailablePackages: [PackageItem] = [] {
         didSet {
@@ -849,10 +813,14 @@ final class HelmCore: ObservableObject {
     @Published var lastError: String?
     @Published var lastErrorAttribution: CoreErrorAttribution?
     @Published var selectedManagerFilter: String?
-    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: HelmCore.onboardingCompletedKey)
+    @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: HelmCore.onboardingCompletedKey) {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var acceptedLicenseTermsVersion: String? = UserDefaults.standard.string(
         forKey: HelmCore.acceptedLicenseTermsVersionKey
-    )
+    ) {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var acceptedLicenseTermsAcceptedAtUnix: Int64? = {
         guard let value = UserDefaults.standard.object(
             forKey: HelmCore.acceptedLicenseTermsAcceptedAtUnixKey
@@ -872,6 +840,7 @@ final class HelmCore: ObservableObject {
     @Published var helmCliBundledPath: String?
 
     let overviewState = HelmOverviewState()
+    let firstRunPresentationModel = FirstRunPresentationModel()
     let managersState = HelmManagersState()
 
     var timer: Timer?
@@ -1258,25 +1227,34 @@ final class HelmCore: ObservableObject {
         self.lastFullSnapshotRefreshAt = .distantPast
         self.isRefreshing = true
         postAccessibilityAnnouncement(L10n.Common.refresh.localized)
-        service()?.triggerRefresh { success in
+        guard let service = connection?.remoteObjectProxyWithErrorHandler({ [weak self] error in
+            logger.error("triggerRefresh XPC error: \(error.localizedDescription)")
+            self?.completeFailedRefresh(action: "triggerRefresh.xpc")
+        }) as? HelmServiceProtocol else {
+            logger.error("triggerRefresh failed: service unavailable")
+            completeFailedRefresh(action: "triggerRefresh.service_unavailable")
+            return
+        }
+        service.triggerRefresh { success in
             if !success {
                 logger.error("triggerRefresh failed")
-                self.recordLastError(
-                    source: "core",
-                    action: "triggerRefresh",
-                    taskType: "refresh"
-                )
-                DispatchQueue.main.async {
-                    self.isRefreshing = false
-                    self.lastRefreshTrigger = nil
-                    self.completeOnboardingDetectionProgress()
-                    self.postAccessibilityAnnouncement(L10n.Common.error.localized)
-                }
+                self.completeFailedRefresh(action: "triggerRefresh")
             } else {
                 DispatchQueue.main.async {
                     self.triggerFullSnapshotRefresh()
                 }
             }
+        }
+    }
+
+    private func completeFailedRefresh(action: String) {
+        recordLastError(source: "core", action: action, taskType: "refresh")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isRefreshing = false
+            self.lastRefreshTrigger = nil
+            self.completeOnboardingDetectionProgress()
+            self.postAccessibilityAnnouncement(L10n.Common.error.localized)
         }
     }
 
@@ -1560,8 +1538,14 @@ final class HelmCore: ObservableObject {
             }
         }
 
-        let hasManagerAttention = managerHealthById.values.contains(.attention)
-
+        let actionableFindingManagerIds = visibleManagers.compactMap { manager -> String? in
+            let status = managerStatuses[manager.id]
+            let requiresInstallDecision = status?.multiInstanceState == "attention_needed"
+            let requiresSetup = status?.packageStateIssues?.contains(where: { issue in
+                issue.issueCode == "post_install_setup_required"
+            }) ?? false
+            return requiresInstallDecision || requiresSetup ? manager.id : nil
+        }
         let popoverManagerRows = visibleManagers
             .sorted { lhs, rhs in
                 let lhsOutdated = outdatedCountByManager[lhs.id, default: 0]
@@ -1572,24 +1556,32 @@ final class HelmCore: ObservableObject {
                 return lhsOutdated > rhsOutdated
             }
 
-        let failedTaskCount = activeTasks.filter { $0.status.lowercased() == "failed" }.count
+        let failedTasks = activeTasks.filter { $0.status.lowercased() == "failed" }
+        let interruptedTasks = activeTasks.filter { $0.status.lowercased() == "interrupted" }
+        let failedTaskCount = failedTasks.count
         let runningTasks = activeTasks.filter(\.isRunning)
         let runningTaskCount = runningTasks.count
-        let aggregateHealth: OperationalHealth = {
-            if failedTaskCount > 0 {
-                return .error
-            }
-            if runningTaskCount > 0 || isRefreshing {
-                return .running
-            }
-            if !outdatedPackages.isEmpty || hasManagerAttention {
-                return .attention
-            }
-            return .healthy
-        }()
+        let wayfinderInput = WayfinderProjectionInput(
+            serviceAvailable: isConnected,
+            approvalTaskIDs: taskTimeoutPrompts.map { String($0.taskId) },
+            failedTaskIDs: failedTasks.map(\.id),
+            interruptedTaskIDs: interruptedTasks.map(\.id),
+            activeTaskIDs: runningTasks.map(\.id),
+            actionableFindingIDs: actionableFindingManagerIds,
+            updateCount: outdatedPackages.count,
+            isRefreshing: isRefreshing
+        )
+
+        let implementedManagers = ManagerInfo.all.filter { manager in
+            managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
+        }
+        let environmentBriefInput = makeEnvironmentBriefInput(
+            intendedManagers: implementedManagers
+        )
 
         overviewState.apply(
-            aggregateHealth: aggregateHealth,
+            wayfinderInput: wayfinderInput,
+            environmentBriefInput: environmentBriefInput,
             failedTaskCount: failedTaskCount,
             runningTaskCount: runningTaskCount,
             outdatedPackagesCount: outdatedPackages.count,
@@ -1601,10 +1593,15 @@ final class HelmCore: ObservableObject {
             runningTasksTop4: Array(runningTasks.prefix(4)),
             popoverManagerRows: popoverManagerRows
         )
-
-        let implementedManagers = ManagerInfo.all.filter { manager in
-            managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
+        if hasCompletedOnboarding && !requiresLicenseTermsAcceptance {
+            firstRunPresentationModel.clear()
+        } else {
+            firstRunPresentationModel.synchronize(
+                currentBrief: overviewState.environmentBrief,
+                requiresLicenseAcceptance: requiresLicenseTermsAcceptance
+            )
         }
+
         managersState.apply(
             authoritativeManagers: sortedManagersByPriority(
                 implementedManagers.filter { $0.authority == .authoritative }

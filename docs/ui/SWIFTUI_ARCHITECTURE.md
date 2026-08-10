@@ -2,7 +2,7 @@
 
 This document describes the current SwiftUI architecture of the Helm macOS app.
 
-It describes the current pre-native-migration implementation lineage through the `v0.18.1` baseline. The v0.18 Native Mac Experience artifacts are target design contracts and do not change the implementation described here.
+It describes the current implementation lineage through the active `v0.19.x` Original Wayfinder migration. Native shell and Settings foundations coexist with legacy destination hosts until their parity checklists pass.
 
 Target migration references:
 
@@ -11,7 +11,7 @@ Target migration references:
 - Incremental implementation slices: `docs/app-design/NATIVE_MACOS_MIGRATION_MAP.md`
 - Complete presentation states and quality gates: `docs/app-design/NATIVE_MACOS_STATE_MATRIX.md` and `docs/app-design/NATIVE_MACOS_QUALITY_BUDGETS.md`
 
-The target replaces the current Overview/Updates/Packages/Tasks/Managers/Settings sidebar with Health/Updates/Packages/Activity/Sources, moves Settings to a standard separate scene/window, keeps diagnostics contextual, and treats search as a command. Business rules, planning, orchestration, execution, verification, and recovery remain service/core-owned throughout migration.
+Original Wayfinder presents Dashboard, Plan, Library, and Activity as peer workspaces, keeps Environment persistently available, and routes Settings to a standard separate scene/window. Legacy section hosts remain behind stable mappings during incremental migration. Business rules, planning, orchestration, execution, verification, and recovery remain service/core-owned throughout.
 
 ---
 
@@ -34,20 +34,21 @@ The app uses `AppDelegate` for all window, popover, and status item management. 
 
 **File:** `Helm/AppDelegate.swift`
 
-`AppDelegate` manages three UI surfaces:
+`AppDelegate` manages three app-owned UI surfaces, while SwiftUI owns the standard Settings scene:
 
 1. **Status Item** — `NSStatusItem` with custom icon and badge overlays
 2. **Floating Panel** — `FloatingPanel: NSPanel` for the menu bar popover
 3. **Control Center Window** — `ControlCenterWindow: NSWindow` for the full dashboard
+4. **Settings Window** — Single-instance SwiftUI `Settings` scene shared by app, status-menu, popover, and Dashboard routes
 
 Key types:
 - `FloatingPanel` — Borderless `NSPanel` with `Cmd+F` and `Escape` key handling
-- `ControlCenterWindow` — 1120×740 unified compact toolbar window with `Cmd+F`, `Escape`, and `Cmd+W`
+- `ControlCenterWindow` — 1120×740 unified compact toolbar window with native sidebar, inspector, search, refresh, and Upgrade All controls plus `Cmd+F`, `Escape`, and `Cmd+W`
 - `EventMonitor` — Detects clicks outside the panel to dismiss it
 - `VisualEffect: NSViewRepresentable` — Window material backing
 
 Status item features:
-- Right-click context menu (About, Upgrade All, Settings, Refresh, Control Center, Quit)
+- Right-click context menu (About, Upgrade All, Settings, Refresh, Dashboard, Quit)
 - Badge overlays: `.count(Int, NSColor)`, `.symbol(String, NSColor)`, `.dot(NSColor)`
 
 ---
@@ -87,7 +88,8 @@ Shared UI state for the control center:
 - `selectedSection: ControlCenterSection` — Active sidebar tab
 - `selectedManagerId`, `selectedPackageId`, `selectedTaskId` — Inspector selection
 - `searchQuery` — Global search text
-- `popoverOverlayRequest` — Active overlay (search, settings, about, quit confirmation)
+- `popoverOverlayRequest` — Active overlay (search, about, quit confirmation)
+- `isSidebarVisible`, `isInspectorVisible` — Dashboard split visibility controlled by toolbar and app commands
 - Focus and dismiss tokens for keyboard shortcut coordination
 
 ---
@@ -111,7 +113,7 @@ RedesignPopoverView
 │   ├── Active tasks list
 │   ├── Manager snapshot grid
 │   └── Footer actions (search, settings, quit)
-├── Overlay system (search, quick settings, about, quit confirmation)
+├── Overlay system (search, about, quit confirmation)
 └── SpotlightOverlay (walkthrough, 6 popover steps)
 ```
 
@@ -121,10 +123,12 @@ RedesignPopoverView
 
 ```
 ControlCenterWindowView
-├── ControlCenterTopBar (search bar, health display)
-├── HSplitView
+├── Native toolbar (sidebar, title, search, inspector, refresh, Upgrade All)
+├── HStack / contextual HSplitView
 │   ├── ControlCenterSidebarView
-│   │   └── ControlCenterSidebarRow × 6 sections
+│   │   ├── Dashboard/Plan/Library/Activity workspace list
+│   │   ├── Environment route
+│   │   └── Settings window route
 │   ├── ControlCenterSectionHostView (routes to active section)
 │   │   ├── RedesignOverviewSectionView (metrics, manager health cards, recent tasks)
 │   │   ├── RedesignUpdatesSectionView (staged upgrade preview)
@@ -139,6 +143,12 @@ ControlCenterWindowView
 │       └── Empty state
 └── SpotlightOverlay (walkthrough, 7 control center steps)
 ```
+
+### Settings (Standard Window)
+
+**Files:** `HelmApp.swift`, `Views/SettingsPopoverView.swift`
+
+The SwiftUI `Settings` scene is the sole direct Settings destination and provides standard Command-Comma/single-instance behavior. It currently hosts the existing Settings card body without its Dashboard navigation summary as an explicit transition. Dedicated preference panes and relocation of service diagnostics, support operations, reset, and walkthrough actions remain subsequent parity-gated work.
 
 ### Sidebar Sections
 
@@ -215,7 +225,7 @@ Uses `SpotlightAnchorKey` preference system with even-odd fill cutout and animat
 | `ControlCenterSection` | overview, updates, packages, tasks, managers, settings |
 | `ManagerAuthority` | authoritative, standard, guarded |
 | `OperationalHealth` | healthy, attention, error, running, notInstalled |
-| `PopoverOverlayRoute` | search, quickSettings, about, confirmQuit |
+| `PopoverOverlayRoute` | search, about, confirmQuit |
 
 ---
 

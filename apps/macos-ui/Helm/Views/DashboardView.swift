@@ -12,6 +12,7 @@ struct RedesignPopoverView: View {
     @State private var expandedTaskId: String?
     @State private var activeOverlay: PopoverOverlayRoute?
     let onOpenControlCenter: () -> Void
+    let onOpenSettings: () -> Void
 
     private var managerRows: [ManagerInfo] {
         overviewState.popoverManagerRows
@@ -83,7 +84,7 @@ struct RedesignPopoverView: View {
                 )
                 .onAppear {
                     popoverSearchQuery = context.searchQuery
-                    if core.hasCompletedOnboarding {
+                    if core.hasCompletedOnboarding && !core.isRefreshing {
                         core.triggerRefresh()
                     }
                 }
@@ -128,12 +129,15 @@ struct RedesignPopoverView: View {
                 SpotlightOverlay(manager: walkthrough, anchors: anchors)
             }
         }
+        .background(
+            HelmSettingsOpeningBridge(router: context.settingsOpenRouter)
+        )
     }
 
     private var popoverBaseContent: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                if !core.isConnected || overviewState.failedTaskCount > 0 || overviewState.outdatedPackagesCount > 0 {
+                if overviewState.wayfinderProjection.content.condition != .healthy {
                     PopoverAttentionBanner(onOpenControlCenter: {
                         onOpenControlCenter()
                     })
@@ -150,7 +154,7 @@ struct RedesignPopoverView: View {
                 .spotlightAnchor("searchField")
 
                 Button {
-                    context.selectedSection = preferredSectionForHealthBadge
+                    context.navigate(to: overviewState.wayfinderProjection.content.primaryAction)
                     onOpenControlCenter()
                 } label: {
                     HStack(alignment: .top) {
@@ -355,7 +359,7 @@ struct RedesignPopoverView: View {
             Spacer(minLength: 10)
 
             footerIconButton(symbol: "gearshape", accessibilityText: L10n.Common.settings.localized, action: {
-                activeOverlay = .quickSettings
+                onOpenSettings()
             })
 
             footerIconButton(symbol: "power", accessibilityText: L10n.App.Settings.Action.quit.localized, action: {
@@ -376,16 +380,6 @@ struct RedesignPopoverView: View {
                     popoverSearchQuery: $popoverSearchQuery,
                     searchResults: searchResults,
                     onSyncSearchQuery: syncSearchQuery,
-                    onOpenControlCenter: onOpenControlCenter,
-                    onClose: closeOverlay
-                )
-            }
-        case .quickSettings:
-            PopoverOverlayCard(
-                title: L10n.App.Overlay.Settings.title.localized,
-                onClose: closeOverlay
-            ) {
-                PopoverSettingsOverlayContent(
                     onOpenControlCenter: onOpenControlCenter,
                     onClose: closeOverlay
                 )
@@ -442,19 +436,6 @@ struct RedesignPopoverView: View {
         } else if activeOverlay == nil || activeOverlay == .search {
             activeOverlay = .search
         }
-    }
-
-    private var preferredSectionForHealthBadge: ControlCenterSection {
-        if overviewState.failedTaskCount > 0 {
-            return .tasks
-        }
-        if overviewState.outdatedPackagesCount > 0 {
-            return .updates
-        }
-        if overviewState.runningTaskCount > 0 || overviewState.isRefreshing {
-            return .tasks
-        }
-        return .overview
     }
 
     @ViewBuilder

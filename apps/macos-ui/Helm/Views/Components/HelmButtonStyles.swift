@@ -30,6 +30,8 @@ enum HelmTheme {
     static let stateAttention = Color.helmDynamic(light: 0x8C691F, dark: 0xC89C3D)
     static let stateError = Color.helmDynamic(light: 0xD64545, dark: 0xF06A6A)
     static let stateRunning = blue500
+    static let seaGlass = Color.helmDynamic(light: 0x149E99, dark: 0x4FC7C0)
+    static let horizon = Color.helmDynamic(light: 0x31A9D1, dark: 0x68C7E8)
 
     static let selectionFill = Color.helmDynamic(
         light: 0x3C7DD9,
@@ -327,9 +329,6 @@ private struct HelmPointerModifier: ViewModifier {
                 } else {
                     NSCursor.arrow.set()
                 }
-            }
-            .onDisappear {
-                NSCursor.arrow.set()
             }
     }
 }

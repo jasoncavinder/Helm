@@ -23,7 +23,7 @@ Release sign-off runs a production-equivalent build where permitted, but agent/d
 | Requirement | Objective pass condition |
 |---|---|
 | Tab / Shift-Tab | With Full Keyboard Access enabled, every enabled interactive control in the current surface is reachable exactly once in logical reading order. Reverse traversal is the exact inverse. |
-| Focus groups | Control Center order is toolbar -> sidebar -> content -> visible inspector. Tab enters/leaves groups; arrows navigate collections. No more than one Tab stop per passive row. |
+| Focus groups | Dashboard order is toolbar -> sidebar -> content -> visible contextual detail. Tab enters/leaves groups; arrows navigate collections. No more than one Tab stop per passive row. |
 | No traps | 100% of sheets, popovers, menus, output views, and inspectors can be exited by documented keyboard action without closing unrelated work. |
 | Initial focus | Window opens on last meaningful content selection; a first-run legal sheet focuses its heading/group before the default action; destructive action is never initial focus. |
 | Focus restoration | Closing a sheet/popover/alert returns focus to the invoking control or selected row in 100% of release-critical flows. Removed triggers return to their containing collection. |
@@ -35,9 +35,9 @@ Release sign-off runs a production-equivalent build where permitted, but agent/d
 | Requirement | Objective pass condition |
 |---|---|
 | Arrow keys | Sidebar, tables, lists, outlines, segmented controls, radio groups, and pane selectors support platform-standard arrows. |
-| Home/End/Page | Long package, activity, source, and plan collections support expected beginning/end/page navigation where the native control provides it. |
-| Type selection | Package/source tables support type-to-select when focus is in the collection and search is not active. |
-| Selection persistence | Selection survives sorting, non-destructive filtering when still visible, refresh, inactive/active window change, inspector hide/show, and window close/reopen. |
+| Home/End/Page | Long Library, Activity, Environment, and Plan collections support expected beginning/end/page navigation where the native control provides it. |
+| Type selection | Library/Environment tables support type-to-select when focus is in the collection and search is not active. |
+| Selection persistence | Selection survives sorting, non-destructive filtering when still visible, refresh, inactive/active window change, contextual-detail hide/show, and window close/reopen. |
 | Reorder alternatives | Every drag reorder that remains has keyboard and menu commands, including Move Up/Down or Restore Default. |
 | Context commands | Selection-scoped commands are available through a context menu and at least one discoverable toolbar/menu/inspector route. |
 
@@ -98,16 +98,16 @@ VoiceOver pass gate:
 
 100% keyboard/menu coverage is required for:
 
-- Open/focus Control Center and Settings.
-- Navigate Health, Updates, Packages, Activity, and Sources.
+- Open/focus Dashboard and Settings.
+- Navigate Dashboard, Plan, Library, Activity, and contextual Environment.
 - Focus and clear search; accept a result; cancel remote search.
 - Refresh/revalidate current scope.
 - Review, confirm, and cancel an update/setup plan.
-- Select and inspect package, activity, source, finding, and plan rows.
+- Select and inspect software, activity, environment-source, finding, and plan rows.
 - Install/update/pin/unpin/uninstall where action is valid.
 - Cancel/stop, retry, resume, respond to timeout, and open diagnostics.
 - Copy/export redacted receipt or diagnostics.
-- Show/hide sidebar and inspector.
+- Show/hide sidebar and contextual detail.
 - Reorder/restore source priority if reordering remains.
 
 Application menu minimum is defined in `NATIVE_MACOS_INFORMATION_ARCHITECTURE.md`. Toolbar-only or hover-only commands fail this budget.
@@ -127,8 +127,8 @@ Application menu minimum is defined in `NATIVE_MACOS_INFORMATION_ARCHITECTURE.md
 |---|---:|---:|---:|
 | Popover, warm cached | <=50 ms p95 | <=150 ms p95 | Cached condition/rows complete <=250 ms p95; background refresh has separate scope SLA. |
 | Popover, cold no cache | <=100 ms p95 | Shell <=300 ms p95 | First local condition follows Project WOW personalized-result budget, not a blank panel. |
-| Control Center, warm cached | <=50 ms p95 | <=600 ms p95 | Cached destination/selection/inspector <=900 ms p95; refresh continues visibly. |
-| Control Center, cold | <=100 ms p95 | Interactive shell <=1,000 ms p95 | First destination local/cached content <=1,500 ms p95 when available. |
+| Dashboard, warm cached | <=50 ms p95 | <=600 ms p95 | Cached destination/selection/contextual detail <=900 ms p95; refresh continues visibly. |
+| Dashboard, cold | <=100 ms p95 | Interactive shell <=1,000 ms p95 | First destination local/cached content <=1,500 ms p95 when available. |
 | Destination change | <=50 ms p95 | <=100 ms p95 for cached structure/data | <=250 ms p95 for derived local state; remote refresh remains asynchronous. |
 | Inspector selection | Selected row <=50 ms p95 | Core fields <=100 ms p95 | Deferred description/log content shows progress within 150 ms and loads independently. |
 | Local search | Keystroke <=16 ms p95 | Results <=100 ms p95, <=50 ms median | Complete local/cached set <=150 ms p95 on stress fixture. |
@@ -162,7 +162,7 @@ Project WOW budgets remain:
 
 ### Idle resource budget
 
-Measured after five idle minutes with Control Center and popover closed, no tasks, no search, no refresh due, over a 30-minute sample:
+Measured after five idle minutes with Dashboard and popover closed, no tasks, no search, no refresh due, over a 30-minute sample:
 
 | Resource | Budget |
 |---|---|
@@ -172,7 +172,7 @@ Measured after five idle minutes with Control Center and popover closed, no task
 | Disk writes | Zero periodic writes when state is unchanged; logs/poll metadata write only on meaningful events under retention policy. |
 | Network | Zero Helm-initiated network requests while offline mode is selected or no network task is scheduled. |
 
-Visible-idle budget with Control Center open, no work:
+Visible-idle budget with Dashboard open, no work:
 
 - Average CPU <=2% of one logical core combined.
 - Poll/snapshot updates produce no full-window layout invalidation detectable as selection/focus movement.

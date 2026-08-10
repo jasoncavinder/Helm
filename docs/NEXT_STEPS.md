@@ -11,12 +11,14 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.1 published-candidate validation and v0.19.x implementation
+v0.19.0-rc.2 source-candidate validation and owner QA
 ```
 
 Focus:
-- validate the published opt-in `v0.19.0-rc.1` candidate, triaging release blockers and security fixes separately from planned v0.19.x product work
-- begin production `v0.19.x` work from the closed Native Mac Experience and Project WOW contracts
+- validate the prepared `v0.19.0-rc.2` source candidate without tagging or publishing until the QA remediations, protected integration, final `main` gates, and explicit release authorization are complete; owner source-build QA is complete, while signed-artifact updater validation remains a post-publication check
+- preserve the published `v0.19.0-rc.1` candidate and stable `v0.18.2` metadata while RC2 remains untagged
+- keep the Environment Brief development-gated in RC2 because Issue #388 remains unresolved, and disclose the limitation without implying that the production first-run route changed
+- continue from the Original Wayfinder foundation checkpoints: shared revisioned Dashboard/popover/status projection, semantic Course Indicator modes, stable destination/deep-link bridge, Dashboard naming, restored/resizable native window hosting, native Dashboard/Plan/Library/Activity sidebar composition, persistent Environment access, rendered Course Indicator, native Dashboard toolbar/app commands, and one shared native Settings scene with General, Updates, Sources, CLI, and Support panes are implemented; operational-card relocation and removal of the legacy in-window Settings compatibility destination are explicitly deferred until after RC2, while destination content migration, contextual inspector behavior, right-click-menu removal, and v0.22 multi-display validation continue
 - maintain release-process hardening guardrails now that `v0.19.0-rc.1` publication and closeout verification are complete
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
@@ -28,7 +30,7 @@ Focus:
 - implement the closed Project WOW Environment Brief -> reviewed plan -> verified improvement -> Action Receipt contracts across `0.19.x`-`0.21.x`
 - keep Project WOW as internal design terminology only; allocate resulting features among the existing Helm, Helm Pro, and Helm Fleet plans
 - keep first-run value/safety/transparency/recovery in base Helm; allocate advanced personal intelligence to Helm Pro and organization policy/deployment/drift/audit to Helm Fleet
-- deliver the approved Native Mac Experience foundation in `0.19.x`, redesign core workflows in `0.20.x`, close accessibility/system-integration gaps in `0.21.x`, and complete design validation/hardening in `0.22.x`
+- deliver the approved Original Wayfinder Dashboard/popover foundation and Course Indicator state projection in `0.19.x`, redesign core workflows in `0.20.x`, close accessibility/system-integration gaps in `0.21.x`, and complete design validation/hardening in `0.22.x`
 - run the owner-moderated protocol in `docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md` before treating v0.20 workflow design or v0.22 UI lock as validated; the v0.18 artifact closure includes expert review but no human participant result
 - treat the earlier visual-only app redesign proposal and `docs/ui/` artifacts as the current baseline and research input, not constraints that prohibit information-architecture, layout, or interaction changes
 - prefer native macOS windows, menus, toolbars, Settings, navigation, lists/tables, focus, selection, and commands before custom controls while preserving the presentation-only SwiftUI boundary
@@ -40,8 +42,8 @@ Focus:
 Completed `0.18.x` design-definition closure is planning/prototype work only. It is included in the `v0.18.2` containment release alongside SQLite migration-safety hardening, but it does not claim shipped first-run or redesigned UI behavior:
 
 - Project WOW contracts: Environment Brief, setup session, recommendation/plan, Action Receipt, and redaction schemas; discovery/consent classification; bootstrap feasibility and typed-action boundaries; offline/failure/recovery semantics; CLI/TUI interaction contract; local metrics event definitions; first-run usability/accessibility protocol; Fleet managed-configuration boundary
-- Native Mac Experience artifacts: current-experience screenshot audit; custom-versus-native component inventory; user-research plan and baseline task protocol; information-architecture options and decision; menu bar, Control Center, Settings, and Project WOW prototypes; complete state matrix; accessibility and perceived-performance budgets; incremental production migration map
-- joint closure result: prototypes and contracts use the approved Health/Updates/Packages/Activity/Sources model and one state grammar; Settings is separate, diagnostics contextual, search command-based, intentional platform departures are recorded, and no production redesign implementation occurred in this closure
+- Native Mac Experience artifacts: current-experience screenshot audit; custom-versus-native component inventory; user-research plan and baseline task protocol; information-architecture options and decision; menu bar, Dashboard, Settings, and Project WOW prototypes; complete state matrix; accessibility and perceived-performance budgets; incremental production migration map
+- subsequent v0.19 design decision: Original Wayfinder supersedes the v0.18 Health/Updates/Packages/Activity/Sources planning model with Dashboard/Plan/Library/Activity plus contextual Environment; Settings remains separate, diagnostics contextual, search command-based, and the Course Indicator consumes one shared truthful Dashboard/popover state projection
 
 Project WOW planning source:
 
@@ -55,15 +57,17 @@ Native Mac Experience planning source:
 
 - `docs/app-design/NATIVE_MACOS_EXPERIENCE.md`
 - `0.18.x`: experience audit, component inventory, user-research baseline, information-architecture options, state matrix, prototypes, and accessibility/performance budgets
-- `0.19.x`: native app shell, menu/toolbar/Settings/selection/focus foundations, window behavior, component semantics, and Project WOW Environment Brief foundation
-- `0.20.x`: Health, Updates, Packages, Activity, Sources, command-based search, inspector, contextual diagnostics, content, and menu-bar workflow redesign
+- `0.19.x`: Original Wayfinder native app shell, shared Course Indicator projection, menu/toolbar/Settings/selection/focus foundations, window behavior, component semantics, and Project WOW Environment Brief foundation
+- `0.20.x`: Dashboard, Plan, Library, Activity, Environment, command-based search, contextual detail/diagnostics, content, and unified popover workflow redesign
 - `0.21.x`: keyboard, VoiceOver, system accessibility preferences, localization/text expansion, notifications, offline/interruption/recovery, and Project WOW Action Receipt integration
 - `0.22.x`: perceived performance, motion/transition polish, consistency audits, state/screenshot fixtures, multi-display/failure validation, moderated usability, and UI lock
 - `1.0.0`: native experience and Project WOW release gates must both pass on the production app
 
 Current checkpoint:
 - `0.18.x` internal groundwork and migration-safety hardening are released on `main` through final-containment `v0.18.2`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
-- Project WOW and Native Mac Experience v0.18 planning artifacts are closed and cross-linked. The owner-run moderated-study checkpoint remains open and is not represented as participant evidence.
+- Project WOW and Native Mac Experience planning artifacts are closed and cross-linked; Original Wayfinder is approved as the implementation direction. The owner-run moderated-study checkpoint remains open and is not represented as participant evidence.
+- Original Wayfinder's Dashboard shell now has a native toolbar and localized app commands for search, refresh, workspace routing, and sidebar/contextual-inspector visibility. All direct Settings routes converge on one SwiftUI `Settings` scene with General, Updates, Sources, CLI, and Support panes; pane selection is deferred outside SwiftUI's active update transaction, pane title keys are locale-validated, and the obsolete quick-Settings overlay plus duplicate CLI card are gone. Refresh submission now fails closed when its XPC proxy is unavailable and popover reopening does not resubmit in-flight work. Operational actions remain temporarily available in Support, and their relocation plus removal of the legacy in-window Settings compatibility destination are deferred until after RC2.
+- Project WOW's first runtime foundation exposes a deterministic Environment Brief from existing manager-status and detection-task snapshots. It preserves a stable brief ID, increments revision only when semantic observations change, records current/cached/failed/cancelled coverage, remains `local_only`, and carries no command, consent, recommendation, or mutation state. Versioned first-use/current/partial/offline/service-failure fixtures are selectable only in debug builds through `HELM_ENVIRONMENT_BRIEF_FIXTURE`; persisted presentation state restores the legal/discovering/brief stage and revalidates manager selection. `HELM_ENVIRONMENT_BRIEF_FIRST_RUN=enabled` enables the new route only for unfinished onboarding, while `preview` presents it without resetting a completed development profile; `HELM_ENVIRONMENT_BRIEF_APPEARANCE=light|dark` provides deterministic appearance review. The status item then opens the real Dashboard window with legal, discovery, trust, system, coverage, and source states; fixture previews do not start service discovery. The 2026-08-08 presentation checkpoint passed the five-state minimum/expanded light/dark matrix and German/Hungarian/Japanese/+40% text expansion after correcting mapped-coverage progress and system-fact wrapping. Owner-assisted accessibility QA subsequently found the missing VoiceOver heading and asymmetric Full Keyboard Access traversal tracked in Issue #388. The existing onboarding route remains authoritative until #388 is resolved, the manual gate passes, and a separate default-switch review is complete.
 - `v0.18.1` transactionally reconciles the migration `17` collision, avoids historical DDL replay, and passed fresh-install, `v0.17.12` upgrade, and affected-`v0.18.0` recovery validation.
 - `v0.18.2` is the current public stable release; doctor/repair, local security groundwork, migration recovery/safety, package workflow hardening, and planning-only pre-1.0 experience contracts are published:
   - bulk and scoped upgrade phase coordination now resides in Rust/FFI/XPC. The backend derives the current safe plan, schedules authority phases, waits for each phase to reach terminal state, and stops later-phase scheduling on scoped-workflow cancellation; individual tasks remain the live execution and diagnostics surface.
