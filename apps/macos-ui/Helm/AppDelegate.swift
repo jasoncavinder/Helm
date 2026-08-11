@@ -183,31 +183,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 
     @objc private func togglePanel(_ sender: AnyObject?) {
-        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
-        if controlCenterContext.shouldPresentFirstRun(
-            mode: firstRunMode,
-            hasCompletedOnboarding: core.hasCompletedOnboarding
+        let clickKind: StatusItemClickKind = NSApp.currentEvent?.type == .rightMouseUp
+            ? .secondary
+            : .primary
+
+        switch StatusItemActivationPolicy.route(
+            clickKind: clickKind,
+            isDashboardVisible: isControlCenterVisible
         ) {
-            openControlCenter()
-            return
-        }
-
-        if isControlCenterVisible {
+        case .dashboard:
             openControlCenter()
             closePanel()
-            return
-        }
-
-        if panel.isVisible {
-            closePanel()
-        } else {
-            showPanel()
+        case .popover:
+            if panel.isVisible {
+                closePanel()
+            } else {
+                showPanel(allowWhileControlCenterVisible: clickKind == .secondary)
+            }
         }
     }
 
-    private func showPanel() {
+    private func showPanel(allowWhileControlCenterVisible: Bool = false) {
         guard statusItem?.button != nil else { return }
-        guard !isControlCenterVisible else {
+        guard allowWhileControlCenterVisible || !isControlCenterVisible else {
             openControlCenter()
             return
         }
