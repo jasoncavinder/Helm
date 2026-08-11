@@ -34,4 +34,26 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertEqual(openCount, 1)
         router.unregister(registrationID)
     }
+
+    func testRequestOpenFallsBackImmediatelyWhenNoBridgeIsRegistered() {
+        var activateCount = 0
+        var fallbackOpenCount = 0
+        let router = HelmSettingsOpenRouter(
+            activateApp: { activateCount += 1 },
+            fallbackOpenSettings: { fallbackOpenCount += 1 }
+        )
+        var deferredOpenCount = 0
+
+        router.requestOpen()
+
+        XCTAssertEqual(activateCount, 1)
+        XCTAssertEqual(fallbackOpenCount, 1)
+
+        let registrationID = router.register {
+            deferredOpenCount += 1
+        }
+
+        XCTAssertEqual(deferredOpenCount, 0)
+        router.unregister(registrationID)
+    }
 }
