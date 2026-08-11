@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41200000000000000000002 /* AppUpdateCoordinator.swift */; };
 		8CD965322F40F02800AE2AF5 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 8CD965312F40F02800AE2AF5 /* Resources */; };
 		8CE1FDCB2F3D2AD8000A3945 /* HelmService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
@@ -127,6 +128,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A41200000000000000000002 /* AppUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateCoordinator.swift; sourceTree = "<group>"; };
 		8CAE9C0B2F458B120075E1A3 /* HelmRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HelmRelease.entitlements; sourceTree = "<group>"; };
 		8CAE9C0C2F458B120075E1A4 /* HelmServiceRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HelmServiceRelease.entitlements; sourceTree = "<group>"; };
 		8CD965312F40F02800AE2AF5 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
@@ -290,6 +292,7 @@
 			isa = PBXGroup;
 			children = (
 				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
+				A41200000000000000000002 /* AppUpdateCoordinator.swift */,
 				P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */,
 				8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */,
 				D10000000000000000000006 /* HelmCore+Actions.swift */,
@@ -638,6 +641,7 @@
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */,
 				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,

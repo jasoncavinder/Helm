@@ -266,14 +266,26 @@ private struct DashboardServiceHealthMetric: View {
 }
 
 struct RedesignUpdatesSectionView: View {
+    private struct PlanStageRow: Identifiable {
+        let id: String
+        let labelKey: String
+        let managerCount: Int
+        let packageCount: Int
+    }
+
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @EnvironmentObject private var context: ControlCenterContext
     @State private var includeOsUpdates = false
     @State private var managerScopeId = HelmCore.allManagersScopeId
     @State private var packageScopeQuery = ""
 
-    private var totalCount: Int {
-        scopedPlanSteps.count
+    private var runnableCount: Int {
+        scopedPlanSteps.filter(core.upgradePlanStepRunsAutomatically).count
+    }
+
+    private var interactiveSparkleCount: Int {
+        scopedPlanSteps.filter(HelmCore.isExternalSparklePlanStep).count
     }
 
     private var managerScopeOptions: [String] {
@@ -304,15 +316,23 @@ struct RedesignUpdatesSectionView: View {
         }.count
     }
 
-    private var stageRows: [(authority: ManagerAuthority, managerCount: Int, packageCount: Int)] {
+    private var stageRows: [PlanStageRow] {
+        let stages = [
+            (id: "authoritative", labelKey: L10n.App.Updates.Authority.authoritative),
+            (id: "standard", labelKey: L10n.App.Updates.Authority.standard),
+            (id: "guarded", labelKey: L10n.App.Updates.Authority.guarded),
+            (id: "interactive", labelKey: L10n.App.Updates.Authority.interactive),
+        ]
         let stepsByAuthority = Dictionary(grouping: scopedPlanSteps) { step in
-            authority(for: step.managerId)
+            let normalized = step.authority.lowercased()
+            return stages.contains(where: { $0.id == normalized }) ? normalized : "standard"
         }
-        return ManagerAuthority.allCases.map { authorityLevel in
-            let scopedSteps = stepsByAuthority[authorityLevel] ?? []
+        return stages.map { stage in
+            let scopedSteps = stepsByAuthority[stage.id] ?? []
             let managersInAuthority = Set(scopedSteps.map(\.managerId))
-            return (
-                authority: authorityLevel,
+            return PlanStageRow(
+                id: stage.id,
+                labelKey: stage.labelKey,
                 managerCount: managersInAuthority.count,
                 packageCount: scopedSteps.count
             )
@@ -413,6 +433,20 @@ struct RedesignUpdatesSectionView: View {
                         .toggleStyle(.switch)
                 }
 
+                if interactiveSparkleCount > 0 {
+                    Label(
+                        L10n.App.Updates.interactiveSparkleNotice.localized(with: [
+                            "count": interactiveSparkleCount
+                        ]),
+                        systemImage: "hand.raised.fill"
+                    )
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .helmCardSurface(cornerRadius: 10, highlighted: true)
+                }
+
                 HStack(spacing: 10) {
                     Picker(L10n.App.Inspector.manager.localized, selection: $managerScopeId) {
                         ForEach(managerScopeOptions, id: \.self) { managerId in
@@ -432,9 +466,9 @@ struct RedesignUpdatesSectionView: View {
                 }
 
                 VStack(spacing: 8) {
-                    ForEach(stageRows, id: \.authority) { row in
+                    ForEach(stageRows) { row in
                         HStack {
-                            Text(row.authority.key.localized)
+                            Text(row.labelKey.localized)
                                 .font(.body.weight(.medium))
                             Spacer()
                             Text("\(row.managerCount)")
@@ -498,7 +532,11 @@ struct RedesignUpdatesSectionView: View {
                                         .foregroundColor(
                                             projectedStatus(step).lowercased() == "failed"
                                                 ? Color.red
-                                                : Color.secondary
+                                                : (
+                                                    core.upgradePlanStepRunsAutomatically(step)
+                                                        ? Color.secondary
+                                                        : HelmTheme.stateAttention
+                                                )
                                         )
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -583,7 +621,7 @@ struct RedesignUpdatesSectionView: View {
                         )
                     }
                     .buttonStyle(HelmPrimaryButtonStyle())
-                    .disabled(totalCount == 0 || core.scopedUpgradePlanRunInProgress)
+                    .disabled(runnableCount == 0 || core.scopedUpgradePlanRunInProgress)
 
                     Spacer()
                 }
@@ -604,6 +642,9 @@ struct RedesignUpdatesSectionView: View {
             if managerScopeId != HelmCore.allManagersScopeId && !managerSet.contains(managerScopeId) {
                 managerScopeId = HelmCore.allManagersScopeId
             }
+        }
+        .onChange(of: appUpdate.includeHelmInUpgradeAll) { _ in
+            core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
         }
     }
 

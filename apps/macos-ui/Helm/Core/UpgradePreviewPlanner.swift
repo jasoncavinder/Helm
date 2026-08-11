@@ -11,6 +11,10 @@ struct PackageRuntimeStateProjection: Codable, Hashable {
 }
 
 struct UpgradePreviewPlanner {
+    static let externalSparkleAction = "external_sparkle"
+    static let helmSelfUpdateAction = "helm_self_update"
+    static let helmSelfUpdateManagerId = "helm_self_update"
+
     struct Entry: Equatable {
         let manager: String
         let count: Int
@@ -100,9 +104,25 @@ struct UpgradePreviewPlanner {
             return 2
         case "detection_only":
             return 3
-        default:
+        case "interactive":
             return 4
+        default:
+            return 5
         }
+    }
+
+    static func runsAutomatically(
+        action: String,
+        managerId: String,
+        includeHelmSelfUpdate: Bool
+    ) -> Bool {
+        if action == externalSparkleAction {
+            return false
+        }
+        if action == helmSelfUpdateAction, managerId == helmSelfUpdateManagerId {
+            return includeHelmSelfUpdate
+        }
+        return true
     }
 
     static func sortedForExecution(_ steps: [PlanStep]) -> [PlanStep] {

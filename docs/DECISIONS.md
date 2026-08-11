@@ -983,6 +983,30 @@ The circular **Course Indicator** is a functional rendering of the highest-prior
 Canonical detail: `docs/app-design/NATIVE_MACOS_INFORMATION_ARCHITECTURE.md`, `docs/app-design/proposals/v019-visual-direction/EXPERIENCE_ARCHITECTURE.md`, and `docs/app-design/proposals/v019-visual-direction/README.md`.
 
 ---
+
+## Decision 046 - Integrate Updater Availability Without Overstating Automation
+
+**Decision:**
+Use Sparkle's information-only check for scheduled direct-channel Helm checks and project any available Helm update into Helm's Library and Plan. Keep Helm's participation in Upgrade All default-off; when enabled, wait for service/core upgrade work to reach terminal state, then hand control to Sparkle for confirmation, installation, and relaunch.
+
+Project outdated third-party Sparkle apps into Plan as interactive vendor-managed entries. Do not count or dispatch them as automatic bulk work until Helm has a reliable per-app completion contract.
+
+**Consequences:**
+
+- Automatic discovery does not trigger Sparkle's standard install alert.
+- Manual Check for Updates and individual Helm update actions continue to use Sparkle's standard user-approved flow.
+- Helm can be included in Upgrade All only by explicit persisted opt-in and always runs last.
+- External Sparkle apps remain individually actionable, visibly require interaction, and cannot make a bulk plan appear more automated than it is.
+- The sequencing policy may inform future managed operation, but Helm Fleet continues to use PKG/MDM authority and transport rather than Sparkle.
+
+**Rationale:**
+
+- Helm should surface its own availability with the same clarity as other updates without bypassing Sparkle's security and relaunch lifecycle.
+- A default-off final step supports consumer convenience while avoiding unexpected app termination.
+- External Sparkle delegates do not provide Helm with a uniform, trustworthy completion signal across vendor apps, so sequential bulk claims would be misleading.
+
+---
+
 ## Summary
 
 Helm prioritizes:

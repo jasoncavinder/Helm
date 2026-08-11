@@ -1,316 +1,9 @@
 import AppKit
+import Combine
 import Foundation
 import os.log
-#if canImport(Sparkle)
-import Sparkle
-#endif
 
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core")
-private let updateLogger = Logger(subsystem: "com.jasoncavinder.Helm", category: "app_update")
-
-enum AppUpdateUnavailableReason: String {
-    case channelNotSupported = "channel_not_supported"
-    case sparkleDisabled = "sparkle_disabled"
-    case downgradesEnabled = "downgrades_enabled"
-    case missingSparkleConfig = "missing_sparkle_config"
-    case insecureSparkleFeed = "insecure_sparkle_feed"
-    case bundleVersionMetadataMismatch = "bundle_version_metadata_mismatch"
-    case ineligibleInstallLocation = "ineligible_install_location"
-    case packageManagerManagedInstall = "package_manager_managed_install"
-    case sparkleFrameworkUnavailable = "sparkle_framework_unavailable"
-    case sparkleRuntimeUnavailable = "sparkle_runtime_unavailable"
-
-    var localizationKey: String {
-        switch self {
-        case .channelNotSupported:
-            return L10n.App.Overlay.About.UpdateUnavailable.channelManaged
-        case .ineligibleInstallLocation:
-            return L10n.App.Overlay.About.UpdateUnavailable.installLocation
-        case .packageManagerManagedInstall:
-            return L10n.App.Overlay.About.UpdateUnavailable.packageManagerManaged
-        case .sparkleFrameworkUnavailable:
-            return L10n.App.Overlay.About.UpdateUnavailable.sparkleMissing
-        case .sparkleRuntimeUnavailable:
-            return L10n.App.Overlay.About.UpdateUnavailable.runtimeUnavailable
-        case .sparkleDisabled, .downgradesEnabled, .missingSparkleConfig, .insecureSparkleFeed, .bundleVersionMetadataMismatch:
-            return L10n.App.Overlay.About.UpdateUnavailable.buildConfig
-        }
-    }
-}
-
-private protocol AppUpdateDriver {
-    var canCheckForUpdates: Bool { get }
-    var automaticallyChecksForUpdates: Bool { get }
-    var updateCheckInterval: TimeInterval { get }
-    var lastUpdateCheckDate: Date? { get }
-    func checkForUpdates()
-    func setAutomaticallyChecksForUpdates(_ enabled: Bool)
-    func setUpdateCheckInterval(_ interval: TimeInterval)
-    func setPrereleaseUpdatesEnabled(_ enabled: Bool)
-}
-
-private struct NoopAppUpdateDriver: AppUpdateDriver {
-    let canCheckForUpdates = false
-    let automaticallyChecksForUpdates = false
-    let updateCheckInterval: TimeInterval = 86_400
-    let lastUpdateCheckDate: Date? = nil
-
-    func checkForUpdates() {}
-    func setAutomaticallyChecksForUpdates(_ enabled: Bool) {}
-    func setUpdateCheckInterval(_ interval: TimeInterval) {}
-    func setPrereleaseUpdatesEnabled(_ enabled: Bool) {}
-}
-
-#if canImport(Sparkle)
-private final class SparkleAppUpdateChannelDelegate: NSObject, SPUUpdaterDelegate {
-    var prereleaseUpdatesEnabled: Bool
-
-    init(prereleaseUpdatesEnabled: Bool) {
-        self.prereleaseUpdatesEnabled = prereleaseUpdatesEnabled
-    }
-
-    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
-        HelmSparkleUpdateChannel.allowedChannels(
-            prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
-        )
-    }
-}
-
-private final class SparkleAppUpdateDriver: NSObject, AppUpdateDriver {
-    private let channelDelegate: SparkleAppUpdateChannelDelegate
-    private let updaterController: SPUStandardUpdaterController
-
-    init(configuration: AppUpdateConfiguration, prereleaseUpdatesEnabled: Bool) {
-        let channelDelegate = SparkleAppUpdateChannelDelegate(
-            prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
-        )
-        self.channelDelegate = channelDelegate
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: channelDelegate,
-            userDriverDelegate: nil
-        )
-        super.init()
-
-        if let clearedFeedURL = updaterController.updater.clearFeedURLFromUserDefaults() {
-            updateLogger.notice(
-                "Cleared persisted Sparkle feed URL override from user defaults: \(clearedFeedURL.absoluteString, privacy: .public)"
-            )
-        }
-
-        let configuredFeedURL = configuration.sparkleFeedURL ?? "none"
-        let resolvedFeedURL = updaterController.updater.feedURL?.absoluteString ?? "none"
-        updateLogger.info(
-            "Sparkle updater initialized. can_check=\(self.updaterController.updater.canCheckForUpdates, privacy: .public), configured_feed_url=\(configuredFeedURL, privacy: .public), resolved_feed_url=\(resolvedFeedURL, privacy: .public)"
-        )
-    }
-
-    var canCheckForUpdates: Bool {
-        updaterController.updater.canCheckForUpdates
-    }
-
-    var automaticallyChecksForUpdates: Bool {
-        updaterController.updater.automaticallyChecksForUpdates
-    }
-
-    var updateCheckInterval: TimeInterval {
-        updaterController.updater.updateCheckInterval
-    }
-
-    var lastUpdateCheckDate: Date? {
-        updaterController.updater.lastUpdateCheckDate
-    }
-
-    func checkForUpdates() {
-        let resolvedFeedURL = updaterController.updater.feedURL?.absoluteString ?? "none"
-        updateLogger.info(
-            "Dispatching Sparkle update check. can_check=\(self.updaterController.updater.canCheckForUpdates, privacy: .public), feed_url=\(resolvedFeedURL, privacy: .public)"
-        )
-        updaterController.checkForUpdates(nil)
-    }
-
-    func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
-        updaterController.updater.automaticallyChecksForUpdates = enabled
-    }
-
-    func setUpdateCheckInterval(_ interval: TimeInterval) {
-        updaterController.updater.updateCheckInterval = interval
-    }
-
-    func setPrereleaseUpdatesEnabled(_ enabled: Bool) {
-        channelDelegate.prereleaseUpdatesEnabled = enabled
-        updaterController.updater.resetUpdateCycleAfterShortDelay()
-    }
-}
-#endif
-
-final class AppUpdateCoordinator: ObservableObject {
-    static let shared = AppUpdateCoordinator()
-    private static let prereleaseUpdatesEnabledKey = "appUpdate.prereleaseUpdatesEnabled"
-
-    @Published private(set) var configuration: AppUpdateConfiguration
-    @Published private(set) var updateAuthority: HelmUpdateAuthority
-    @Published private(set) var canCheckForUpdates: Bool
-    @Published private(set) var unavailableReason: AppUpdateUnavailableReason?
-    @Published private(set) var isCheckingForUpdates = false
-    @Published private(set) var lastCheckDate: Date?
-    @Published private(set) var autoCheckEnabled: Bool
-    @Published private(set) var checkFrequencyMinutes: Int
-    @Published private(set) var prereleaseUpdatesEnabled: Bool
-
-    var distributionChannel: HelmDistributionChannel {
-        configuration.channel
-    }
-
-    private let driver: AppUpdateDriver
-
-    private init() {
-        let configuration = AppUpdateConfiguration.from()
-        let prereleaseUpdatesEnabled = UserDefaults.standard.bool(
-            forKey: Self.prereleaseUpdatesEnabledKey
-        )
-        self.configuration = configuration
-        self.updateAuthority = configuration.updateAuthority
-        self.prereleaseUpdatesEnabled = prereleaseUpdatesEnabled
-        let selection = AppUpdateCoordinator.makeDriver(
-            for: configuration,
-            prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
-        )
-        self.driver = selection.driver
-        self.lastCheckDate = selection.driver.lastUpdateCheckDate
-        self.autoCheckEnabled = selection.driver.automaticallyChecksForUpdates
-        self.checkFrequencyMinutes = Self.supportedFrequencyMinutes(
-            for: selection.driver.updateCheckInterval
-        )
-        if selection.driver.canCheckForUpdates {
-            self.canCheckForUpdates = true
-            self.unavailableReason = nil
-        } else {
-            self.canCheckForUpdates = false
-            self.unavailableReason = selection.unavailableReason ?? .sparkleRuntimeUnavailable
-        }
-
-        updateLogger.info(
-            "Configured app updater. channel=\(configuration.channel.rawValue, privacy: .public), authority=\(self.updateAuthority.rawValue, privacy: .public), sparkle_enabled=\(configuration.sparkleEnabled, privacy: .public), sparkle_allows_downgrades=\(configuration.sparkleAllowsDowngrades, privacy: .public), mounted_dmg=\(configuration.appearsMountedFromDiskImage, privacy: .public), translocated=\(configuration.appearsTranslocated, privacy: .public), package_manager_managed=\(configuration.appearsPackageManagerManaged, privacy: .public), feed_configured=\(configuration.sparkleFeedURL != nil, privacy: .public), key_configured=\(configuration.sparklePublicEdKey != nil, privacy: .public), can_check=\(self.canCheckForUpdates, privacy: .public), unavailable_reason=\(self.unavailableReason?.rawValue ?? "none", privacy: .public)"
-        )
-    }
-
-    var unavailableReasonLocalizationKey: String? {
-        unavailableReason?.localizationKey
-    }
-
-    func checkForUpdates() {
-        guard canCheckForUpdates else {
-            updateLogger.warning(
-                "Ignoring manual update check request because updater is unavailable. reason=\(self.unavailableReason?.rawValue ?? "unknown", privacy: .public)"
-            )
-            return
-        }
-        guard !isCheckingForUpdates else {
-            updateLogger.info("Ignoring manual update check request because a check is already in progress.")
-            return
-        }
-
-        updateLogger.info("Manual update check requested.")
-        isCheckingForUpdates = true
-        defer { isCheckingForUpdates = false }
-        driver.checkForUpdates()
-        lastCheckDate = Date()
-    }
-
-    func setAutoCheckEnabled(_ enabled: Bool) {
-        guard canCheckForUpdates else { return }
-        driver.setAutomaticallyChecksForUpdates(enabled)
-        refreshState()
-        updateLogger.info("Automatic Helm update checks set to \(enabled, privacy: .public)")
-    }
-
-    func setCheckFrequencyMinutes(_ minutes: Int) {
-        guard canCheckForUpdates else { return }
-        let supportedMinutes = Self.supportedFrequencyMinutes(for: TimeInterval(minutes * 60))
-        driver.setUpdateCheckInterval(TimeInterval(supportedMinutes * 60))
-        refreshState()
-        updateLogger.info(
-            "Automatic Helm update check interval set to \(supportedMinutes, privacy: .public) minutes"
-        )
-    }
-
-    func setPrereleaseUpdatesEnabled(_ enabled: Bool) {
-        guard canCheckForUpdates else { return }
-        UserDefaults.standard.set(enabled, forKey: Self.prereleaseUpdatesEnabledKey)
-        prereleaseUpdatesEnabled = enabled
-        driver.setPrereleaseUpdatesEnabled(enabled)
-        updateLogger.info("Prerelease Helm updates set to \(enabled, privacy: .public)")
-    }
-
-    func refreshState() {
-        autoCheckEnabled = driver.automaticallyChecksForUpdates
-        checkFrequencyMinutes = Self.supportedFrequencyMinutes(for: driver.updateCheckInterval)
-        lastCheckDate = driver.lastUpdateCheckDate ?? lastCheckDate
-    }
-
-    private static func supportedFrequencyMinutes(for interval: TimeInterval) -> Int {
-        let requested = max(Int(interval / 60), 60)
-        let supported = [60, 1_440, 10_080, 43_800]
-        return supported.min(by: { abs($0 - requested) < abs($1 - requested) }) ?? 1_440
-    }
-
-    private struct AppUpdateDriverSelection {
-        let driver: AppUpdateDriver
-        let unavailableReason: AppUpdateUnavailableReason?
-    }
-
-    private static func makeDriver(
-        for configuration: AppUpdateConfiguration,
-        prereleaseUpdatesEnabled: Bool
-    ) -> AppUpdateDriverSelection {
-        if let failure = configuration.eligibilityFailureReason {
-            return AppUpdateDriverSelection(
-                driver: NoopAppUpdateDriver(),
-                unavailableReason: mapFailureReason(failure)
-            )
-        }
-
-        #if canImport(Sparkle)
-        return AppUpdateDriverSelection(
-            driver: SparkleAppUpdateDriver(
-                configuration: configuration,
-                prereleaseUpdatesEnabled: prereleaseUpdatesEnabled
-            ),
-            unavailableReason: nil
-        )
-        #else
-        updateLogger.warning(
-            "Sparkle build flag enabled for Developer ID channel, but Sparkle framework is unavailable."
-        )
-        return AppUpdateDriverSelection(
-            driver: NoopAppUpdateDriver(),
-            unavailableReason: .sparkleFrameworkUnavailable
-        )
-        #endif
-    }
-
-    private static func mapFailureReason(_ reason: AppUpdateEligibilityFailure) -> AppUpdateUnavailableReason {
-        switch reason {
-        case .channelNotSupported:
-            return .channelNotSupported
-        case .sparkleDisabled:
-            return .sparkleDisabled
-        case .downgradesEnabled:
-            return .downgradesEnabled
-        case .missingSparkleConfig:
-            return .missingSparkleConfig
-        case .insecureSparkleFeed:
-            return .insecureSparkleFeed
-        case .bundleVersionMetadataMismatch:
-            return .bundleVersionMetadataMismatch
-        case .ineligibleInstallLocation:
-            return .ineligibleInstallLocation
-        case .packageManagerManagedInstall:
-            return .packageManagerManagedInstall
-        }
-    }
-}
 
 struct CorePackageRef: Codable {
     let manager: String
@@ -723,6 +416,8 @@ final class HelmManagersState: ObservableObject {
 final class HelmCore: ObservableObject {
     static let shared = HelmCore()
     static let currentLicenseTermsVersion = AppUpdateConfiguration.currentLicenseTermsVersion
+    static let helmSelfUpdateManagerId = UpgradePreviewPlanner.helmSelfUpdateManagerId
+    static let helmSelfUpdatePackageId = "helm-self-update"
 
     private static let onboardingCompletedKey = "hasCompletedOnboarding"
     private static let acceptedLicenseTermsVersionKey = "acceptedLicenseTermsVersion"
@@ -877,6 +572,7 @@ final class HelmCore: ObservableObject {
     var previousFailedTaskCount: Int = 0
     var previousRefreshState: Bool = false
     var scopedUpgradeWorkflowId: String?
+    var pendingHelmSelfUpdateWorkflowId: String?
     var scopedUpgradeWorkflowStartState = UpgradeWorkflowStartState()
     var scopedUpgradeWorkflowStatusReconciliationState = UpgradeWorkflowStatusReconciliationState()
     var scopedUpgradeWorkflowStatusCheckInFlight = false
@@ -886,6 +582,7 @@ final class HelmCore: ObservableObject {
     private var isPopoverVisibleForPolling = false
     private var isControlCenterVisibleForPolling = false
     private var derivedViewStateRefreshWorkItem: DispatchWorkItem?
+    private var appUpdateAvailabilityCancellable: AnyCancellable?
     var cachedAllKnownPackagesUnsorted: [PackageItem]?
     var cachedAllKnownPackagesSorted: [PackageItem]?
     var cachedKnownPackageById: [String: PackageItem] = [:]
@@ -899,6 +596,11 @@ final class HelmCore: ObservableObject {
     }
 
     private init() {
+        appUpdateAvailabilityCancellable = AppUpdateCoordinator.shared.$availableUpdate
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] availability in
+                self?.syncHelmSelfUpdateAvailability(availability)
+            }
         refreshHelmCliShimStatus()
         setupConnection()
     }
@@ -1222,6 +924,7 @@ final class HelmCore: ObservableObject {
 
     func triggerRefresh() {
         logger.info("triggerRefresh called")
+        AppUpdateCoordinator.shared.refreshUpdateAvailability()
         self.lastRefreshTrigger = Date()
         self.lastTaskSnapshotRefreshAt = .distantPast
         self.lastFullSnapshotRefreshAt = .distantPast
