@@ -101,8 +101,8 @@ Observed:
 - `NSStatusItem` uses a custom anchor asset or SF Symbol fallback.
 - Priority is failure `!`, then update count capped at 99, then running dot, then no badge.
 - Tooltip and accessibility label are localized and state-specific.
-- Left click toggles the panel; right click opens `NSMenu`.
-- A visible Control Center suppresses the popover and receives focus on status-item click.
+- Both click types use the shared popover rather than a separate `NSMenu`.
+- A visible Dashboard receives focus on primary status-item click, while secondary click keeps the popover available alongside it.
 
 Defects and debt:
 
