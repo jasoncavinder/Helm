@@ -35,25 +35,57 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         router.unregister(registrationID)
     }
 
-    func testRequestOpenFallsBackImmediatelyWhenNoBridgeIsRegistered() {
+    func testRequestOpenDefersUntilModernBridgeRegistersWithoutVenturaFallback() throws {
+        guard #available(macOS 14.0, *) else {
+            throw XCTSkip("Modern Settings bridge behavior requires macOS 14 or newer")
+        }
+
         var activateCount = 0
-        var fallbackOpenCount = 0
+        var venturaOpenCount = 0
         let router = HelmSettingsOpenRouter(
             activateApp: { activateCount += 1 },
-            fallbackOpenSettings: { fallbackOpenCount += 1 }
+            openVenturaSettings: { venturaOpenCount += 1 }
         )
         var deferredOpenCount = 0
+        let openExpectation = expectation(description: "Deferred Settings request opens")
 
         router.requestOpen()
 
         XCTAssertEqual(activateCount, 1)
-        XCTAssertEqual(fallbackOpenCount, 1)
+        XCTAssertEqual(venturaOpenCount, 0)
 
         let registrationID = router.register {
             deferredOpenCount += 1
+            openExpectation.fulfill()
+        }
+        wait(for: [openExpectation], timeout: 1)
+
+        XCTAssertEqual(deferredOpenCount, 1)
+        XCTAssertEqual(venturaOpenCount, 0)
+        router.unregister(registrationID)
+    }
+
+    func testRequestOpenUsesRegisteredModernBridgeWithoutVenturaFallback() throws {
+        guard #available(macOS 14.0, *) else {
+            throw XCTSkip("Modern Settings bridge behavior requires macOS 14 or newer")
         }
 
-        XCTAssertEqual(deferredOpenCount, 0)
+        var activateCount = 0
+        var venturaOpenCount = 0
+        var registeredOpenCount = 0
+        let router = HelmSettingsOpenRouter(
+            activateApp: { activateCount += 1 },
+            openVenturaSettings: { venturaOpenCount += 1 }
+        )
+        let registrationID = router.register {
+            registeredOpenCount += 1
+        }
+
+        router.requestOpen()
+
+        XCTAssertEqual(activateCount, 1)
+        XCTAssertEqual(registeredOpenCount, 1)
+        XCTAssertEqual(venturaOpenCount, 0)
         router.unregister(registrationID)
     }
 }

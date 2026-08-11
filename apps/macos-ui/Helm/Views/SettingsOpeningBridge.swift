@@ -3,7 +3,7 @@ import SwiftUI
 
 final class HelmSettingsOpenRouter {
     typealias ActivateAction = () -> Void
-    typealias FallbackOpenAction = () -> Void
+    typealias VenturaOpenAction = () -> Void
 
     private struct Registration {
         let id: UUID
@@ -11,7 +11,7 @@ final class HelmSettingsOpenRouter {
     }
 
     private let activateApp: ActivateAction
-    private let fallbackOpenSettings: FallbackOpenAction
+    private let openVenturaSettings: VenturaOpenAction
     private var registrations: [Registration] = []
     private var hasPendingRequest = false
 
@@ -19,14 +19,14 @@ final class HelmSettingsOpenRouter {
         activateApp: @escaping ActivateAction = {
             NSApp.activate(ignoringOtherApps: true)
         },
-        fallbackOpenSettings: @escaping FallbackOpenAction = {
+        openVenturaSettings: @escaping VenturaOpenAction = {
             if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
                 NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
             }
         }
     ) {
         self.activateApp = activateApp
-        self.fallbackOpenSettings = fallbackOpenSettings
+        self.openVenturaSettings = openVenturaSettings
     }
 
     @discardableResult
@@ -47,28 +47,18 @@ final class HelmSettingsOpenRouter {
     func requestOpen() {
         activateApp()
         if #available(macOS 14.0, *) {
-            if !requestRegisteredOpen(recordPendingRequest: false) {
-                fallbackOpenSettings()
-            }
+            requestRegisteredOpen()
         } else {
-            fallbackOpenSettings()
+            openVenturaSettings()
         }
     }
 
     func requestRegisteredOpen() {
-        _ = requestRegisteredOpen(recordPendingRequest: true)
-    }
-
-    @discardableResult
-    private func requestRegisteredOpen(recordPendingRequest: Bool) -> Bool {
         guard let action = registrations.last?.action else {
-            if recordPendingRequest {
-                hasPendingRequest = true
-            }
-            return false
+            hasPendingRequest = true
+            return
         }
         action()
-        return true
     }
 }
 
