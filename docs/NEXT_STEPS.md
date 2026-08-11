@@ -11,21 +11,19 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.3 source-candidate validation and v0.19.0 stabilization
+v0.19.0-rc.3 publication closeout and v0.19.0 stabilization
 ```
 
 Focus:
-- validate the prepared `v0.19.0-rc.3` source candidate without tagging or publishing until protected integration, final `main` gates, and explicit release authorization are complete
-- preserve the published `v0.19.0-rc.2` candidate and stable `v0.18.2` metadata while RC3 remains untagged
-- after publication, validate the installed `v0.19.0-rc.2` to signed/notarized `v0.19.0-rc.3` Sparkle update path and confirm System Default, migrated legacy, and explicit language-selection behavior after relaunch
+- preserve the published `v0.19.0-rc.3` candidate alongside stable `v0.18.2`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
+- validate the installed `v0.19.0-rc.2` to signed/notarized `v0.19.0-rc.3` Sparkle update path and confirm System Default, migrated legacy, and explicit language-selection behavior after relaunch
 - preserve the completed owner validation of the installed `v0.19.0-rc.1` to signed/notarized `v0.19.0-rc.2` Sparkle update path; Sparkle detected, installed, and relaunched RC2 successfully, with the language-default regression discovered only after relaunch
-- preserve the published opt-in `v0.19.0-rc.2` candidate alongside stable `v0.18.2`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
 - keep the Environment Brief development-gated in RC3 because Issue #388 remains unresolved, and disclose the limitation without implying that the production first-run route changed
 - continue from the Original Wayfinder foundation checkpoints: shared revisioned Dashboard/popover/status projection, semantic Course Indicator modes, stable destination/deep-link bridge, Dashboard naming, restored/resizable native window hosting, native Dashboard/Plan/Library/Activity sidebar composition, persistent Environment access, rendered Course Indicator, native Dashboard toolbar/app commands, and one shared native Settings scene with General, Updates, Sources, CLI, and Support panes are implemented; operational-card relocation and removal of the legacy in-window Settings compatibility destination are explicitly deferred until after RC2, while destination content migration, contextual inspector behavior, right-click-menu removal, and v0.22 multi-display validation continue
-- maintain release-process hardening guardrails now that `v0.19.0-rc.2` publication and automated closeout verification are complete
+- maintain release-process hardening guardrails now that `v0.19.0-rc.3` publication is complete and the remaining release work is limited to installed-candidate validation and closeout truth maintenance
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
-- preserve the published `0.19.0-rc.2` manager/updater and native-experience baseline: v0.18 migration safety, npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, explicit beta/RC opt-in with stable-channel isolation, dependency modernization, the macOS 13 Ventura baseline, and the Original Wayfinder Dashboard/Settings foundation
+- preserve the published `0.19.0-rc.3` manager/updater and native-experience baseline: v0.18 migration safety, npm/MAS reliability fixes, full standard-root Sparkle inventory and static-appcast visibility, external-bundle GUI update actions, scheduled direct-channel Helm checks, explicit beta/RC opt-in with stable-channel isolation, dependency modernization, the macOS 13 Ventura baseline, and the Original Wayfinder Dashboard/Settings foundation plus the System Default language migration correction
 - preserve the released SQLite doctor/repair lifecycle, bundled knowledge bootstrap, import/export hardening, and repair verification path without widening into online knowledge lookup
 - preserve the compiled typed-action registry as the immutable execution boundary; knowledge remains declarative and cannot carry commands, arguments, scripts, plugins, or arbitrary executable content
 - retain deterministic `v2` finding identity while keeping sensitive local evidence outside shared fingerprint inputs
@@ -406,10 +404,10 @@ Current checkpoint:
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
 - latest stable release on `main`: `v0.18.2`
-- latest published prerelease on `main`: `v0.19.0-rc.2`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
-- prepared source candidate: `v0.19.0-rc.3`; it is not tagged or published, and public prerelease metadata remains on `v0.19.0-rc.2`
-- owner installation validation confirms the signed Developer ID app updated from `0.19.0-rc.1` to `0.19.0-rc.2` through Sparkle; broader RC feedback remains pending and should not be inferred from this single installation
-- post-publication release verification is green for the `v0.19.0-rc.2` GUI beta appcast, RC CLI metadata, GitHub prerelease state, and stable/RC coexistence contract; installed-candidate validation exposed the language-default regression addressed by the RC3 source candidate
+- latest published prerelease on `main`: `v0.19.0-rc.3`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
+- `v0.19.0-rc.3` was published on 2026-08-11; publication PRs `#402` and `#403` merged the RC CLI metadata and beta appcast/release notes into `main`
+- owner installation validation confirms the signed Developer ID app updated from `0.19.0-rc.1` to `0.19.0-rc.2` through Sparkle; RC2-to-RC3 installed validation remains pending, so broader RC feedback still should not be inferred from this single installation
+- post-publication release verification is green for the `v0.19.0-rc.3` GUI beta appcast, RC CLI metadata, GitHub prerelease state, and stable/RC coexistence contract; the remaining RC3 validation work is the installed-candidate Sparkle path and post-relaunch language-behavior confirmation
 - validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
