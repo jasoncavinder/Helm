@@ -32,6 +32,21 @@ enum HelmSparkleUpdateChannel {
     }
 }
 
+struct AppUpdateSchedulePolicy {
+    static func nextCheckDelay(
+        canCheckForUpdates: Bool,
+        autoCheckEnabled: Bool,
+        lastCheckDate: Date?,
+        frequencyMinutes: Int,
+        now: Date = Date()
+    ) -> TimeInterval? {
+        guard canCheckForUpdates, autoCheckEnabled else { return nil }
+        let interval = TimeInterval(frequencyMinutes * 60)
+        guard let lastCheckDate else { return 1 }
+        return max(lastCheckDate.addingTimeInterval(interval).timeIntervalSince(now), 1)
+    }
+}
+
 extension HelmDistributionChannel {
     var updateAuthority: HelmUpdateAuthority {
         switch self {

@@ -70,7 +70,7 @@ extension HelmCore {
                   ) else { return }
 
             DispatchQueue.main.async {
-                self.outdatedPackages = corePackages.map { pkg in
+                let managerPackages = corePackages.map { pkg in
                     PackageItem(
                         id: self.availablePackageId(
                             managerId: pkg.package.manager,
@@ -89,6 +89,8 @@ extension HelmCore {
                         runtimeState: pkg.runtimeState ?? PackageRuntimeState()
                     )
                 }
+                self.outdatedPackages = self.packagesIncludingHelmSelfUpdate(managerPackages)
+                self.rebuildProjectedUpgradePlanExtensions()
                 if !self.upgradePlanSteps.isEmpty {
                     self.refreshUpgradePlan(
                         includePinned: self.upgradePlanIncludePinned,
@@ -96,6 +98,48 @@ extension HelmCore {
                     )
                 }
             }
+        }
+    }
+
+    func syncHelmSelfUpdateAvailability(_ availability: AppUpdateAvailability?) {
+        let managerPackages = outdatedPackages.filter { $0.managerId != Self.helmSelfUpdateManagerId }
+        let updatedPackages = packagesIncludingHelmSelfUpdate(
+            managerPackages,
+            availability: availability
+        )
+        guard packageSnapshotIdentity(updatedPackages) != packageSnapshotIdentity(outdatedPackages) else {
+            return
+        }
+        outdatedPackages = updatedPackages
+        rebuildProjectedUpgradePlanExtensions()
+    }
+
+    private func packagesIncludingHelmSelfUpdate(
+        _ packages: [PackageItem],
+        availability: AppUpdateAvailability? = AppUpdateCoordinator.shared.availableUpdate
+    ) -> [PackageItem] {
+        var result = packages.filter { $0.managerId != Self.helmSelfUpdateManagerId }
+        guard let availability else { return result }
+
+        let configuration = AppUpdateCoordinator.shared.configuration
+        result.append(
+            PackageItem(
+                id: Self.helmSelfUpdatePackageId,
+                name: "Helm",
+                packageIdentifier: configuration.bundlePath,
+                version: configuration.bundleShortVersion ?? L10n.Common.unknown.localized,
+                latestVersion: availability.displayVersion,
+                managerId: Self.helmSelfUpdateManagerId,
+                manager: L10n.App.Updates.helmSelfUpdateManager.localized,
+                summary: L10n.App.Updates.helmSelfUpdateSummary.localized
+            )
+        )
+        return result
+    }
+
+    private func packageSnapshotIdentity(_ packages: [PackageItem]) -> [String] {
+        packages.map {
+            "\($0.id)|\($0.version)|\($0.latestVersion ?? "")|\($0.pinned)"
         }
     }
 

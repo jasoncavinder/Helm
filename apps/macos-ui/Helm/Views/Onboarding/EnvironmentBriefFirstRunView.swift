@@ -163,46 +163,73 @@ private struct EnvironmentBriefContentView: View {
         .make(from: brief)
     }
 
+    private var readiness: EnvironmentBriefManagementReadiness {
+        .make(from: brief)
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
-                EnvironmentBriefTrustStrip(observationClass: brief.observationClass)
+        VStack(alignment: .leading, spacing: 24) {
+            header
+            EnvironmentBriefTrustStrip(observationClass: brief.observationClass)
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
-                        systemGroup
-                        sourcesGroup
-                    }
-
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 16) {
                         systemGroup
-                        sourcesGroup
+                        readinessGroup
+                        Spacer(minLength: 0)
+                        actions
                     }
+                    .frame(minWidth: 300, maxWidth: 360, maxHeight: .infinity, alignment: .topLeading)
+
+                    sourcesGroup
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
 
-                HStack(spacing: 10) {
-                    Button(L10n.App.FirstRun.Action.useHelm.localized, action: onComplete)
-                        .buttonStyle(HelmPrimaryButtonStyle())
-                        .keyboardShortcut(.defaultAction)
-
-                    if summary.kind != .current && canScanAgain {
-                        Button(L10n.App.FirstRun.Action.scanAgain.localized, action: onScanAgain)
-                            .buttonStyle(HelmSecondaryButtonStyle())
-                            .disabled(isRefreshing)
-                    }
-
-                    if isRefreshing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityLabel(L10n.App.FirstRun.discovering.localized)
-                    }
+                VStack(alignment: .leading, spacing: 16) {
+                    systemGroup
+                    readinessGroup
+                    sourcesGroup
+                    actions
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
             }
-            .frame(maxWidth: 980, alignment: .leading)
-            .padding(.horizontal, 40)
-            .padding(.vertical, 34)
-            .frame(maxWidth: .infinity)
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(maxWidth: 980, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 40)
+        .padding(.vertical, 34)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var actions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                actionButtons
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                actionButtons
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        Button(L10n.App.FirstRun.Action.useHelm.localized, action: onComplete)
+            .buttonStyle(HelmPrimaryButtonStyle())
+            .keyboardShortcut(.defaultAction)
+
+        if summary.kind != .current && canScanAgain {
+            Button(L10n.App.FirstRun.Action.scanAgain.localized, action: onScanAgain)
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(isRefreshing)
+        }
+
+        if isRefreshing {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(L10n.App.FirstRun.discovering.localized)
         }
     }
 
@@ -268,23 +295,54 @@ private struct EnvironmentBriefContentView: View {
 
     private var sourcesGroup: some View {
         GroupBox(L10n.App.FirstRun.Section.sources.localized) {
-            VStack(spacing: 0) {
-                if displayedManagers.isEmpty && !hasCoverageExceptions {
-                    Text(L10n.App.Onboarding.Detection.noneDetected.localized)
-                        .font(.body)
-                        .foregroundColor(HelmTheme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 12)
-                }
-
-                ForEach(Array(displayedManagers.enumerated()), id: \.element.manager) { index, manager in
-                    EnvironmentBriefManagerRow(observation: manager)
-                    if index < displayedManagers.count - 1 || hasCoverageExceptions {
-                        Divider()
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if displayedManagers.isEmpty && !hasCoverageExceptions {
+                        Text(L10n.App.Onboarding.Detection.noneDetected.localized)
+                            .font(.body)
+                            .foregroundColor(HelmTheme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 12)
                     }
-                }
 
-                EnvironmentBriefCoverageRows(coverage: brief.coverage)
+                    ForEach(Array(displayedManagers.enumerated()), id: \.element.manager) { index, manager in
+                        EnvironmentBriefManagerRow(observation: manager)
+                        if index < displayedManagers.count - 1 || hasCoverageExceptions {
+                            Divider()
+                        }
+                    }
+
+                    EnvironmentBriefCoverageRows(coverage: brief.coverage)
+                }
+                .padding(.horizontal, 8)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var readinessGroup: some View {
+        GroupBox(L10n.App.FirstRun.Section.readiness.localized) {
+            VStack(spacing: 0) {
+                EnvironmentBriefReadinessRow(
+                    title: L10n.App.FirstRun.Readiness.ready.localized,
+                    count: readiness.readyCount,
+                    symbol: "checkmark.circle.fill",
+                    tint: HelmTheme.stateHealthy
+                )
+                Divider()
+                EnvironmentBriefReadinessRow(
+                    title: L10n.App.FirstRun.Readiness.attention.localized,
+                    count: readiness.attentionCount,
+                    symbol: "exclamationmark.triangle.fill",
+                    tint: HelmTheme.stateAttention
+                )
+                Divider()
+                EnvironmentBriefReadinessRow(
+                    title: L10n.App.FirstRun.Readiness.observedOnly.localized,
+                    count: readiness.observedOnlyCount,
+                    symbol: "eye.fill",
+                    tint: HelmTheme.blue500
+                )
             }
             .padding(.horizontal, 8)
         }
@@ -432,6 +490,33 @@ private struct EnvironmentBriefFact: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct EnvironmentBriefReadinessRow: View {
+    let title: String
+    let count: Int
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundColor(tint)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.callout.weight(.medium))
+                .foregroundColor(HelmTheme.textPrimary)
+            Spacer(minLength: 8)
+            Text("\(count)")
+                .font(.callout.weight(.semibold).monospacedDigit())
+                .foregroundColor(tint)
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(count)")
     }
 }
 

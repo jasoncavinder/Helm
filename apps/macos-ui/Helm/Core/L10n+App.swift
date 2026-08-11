@@ -240,6 +240,13 @@ extension L10n {
             struct Section {
                 static let thisMac = "app.first_run.environment_brief.section.this_mac"
                 static let sources = "app.first_run.environment_brief.section.sources"
+                static let readiness = "app.first_run.environment_brief.section.readiness"
+            }
+
+            struct Readiness {
+                static let ready = "app.first_run.environment_brief.readiness.ready"
+                static let attention = "app.first_run.environment_brief.readiness.attention"
+                static let observedOnly = "app.first_run.environment_brief.readiness.observed_only"
             }
 
             struct Status {
@@ -300,6 +307,8 @@ extension L10n {
                 static let checkFrequency = "app.settings.label.check_frequency"
                 static let prereleaseUpdates = "app.settings.label.prerelease_updates"
                 static let prereleaseUpdatesDescription = "app.settings.label.prerelease_updates_description"
+                static let includeHelmInUpgradeAll = "app.settings.label.include_helm_in_upgrade_all"
+                static let includeHelmInUpgradeAllDescription = "app.settings.label.include_helm_in_upgrade_all_description"
                 static let safeMode = "app.settings.label.safe_mode"
                 static let autoCleanKegs = "app.settings.label.auto_clean_kegs"
             }
@@ -316,7 +325,6 @@ extension L10n {
                 static let upgradeAll = "app.settings.action.upgrade_all"
                 static let reset = "app.settings.action.reset"
                 static let quit = "app.settings.action.quit"
-                static let replayWalkthrough = "app.settings.action.replay_walkthrough"
                 static let restoreManagerPriority = "app.settings.action.restore_manager_priority"
                 static let installCli = "app.settings.action.install_cli"
                 static let removeCli = "app.settings.action.remove_cli"
@@ -355,8 +363,8 @@ extension L10n {
                 static let refreshState = "app.settings.service_health.refresh_state"
                 static let lastCheck = "app.settings.service_health.last_check"
                 static let failedTasks = "app.settings.service_health.failed_tasks"
-                static let managersDetected = "app.settings.service_health.managers_detected"
-                static let managersMissing = "app.settings.service_health.managers_missing"
+                static let managerCoverage = "app.settings.service_health.manager_coverage"
+                static let managerCoverageValue = "app.settings.service_health.manager_coverage_value"
                 static let lastError = "app.settings.service_health.last_error"
                 static let copySnapshot = "app.settings.service_health.copy_snapshot"
 
@@ -450,6 +458,9 @@ extension L10n {
         struct Updates {
             static let executionPlan = "app.updates.execution_plan"
             static let includeOs = "app.updates.include_os"
+            static let interactiveSparkleNotice = "app.updates.interactive_sparkle_notice"
+            static let helmSelfUpdateManager = "app.updates.helm_self_update.manager"
+            static let helmSelfUpdateSummary = "app.updates.helm_self_update.summary"
             static let managers = "app.updates.managers"
             static let packages = "app.updates.packages"
             static let riskFlags = "app.updates.risk_flags"
@@ -457,10 +468,20 @@ extension L10n {
                 static let authoritative = "app.updates.authority.authoritative"
                 static let standard = "app.updates.authority.standard"
                 static let guarded = "app.updates.authority.guarded"
+                static let interactive = "app.updates.authority.interactive"
             }
             struct Risk {
                 static let privileged = "app.updates.risk.privileged"
                 static let reboot = "app.updates.risk.reboot"
+            }
+            struct Plan {
+                static let externalSparkle = "app.updates.plan.external_sparkle"
+                static let helmSelfUpdate = "app.updates.plan.helm_self_update"
+            }
+            struct Status {
+                static let requiresInteraction = "app.updates.status.requires_interaction"
+                static let runsLast = "app.updates.status.runs_last"
+                static let notIncluded = "app.updates.status.not_included"
             }
         }
         struct DryRun {

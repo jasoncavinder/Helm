@@ -2,13 +2,32 @@ import AppKit
 import SwiftUI
 
 final class HelmSettingsOpenRouter {
+    typealias ActivateAction = () -> Void
+    typealias VenturaOpenAction = () -> Void
+
     private struct Registration {
         let id: UUID
         let action: () -> Void
     }
 
+    private let activateApp: ActivateAction
+    private let openVenturaSettings: VenturaOpenAction
     private var registrations: [Registration] = []
     private var hasPendingRequest = false
+
+    init(
+        activateApp: @escaping ActivateAction = {
+            NSApp.activate(ignoringOtherApps: true)
+        },
+        openVenturaSettings: @escaping VenturaOpenAction = {
+            if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
+                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+            }
+        }
+    ) {
+        self.activateApp = activateApp
+        self.openVenturaSettings = openVenturaSettings
+    }
 
     @discardableResult
     func register(_ action: @escaping () -> Void) -> UUID {
@@ -26,11 +45,11 @@ final class HelmSettingsOpenRouter {
     }
 
     func requestOpen() {
-        NSApp.activate(ignoringOtherApps: true)
+        activateApp()
         if #available(macOS 14.0, *) {
             requestRegisteredOpen()
         } else {
-            openLegacySettings()
+            openVenturaSettings()
         }
     }
 
@@ -40,12 +59,6 @@ final class HelmSettingsOpenRouter {
             return
         }
         action()
-    }
-
-    private func openLegacySettings() {
-        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
     }
 }
 

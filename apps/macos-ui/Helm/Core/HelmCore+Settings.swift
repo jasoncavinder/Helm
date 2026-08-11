@@ -653,17 +653,44 @@ extension HelmCore {
             }
             self.rebuildUpgradePlanFailureGroups()
         }
+        let includeHelmSelfUpdate = AppUpdateCoordinator.shared.includeHelmInUpgradeAll
+            && AppUpdateCoordinator.shared.availableUpdate != nil
+        if !hasBackendUpgradeCandidate(includePinned: includePinned, allowOsUpdates: allowOsUpdates),
+           includeHelmSelfUpdate {
+            AppUpdateCoordinator.shared.checkForUpdates()
+            return
+        }
         startScopedUpgradeWorkflow(
             includePinned: includePinned,
             allowOsUpdates: allowOsUpdates,
             managerScopeId: Self.allManagersScopeId,
             packageFilter: "",
             source: "core.settings",
-            action: "upgradeAll"
+            action: "upgradeAll",
+            includeHelmSelfUpdate: includeHelmSelfUpdate
         )
     }
 
+    private func hasBackendUpgradeCandidate(includePinned: Bool, allowOsUpdates: Bool) -> Bool {
+        outdatedPackages.contains { package in
+            guard package.managerId != "sparkle",
+                  package.managerId != Self.helmSelfUpdateManagerId,
+                  includePinned || !package.pinned,
+                  isManagerEnabled(package.managerId) else {
+                return false
+            }
+            if package.managerId == "softwareupdate" {
+                return allowOsUpdates && !safeModeEnabled
+            }
+            return true
+        }
+    }
+
     func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        upgradePlanIncludePinned = includePinned
+        upgradePlanAllowOsUpdates = allowOsUpdates
+        rebuildProjectedUpgradePlanExtensions()
+
         guard let service = service() else {
             recordLastError(
                 source: "core.settings",
@@ -687,16 +714,25 @@ extension HelmCore {
             DispatchQueue.main.async {
                 self.upgradePlanIncludePinned = includePinned
                 self.upgradePlanAllowOsUpdates = allowOsUpdates
-                self.upgradePlanSteps = steps.sorted { lhs, rhs in
-                    lhs.orderIndex < rhs.orderIndex
-                }
+                self.upgradePlanSteps = self.augmentedUpgradePlanSteps(
+                    coreSteps: steps,
+                    includePinned: includePinned
+                )
                 self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
             }
         }
     }
 
     func projectedUpgradePlanStatus(for step: CoreUpgradePlanStep) -> String {
-        upgradePlanTaskProjectionByStepId[step.id]?.status ?? step.status
+        if Self.isExternalSparklePlanStep(step) {
+            return "requires_interaction"
+        }
+        if Self.isHelmSelfUpdatePlanStep(step) {
+            return AppUpdateCoordinator.shared.includeHelmInUpgradeAll
+                ? "runs_last"
+                : "not_included"
+        }
+        return upgradePlanTaskProjectionByStepId[step.id]?.status ?? step.status
     }
 
     func projectedUpgradePlanTaskId(for step: CoreUpgradePlanStep) -> UInt64? {
@@ -715,14 +751,28 @@ extension HelmCore {
             return L10n.Service.Task.Status.failed.localized
         case "cancelled":
             return L10n.Service.Task.Status.cancelled.localized
+        case "requires_interaction":
+            return L10n.App.Updates.Status.requiresInteraction.localized
+        case "runs_last":
+            return L10n.App.Updates.Status.runsLast.localized
+        case "not_included":
+            return L10n.App.Updates.Status.notIncluded.localized
         default:
             return rawStatus.capitalized
         }
     }
 
+    func upgradePlanStepRunsAutomatically(_ step: CoreUpgradePlanStep) -> Bool {
+        UpgradePreviewPlanner.runsAutomatically(
+            action: step.action,
+            managerId: step.managerId,
+            includeHelmSelfUpdate: AppUpdateCoordinator.shared.includeHelmInUpgradeAll
+        )
+    }
+
     func upgradeAllPreviewCount(includePinned: Bool = false, allowOsUpdates: Bool = false) -> Int {
         UpgradePreviewPlanner.count(
-            candidates: outdatedPackages.map {
+            candidates: bulkUpgradeCandidatePackages.map {
                 UpgradePreviewPlanner.Candidate(managerId: $0.managerId, pinned: $0.pinned)
             },
             managerEnabled: managerStatuses.mapValues(\.enabled),
@@ -737,7 +787,7 @@ extension HelmCore {
         allowOsUpdates: Bool = false
     ) -> [(manager: String, count: Int)] {
         UpgradePreviewPlanner.breakdown(
-            candidates: outdatedPackages.map {
+            candidates: bulkUpgradeCandidatePackages.map {
                 UpgradePreviewPlanner.Candidate(managerId: $0.managerId, pinned: $0.pinned)
             },
             managerEnabled: managerStatuses.mapValues(\.enabled),
@@ -748,6 +798,66 @@ extension HelmCore {
                 self?.normalizedManagerName(managerId) ?? managerId
             }
         ).map { (manager: $0.manager, count: $0.count) }
+    }
+
+    private var bulkUpgradeCandidatePackages: [PackageItem] {
+        outdatedPackages.filter { package in
+            if package.managerId == "sparkle" {
+                return false
+            }
+            if package.managerId == Self.helmSelfUpdateManagerId {
+                return AppUpdateCoordinator.shared.includeHelmInUpgradeAll
+            }
+            return true
+        }
+    }
+
+    private func augmentedUpgradePlanSteps(
+        coreSteps: [CoreUpgradePlanStep],
+        includePinned: Bool
+    ) -> [CoreUpgradePlanStep] {
+        let externalSparklePackages = outdatedPackages
+            .filter {
+                $0.managerId == "sparkle"
+                    && (includePinned || !$0.pinned)
+                    && isManagerEnabled($0.managerId)
+            }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        let plannerSteps = UpgradePreviewPlanner.addingInteractiveUpdates(
+            to: coreSteps.map(Self.plannerStep),
+            externalSparkleUpdates: externalSparklePackages.map {
+                UpgradePreviewPlanner.ExternalSparkleUpdate(
+                    id: $0.id,
+                    packageName: $0.displayName
+                )
+            },
+            helmUpdateVersion: AppUpdateCoordinator.shared.availableUpdate?.displayVersion,
+            externalSparkleReasonLabelKey: L10n.App.Updates.Plan.externalSparkle,
+            helmSelfUpdateReasonLabelKey: L10n.App.Updates.Plan.helmSelfUpdate
+        )
+        return plannerSteps.map(Self.coreUpgradePlanStep)
+    }
+
+    func rebuildProjectedUpgradePlanExtensions() {
+        let backendSteps = upgradePlanSteps.filter(Self.isBackendManagedUpgradePlanStep)
+        upgradePlanSteps = augmentedUpgradePlanSteps(
+            coreSteps: backendSteps,
+            includePinned: upgradePlanIncludePinned
+        )
+        syncUpgradePlanProjection(from: latestCoreTasksSnapshot)
+    }
+
+    static func isExternalSparklePlanStep(_ step: CoreUpgradePlanStep) -> Bool {
+        step.action == UpgradePreviewPlanner.externalSparkleAction
+    }
+
+    static func isHelmSelfUpdatePlanStep(_ step: CoreUpgradePlanStep) -> Bool {
+        step.action == UpgradePreviewPlanner.helmSelfUpdateAction
+            && step.managerId == helmSelfUpdateManagerId
+    }
+
+    static func isBackendManagedUpgradePlanStep(_ step: CoreUpgradePlanStep) -> Bool {
+        !isExternalSparklePlanStep(step) && !isHelmSelfUpdatePlanStep(step)
     }
 
     // MARK: - Localization Helpers
@@ -770,17 +880,7 @@ extension HelmCore {
     }
 
     static func sortedUpgradePlanStepsForExecution(_ steps: [CoreUpgradePlanStep]) -> [CoreUpgradePlanStep] {
-        let plannerSteps = steps.map {
-            UpgradePreviewPlanner.PlanStep(
-                id: $0.id,
-                orderIndex: $0.orderIndex,
-                managerId: $0.managerId,
-                authority: $0.authority,
-                packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey,
-                reasonLabelArgs: $0.reasonLabelArgs
-            )
-        }
+        let plannerSteps = steps.map(Self.plannerStep)
         var stepById: [String: CoreUpgradePlanStep] = [:]
         for step in steps where stepById[step.id] == nil {
             stepById[step.id] = step
@@ -793,17 +893,7 @@ extension HelmCore {
         managerScopeId: String,
         packageFilter: String
     ) -> [CoreUpgradePlanStep] {
-        let plannerSteps = steps.map {
-            UpgradePreviewPlanner.PlanStep(
-                id: $0.id,
-                orderIndex: $0.orderIndex,
-                managerId: $0.managerId,
-                authority: $0.authority,
-                packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey,
-                reasonLabelArgs: $0.reasonLabelArgs
-            )
-        }
+        let plannerSteps = steps.map(Self.plannerStep)
         var stepById: [String: CoreUpgradePlanStep] = [:]
         for step in steps where stepById[step.id] == nil {
             stepById[step.id] = step
@@ -813,6 +903,34 @@ extension HelmCore {
             managerScopeId: managerScopeId,
             packageFilter: packageFilter
         ).compactMap { stepById[$0.id] }
+    }
+
+    private static func plannerStep(_ step: CoreUpgradePlanStep) -> UpgradePreviewPlanner.PlanStep {
+        UpgradePreviewPlanner.PlanStep(
+            id: step.id,
+            orderIndex: step.orderIndex,
+            managerId: step.managerId,
+            authority: step.authority,
+            action: step.action,
+            packageName: step.packageName,
+            reasonLabelKey: step.reasonLabelKey,
+            reasonLabelArgs: step.reasonLabelArgs,
+            status: step.status
+        )
+    }
+
+    private static func coreUpgradePlanStep(_ step: UpgradePreviewPlanner.PlanStep) -> CoreUpgradePlanStep {
+        CoreUpgradePlanStep(
+            stepId: step.id,
+            orderIndex: step.orderIndex,
+            managerId: step.managerId,
+            authority: step.authority,
+            action: step.action,
+            packageName: step.packageName,
+            reasonLabelKey: step.reasonLabelKey,
+            reasonLabelArgs: step.reasonLabelArgs,
+            status: step.status
+        )
     }
 
     func localizedTaskLabel(from task: CoreTaskRecord) -> String? {
@@ -2007,7 +2125,7 @@ struct HelmSupport {
 
     private static func serviceHealthManagerCounts(
         core: HelmCore
-    ) -> (enabled: Int, detected: Int, missing: Int) {
+    ) -> (enabled: Int, detected: Int, available: Int) {
         let trackedStatuses = core.managerStatuses.values
             .filter { $0.isImplemented && $0.enabled }
         let enabled = trackedStatuses.count
@@ -2017,7 +2135,6 @@ struct HelmSupport {
 
     static func generateServiceHealthDiagnostics() -> String {
         let core = HelmCore.shared
-        let appUpdate = AppUpdateCoordinator.shared
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let managerCounts = serviceHealthManagerCounts(core: core)
@@ -2029,16 +2146,11 @@ struct HelmSupport {
         info += "Connection: \(core.isConnected ? "Connected" : "Disconnected")\n"
         info += "Refresh State: \(core.isRefreshing ? "Refreshing" : "Idle")\n"
         info += "Aggregate Health: \(core.aggregateHealth.key.localized)\n"
-        if let lastCheckDate = appUpdate.lastCheckDate {
-            info += "Last Check: \(isoFormatter.string(from: lastCheckDate))\n"
-        } else {
-            info += "Last Check: Never\n"
-        }
         info += "Running Tasks: \(core.runningTaskCount)\n"
         info += "Failed Tasks: \(core.failedTaskCount)\n"
         info += "Pending Updates: \(core.outdatedPackages.count)\n"
         info += "Detected Managers: \(managerCounts.detected)/\(managerCounts.enabled)\n"
-        info += "Managers Missing: \(managerCounts.missing)\n"
+        info += "Other Managers Available: \(managerCounts.available)\n"
         if let lastError = core.lastError, !lastError.isEmpty {
             info += "Last Error: \(lastError)\n"
         }

@@ -49,6 +49,10 @@ Rules:
 - Sparkle is direct GUI only.
 - Sparkle is excluded from `mas`, `setapp`, and `business`.
 - Update authority and licensing authority remain decoupled.
+- Direct GUI scheduled checks use Sparkle's information-only path so Helm can present availability without opening Sparkle's standard install flow.
+- Direct GUI users may opt into a Helm self-update as the final Upgrade All step; Sparkle still owns approval, replacement, and relaunch.
+- Third-party Sparkle apps are interactive plan entries, not deterministic bulk steps.
+- Business/fleet automation continues to use PKG/MDM policy and transport; the direct GUI Sparkle preference is not a fleet deployment mechanism.
 
 ---
 

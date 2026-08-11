@@ -72,7 +72,8 @@ final class UpgradePreviewPlannerTests: XCTestCase {
             step(id: "standard:one", order: 5, manager: "npm", authority: "standard", package: "one"),
             step(id: "guarded:two", order: 1, manager: "softwareupdate", authority: "guarded", package: "two"),
             step(id: "authoritative:three", order: 99, manager: "mise", authority: "authoritative", package: "three"),
-            step(id: "standard:four", order: 1, manager: "pip", authority: "standard", package: "four")
+            step(id: "standard:four", order: 1, manager: "pip", authority: "standard", package: "four"),
+            step(id: "interactive:five", order: 0, manager: "sparkle", authority: "interactive", package: "five")
         ]
 
         let sorted = UpgradePreviewPlanner.sortedForExecution(steps)
@@ -80,8 +81,88 @@ final class UpgradePreviewPlannerTests: XCTestCase {
             "authoritative:three",
             "standard:four",
             "standard:one",
-            "guarded:two"
+            "guarded:two",
+            "interactive:five"
         ])
+    }
+
+    func testAutomaticExecutionPolicyKeepsExternalSparkleInteractiveAndHelmOptIn() {
+        XCTAssertFalse(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: UpgradePreviewPlanner.externalSparkleAction,
+                managerId: "sparkle",
+                includeHelmSelfUpdate: true
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: UpgradePreviewPlanner.helmSelfUpdateAction,
+                managerId: UpgradePreviewPlanner.helmSelfUpdateManagerId,
+                includeHelmSelfUpdate: false
+            )
+        )
+        XCTAssertTrue(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: UpgradePreviewPlanner.helmSelfUpdateAction,
+                managerId: UpgradePreviewPlanner.helmSelfUpdateManagerId,
+                includeHelmSelfUpdate: true
+            )
+        )
+        XCTAssertTrue(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: "upgrade",
+                managerId: "homebrew_formula",
+                includeHelmSelfUpdate: false
+            )
+        )
+    }
+
+    func testInteractiveProjectionAddsHelmWhenBackendPlanIsEmpty() {
+        let projected = UpgradePreviewPlanner.addingInteractiveUpdates(
+            to: [],
+            externalSparkleUpdates: [],
+            helmUpdateVersion: "0.19.0-rc.3",
+            externalSparkleReasonLabelKey: "external-sparkle",
+            helmSelfUpdateReasonLabelKey: "helm-self-update"
+        )
+
+        XCTAssertEqual(projected.map(\.id), ["helm-self-update:Helm"])
+        XCTAssertEqual(projected.first?.status, "not_included")
+        XCTAssertEqual(projected.first?.reasonLabelArgs["version"], "0.19.0-rc.3")
+    }
+
+    func testInteractiveProjectionReplacesStaleLocalRowsWithoutDuplicatingBackendRows() {
+        let backend = step(
+            id: "npm:typescript",
+            order: 0,
+            manager: "npm",
+            authority: "standard",
+            package: "typescript"
+        )
+        let staleHelm = step(
+            id: "helm-self-update:Helm",
+            order: 1,
+            manager: UpgradePreviewPlanner.helmSelfUpdateManagerId,
+            authority: "interactive",
+            action: UpgradePreviewPlanner.helmSelfUpdateAction,
+            package: "Helm",
+            status: "not_included"
+        )
+
+        let projected = UpgradePreviewPlanner.addingInteractiveUpdates(
+            to: [backend, staleHelm],
+            externalSparkleUpdates: [.init(id: "example", packageName: "Example")],
+            helmUpdateVersion: "0.19.0-rc.4",
+            externalSparkleReasonLabelKey: "external-sparkle",
+            helmSelfUpdateReasonLabelKey: "helm-self-update"
+        )
+
+        XCTAssertEqual(projected.map(\.id), [
+            "npm:typescript",
+            "sparkle-external:example",
+            "helm-self-update:Helm",
+        ])
+        XCTAssertEqual(projected.last?.reasonLabelArgs["version"], "0.19.0-rc.4")
     }
 
     func testScopedUpgradePlanStepsFiltersByManagerAndPackage() {
@@ -298,16 +379,20 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         order: UInt64,
         manager: String,
         authority: String,
-        package: String
+        action: String = "upgrade",
+        package: String,
+        status: String = "queued"
     ) -> UpgradePreviewPlanner.PlanStep {
         UpgradePreviewPlanner.PlanStep(
             id: id,
             orderIndex: order,
             managerId: manager,
             authority: authority,
+            action: action,
             packageName: package,
             reasonLabelKey: "service.task.label.upgrade.package",
-            reasonLabelArgs: [:]
+            reasonLabelArgs: [:],
+            status: status
         )
     }
 }

@@ -6,21 +6,17 @@ extension SettingsPane {
 
 struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
-    @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @ObservedObject private var localization = LocalizationManager.shared
-    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
 
-    let showsNavigationSummary: Bool
-    let selectedPane: SettingsPane?
+    let selectedPane: SettingsPane
     let onResetCompleted: () -> Void
 
     @State private var showResetConfirmation = false
     @State private var isResetting = false
     @State private var includeDiagnostics = false
     @State private var showCopiedConfirmation = false
-    @State private var showServiceSnapshotCopied = false
     @State private var showSupportOptionsModal = false
     @State private var supportTopGroupHeight: CGFloat = 0
     @State private var supportBottomButtonHeight: CGFloat = 0
@@ -28,20 +24,12 @@ struct SettingsSectionView: View {
     private let supportButtonSpacing: CGFloat = 8
 
     init(
-        showsNavigationSummary: Bool = true,
-        selectedPane: SettingsPane? = nil,
+        selectedPane: SettingsPane,
         onResetCompleted: @escaping () -> Void = {}
     ) {
-        self.showsNavigationSummary = showsNavigationSummary
         self.selectedPane = selectedPane
         self.onResetCompleted = onResetCompleted
     }
-    private static let healthTimestampFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
 
     private var helmCliStatusLabel: String {
         if !core.helmCliBundledAvailable {
@@ -62,9 +50,10 @@ struct SettingsSectionView: View {
         HelmTheme.surfacePanel
     }
 
-    private var supportButtonHeight: CGFloat? {
+    private var supportButtonContentHeight: CGFloat? {
         guard supportTopGroupHeight > 0 else { return nil }
-        return supportTopGroupHeight
+        // Match the adjacent two-button stack after accounting for label and style padding.
+        return max(supportTopGroupHeight - 8, 0)
     }
 
     private var sendFeedbackButtonHeight: CGFloat? {
@@ -83,17 +72,6 @@ struct SettingsSectionView: View {
         }
     }
 
-    private func showServiceSnapshotCopiedBriefly() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showServiceSnapshotCopied = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showServiceSnapshotCopied = false
-            }
-        }
-    }
-
     private func closeControlCenterWindowForOnboarding() {
         context.dismissUpgradeSheet()
         if let window = NSApp.windows.first(where: { $0 is ControlCenterWindow }) {
@@ -102,84 +80,13 @@ struct SettingsSectionView: View {
         onResetCompleted()
     }
 
-    private var serviceConnectionStatusLabel: String {
-        core.isConnected
-            ? L10n.App.Settings.ServiceHealth.Status.connected.localized
-            : L10n.App.Settings.ServiceHealth.Status.disconnected.localized
-    }
-
-    private var serviceRefreshStatusLabel: String {
-        core.isRefreshing
-            ? L10n.App.Settings.ServiceHealth.Status.refreshing.localized
-            : L10n.App.Settings.ServiceHealth.Status.idle.localized
-    }
-
-    private var serviceLastCheckLabel: String {
-        guard let lastCheckDate = appUpdate.lastCheckDate else {
-            return L10n.App.Settings.ServiceHealth.Status.never.localized
-        }
-        return Self.healthTimestampFormatter.string(from: lastCheckDate)
-    }
-
-    private var serviceManagerCounts: (enabled: Int, detected: Int, missing: Int) {
-        let trackedStatuses = core.managerStatuses.values
-            .filter { $0.isImplemented && $0.enabled }
-        let enabled = trackedStatuses.count
-        let detected = trackedStatuses.filter(\.detected).count
-        return (enabled, detected, max(enabled - detected, 0))
-    }
-
     private func showsPane(_ pane: SettingsPane) -> Bool {
-        selectedPane == nil || selectedPane == pane
+        selectedPane == pane
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
-                if showsNavigationSummary {
-                    HStack {
-                        Text(ControlCenterSection.settings.title)
-                            .font(.title2.weight(.semibold))
-                        Spacer()
-                        HealthBadgeView(status: overviewState.aggregateHealth)
-                    }
-
-                    HStack(spacing: 8) {
-                        Button {
-                            context.selectedSection = .managers
-                        } label: {
-                            SettingsMetricPill(
-                                title: L10n.App.Settings.Metric.managers.localized,
-                                value: overviewState.visibleManagers.count
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .helmPointer()
-
-                        Button {
-                            context.selectedSection = .updates
-                        } label: {
-                            SettingsMetricPill(
-                                title: L10n.App.Settings.Metric.updates.localized,
-                                value: overviewState.outdatedPackagesCount
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .helmPointer()
-
-                        Button {
-                            context.selectedSection = .tasks
-                        } label: {
-                            SettingsMetricPill(
-                                title: L10n.App.Settings.Metric.tasks.localized,
-                                value: overviewState.runningTaskCount
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .helmPointer()
-                    }
-                }
-
                 if showsPane(.general) {
                     SettingsCard(title: L10n.App.Settings.Section.general.localized, icon: "gearshape", fill: cardFill) {
                         HStack {
@@ -247,6 +154,21 @@ struct SettingsSectionView: View {
                             .disabled(!appUpdate.canCheckForUpdates)
 
                             Text(L10n.App.Settings.Label.prereleaseUpdatesDescription.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(L10n.App.Settings.Label.includeHelmInUpgradeAll.localized, isOn: Binding(
+                                get: { appUpdate.includeHelmInUpgradeAll },
+                                set: { appUpdate.setIncludeHelmInUpgradeAll($0) }
+                            ))
+                            .toggleStyle(.switch)
+                            .disabled(!appUpdate.canCheckForUpdates)
+
+                            Text(L10n.App.Settings.Label.includeHelmInUpgradeAllDescription.localized)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -318,255 +240,8 @@ struct SettingsSectionView: View {
                             set: { core.setHomebrewKegAutoCleanup($0) }
                         ))
                         .toggleStyle(.switch)
-                    }
-                }
 
-                if showsPane(.support) {
-                    SettingsCard(
-                        title: L10n.App.Settings.ServiceHealth.section.localized,
-                        icon: "stethoscope",
-                        fill: cardFill
-                    ) {
-                    HStack {
-                        HealthBadgeView(status: overviewState.aggregateHealth)
-                        Spacer()
-                        Text(overviewState.aggregateHealth.key.localized)
-                            .font(.caption)
-                            .foregroundColor(HelmTheme.textSecondary)
-                    }
-
-                    Divider()
-
-                    Group {
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.ServiceHealth.connection.localized,
-                            value: serviceConnectionStatusLabel
-                        )
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.ServiceHealth.refreshState.localized,
-                            value: serviceRefreshStatusLabel
-                        )
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.ServiceHealth.lastCheck.localized,
-                            value: serviceLastCheckLabel
-                        )
-                    }
-
-                    Group {
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.ServiceHealth.failedTasks.localized,
-                            value: "\(overviewState.failedTaskCount)"
-                        )
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.ServiceHealth.managersDetected.localized,
-                            value: "\(serviceManagerCounts.detected)/\(serviceManagerCounts.enabled)"
-                        )
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.ServiceHealth.managersMissing.localized,
-                            value: "\(serviceManagerCounts.missing)"
-                        )
-                        if let lastError = core.lastError, !lastError.isEmpty {
-                            ServiceHealthStatusRow(
-                                title: L10n.App.Settings.ServiceHealth.lastError.localized,
-                                value: lastError,
-                                multiline: true,
-                                emphasize: true
-                            )
-                        }
-                    }
-
-                    Divider()
-
-                    SettingsActionButton(
-                        title: L10n.App.Settings.ServiceHealth.copySnapshot.localized,
-                        badges: [],
-                        isProminent: false,
-                        useSystemStyle: true
-                    ) {
-                        HelmSupport.copyServiceHealthDiagnosticsToClipboard()
-                        showServiceSnapshotCopiedBriefly()
-                    }
-
-                    if showServiceSnapshotCopied {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
-                                .foregroundColor(.secondary)
-                        }
-                        .font(.caption)
-                        .transition(.opacity.combined(with: .scale))
-                    }
-                }
-
-                SettingsCard(title: L10n.App.Settings.SupportFeedback.section.localized, icon: "heart.fill", fill: cardFill) {
-                    HStack(alignment: .top, spacing: supportButtonSpacing) {
-                        VStack(spacing: supportButtonSpacing) {
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
-                                badges: [
-                                    SettingsActionBadge(
-                                        id: "support_helm_pro",
-                                        managerId: nil,
-                                        label: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
-                                        symbol: "star.fill",
-                                        tint: HelmTheme.proAccent
-                                    )
-                                ],
-                                isProminent: true,
-                                leadingSymbol: "heart.circle.fill",
-                                alignLeading: false,
-                                contentVerticalPadding: 2,
-                                prominentStyleVerticalPadding: 2,
-                                overlayBadges: true,
-                                titleFont: .callout.weight(.semibold)
-                            ) {
-                                showSupportOptionsModal = true
-                            }
-                            .frame(height: supportButtonHeight)
-
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.sendFeedback.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                HelmSupport.emailFeedback()
-                            }
-                            .frame(height: sendFeedbackButtonHeight)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .top)
-
-                        VStack(spacing: supportButtonSpacing) {
-                            VStack(spacing: supportButtonSpacing) {
-                                SettingsActionButton(
-                                    title: L10n.App.Settings.SupportFeedback.reportBug.localized,
-                                    badges: [],
-                                    isProminent: false,
-                                    useSystemStyle: true
-                                ) {
-                                    HelmSupport.reportBug(includeDiagnostics: includeDiagnostics)
-                                    if includeDiagnostics {
-                                        showCopiedBriefly()
-                                    }
-                                }
-
-                                SettingsActionButton(
-                                    title: L10n.App.Settings.SupportFeedback.requestFeature.localized,
-                                    badges: [],
-                                    isProminent: false,
-                                    useSystemStyle: true
-                                ) {
-                                    HelmSupport.requestFeature(includeDiagnostics: includeDiagnostics)
-                                    if includeDiagnostics {
-                                        showCopiedBriefly()
-                                    }
-                                }
-                            }
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: SupportTopGroupHeightKey.self,
-                                        value: proxy.size.height
-                                    )
-                                }
-                            )
-
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.copyDiagnostics.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                HelmSupport.copyDiagnosticsToClipboard()
-                                showCopiedBriefly()
-                            }
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: SupportBottomButtonHeightKey.self,
-                                        value: proxy.size.height
-                                    )
-                                }
-                            )
-
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.copyStructuredExport.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                HelmSupport.copyStructuredDiagnosticsToClipboard()
-                                showCopiedBriefly()
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    }
-                    .onPreferenceChange(SupportTopGroupHeightKey.self) { height in
-                        supportTopGroupHeight = height
-                    }
-                    .onPreferenceChange(SupportBottomButtonHeightKey.self) { height in
-                        supportBottomButtonHeight = height
-                    }
-
-                    Divider()
-
-                    Toggle(L10n.App.Settings.SupportFeedback.includeDiagnostics.localized, isOn: $includeDiagnostics)
-                        .toggleStyle(.switch)
-                        .font(.subheadline)
-
-                    if showCopiedConfirmation {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
-                                .foregroundColor(.secondary)
-                        }
-                        .font(.caption)
-                        .transition(.opacity.combined(with: .scale))
-                    }
-                }
-
-                    SettingsCard(title: L10n.App.Settings.Section.advanced.localized, icon: "bolt.fill", fill: cardFill) {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.refreshNow.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            core.triggerRefresh()
-                        }
-                        .disabled(core.isRefreshing)
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.reset.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            showResetConfirmation = true
-                        }
-                        .disabled(core.isRefreshing || isResetting)
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.quit.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            NSApplication.shared.terminate(nil)
-                        }
-
-                        SettingsActionButton(
-                            title: L10n.App.Settings.Action.replayWalkthrough.localized,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            walkthrough.resetWalkthroughs()
-                            walkthrough.startPopoverWalkthrough()
-                        }
+                        Divider()
 
                         SettingsActionButton(
                             title: L10n.App.Settings.Action.restoreManagerPriority.localized,
@@ -576,7 +251,139 @@ struct SettingsSectionView: View {
                         ) {
                             core.restoreDefaultManagerPriorities()
                         }
+                    }
+                }
+
+                if showsPane(.support) {
+                    SettingsCard(title: L10n.App.Settings.SupportFeedback.section.localized, icon: "heart.fill", fill: cardFill) {
+                        HStack(alignment: .top, spacing: supportButtonSpacing) {
+                            VStack(spacing: supportButtonSpacing) {
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
+                                    badges: [],
+                                    isProminent: true,
+                                    leadingSymbol: "heart.circle.fill",
+                                    alignLeading: false,
+                                    minHeight: supportButtonContentHeight,
+                                    contentVerticalPadding: 2,
+                                    prominentStyleVerticalPadding: 2,
+                                    titleFont: .callout.weight(.semibold)
+                                ) {
+                                    showSupportOptionsModal = true
+                                }
+
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.SupportFeedback.sendFeedback.localized,
+                                    badges: [],
+                                    isProminent: false,
+                                    useSystemStyle: true
+                                ) {
+                                    HelmSupport.emailFeedback()
+                                }
+                                .frame(height: sendFeedbackButtonHeight)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+
+                            VStack(spacing: supportButtonSpacing) {
+                                VStack(spacing: supportButtonSpacing) {
+                                    SettingsActionButton(
+                                        title: L10n.App.Settings.SupportFeedback.reportBug.localized,
+                                        badges: [],
+                                        isProminent: false,
+                                        useSystemStyle: true
+                                    ) {
+                                        HelmSupport.reportBug(includeDiagnostics: includeDiagnostics)
+                                        if includeDiagnostics {
+                                            showCopiedBriefly()
+                                        }
+                                    }
+
+                                    SettingsActionButton(
+                                        title: L10n.App.Settings.SupportFeedback.requestFeature.localized,
+                                        badges: [],
+                                        isProminent: false,
+                                        useSystemStyle: true
+                                    ) {
+                                        HelmSupport.requestFeature(includeDiagnostics: includeDiagnostics)
+                                        if includeDiagnostics {
+                                            showCopiedBriefly()
+                                        }
+                                    }
+                                }
+                                .background(
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(
+                                            key: SupportTopGroupHeightKey.self,
+                                            value: proxy.size.height
+                                        )
+                                    }
+                                )
+
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.SupportFeedback.copyDiagnostics.localized,
+                                    badges: [],
+                                    isProminent: false,
+                                    useSystemStyle: true
+                                ) {
+                                    HelmSupport.copyDiagnosticsToClipboard()
+                                    showCopiedBriefly()
+                                }
+                                .background(
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(
+                                            key: SupportBottomButtonHeightKey.self,
+                                            value: proxy.size.height
+                                        )
+                                    }
+                                )
+
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.SupportFeedback.copyStructuredExport.localized,
+                                    badges: [],
+                                    isProminent: false,
+                                    useSystemStyle: true
+                                ) {
+                                    HelmSupport.copyStructuredDiagnosticsToClipboard()
+                                    showCopiedBriefly()
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
                         }
+                        .onPreferenceChange(SupportTopGroupHeightKey.self) { height in
+                            supportTopGroupHeight = height
+                        }
+                        .onPreferenceChange(SupportBottomButtonHeightKey.self) { height in
+                            supportBottomButtonHeight = height
+                        }
+
+                        Divider()
+
+                        Toggle(L10n.App.Settings.SupportFeedback.includeDiagnostics.localized, isOn: $includeDiagnostics)
+                            .toggleStyle(.switch)
+                            .font(.subheadline)
+
+                        if showCopiedConfirmation {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text(L10n.App.Settings.SupportFeedback.copiedConfirmation.localized)
+                                    .foregroundColor(.secondary)
+                            }
+                            .font(.caption)
+                            .transition(.opacity.combined(with: .scale))
+                        }
+                    }
+
+                    SettingsCard(title: L10n.App.Settings.Section.advanced.localized, icon: "bolt.fill", fill: cardFill) {
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.reset.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            showResetConfirmation = true
+                        }
+                        .disabled(core.isRefreshing || isResetting)
                     }
                 }
             }
@@ -642,13 +449,19 @@ struct SettingsWindowView: View {
         } detail: {
             let pane = selectedPane ?? .general
             SettingsSectionView(
-                showsNavigationSummary: false,
                 selectedPane: pane,
                 onResetCompleted: { dismiss() }
             )
             .navigationTitle(pane.title)
         }
-        .frame(minWidth: 680, idealWidth: 760, minHeight: 560, idealHeight: 680)
+        .frame(
+            minWidth: 600,
+            idealWidth: 680,
+            maxWidth: 760,
+            minHeight: 420,
+            idealHeight: 500,
+            maxHeight: 600
+        )
     }
 }
 
@@ -675,35 +488,6 @@ private struct SettingsCard<Content: View>: View {
                         .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
                 )
         )
-    }
-}
-
-private struct SettingsMetricPill: View {
-    let title: String
-    let value: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption2)
-                .foregroundColor(HelmTheme.textSecondary)
-            Text("\(value)")
-                .font(.callout.monospacedDigit().weight(.semibold))
-                .foregroundColor(HelmTheme.textPrimary)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(HelmTheme.surfaceElevated)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(HelmTheme.borderSubtle.opacity(0.9), lineWidth: 0.8)
-                )
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-        .accessibilityValue("\(value)")
     }
 }
 
@@ -1039,14 +823,5 @@ private struct SettingsBadgeView: View {
                 : badge.label
         )
         .accessibilityLabel(badge.label)
-    }
-}
-
-// Backward compatibility wrapper for legacy references.
-struct SettingsPopoverView: View {
-    var body: some View {
-        SettingsSectionView()
-            .frame(width: 440)
-            .environmentObject(ControlCenterContext())
     }
 }

@@ -11,6 +11,10 @@ struct PackageRuntimeStateProjection: Codable, Hashable {
 }
 
 struct UpgradePreviewPlanner {
+    static let externalSparkleAction = "external_sparkle"
+    static let helmSelfUpdateAction = "helm_self_update"
+    static let helmSelfUpdateManagerId = "helm_self_update"
+
     struct Entry: Equatable {
         let manager: String
         let count: Int
@@ -21,9 +25,16 @@ struct UpgradePreviewPlanner {
         let orderIndex: UInt64
         let managerId: String
         let authority: String
+        let action: String
         let packageName: String
         let reasonLabelKey: String
         let reasonLabelArgs: [String: String]
+        let status: String
+    }
+
+    struct ExternalSparkleUpdate: Equatable {
+        let id: String
+        let packageName: String
     }
 
     struct Candidate {
@@ -100,9 +111,25 @@ struct UpgradePreviewPlanner {
             return 2
         case "detection_only":
             return 3
-        default:
+        case "interactive":
             return 4
+        default:
+            return 5
         }
+    }
+
+    static func runsAutomatically(
+        action: String,
+        managerId: String,
+        includeHelmSelfUpdate: Bool
+    ) -> Bool {
+        if action == externalSparkleAction {
+            return false
+        }
+        if action == helmSelfUpdateAction, managerId == helmSelfUpdateManagerId {
+            return includeHelmSelfUpdate
+        }
+        return true
     }
 
     static func sortedForExecution(_ steps: [PlanStep]) -> [PlanStep] {
@@ -114,6 +141,56 @@ struct UpgradePreviewPlanner {
             if lhs.managerId != rhs.managerId { return lhs.managerId < rhs.managerId }
             return lhs.packageName < rhs.packageName
         }
+    }
+
+    static func addingInteractiveUpdates(
+        to backendSteps: [PlanStep],
+        externalSparkleUpdates: [ExternalSparkleUpdate],
+        helmUpdateVersion: String?,
+        externalSparkleReasonLabelKey: String,
+        helmSelfUpdateReasonLabelKey: String
+    ) -> [PlanStep] {
+        var steps = backendSteps.filter {
+            $0.action != externalSparkleAction && $0.action != helmSelfUpdateAction
+        }
+        var orderIndex = (steps.map(\.orderIndex).max() ?? 0) + 1
+
+        for update in externalSparkleUpdates.sorted(by: {
+            $0.packageName.localizedCaseInsensitiveCompare($1.packageName) == .orderedAscending
+        }) {
+            steps.append(
+                PlanStep(
+                    id: "sparkle-external:\(update.id)",
+                    orderIndex: orderIndex,
+                    managerId: "sparkle",
+                    authority: "interactive",
+                    action: externalSparkleAction,
+                    packageName: update.packageName,
+                    reasonLabelKey: externalSparkleReasonLabelKey,
+                    reasonLabelArgs: ["package": update.packageName],
+                    status: "requires_interaction"
+                )
+            )
+            orderIndex += 1
+        }
+
+        if let helmUpdateVersion {
+            steps.append(
+                PlanStep(
+                    id: "helm-self-update:Helm",
+                    orderIndex: orderIndex,
+                    managerId: helmSelfUpdateManagerId,
+                    authority: "interactive",
+                    action: helmSelfUpdateAction,
+                    packageName: "Helm",
+                    reasonLabelKey: helmSelfUpdateReasonLabelKey,
+                    reasonLabelArgs: ["version": helmUpdateVersion],
+                    status: "not_included"
+                )
+            )
+        }
+
+        return sortedForExecution(steps)
     }
 
     static func scopedForExecution(

@@ -6,7 +6,6 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
     case packages
     case managers
     case tasks
-    case settings
 
     var id: String { rawValue }
 
@@ -29,8 +28,6 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
             return "app.wayfinder.destination.activity".localized
         case .managers:
             return "app.wayfinder.destination.environment".localized
-        case .settings:
-            return L10n.App.Settings.Tab.title.localized
         }
     }
 
@@ -46,14 +43,12 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
             return "waveform.path.ecg"
         case .managers:
             return "point.3.connected.trianglepath.dotted"
-        case .settings:
-            return "gearshape"
         }
     }
 
     var supportsInspector: Bool {
         switch self {
-        case .overview, .settings:
+        case .overview:
             return false
         case .updates, .packages, .managers, .tasks:
             return true
@@ -180,6 +175,9 @@ final class ControlCenterContext: ObservableObject {
     @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?
     @Published var managerInstallSheetRequestToken: Int = 0
+    @Published private var firstRunSession = EnvironmentBriefFirstRunSession()
+    @Published private(set) var dashboardFocusRequestToken: Int = 0
+    private var pendingDashboardFocusTarget: WayfinderFocusTarget?
 
     func presentUpgradeSheet(in host: UpgradeSheetHost) {
         upgradeSheetHost = host
@@ -210,13 +208,12 @@ final class ControlCenterContext: ObservableObject {
     func navigate(to deepLink: WayfinderDeepLink) {
         clearInspectorSelection()
 
-        // Remove this compatibility route when service health moves into the native Dashboard.
-        if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
-            selectedSection = .settings
-            return
-        }
-
         selectedSection = deepLink.destination.legacyControlCenterSection
+
+        if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
+            pendingDashboardFocusTarget = .serviceHealth
+            dashboardFocusRequestToken &+= 1
+        }
 
         guard let entityID = deepLink.entityID else { return }
         switch deepLink.destination {
@@ -233,6 +230,11 @@ final class ControlCenterContext: ObservableObject {
         }
     }
 
+    func takeDashboardFocusRequest() -> WayfinderFocusTarget? {
+        defer { pendingDashboardFocusTarget = nil }
+        return pendingDashboardFocusTarget
+    }
+
     func alignInspectorSelection(for section: ControlCenterSection?) {
         clearInspectorSelection(except: section)
     }
@@ -240,6 +242,20 @@ final class ControlCenterContext: ObservableObject {
     func requestManagerInstallSheet(for managerId: String) {
         managerInstallSheetRequestManagerId = managerId
         managerInstallSheetRequestToken += 1
+    }
+
+    func shouldPresentFirstRun(
+        mode: EnvironmentBriefFirstRunMode,
+        hasCompletedOnboarding: Bool
+    ) -> Bool {
+        firstRunSession.shouldPresent(
+            mode: mode,
+            hasCompletedOnboarding: hasCompletedOnboarding
+        )
+    }
+
+    func dismissFirstRunPreview() {
+        firstRunSession.dismissPreview()
     }
 
     private func clearInspectorSelection(except section: ControlCenterSection?) {

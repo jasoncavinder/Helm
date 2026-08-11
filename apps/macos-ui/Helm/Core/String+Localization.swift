@@ -29,6 +29,7 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
     case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
     case "mas": return L10n.App.Managers.Name.appStore.localized
     case "sparkle": return L10n.App.Managers.Name.sparkle.localized
+    case HelmCore.helmSelfUpdateManagerId: return L10n.App.Updates.helmSelfUpdateManager.localized
     case "setapp": return L10n.App.Managers.Name.setapp.localized
     case "asdf": return L10n.App.Managers.Name.asdf.localized
     case "macports": return L10n.App.Managers.Name.macports.localized

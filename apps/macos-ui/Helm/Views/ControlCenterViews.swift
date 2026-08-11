@@ -6,7 +6,6 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
-    @State private var dismissedFirstRunPreview = false
     private let sidebarWidth: CGFloat = 232
 
     private var firstRunMode: EnvironmentBriefFirstRunMode {
@@ -14,10 +13,9 @@ struct ControlCenterWindowView: View {
     }
 
     private var presentsFirstRun: Bool {
-        EnvironmentBriefFirstRunConfiguration.shouldPresent(
+        context.shouldPresentFirstRun(
             mode: firstRunMode,
-            hasCompletedOnboarding: core.hasCompletedOnboarding,
-            dismissedPreview: dismissedFirstRunPreview
+            hasCompletedOnboarding: core.hasCompletedOnboarding
         )
     }
 
@@ -45,7 +43,6 @@ struct ControlCenterWindowView: View {
         case "ccPackages": context.selectedSection = .packages
         case "ccTasks": context.selectedSection = .tasks
         case "ccManagers": context.selectedSection = .managers
-        case "ccSettings": context.selectedSection = .settings
         default: break
         }
     }
@@ -214,7 +211,7 @@ struct ControlCenterWindowView: View {
     }
 
     private func completeFirstRun() {
-        dismissedFirstRunPreview = true
+        context.dismissFirstRunPreview()
         if !core.hasCompletedOnboarding {
             core.completeOnboarding()
             core.triggerRefresh()
@@ -382,20 +379,12 @@ private struct ControlCenterSidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 11) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [HelmTheme.blue700, HelmTheme.seaGlass],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    Image(systemName: "helm")
-                        .font(.system(size: 19, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                .frame(width: 40, height: 40)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .accessibilityHidden(true)
+                    .frame(width: 50, height: 50)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(L10n.App.Dashboard.title.localized.uppercased())
@@ -435,14 +424,15 @@ private struct ControlCenterSidebarView: View {
             HStack(spacing: 8) {
                 ControlCenterFooterRouteButton(
                     isSelected: false,
-                    accessibilityLabel: ControlCenterSection.settings.title,
+                    accessibilityLabel: L10n.App.Settings.Tab.title.localized,
                     action: {
                         context.settingsOpenRouter.requestOpen()
                     }
                 ) {
-                    Label(ControlCenterSection.settings.title, systemImage: ControlCenterSection.settings.icon)
+                    Label(L10n.App.Settings.Tab.title.localized, systemImage: "gearshape")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .spotlightAnchor("ccSettings")
 
                 Spacer()
 
@@ -464,9 +454,19 @@ private struct ControlCenterSidebarView: View {
         if section == .updates, overviewState.outdatedPackagesCount > 0 {
             Text("\(overviewState.outdatedPackagesCount)")
                 .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundColor(
+                    context.selectedSection == section
+                        ? HelmTheme.blue700
+                        : HelmTheme.textPrimary
+                )
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(HelmTheme.surfaceElevated, in: Capsule())
+                .background(
+                    context.selectedSection == section
+                        ? Color.white.opacity(0.95)
+                        : HelmTheme.surfaceElevated,
+                    in: Capsule()
+                )
         } else if section == .tasks, overviewState.runningTaskCount > 0 {
             Circle()
                 .fill(HelmTheme.seaGlass)
@@ -660,9 +660,6 @@ private struct ControlCenterSectionHostView: View {
         case .tasks:
             TasksSectionView()
                 .spotlightAnchor("ccTasks")
-        case .settings:
-            SettingsSectionView()
-                .spotlightAnchor("ccSettings")
         }
     }
 }
