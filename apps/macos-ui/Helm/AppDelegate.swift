@@ -189,10 +189,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let clickKind: StatusItemClickKind = NSApp.currentEvent?.type == .rightMouseUp
             ? .secondary
             : .primary
+        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
+        let shouldPresentFirstRun = controlCenterContext.shouldPresentFirstRun(
+            mode: firstRunMode,
+            hasCompletedOnboarding: core.hasCompletedOnboarding
+        )
 
         switch StatusItemActivationPolicy.route(
             clickKind: clickKind,
-            isDashboardVisible: isControlCenterVisible
+            isDashboardVisible: isControlCenterVisible,
+            shouldPresentFirstRun: shouldPresentFirstRun
         ) {
         case .dashboard:
             openControlCenter()

@@ -26,13 +26,26 @@ final class StatusItemActivationPolicyTests: XCTestCase {
         )
     }
 
+    func testEitherClickRoutesToDashboardWhenFirstRunShouldPresent() {
+        XCTAssertEqual(
+            route(clickKind: .primary, shouldPresentFirstRun: true),
+            .dashboard
+        )
+        XCTAssertEqual(
+            route(clickKind: .secondary, shouldPresentFirstRun: true),
+            .dashboard
+        )
+    }
+
     private func route(
         clickKind: StatusItemClickKind,
-        isDashboardVisible: Bool = false
+        isDashboardVisible: Bool = false,
+        shouldPresentFirstRun: Bool = false
     ) -> StatusItemActivationRoute {
         StatusItemActivationPolicy.route(
             clickKind: clickKind,
-            isDashboardVisible: isDashboardVisible
+            isDashboardVisible: isDashboardVisible,
+            shouldPresentFirstRun: shouldPresentFirstRun
         )
     }
 }

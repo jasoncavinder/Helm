@@ -11,8 +11,13 @@ enum StatusItemActivationRoute: Equatable {
 enum StatusItemActivationPolicy {
     static func route(
         clickKind: StatusItemClickKind,
-        isDashboardVisible: Bool
+        isDashboardVisible: Bool,
+        shouldPresentFirstRun: Bool = false
     ) -> StatusItemActivationRoute {
+        if shouldPresentFirstRun {
+            return .dashboard
+        }
+
         switch clickKind {
         case .secondary:
             return .popover
