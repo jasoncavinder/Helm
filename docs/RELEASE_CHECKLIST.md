@@ -62,7 +62,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.3 (System Language Migration RC, Published; Installed Validation Pending)
+## v0.19.0-rc.3 (System Language Migration RC, Published; Manual Persistence Subcheck Pending)
 
 ### Candidate Scope
 
@@ -90,16 +90,17 @@ This checklist is required before creating a release tag on `main`.
 
 ### Installed-Candidate Validation
 
-- [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.3` from the signed `v0.19.0-rc.2` installation.
-- [ ] Confirm System Default follows the current macOS application language after relaunch.
-- [ ] Confirm explicit non-English legacy choices and new manual language choices remain selected after relaunch.
+- [x] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.3` from the signed `v0.19.0-rc.2` installation; the Sparkle last-check timestamp matches the installed bundle replacement time, and the resulting RC3 bundle passes strict code-signature verification.
+- [x] Confirm System Default follows the current macOS application language after relaunch; the migrated installed preference is `user_locale_preference_v2=system`, macOS reports `en-US`, and the relaunched app presents the matching language.
+- [x] Confirm through regression coverage that explicit non-English legacy choices migrate unchanged and every new manual language choice persists under the versioned preference.
+- [ ] Confirm on the installed RC3 app that a newly selected explicit language remains selected after a full quit and relaunch.
 
 ### Closeout Record
 
 - `v0.19.0-rc.3` is a published GitHub prerelease as of 2026-08-11; `v0.18.2` remains the published non-prerelease returned by `releases/latest`.
 - Publication PRs `#402` and `#403` merged RC CLI metadata plus the beta appcast/release notes into `main`.
 - Post-publication release verification is green for the RC3 GitHub prerelease state, beta appcast, and RC CLI metadata.
-- Installed-candidate Sparkle validation from `v0.19.0-rc.2` to `v0.19.0-rc.3` remains the open release-closeout step for the System Default language fix.
+- Installed-candidate Sparkle validation from `v0.19.0-rc.2` to `v0.19.0-rc.3` and the System Default migration check are complete. One installed-app quit/relaunch persistence check for a newly selected explicit language remains open.
 
 ## v0.19.0-rc.2 (Native Experience Foundation RC, Published)
 
