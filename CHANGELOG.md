@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Added
+- Interactive third-party Sparkle steps in Plan now offer direct vendor update and Open App actions in both the row and inspector. When automatic Plan work finishes with those steps remaining, Helm shows an in-app handoff and, while its interfaces are hidden, a system notification that opens Plan.
+
 ## [0.19.0-rc.4] - 2026-08-11
 
 ### Added

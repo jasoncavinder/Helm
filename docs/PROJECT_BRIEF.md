@@ -374,7 +374,7 @@ Channel-specific update policy:
 Self-update behavior must not depend on Homebrew and must remain decoupled from licensing authority.
 Helm's own bundle must not appear in the Sparkle apps manager because self-update authority belongs to the channel-aware Helm updater.
 The direct-channel Sparkle feed keeps stable releases in the default channel and prereleases in the `beta` channel so prerelease publication cannot displace the stable update path.
-Third-party Sparkle apps may appear in reviewed plans, but remain interactive vendor-managed steps until Helm has a trustworthy per-app completion contract. They must not be counted as automatic bulk work.
+Third-party Sparkle apps may appear in reviewed plans, but remain interactive vendor-managed steps until Helm has a trustworthy per-app completion contract. They must not be counted as automatic bulk work. Helm may explicitly start the app's vendor-owned Sparkle flow or open the app, and automatic Plan completion must hand off any remaining interactive steps without claiming that they completed.
 Fleet update policy may reuse the same sequencing concepts, but managed Helm deployment remains PKG/MDM-controlled rather than Sparkle-controlled.
 
 ---
