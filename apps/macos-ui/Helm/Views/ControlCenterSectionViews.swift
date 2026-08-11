@@ -569,15 +569,24 @@ struct RedesignUpdatesSectionView: View {
                                 .helmPointer()
 
                                 if HelmCore.isExternalSparklePlanStep(step) {
-                                    Button(L10n.App.Packages.Action.update.localized) {
-                                        if !core.startExternalSparkleUpdate(for: step) {
-                                            failedExternalSparkleStep = step
+                                    HStack(spacing: 6) {
+                                        Button(L10n.App.Packages.Action.update.localized) {
+                                            if !core.startExternalSparkleUpdate(for: step) {
+                                                failedExternalSparkleStep = step
+                                            }
                                         }
+                                        .buttonStyle(HelmSecondaryButtonStyle())
+                                        .font(.caption)
+                                        .helmPointer()
+
+                                        Button(L10n.App.Updates.openApp.localized) {
+                                            core.openExternalSparkleApplication(for: step)
+                                        }
+                                        .buttonStyle(HelmSecondaryButtonStyle())
+                                        .font(.caption)
+                                        .helmPointer()
                                     }
-                                    .buttonStyle(HelmSecondaryButtonStyle())
-                                    .font(.caption)
                                     .padding(.trailing, 8)
-                                    .helmPointer()
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
