@@ -45,7 +45,6 @@ struct ControlCenterWindowView: View {
         case "ccPackages": context.selectedSection = .packages
         case "ccTasks": context.selectedSection = .tasks
         case "ccManagers": context.selectedSection = .managers
-        case "ccSettings": context.selectedSection = .settings
         default: break
         }
     }
@@ -435,14 +434,15 @@ private struct ControlCenterSidebarView: View {
             HStack(spacing: 8) {
                 ControlCenterFooterRouteButton(
                     isSelected: false,
-                    accessibilityLabel: ControlCenterSection.settings.title,
+                    accessibilityLabel: L10n.App.Settings.Tab.title.localized,
                     action: {
                         context.settingsOpenRouter.requestOpen()
                     }
                 ) {
-                    Label(ControlCenterSection.settings.title, systemImage: ControlCenterSection.settings.icon)
+                    Label(L10n.App.Settings.Tab.title.localized, systemImage: "gearshape")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .spotlightAnchor("ccSettings")
 
                 Spacer()
 
@@ -660,9 +660,6 @@ private struct ControlCenterSectionHostView: View {
         case .tasks:
             TasksSectionView()
                 .spotlightAnchor("ccTasks")
-        case .settings:
-            SettingsSectionView()
-                .spotlightAnchor("ccSettings")
         }
     }
 }

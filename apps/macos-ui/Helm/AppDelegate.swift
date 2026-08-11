@@ -38,8 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             self?.closePanel()
         }, onOpenSettings: { [weak self] in
             guard let self else { return }
-            closePanel()
             controlCenterContext.settingsOpenRouter.requestOpen()
+            closePanel()
         })
         .environmentObject(controlCenterContext)
         .background(VisualEffect().ignoresSafeArea())
