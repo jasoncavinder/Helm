@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import os.log
 #if canImport(Sparkle)
@@ -32,17 +33,12 @@ final class ExternalSparkleUpdateCoordinator {
 
     @discardableResult
     func checkForUpdates(bundlePath: String) -> Bool {
-        let targetURL = URL(fileURLWithPath: bundlePath)
-            .standardizedFileURL
-            .resolvingSymlinksInPath()
-        guard isAllowedApplicationURL(targetURL),
+        guard let (targetURL, targetBundle) = targetApplication(bundlePath: bundlePath),
               FileManager.default.fileExists(
                 atPath: targetURL
                     .appendingPathComponent("Contents/Frameworks/Sparkle.framework")
                     .path
-              ),
-              let targetBundle = Bundle(url: targetURL),
-              targetBundle.bundleIdentifier != Self.helmBundleIdentifier else {
+              ) else {
             externalSparkleLogger.error(
                 "Rejected external Sparkle update target: \(bundlePath, privacy: .private(mask: .hash))"
             )
@@ -91,6 +87,35 @@ final class ExternalSparkleUpdateCoordinator {
         externalSparkleLogger.error("Sparkle framework unavailable for external app update")
         return false
         #endif
+    }
+
+    @discardableResult
+    func openApplication(bundlePath: String) -> Bool {
+        guard let (targetURL, targetBundle) = targetApplication(bundlePath: bundlePath) else {
+            externalSparkleLogger.error(
+                "Rejected external application launch target: \(bundlePath, privacy: .private(mask: .hash))"
+            )
+            return false
+        }
+        guard NSWorkspace.shared.open(targetURL) else {
+            externalSparkleLogger.error(
+                "Failed to open external application \(targetBundle.bundleIdentifier ?? "unknown", privacy: .public)"
+            )
+            return false
+        }
+        return true
+    }
+
+    private func targetApplication(bundlePath: String) -> (URL, Bundle)? {
+        let targetURL = URL(fileURLWithPath: bundlePath)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard isAllowedApplicationURL(targetURL),
+              let targetBundle = Bundle(url: targetURL),
+              targetBundle.bundleIdentifier != Self.helmBundleIdentifier else {
+            return nil
+        }
+        return (targetURL, targetBundle)
     }
 
     private func isAllowedApplicationURL(_ url: URL) -> Bool {
