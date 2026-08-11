@@ -62,6 +62,39 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.19.0-rc.4 (Updater Plan and Wayfinder Stabilization RC, Source Candidate Prepared)
+
+### Candidate Scope
+
+- [x] Identify the workspace and local Rust packages as `0.19.0-rc.4` while preserving stable `v0.18.2` and published prerelease `v0.19.0-rc.3` metadata.
+- [x] Integrate available Helm and third-party Sparkle updates into the reviewed Plan without counting third-party interactive work as automatic Upgrade All work.
+- [x] Keep Helm participation in Upgrade All default-off and sequence its Sparkle confirmation/relaunch flow after backend manager work reaches a terminal state.
+- [x] Replace the separate status-item right-click menu with the same live-localized popover used by primary clicks while retaining appropriate operational routes.
+- [x] Complete the current Dashboard/Settings cleanup and approved Wayfinder polish without enabling the development-gated Environment Brief in production.
+- [x] Keep Issue #388 explicitly excluded from production routing by the retained first-run gate.
+
+### Required Validation
+
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
+- [x] Sparkle/appcast dry-run checklist passes while stable metadata remains on `v0.18.2` and RC metadata remains on `v0.19.0-rc.3` before publication.
+- [x] Re-audit the unchanged Rust runtime/build and website dependency-license inventories for the candidate.
+- [x] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.4` before any tag or publication mutation.
+- [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
+- [x] No known release-critical regression remains open; Issue #388 remains non-production behind the retained first-run gate.
+
+### Publication
+
+- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.4` or publishing artifacts.
+- [ ] Publish `v0.19.0-rc.4` as a GitHub prerelease that does not become latest.
+- [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.4`.
+- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
+### Installed-Candidate Validation
+
+- [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.4` from the signed `v0.19.0-rc.3` installation.
+- [ ] Confirm Helm self-update availability appears consistently in Library, the Plan badge, and Plan after relaunch.
+- [ ] Confirm the default-off Upgrade All preference and explicit Sparkle confirmation behavior remain intact in the installed candidate.
+
 ## v0.19.0-rc.3 (System Language Migration RC, Published; Manual Persistence Subcheck Pending)
 
 ### Candidate Scope
