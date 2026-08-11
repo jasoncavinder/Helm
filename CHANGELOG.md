@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0-rc.3] - 2026-08-10
+
+### Fixed
+- Fresh installs now start with a true System Default language preference that follows macOS instead of using English as the system-default sentinel.
+- Upgrades map the old ambiguous English sentinel to System Default while preserving explicit legacy non-English selections; language choices made after migration, including explicit English, persist normally.
+
+This candidate is a narrow post-`v0.19.0-rc.2` stabilization release. It preserves stable `v0.18.2`, keeps the Environment Brief behind its development gate while Issue #388 remains open, and does not include the deferred Settings or broader workflow redesign work.
+
 ## [0.19.0-rc.2] - 2026-08-08
 
 ### Added
