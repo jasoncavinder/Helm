@@ -90,6 +90,7 @@ extension HelmCore {
                     )
                 }
                 self.outdatedPackages = self.packagesIncludingHelmSelfUpdate(managerPackages)
+                self.rebuildProjectedUpgradePlanExtensions()
                 if !self.upgradePlanSteps.isEmpty {
                     self.refreshUpgradePlan(
                         includePinned: self.upgradePlanIncludePinned,
@@ -110,12 +111,7 @@ extension HelmCore {
             return
         }
         outdatedPackages = updatedPackages
-        if !upgradePlanSteps.isEmpty {
-            refreshUpgradePlan(
-                includePinned: upgradePlanIncludePinned,
-                allowOsUpdates: upgradePlanAllowOsUpdates
-            )
-        }
+        rebuildProjectedUpgradePlanExtensions()
     }
 
     private func packagesIncludingHelmSelfUpdate(

@@ -8,7 +8,6 @@ struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @ObservedObject private var localization = LocalizationManager.shared
-    @ObservedObject private var walkthrough = WalkthroughManager.shared
     @EnvironmentObject private var context: ControlCenterContext
 
     let selectedPane: SettingsPane
@@ -51,9 +50,10 @@ struct SettingsSectionView: View {
         HelmTheme.surfacePanel
     }
 
-    private var supportButtonHeight: CGFloat? {
+    private var supportButtonContentHeight: CGFloat? {
         guard supportTopGroupHeight > 0 else { return nil }
-        return supportTopGroupHeight
+        // Match the adjacent two-button stack after accounting for label and style padding.
+        return max(supportTopGroupHeight - 8, 0)
     }
 
     private var sendFeedbackButtonHeight: CGFloat? {
@@ -260,26 +260,17 @@ struct SettingsSectionView: View {
                             VStack(spacing: supportButtonSpacing) {
                                 SettingsActionButton(
                                     title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
-                                    badges: [
-                                        SettingsActionBadge(
-                                            id: "support_helm_pro",
-                                            managerId: nil,
-                                            label: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
-                                            symbol: "star.fill",
-                                            tint: HelmTheme.proAccent
-                                        )
-                                    ],
+                                    badges: [],
                                     isProminent: true,
                                     leadingSymbol: "heart.circle.fill",
                                     alignLeading: false,
+                                    minHeight: supportButtonContentHeight,
                                     contentVerticalPadding: 2,
                                     prominentStyleVerticalPadding: 2,
-                                    overlayBadges: true,
                                     titleFont: .callout.weight(.semibold)
                                 ) {
                                     showSupportOptionsModal = true
                                 }
-                                .frame(height: supportButtonHeight)
 
                                 SettingsActionButton(
                                     title: L10n.App.Settings.SupportFeedback.sendFeedback.localized,
@@ -384,27 +375,15 @@ struct SettingsSectionView: View {
                     }
 
                     SettingsCard(title: L10n.App.Settings.Section.advanced.localized, icon: "bolt.fill", fill: cardFill) {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                            SettingsActionButton(
-                                title: L10n.App.Settings.Action.reset.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                showResetConfirmation = true
-                            }
-                            .disabled(core.isRefreshing || isResetting)
-
-                            SettingsActionButton(
-                                title: L10n.App.Settings.Action.replayWalkthrough.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                walkthrough.resetWalkthroughs()
-                                walkthrough.startPopoverWalkthrough()
-                            }
+                        SettingsActionButton(
+                            title: L10n.App.Settings.Action.reset.localized,
+                            badges: [],
+                            isProminent: false,
+                            useSystemStyle: true
+                        ) {
+                            showResetConfirmation = true
                         }
+                        .disabled(core.isRefreshing || isResetting)
                     }
                 }
             }
@@ -475,7 +454,14 @@ struct SettingsWindowView: View {
             )
             .navigationTitle(pane.title)
         }
-        .frame(minWidth: 680, idealWidth: 760, minHeight: 560, idealHeight: 680)
+        .frame(
+            minWidth: 600,
+            idealWidth: 680,
+            maxWidth: 760,
+            minHeight: 420,
+            idealHeight: 500,
+            maxHeight: 600
+        )
     }
 }
 

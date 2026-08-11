@@ -381,20 +381,12 @@ private struct ControlCenterSidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 11) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [HelmTheme.blue700, HelmTheme.seaGlass],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    Image(systemName: "helm")
-                        .font(.system(size: 19, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                .frame(width: 40, height: 40)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .accessibilityHidden(true)
+                    .frame(width: 50, height: 50)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(L10n.App.Dashboard.title.localized.uppercased())
@@ -464,9 +456,19 @@ private struct ControlCenterSidebarView: View {
         if section == .updates, overviewState.outdatedPackagesCount > 0 {
             Text("\(overviewState.outdatedPackagesCount)")
                 .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundColor(
+                    context.selectedSection == section
+                        ? HelmTheme.blue700
+                        : HelmTheme.textPrimary
+                )
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(HelmTheme.surfaceElevated, in: Capsule())
+                .background(
+                    context.selectedSection == section
+                        ? Color.white.opacity(0.95)
+                        : HelmTheme.surfaceElevated,
+                    in: Capsule()
+                )
         } else if section == .tasks, overviewState.runningTaskCount > 0 {
             Circle()
                 .fill(HelmTheme.seaGlass)

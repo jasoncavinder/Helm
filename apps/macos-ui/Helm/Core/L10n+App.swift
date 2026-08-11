@@ -240,6 +240,13 @@ extension L10n {
             struct Section {
                 static let thisMac = "app.first_run.environment_brief.section.this_mac"
                 static let sources = "app.first_run.environment_brief.section.sources"
+                static let readiness = "app.first_run.environment_brief.section.readiness"
+            }
+
+            struct Readiness {
+                static let ready = "app.first_run.environment_brief.readiness.ready"
+                static let attention = "app.first_run.environment_brief.readiness.attention"
+                static let observedOnly = "app.first_run.environment_brief.readiness.observed_only"
             }
 
             struct Status {
@@ -318,7 +325,6 @@ extension L10n {
                 static let upgradeAll = "app.settings.action.upgrade_all"
                 static let reset = "app.settings.action.reset"
                 static let quit = "app.settings.action.quit"
-                static let replayWalkthrough = "app.settings.action.replay_walkthrough"
                 static let restoreManagerPriority = "app.settings.action.restore_manager_priority"
                 static let installCli = "app.settings.action.install_cli"
                 static let removeCli = "app.settings.action.remove_cli"
@@ -357,8 +363,8 @@ extension L10n {
                 static let refreshState = "app.settings.service_health.refresh_state"
                 static let lastCheck = "app.settings.service_health.last_check"
                 static let failedTasks = "app.settings.service_health.failed_tasks"
-                static let managersDetected = "app.settings.service_health.managers_detected"
-                static let managersMissing = "app.settings.service_health.managers_missing"
+                static let managerCoverage = "app.settings.service_health.manager_coverage"
+                static let managerCoverageValue = "app.settings.service_health.manager_coverage_value"
                 static let lastError = "app.settings.service_health.last_error"
                 static let copySnapshot = "app.settings.service_health.copy_snapshot"
 

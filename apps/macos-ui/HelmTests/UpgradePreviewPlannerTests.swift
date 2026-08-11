@@ -117,6 +117,54 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         )
     }
 
+    func testInteractiveProjectionAddsHelmWhenBackendPlanIsEmpty() {
+        let projected = UpgradePreviewPlanner.addingInteractiveUpdates(
+            to: [],
+            externalSparkleUpdates: [],
+            helmUpdateVersion: "0.19.0-rc.3",
+            externalSparkleReasonLabelKey: "external-sparkle",
+            helmSelfUpdateReasonLabelKey: "helm-self-update"
+        )
+
+        XCTAssertEqual(projected.map(\.id), ["helm-self-update:Helm"])
+        XCTAssertEqual(projected.first?.status, "not_included")
+        XCTAssertEqual(projected.first?.reasonLabelArgs["version"], "0.19.0-rc.3")
+    }
+
+    func testInteractiveProjectionReplacesStaleLocalRowsWithoutDuplicatingBackendRows() {
+        let backend = step(
+            id: "npm:typescript",
+            order: 0,
+            manager: "npm",
+            authority: "standard",
+            package: "typescript"
+        )
+        let staleHelm = step(
+            id: "helm-self-update:Helm",
+            order: 1,
+            manager: UpgradePreviewPlanner.helmSelfUpdateManagerId,
+            authority: "interactive",
+            action: UpgradePreviewPlanner.helmSelfUpdateAction,
+            package: "Helm",
+            status: "not_included"
+        )
+
+        let projected = UpgradePreviewPlanner.addingInteractiveUpdates(
+            to: [backend, staleHelm],
+            externalSparkleUpdates: [.init(id: "example", packageName: "Example")],
+            helmUpdateVersion: "0.19.0-rc.4",
+            externalSparkleReasonLabelKey: "external-sparkle",
+            helmSelfUpdateReasonLabelKey: "helm-self-update"
+        )
+
+        XCTAssertEqual(projected.map(\.id), [
+            "npm:typescript",
+            "sparkle-external:example",
+            "helm-self-update:Helm",
+        ])
+        XCTAssertEqual(projected.last?.reasonLabelArgs["version"], "0.19.0-rc.4")
+    }
+
     func testScopedUpgradePlanStepsFiltersByManagerAndPackage() {
         let steps = [
             step(id: "npm:typescript", order: 0, manager: "npm", authority: "standard", package: "typescript"),
@@ -331,16 +379,20 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         order: UInt64,
         manager: String,
         authority: String,
-        package: String
+        action: String = "upgrade",
+        package: String,
+        status: String = "queued"
     ) -> UpgradePreviewPlanner.PlanStep {
         UpgradePreviewPlanner.PlanStep(
             id: id,
             orderIndex: order,
             managerId: manager,
             authority: authority,
+            action: action,
             packageName: package,
             reasonLabelKey: "service.task.label.upgrade.package",
-            reasonLabelArgs: [:]
+            reasonLabelArgs: [:],
+            status: status
         )
     }
 }
