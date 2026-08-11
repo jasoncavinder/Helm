@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Fixed
+- npm searches shorter than two trimmed characters now return no results without invoking npm, avoiding npm's minimum-query-length error during incremental package search.
+
 ## [0.19.0-rc.4] - 2026-08-11
 
 ### Added

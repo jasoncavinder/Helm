@@ -115,6 +115,9 @@ impl<S: NpmSource> ManagerAdapter for NpmAdapter<S> {
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             AdapterRequest::Search(search_request) => {
+                if search_request.query.text.trim().chars().count() < 2 {
+                    return Ok(AdapterResponse::SearchResults(Vec::new()));
+                }
                 let raw = self.source.search(search_request.query.text.as_str())?;
                 let results = parse_npm_search(&raw, &search_request.query)?;
                 Ok(AdapterResponse::SearchResults(results))
@@ -674,6 +677,7 @@ mod tests {
     #[derive(Clone)]
     struct StubNpmSource {
         detect_calls: Arc<AtomicUsize>,
+        search_calls: Arc<AtomicUsize>,
         detect_result: AdapterResult<NpmDetectOutput>,
         list_installed_result: AdapterResult<String>,
         list_outdated_result: AdapterResult<String>,
@@ -684,6 +688,7 @@ mod tests {
         fn success() -> Self {
             Self {
                 detect_calls: Arc::new(AtomicUsize::new(0)),
+                search_calls: Arc::new(AtomicUsize::new(0)),
                 detect_result: Ok(NpmDetectOutput {
                     executable_path: Some(PathBuf::from("/opt/homebrew/bin/npm")),
                     version_output: "10.9.2\n".to_string(),
@@ -710,6 +715,7 @@ mod tests {
         }
 
         fn search(&self, _query: &str) -> AdapterResult<String> {
+            self.search_calls.fetch_add(1, Ordering::SeqCst);
             self.search_result.clone()
         }
 
@@ -770,6 +776,7 @@ mod tests {
     fn refresh_clears_snapshots_when_npm_is_not_usable() {
         let adapter = NpmAdapter::new(StubNpmSource {
             detect_calls: Arc::new(AtomicUsize::new(0)),
+            search_calls: Arc::new(AtomicUsize::new(0)),
             detect_result: Ok(NpmDetectOutput {
                 executable_path: Some(PathBuf::from("/usr/local/bin/npm")),
                 version_output: String::new(),
@@ -832,6 +839,31 @@ mod tests {
             }
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn execute_search_skips_npm_for_queries_shorter_than_two_characters() {
+        let source = StubNpmSource::success();
+        let search_calls = source.search_calls.clone();
+        let adapter = NpmAdapter::new(source);
+
+        for query in ["", " ", "a", " a ", "é"] {
+            let response = adapter
+                .execute(AdapterRequest::Search(SearchRequest {
+                    query: SearchQuery {
+                        text: query.to_string(),
+                        issued_at: std::time::SystemTime::now(),
+                    },
+                }))
+                .expect("short npm search should succeed without invoking npm");
+
+            match response {
+                AdapterResponse::SearchResults(results) => assert!(results.is_empty()),
+                other => panic!("unexpected response: {other:?}"),
+            }
+        }
+
+        assert_eq!(search_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
