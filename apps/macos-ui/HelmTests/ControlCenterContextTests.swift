@@ -1,41 +1,37 @@
 import XCTest
-@testable import Helm
 
 final class ControlCenterContextTests: XCTestCase {
-    func testPreviewDismissalStateIsSharedAcrossEntryPoints() {
-        let context = ControlCenterContext()
-
+    func testPreviewDismissalStatePreventsPreviewRouteFromPresenting() {
         XCTAssertTrue(
-            context.shouldPresentFirstRun(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
                 mode: .preview,
-                hasCompletedOnboarding: true
+                hasCompletedOnboarding: true,
+                dismissedPreview: false
             )
         )
 
-        context.dismissedFirstRunPreview = true
-
         XCTAssertFalse(
-            context.shouldPresentFirstRun(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
                 mode: .preview,
-                hasCompletedOnboarding: true
+                hasCompletedOnboarding: true,
+                dismissedPreview: true
             )
         )
     }
 
     func testPreviewDismissalDoesNotAffectEnabledFirstRunRoute() {
-        let context = ControlCenterContext()
-        context.dismissedFirstRunPreview = true
-
         XCTAssertTrue(
-            context.shouldPresentFirstRun(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
                 mode: .enabled,
-                hasCompletedOnboarding: false
+                hasCompletedOnboarding: false,
+                dismissedPreview: true
             )
         )
         XCTAssertFalse(
-            context.shouldPresentFirstRun(
+            EnvironmentBriefFirstRunConfiguration.shouldPresent(
                 mode: .enabled,
-                hasCompletedOnboarding: true
+                hasCompletedOnboarding: true,
+                dismissedPreview: true
             )
         )
     }
