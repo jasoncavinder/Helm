@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0-rc.4] - 2026-08-11
+
+### Added
+- Helm self-updates and discovered third-party Sparkle updates now appear in the reviewed update plan. A default-off preference may include Helm in Upgrade All, where it runs only after backend-owned manager work reaches a terminal state; third-party Sparkle updates remain explicitly interactive.
+- The development-gated Environment Brief now includes a Management Readiness summary and keeps completion actions anchored while only the software-source list scrolls.
+
+### Changed
+- Primary and secondary menu-bar clicks now open the same live-localized popover, replacing the separate AppKit right-click menu while retaining Dashboard, Upgrade All, Settings, Support, Refresh, update-check, and Quit routes without duplicating controls.
+- Service Health and diagnostics now live on Dashboard, manager coverage uses one neutral detected/available metric, Settings uses a smaller bounded window, and the legacy in-window Settings destination and obsolete Replay Walkthrough action are removed.
+- Wayfinder polish uses Helm's real app icon in the Dashboard sidebar, keeps the selected Plan badge legible, and restores the intended Support Helm action proportions.
+
+### Fixed
+- Helm and third-party Sparkle update rows are rebuilt independently of the backend preview so Library/sidebar availability cannot coexist with an empty Plan.
+- Dismissing the debug-only Environment Brief preview now persists for the app session across both the Dashboard and status-item entry paths.
+
+This candidate preserves stable `v0.18.2`, advances only the opt-in RC line after publication, and retains the existing production onboarding while Issue #388 remains open.
+
 ## [0.19.0-rc.3] - 2026-08-10
 
 ### Fixed
