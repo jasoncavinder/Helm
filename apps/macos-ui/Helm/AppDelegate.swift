@@ -184,10 +184,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     @objc private func togglePanel(_ sender: AnyObject?) {
         let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
-        if EnvironmentBriefFirstRunConfiguration.shouldPresent(
+        if controlCenterContext.shouldPresentFirstRun(
             mode: firstRunMode,
-            hasCompletedOnboarding: core.hasCompletedOnboarding,
-            dismissedPreview: false
+            hasCompletedOnboarding: core.hasCompletedOnboarding
         ) {
             openControlCenter()
             return

@@ -306,6 +306,43 @@ struct EnvironmentBriefPresentationSummary: Equatable {
     }
 }
 
+struct EnvironmentBriefManagementReadiness: Equatable {
+    let readyCount: Int
+    let attentionCount: Int
+    let observedOnlyCount: Int
+
+    static func make(from brief: EnvironmentBrief) -> EnvironmentBriefManagementReadiness {
+        var readyManagerIDs: Set<String> = []
+        var attentionManagerIDs = Set(
+            brief.coverage.failedManagers
+                + brief.coverage.cancelledManagers
+                + brief.coverage.deferredManagers
+        )
+        var observedOnlyManagerIDs: Set<String> = []
+
+        for observation in brief.discoveredManagers where observation.detected {
+            if observation.eligibility != .eligible
+                || observation.managementState == .detectedUnmanageable {
+                observedOnlyManagerIDs.insert(observation.manager)
+            } else if observation.managementState == .ready {
+                readyManagerIDs.insert(observation.manager)
+            } else {
+                attentionManagerIDs.insert(observation.manager)
+            }
+        }
+
+        // Coverage failures take precedence over an older or partial observation.
+        readyManagerIDs.subtract(attentionManagerIDs)
+        observedOnlyManagerIDs.subtract(attentionManagerIDs)
+
+        return EnvironmentBriefManagementReadiness(
+            readyCount: readyManagerIDs.count,
+            attentionCount: attentionManagerIDs.count,
+            observedOnlyCount: observedOnlyManagerIDs.count
+        )
+    }
+}
+
 enum FirstRunPresentationStage: String, Codable, Equatable {
     case legal
     case discovering

@@ -10,6 +10,7 @@ struct HelmApp: App {
             SettingsWindowView()
                 .environmentObject(appDelegate.controlCenterContext)
         }
+        .defaultSize(width: 680, height: 500)
         .commands {
             HelmApplicationCommands(
                 appDelegate: appDelegate,

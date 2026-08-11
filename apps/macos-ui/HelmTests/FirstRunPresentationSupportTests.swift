@@ -149,6 +149,63 @@ final class FirstRunPresentationSupportTests: XCTestCase {
         XCTAssertEqual(summaries[.serviceFailure]?.completionFraction, 0)
     }
 
+    func testManagementReadinessUsesExclusiveTruthfulBuckets() {
+        let brief = EnvironmentBriefProjector.project(
+            EnvironmentBriefProjectionInput(
+                system: EnvironmentBriefSystem(
+                    osVersion: "26.6.0",
+                    architecture: .arm64,
+                    activeShell: "zsh",
+                    distributionChannel: "developer_id",
+                    updateAuthority: "sparkle"
+                ),
+                intendedManagerIDs: ["homebrew_formula", "mise", "rubygems", "macports"],
+                observations: [
+                    EnvironmentBriefManagerObservation(
+                        manager: "homebrew_formula",
+                        detected: true,
+                        eligibility: .eligible,
+                        managementState: .ready,
+                        activeInstallationMethod: nil,
+                        provenance: .homebrew,
+                        freshness: .current
+                    ),
+                    EnvironmentBriefManagerObservation(
+                        manager: "mise",
+                        detected: true,
+                        eligibility: .eligible,
+                        managementState: .setupRequired,
+                        activeInstallationMethod: nil,
+                        provenance: .mise,
+                        freshness: .current
+                    ),
+                    EnvironmentBriefManagerObservation(
+                        manager: "rubygems",
+                        detected: true,
+                        eligibility: .ineligible,
+                        managementState: .detectedUnmanageable,
+                        activeInstallationMethod: nil,
+                        provenance: .system,
+                        freshness: .current
+                    ),
+                ],
+                failedManagerIDs: ["homebrew_formula", "macports"],
+                cancelledManagerIDs: [],
+                deferredManagerIDs: [],
+                observationClass: .localOnly
+            )
+        )
+
+        XCTAssertEqual(
+            EnvironmentBriefManagementReadiness.make(from: brief),
+            EnvironmentBriefManagementReadiness(
+                readyCount: 0,
+                attentionCount: 3,
+                observedOnlyCount: 1
+            )
+        )
+    }
+
     func testSummaryDoesNotDoubleCountManagersWithObservationAndFailure() {
         let input = EnvironmentBriefProjectionInput(
             system: EnvironmentBriefSystem(

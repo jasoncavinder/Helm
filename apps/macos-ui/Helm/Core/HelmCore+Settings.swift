@@ -687,6 +687,10 @@ extension HelmCore {
     }
 
     func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        upgradePlanIncludePinned = includePinned
+        upgradePlanAllowOsUpdates = allowOsUpdates
+        rebuildProjectedUpgradePlanExtensions()
+
         guard let service = service() else {
             recordLastError(
                 source: "core.settings",
@@ -812,9 +816,6 @@ extension HelmCore {
         coreSteps: [CoreUpgradePlanStep],
         includePinned: Bool
     ) -> [CoreUpgradePlanStep] {
-        var steps = coreSteps
-        var orderIndex = (coreSteps.map(\.orderIndex).max() ?? 0) + 1
-
         let externalSparklePackages = outdatedPackages
             .filter {
                 $0.managerId == "sparkle"
@@ -822,40 +823,28 @@ extension HelmCore {
                     && isManagerEnabled($0.managerId)
             }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-        for package in externalSparklePackages {
-            steps.append(
-                CoreUpgradePlanStep(
-                    stepId: "sparkle-external:\(package.id)",
-                    orderIndex: orderIndex,
-                    managerId: "sparkle",
-                    authority: "interactive",
-                    action: UpgradePreviewPlanner.externalSparkleAction,
-                    packageName: package.displayName,
-                    reasonLabelKey: L10n.App.Updates.Plan.externalSparkle,
-                    reasonLabelArgs: ["package": package.displayName],
-                    status: "requires_interaction"
+        let plannerSteps = UpgradePreviewPlanner.addingInteractiveUpdates(
+            to: coreSteps.map(Self.plannerStep),
+            externalSparkleUpdates: externalSparklePackages.map {
+                UpgradePreviewPlanner.ExternalSparkleUpdate(
+                    id: $0.id,
+                    packageName: $0.displayName
                 )
-            )
-            orderIndex += 1
-        }
+            },
+            helmUpdateVersion: AppUpdateCoordinator.shared.availableUpdate?.displayVersion,
+            externalSparkleReasonLabelKey: L10n.App.Updates.Plan.externalSparkle,
+            helmSelfUpdateReasonLabelKey: L10n.App.Updates.Plan.helmSelfUpdate
+        )
+        return plannerSteps.map(Self.coreUpgradePlanStep)
+    }
 
-        if let update = AppUpdateCoordinator.shared.availableUpdate {
-            steps.append(
-                CoreUpgradePlanStep(
-                    stepId: "helm-self-update:Helm",
-                    orderIndex: orderIndex,
-                    managerId: Self.helmSelfUpdateManagerId,
-                    authority: "interactive",
-                    action: UpgradePreviewPlanner.helmSelfUpdateAction,
-                    packageName: "Helm",
-                    reasonLabelKey: L10n.App.Updates.Plan.helmSelfUpdate,
-                    reasonLabelArgs: ["version": update.displayVersion],
-                    status: "not_included"
-                )
-            )
-        }
-
-        return Self.sortedUpgradePlanStepsForExecution(steps)
+    func rebuildProjectedUpgradePlanExtensions() {
+        let backendSteps = upgradePlanSteps.filter(Self.isBackendManagedUpgradePlanStep)
+        upgradePlanSteps = augmentedUpgradePlanSteps(
+            coreSteps: backendSteps,
+            includePinned: upgradePlanIncludePinned
+        )
+        syncUpgradePlanProjection(from: latestCoreTasksSnapshot)
     }
 
     static func isExternalSparklePlanStep(_ step: CoreUpgradePlanStep) -> Bool {
@@ -891,17 +880,7 @@ extension HelmCore {
     }
 
     static func sortedUpgradePlanStepsForExecution(_ steps: [CoreUpgradePlanStep]) -> [CoreUpgradePlanStep] {
-        let plannerSteps = steps.map {
-            UpgradePreviewPlanner.PlanStep(
-                id: $0.id,
-                orderIndex: $0.orderIndex,
-                managerId: $0.managerId,
-                authority: $0.authority,
-                packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey,
-                reasonLabelArgs: $0.reasonLabelArgs
-            )
-        }
+        let plannerSteps = steps.map(Self.plannerStep)
         var stepById: [String: CoreUpgradePlanStep] = [:]
         for step in steps where stepById[step.id] == nil {
             stepById[step.id] = step
@@ -914,17 +893,7 @@ extension HelmCore {
         managerScopeId: String,
         packageFilter: String
     ) -> [CoreUpgradePlanStep] {
-        let plannerSteps = steps.map {
-            UpgradePreviewPlanner.PlanStep(
-                id: $0.id,
-                orderIndex: $0.orderIndex,
-                managerId: $0.managerId,
-                authority: $0.authority,
-                packageName: $0.packageName,
-                reasonLabelKey: $0.reasonLabelKey,
-                reasonLabelArgs: $0.reasonLabelArgs
-            )
-        }
+        let plannerSteps = steps.map(Self.plannerStep)
         var stepById: [String: CoreUpgradePlanStep] = [:]
         for step in steps where stepById[step.id] == nil {
             stepById[step.id] = step
@@ -934,6 +903,34 @@ extension HelmCore {
             managerScopeId: managerScopeId,
             packageFilter: packageFilter
         ).compactMap { stepById[$0.id] }
+    }
+
+    private static func plannerStep(_ step: CoreUpgradePlanStep) -> UpgradePreviewPlanner.PlanStep {
+        UpgradePreviewPlanner.PlanStep(
+            id: step.id,
+            orderIndex: step.orderIndex,
+            managerId: step.managerId,
+            authority: step.authority,
+            action: step.action,
+            packageName: step.packageName,
+            reasonLabelKey: step.reasonLabelKey,
+            reasonLabelArgs: step.reasonLabelArgs,
+            status: step.status
+        )
+    }
+
+    private static func coreUpgradePlanStep(_ step: UpgradePreviewPlanner.PlanStep) -> CoreUpgradePlanStep {
+        CoreUpgradePlanStep(
+            stepId: step.id,
+            orderIndex: step.orderIndex,
+            managerId: step.managerId,
+            authority: step.authority,
+            action: step.action,
+            packageName: step.packageName,
+            reasonLabelKey: step.reasonLabelKey,
+            reasonLabelArgs: step.reasonLabelArgs,
+            status: step.status
+        )
     }
 
     func localizedTaskLabel(from task: CoreTaskRecord) -> String? {
@@ -2128,7 +2125,7 @@ struct HelmSupport {
 
     private static func serviceHealthManagerCounts(
         core: HelmCore
-    ) -> (enabled: Int, detected: Int, missing: Int) {
+    ) -> (enabled: Int, detected: Int, available: Int) {
         let trackedStatuses = core.managerStatuses.values
             .filter { $0.isImplemented && $0.enabled }
         let enabled = trackedStatuses.count
@@ -2153,7 +2150,7 @@ struct HelmSupport {
         info += "Failed Tasks: \(core.failedTaskCount)\n"
         info += "Pending Updates: \(core.outdatedPackages.count)\n"
         info += "Detected Managers: \(managerCounts.detected)/\(managerCounts.enabled)\n"
-        info += "Managers Missing: \(managerCounts.missing)\n"
+        info += "Other Managers Available: \(managerCounts.available)\n"
         if let lastError = core.lastError, !lastError.isEmpty {
             info += "Last Error: \(lastError)\n"
         }
