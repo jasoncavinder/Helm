@@ -488,6 +488,7 @@ struct PopoverSearchOverlayContent: View {
 
 struct PopoverAboutOverlayContent: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @State private var showSupportOptionsModal = false
     let onClose: () -> Void
 
@@ -501,6 +502,10 @@ struct PopoverAboutOverlayContent: View {
             let normalized = package.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             return normalized == "helm" || normalized == "helm-cli"
         }
+    }
+
+    private var canCheckForUpdates: Bool {
+        appUpdate.canCheckForUpdates && !appUpdate.isCheckingForUpdates
     }
 
     var body: some View {
@@ -539,6 +544,21 @@ struct PopoverAboutOverlayContent: View {
                     .foregroundColor(HelmTheme.stateAttention)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Button {
+                appUpdate.checkForUpdates()
+            } label: {
+                Label(
+                    L10n.App.Overlay.About.checkForUpdates.localized,
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+            }
+            .buttonStyle(.plain)
+            .font(.caption.weight(.medium))
+            .foregroundColor(.accentColor)
+            .disabled(!canCheckForUpdates)
+            .helmPointer(enabled: canCheckForUpdates)
+            .help(appUpdate.unavailableReasonLocalizationKey?.localized ?? "")
 
             HStack(spacing: 8) {
 
