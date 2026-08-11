@@ -1,37 +1,40 @@
 import XCTest
 
 final class ControlCenterContextTests: XCTestCase {
-    func testPreviewDismissalStatePreventsPreviewRouteFromPresenting() {
+    func testPreviewDismissalStateIsSharedAcrossPresentationChecks() {
+        var session = EnvironmentBriefFirstRunSession()
+
         XCTAssertTrue(
-            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            session.shouldPresent(
                 mode: .preview,
-                hasCompletedOnboarding: true,
-                dismissedPreview: false
+                hasCompletedOnboarding: true
             )
         )
 
+        session.dismissPreview()
+
         XCTAssertFalse(
-            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            session.shouldPresent(
                 mode: .preview,
-                hasCompletedOnboarding: true,
-                dismissedPreview: true
+                hasCompletedOnboarding: true
             )
         )
     }
 
     func testPreviewDismissalDoesNotAffectEnabledFirstRunRoute() {
+        var session = EnvironmentBriefFirstRunSession()
+        session.dismissPreview()
+
         XCTAssertTrue(
-            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            session.shouldPresent(
                 mode: .enabled,
-                hasCompletedOnboarding: false,
-                dismissedPreview: true
+                hasCompletedOnboarding: false
             )
         )
         XCTAssertFalse(
-            EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            session.shouldPresent(
                 mode: .enabled,
-                hasCompletedOnboarding: true,
-                dismissedPreview: true
+                hasCompletedOnboarding: true
             )
         )
     }
