@@ -14,17 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private var panel: FloatingPanel!
     private var eventMonitor: EventMonitor?
     private var controlCenterWindowController: NSWindowController?
-    private var statusMenu: NSMenu?
-    private var aboutMenuItem: NSMenuItem?
-    private var checkForUpdatesMenuItem: NSMenuItem?
-    private var controlCenterMenuItem: NSMenuItem?
-    private var settingsMenuItem: NSMenuItem?
-    private var upgradeAllMenuItem: NSMenuItem?
-    private var refreshMenuItem: NSMenuItem?
     private var cancellables: Set<AnyCancellable> = []
 
     private let core = HelmCore.shared
-    private let appUpdate = AppUpdateCoordinator.shared
     let controlCenterContext = ControlCenterContext()
     private let notificationCenter = UNUserNotificationCenter.current()
     private var hasObservedInFlightTasks = false
@@ -77,7 +69,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-        configureStatusMenu()
         bindStatusItem()
         updateStatusItemAppearance()
         configureUserNotifications()
@@ -192,11 +183,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 
     @objc private func togglePanel(_ sender: AnyObject?) {
-        if NSApp.currentEvent?.type == .rightMouseUp {
-            showStatusMenu()
-            return
-        }
-
         let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
         if EnvironmentBriefFirstRunConfiguration.shouldPresent(
             mode: firstRunMode,
@@ -254,7 +240,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.updateStatusItemAppearance()
-                self?.updateStatusMenuState()
                 self?.resizePopoverIfVisible()
             }
             .store(in: &cancellables)
@@ -266,13 +251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                     self?.updateStatusItemAppearance()
                     self?.resizePopoverIfVisible()
                 }
-            }
-            .store(in: &cancellables)
-
-        appUpdate.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.updateStatusMenuState()
             }
             .store(in: &cancellables)
 
@@ -601,175 +579,6 @@ private extension AppDelegate {
     func updateControlCenterWindowDragBehavior() {
         controlCenterWindowController?.window?.isMovableByWindowBackground =
             shouldAllowControlCenterWindowBackgroundDragging()
-    }
-
-    func configureStatusMenu() {
-        let menu = NSMenu()
-        // We drive enablement explicitly from app/core state.
-        // Cocoa auto-validation can otherwise re-enable items with actions.
-        menu.autoenablesItems = false
-
-        let aboutItem = NSMenuItem(
-            title: "app.overlay.about.title".localized,
-            action: #selector(openAboutFromMenu),
-            keyEquivalent: ""
-        )
-        aboutItem.target = self
-        menu.addItem(aboutItem)
-        aboutMenuItem = aboutItem
-
-        let checkForUpdatesItem = NSMenuItem(
-            title: L10n.App.Overlay.About.checkForUpdates.localized,
-            action: #selector(checkForUpdatesFromMenu),
-            keyEquivalent: ""
-        )
-        checkForUpdatesItem.target = self
-        menu.addItem(checkForUpdatesItem)
-        checkForUpdatesMenuItem = checkForUpdatesItem
-
-        let controlCenterItem = NSMenuItem(
-            title: L10n.App.Action.openControlCenter.localized,
-            action: #selector(openControlCenterFromMenu),
-            keyEquivalent: ""
-        )
-        controlCenterItem.target = self
-        menu.addItem(controlCenterItem)
-        controlCenterMenuItem = controlCenterItem
-
-        menu.addItem(.separator())
-
-        let upgradeItem = NSMenuItem(
-            title: L10n.App.Settings.Action.upgradeAll.localized,
-            action: #selector(openUpgradeAllFromMenu),
-            keyEquivalent: ""
-        )
-        upgradeItem.target = self
-        menu.addItem(upgradeItem)
-        upgradeAllMenuItem = upgradeItem
-
-        let settingsItem = NSMenuItem(
-            title: L10n.Common.settings.localized,
-            action: #selector(openAdvancedSettingsFromMenu),
-            keyEquivalent: ","
-        )
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        settingsMenuItem = settingsItem
-
-        menu.addItem(buildSupportMenuItem())
-
-        menu.addItem(.separator())
-
-        let refreshItem = NSMenuItem(
-            title: L10n.Common.refresh.localized,
-            action: #selector(refreshFromMenu),
-            keyEquivalent: ""
-        )
-        refreshItem.target = self
-        menu.addItem(refreshItem)
-        refreshMenuItem = refreshItem
-
-        menu.addItem(.separator())
-
-        let quitItem = NSMenuItem(
-            title: L10n.Common.quit.localized,
-            action: #selector(quitFromMenu),
-            keyEquivalent: ""
-        )
-        quitItem.target = self
-        menu.addItem(quitItem)
-
-        statusMenu = menu
-        statusItem?.menu = nil
-        statusItem?.button?.menu = nil
-        updateStatusMenuState()
-    }
-
-    private func buildSupportMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(
-            title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
-            action: nil,
-            keyEquivalent: ""
-        )
-        let submenu = NSMenu()
-        for channel in SupportHelmChannel.allCases {
-            let supportItem = NSMenuItem(
-                title: channel.title,
-                action: #selector(openSupportChannelFromMenu(_:)),
-                keyEquivalent: ""
-            )
-            supportItem.target = self
-            supportItem.representedObject = channel.url
-            supportItem.isEnabled = channel.url != nil
-            submenu.addItem(supportItem)
-        }
-        item.submenu = submenu
-        return item
-    }
-
-    func updateStatusMenuState() {
-        let onboardingComplete = core.hasCompletedOnboarding
-
-        aboutMenuItem?.isEnabled = onboardingComplete
-        controlCenterMenuItem?.isEnabled = onboardingComplete
-        settingsMenuItem?.isEnabled = onboardingComplete
-
-        checkForUpdatesMenuItem?.isEnabled = onboardingComplete
-            && appUpdate.canCheckForUpdates
-            && !appUpdate.isCheckingForUpdates
-        checkForUpdatesMenuItem?.toolTip = onboardingComplete
-            ? appUpdate.unavailableReasonLocalizationKey?.localized
-            : nil
-        upgradeAllMenuItem?.isEnabled = onboardingComplete && !core.outdatedPackages.isEmpty
-        refreshMenuItem?.isEnabled = onboardingComplete && !core.isRefreshing
-    }
-
-    func showStatusMenu() {
-        closePanel()
-        updateStatusMenuState()
-        if let statusItem, let menu = statusMenu {
-            let previousMenu = statusItem.menu
-            statusItem.menu = menu
-            statusItem.button?.performClick(nil)
-            statusItem.menu = previousMenu
-        }
-    }
-
-    @objc func openAboutFromMenu() {
-        openPopoverOverlay(.about)
-    }
-
-    @objc func checkForUpdatesFromMenu() {
-        appUpdate.checkForUpdates()
-    }
-
-    @objc func openControlCenterFromMenu() {
-        controlCenterContext.selectedSection = .overview
-        openControlCenter()
-    }
-
-    @MainActor @objc func openAdvancedSettingsFromMenu() {
-        closePanel()
-        controlCenterContext.settingsOpenRouter.requestOpen()
-    }
-
-    @objc func openUpgradeAllFromMenu() {
-        controlCenterContext.selectedSection = .updates
-        openControlCenter()
-        controlCenterContext.presentUpgradeSheet(in: .controlCenter)
-    }
-
-    @objc func refreshFromMenu() {
-        core.triggerRefresh()
-    }
-
-    @objc func quitFromMenu() {
-        NSApplication.shared.terminate(nil)
-    }
-
-    @objc func openSupportChannelFromMenu(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        HelmSupport.openURL(url)
     }
 
     @objc func handleSystemAppearanceChanged() {

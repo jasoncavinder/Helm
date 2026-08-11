@@ -358,6 +358,13 @@ struct RedesignPopoverView: View {
 
             Spacer(minLength: 10)
 
+            footerIconButton(
+                symbol: "arrow.clockwise",
+                accessibilityText: L10n.App.Settings.Action.refreshNow.localized,
+                enabled: !core.isRefreshing,
+                action: { core.triggerRefresh() }
+            )
+
             footerIconButton(symbol: "gearshape", accessibilityText: L10n.Common.settings.localized, action: {
                 onOpenSettings()
             })
@@ -439,7 +446,12 @@ struct RedesignPopoverView: View {
     }
 
     @ViewBuilder
-    private func footerIconButton(symbol: String, accessibilityText: String? = nil, action: @escaping () -> Void) -> some View {
+    private func footerIconButton(
+        symbol: String,
+        accessibilityText: String? = nil,
+        enabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
@@ -454,7 +466,8 @@ struct RedesignPopoverView: View {
                 )
         }
         .buttonStyle(.plain)
-        .helmPointer()
+        .disabled(!enabled)
+        .helmPointer(enabled: enabled)
         .accessibilityLabel(accessibilityText ?? symbol)
     }
 }
