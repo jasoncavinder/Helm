@@ -459,6 +459,8 @@ extension L10n {
             static let executionPlan = "app.updates.execution_plan"
             static let includeOs = "app.updates.include_os"
             static let interactiveSparkleNotice = "app.updates.interactive_sparkle_notice"
+            static let openApp = "app.updates.action.open_app"
+            static let sparkleStartFailed = "app.updates.sparkle_start_failed"
             static let helmSelfUpdateManager = "app.updates.helm_self_update.manager"
             static let helmSelfUpdateSummary = "app.updates.helm_self_update.summary"
             static let managers = "app.updates.managers"
@@ -482,6 +484,10 @@ extension L10n {
                 static let requiresInteraction = "app.updates.status.requires_interaction"
                 static let runsLast = "app.updates.status.runs_last"
                 static let notIncluded = "app.updates.status.not_included"
+            }
+            struct Completion {
+                static let title = "app.updates.completion.interactive_remaining.title"
+                static let message = "app.updates.completion.interactive_remaining.message"
             }
         }
         struct DryRun {

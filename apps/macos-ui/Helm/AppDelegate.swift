@@ -21,11 +21,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private let notificationCenter = UNUserNotificationCenter.current()
     private var hasObservedInFlightTasks = false
     private var announcedTimeoutPromptIds: Set<String> = []
+    private var announcedUpgradePlanCompletionWorkflowId: String?
     private static let timeoutPromptCategoryId = "helm.task.timeout.prompt"
     private static let timeoutPromptActionWaitId = "helm.task.timeout.prompt.wait"
     private static let timeoutPromptActionStopId = "helm.task.timeout.prompt.stop"
     private static let timeoutPromptTaskIdUserInfoKey = "task_id"
     private static let timeoutPromptIdUserInfoKey = "prompt_id"
+    private static let upgradePlanCompletionCategoryId = "helm.upgrade-plan.completed"
+    private static let upgradePlanReviewActionId = "helm.upgrade-plan.completed.review"
     private var isControlCenterVisible: Bool {
         controlCenterWindowController?.window?.isVisible == true
     }
@@ -280,6 +283,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 self?.handleActiveTasksUpdated(tasks)
             }
             .store(in: &cancellables)
+
+        core.$upgradePlanCompletion
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] completion in
+                self?.handleUpgradePlanCompletion(completion)
+            }
+            .store(in: &cancellables)
     }
 
     private func resizePopoverIfVisible() {
@@ -428,7 +439,21 @@ private extension AppDelegate {
             intentIdentifiers: [],
             options: [.customDismissAction]
         )
-        notificationCenter.setNotificationCategories([timeoutPromptCategory])
+        let reviewPlanAction = UNNotificationAction(
+            identifier: Self.upgradePlanReviewActionId,
+            title: L10n.App.Popover.Banner.review.localized,
+            options: [.foreground]
+        )
+        let upgradePlanCompletionCategory = UNNotificationCategory(
+            identifier: Self.upgradePlanCompletionCategoryId,
+            actions: [reviewPlanAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        notificationCenter.setNotificationCategories([
+            timeoutPromptCategory,
+            upgradePlanCompletionCategory,
+        ])
 
         notificationCenter.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
@@ -458,10 +483,26 @@ private extension AppDelegate {
             return
         }
         guard hasObservedInFlightTasks else { return }
+        guard !core.scopedUpgradePlanRunInProgress else { return }
         hasObservedInFlightTasks = false
 
         guard !shouldSuppressTaskNotifications else { return }
         postTasksCompletedNotification()
+    }
+
+    func handleUpgradePlanCompletion(_ completion: UpgradePlanCompletion) {
+        hasObservedInFlightTasks = false
+        guard completion.completedNormally,
+              announcedUpgradePlanCompletionWorkflowId != completion.workflowId else {
+            return
+        }
+        announcedUpgradePlanCompletionWorkflowId = completion.workflowId
+        guard !shouldSuppressTaskNotifications else { return }
+        guard completion.remainingInteractiveCount > 0 else {
+            postTasksCompletedNotification()
+            return
+        }
+        postUpgradePlanCompletionNotification(completion)
     }
 
     func postTaskTimeoutPromptNotification(_ prompt: CoreTaskTimeoutPrompt) {
@@ -513,6 +554,29 @@ private extension AppDelegate {
             if let error {
                 appDelegateLogger.warning(
                     "failed to post tasks-completed notification: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+
+    func postUpgradePlanCompletionNotification(_ completion: UpgradePlanCompletion) {
+        let content = UNMutableNotificationContent()
+        content.title = L10n.App.Updates.Completion.title.localized
+        content.body = L10n.App.Updates.Completion.message.localized(with: [
+            "count": completion.remainingInteractiveCount
+        ])
+        content.sound = .default
+        content.categoryIdentifier = Self.upgradePlanCompletionCategoryId
+
+        let request = UNNotificationRequest(
+            identifier: "helm.upgrade-plan.completed.\(completion.workflowId)",
+            content: content,
+            trigger: nil
+        )
+        notificationCenter.add(request) { error in
+            if let error {
+                appDelegateLogger.warning(
+                    "failed to post upgrade-plan completion notification: \(error.localizedDescription, privacy: .public)"
                 )
             }
         }
@@ -610,11 +674,24 @@ extension AppDelegate {
         defer { completionHandler() }
 
         let userInfo = response.notification.request.content.userInfo
+        let categoryIdentifier = response.notification.request.content.categoryIdentifier
+        if categoryIdentifier == Self.upgradePlanCompletionCategoryId {
+            guard response.actionIdentifier == UNNotificationDefaultActionIdentifier
+                    || response.actionIdentifier == Self.upgradePlanReviewActionId else {
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.controlCenterContext.select(.updates)
+                self?.openControlCenter()
+            }
+            return
+        }
+
         if let promptId = userInfo[Self.timeoutPromptIdUserInfoKey] as? String {
             announcedTimeoutPromptIds.remove(promptId)
         }
 
-        guard response.notification.request.content.categoryIdentifier == Self.timeoutPromptCategoryId else {
+        guard categoryIdentifier == Self.timeoutPromptCategoryId else {
             return
         }
 

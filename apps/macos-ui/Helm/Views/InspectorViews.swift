@@ -93,6 +93,7 @@ private struct InspectorTaskDetailView: View {
     @State private var taskLogsLoadFailed = false
     @State private var taskLogRecords: [CoreTaskLogRecord] = []
     @State private var taskLogFetchLimit = Self.taskLogPageSize
+    @State private var failedExternalSparkleStep: CoreUpgradePlanStep?
     private static let taskLogPageSize = 50
     let task: TaskItem
 
@@ -112,6 +113,24 @@ private struct InspectorTaskDetailView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(L10n.App.Inspector.taskStatus.localized)
             .accessibilityValue(task.localizedStatus)
+
+            if let step = externalSparkleStep {
+                HStack(spacing: 8) {
+                    Button(L10n.App.Packages.Action.update.localized) {
+                        if !core.startExternalSparkleUpdate(for: step) {
+                            failedExternalSparkleStep = step
+                        }
+                    }
+                    .buttonStyle(HelmPrimaryButtonStyle())
+                    .helmPointer()
+
+                    Button(L10n.App.Updates.openApp.localized) {
+                        core.openExternalSparkleApplication(for: step)
+                    }
+                    .buttonStyle(HelmSecondaryButtonStyle())
+                    .helmPointer()
+                }
+            }
 
             InspectorField(label: L10n.App.Inspector.taskId.localized) {
                 Text(task.id)
@@ -210,6 +229,24 @@ private struct InspectorTaskDetailView: View {
             )
             .frame(minWidth: 700, minHeight: 420)
         }
+        .alert(item: $failedExternalSparkleStep) { step in
+            Alert(
+                title: Text(L10n.Common.error.localized),
+                message: Text(L10n.App.Updates.sparkleStartFailed.localized),
+                primaryButton: .default(Text(L10n.App.Updates.openApp.localized)) {
+                    core.openExternalSparkleApplication(for: step)
+                },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+
+    private var externalSparkleStep: CoreUpgradePlanStep? {
+        guard task.taskType == UpgradePreviewPlanner.externalSparkleAction,
+              let stepId = task.labelArgs?["plan_step_id"] else {
+            return nil
+        }
+        return core.upgradePlanSteps.first { $0.id == stepId && HelmCore.isExternalSparklePlanStep($0) }
     }
 
     private func localizedTaskType(_ rawType: String) -> String {

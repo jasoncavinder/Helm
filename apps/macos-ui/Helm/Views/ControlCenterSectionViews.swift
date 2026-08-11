@@ -278,6 +278,7 @@ struct RedesignUpdatesSectionView: View {
     @State private var includeOsUpdates = false
     @State private var managerScopeId = HelmCore.allManagersScopeId
     @State private var packageScopeQuery = ""
+    @State private var failedExternalSparkleStep: CoreUpgradePlanStep?
 
     private var runnableCount: Int {
         scopedPlanSteps.filter(core.upgradePlanStepRunsAutomatically).count
@@ -432,7 +433,27 @@ struct RedesignUpdatesSectionView: View {
                         .toggleStyle(.switch)
                 }
 
-                if interactiveSparkleCount > 0 {
+                if let completion = core.upgradePlanCompletion,
+                   completion.completedNormally,
+                   completion.remainingInteractiveCount > 0 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(
+                            L10n.App.Updates.Completion.title.localized,
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .font(.callout.weight(.semibold))
+                        Text(
+                            L10n.App.Updates.Completion.message.localized(with: [
+                                "count": completion.remainingInteractiveCount
+                            ])
+                        )
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .helmCardSurface(cornerRadius: 10, highlighted: true)
+                } else if interactiveSparkleCount > 0 {
                     Label(
                         L10n.App.Updates.interactiveSparkleNotice.localized(with: [
                             "count": interactiveSparkleCount
@@ -506,51 +527,74 @@ struct RedesignUpdatesSectionView: View {
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
-                            Button {
-                                context.selectedUpgradePlanStepId = step.id
-                                context.selectedTaskId = nil
-                                context.selectedPackageId = nil
-                                context.selectedManagerId = nil
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text("\(index + 1).")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundColor(.secondary)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(planStepTitle(step))
-                                            .font(.subheadline.weight(.medium))
-                                            .lineLimit(1)
-                                        Text(localizedManagerDisplayName(step.managerId))
-                                            .font(.caption)
+                            HStack(spacing: 8) {
+                                Button {
+                                    context.selectedUpgradePlanStepId = step.id
+                                    context.selectedTaskId = nil
+                                    context.selectedPackageId = nil
+                                    context.selectedManagerId = nil
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Text("\(index + 1).")
+                                            .font(.caption.monospacedDigit())
                                             .foregroundColor(.secondary)
-                                            .lineLimit(1)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(planStepTitle(step))
+                                                .font(.subheadline.weight(.medium))
+                                                .lineLimit(1)
+                                            Text(localizedManagerDisplayName(step.managerId))
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer()
+                                        Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
+                                            .font(.caption)
+                                            .foregroundColor(
+                                                projectedStatus(step).lowercased() == "failed"
+                                                    ? Color.red
+                                                    : (
+                                                        core.upgradePlanStepRunsAutomatically(step)
+                                                            ? Color.secondary
+                                                            : HelmTheme.stateAttention
+                                                    )
+                                            )
                                     }
-                                    Spacer()
-                                    Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
-                                        .font(.caption)
-                                        .foregroundColor(
-                                            projectedStatus(step).lowercased() == "failed"
-                                                ? Color.red
-                                                : (
-                                                    core.upgradePlanStepRunsAutomatically(step)
-                                                        ? Color.secondary
-                                                        : HelmTheme.stateAttention
-                                                )
-                                        )
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 8)
+                                    .padding(.leading, 10)
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 10)
-                                .background(
-                                    context.selectedUpgradePlanStepId == step.id
-                                        ? HelmTheme.selectionFill
-                                        : Color.clear
-                                )
+                                .buttonStyle(.plain)
+                                .contentShape(Rectangle())
+                                .helmPointer()
+
+                                if HelmCore.isExternalSparklePlanStep(step) {
+                                    HStack(spacing: 6) {
+                                        Button(L10n.App.Packages.Action.update.localized) {
+                                            if !core.startExternalSparkleUpdate(for: step) {
+                                                failedExternalSparkleStep = step
+                                            }
+                                        }
+                                        .buttonStyle(HelmSecondaryButtonStyle())
+                                        .font(.caption)
+                                        .helmPointer()
+
+                                        Button(L10n.App.Updates.openApp.localized) {
+                                            core.openExternalSparkleApplication(for: step)
+                                        }
+                                        .buttonStyle(HelmSecondaryButtonStyle())
+                                        .font(.caption)
+                                        .helmPointer()
+                                    }
+                                    .padding(.trailing, 8)
+                                }
                             }
-                            .buttonStyle(.plain)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .helmPointer()
+                            .background(
+                                context.selectedUpgradePlanStepId == step.id
+                                    ? HelmTheme.selectionFill
+                                    : Color.clear
+                            )
                             Divider()
                         }
                     }
@@ -644,6 +688,16 @@ struct RedesignUpdatesSectionView: View {
         }
         .onChange(of: appUpdate.includeHelmInUpgradeAll) { _ in
             core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
+        }
+        .alert(item: $failedExternalSparkleStep) { step in
+            Alert(
+                title: Text(L10n.Common.error.localized),
+                message: Text(L10n.App.Updates.sparkleStartFailed.localized),
+                primaryButton: .default(Text(L10n.App.Updates.openApp.localized)) {
+                    core.openExternalSparkleApplication(for: step)
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 
