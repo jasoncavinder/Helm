@@ -11,92 +11,109 @@ struct RedesignOverviewSectionView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
-                WayfinderDashboardHero(
-                    projection: projection,
-                    isRefreshing: core.isRefreshing,
-                    onPrimaryAction: {
-                        context.navigate(to: projection.primaryAction)
-                    },
-                    onRefresh: {
-                        core.triggerRefresh()
-                    }
-                )
-
-                DashboardServiceHealthCard()
-                    .id(WayfinderFocusTarget.serviceHealth.rawValue)
-
-                Text(L10n.App.Overview.managerHealth.localized)
-                    .font(.headline)
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    ForEach(overviewState.visibleManagers) { manager in
-                        ManagerHealthCardView(
-                            title: localizedManagerDisplayName(manager.id),
-                            authority: manager.authority,
-                            status: overviewState.managerHealthById[manager.id] ?? .healthy,
-                            outdatedCount: overviewState.outdatedCountByManager[manager.id, default: 0],
-                            isSelected: context.selectedManagerId == manager.id
-                        )
-                        .onTapGesture {
-                            context.selectedManagerId = manager.id
-                            context.selectedPackageId = nil
-                            context.selectedTaskId = nil
-                            context.selectedUpgradePlanStepId = nil
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    WayfinderDashboardHero(
+                        projection: projection,
+                        isRefreshing: core.isRefreshing,
+                        onPrimaryAction: {
+                            context.navigate(to: projection.primaryAction)
+                        },
+                        onRefresh: {
+                            core.triggerRefresh()
                         }
-                        .helmPointer()
+                    )
+
+                    DashboardServiceHealthCard()
+                        .id(WayfinderFocusTarget.serviceHealth.rawValue)
+
+                    Text(L10n.App.Overview.managerHealth.localized)
+                        .font(.headline)
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                        ForEach(overviewState.visibleManagers) { manager in
+                            ManagerHealthCardView(
+                                title: localizedManagerDisplayName(manager.id),
+                                authority: manager.authority,
+                                status: overviewState.managerHealthById[manager.id] ?? .healthy,
+                                outdatedCount: overviewState.outdatedCountByManager[manager.id, default: 0],
+                                isSelected: context.selectedManagerId == manager.id
+                            )
+                            .onTapGesture {
+                                context.selectedManagerId = manager.id
+                                context.selectedPackageId = nil
+                                context.selectedTaskId = nil
+                                context.selectedUpgradePlanStepId = nil
+                            }
+                            .helmPointer()
+                        }
+                    }
+
+                    Text(L10n.App.Overview.recentTasks.localized)
+                        .font(.headline)
+
+                    if overviewState.recentTasksTop10.isEmpty {
+                        Text(L10n.App.Tasks.noRecentTasks.localized)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(overviewState.recentTasksTop10) { task in
+                                TaskRowView(
+                                    task: task,
+                                    onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
+                                    onDismiss: task.status.lowercased() == "failed" ? { core.dismissTask(task) } : nil,
+                                    canExpandDetails: task.supportsInlineDetails,
+                                    isExpanded: expandedTaskId == task.id,
+                                    isSelected: context.selectedTaskId == task.id,
+                                    onToggleDetails: {
+                                        if expandedTaskId == task.id {
+                                            expandedTaskId = nil
+                                        } else {
+                                            expandedTaskId = task.id
+                                        }
+                                    },
+                                    onSelect: {
+                                        context.selectedTaskId = task.id
+                                        context.selectedPackageId = nil
+                                        context.selectedManagerId = task.managerId
+                                        context.selectedUpgradePlanStepId = nil
+                                        if !task.supportsInlineDetails {
+                                            expandedTaskId = nil
+                                        }
+                                    }
+                                )
+                                Divider()
+                            }
+                        }
+                        .helmCardSurface(cornerRadius: 12)
                     }
                 }
-
-                Text(L10n.App.Overview.recentTasks.localized)
-                    .font(.headline)
-
-                if overviewState.recentTasksTop10.isEmpty {
-                    Text(L10n.App.Tasks.noRecentTasks.localized)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(overviewState.recentTasksTop10) { task in
-                            TaskRowView(
-                                task: task,
-                                onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
-                                onDismiss: task.status.lowercased() == "failed" ? { core.dismissTask(task) } : nil,
-                                canExpandDetails: task.supportsInlineDetails,
-                                isExpanded: expandedTaskId == task.id,
-                                isSelected: context.selectedTaskId == task.id,
-                                onToggleDetails: {
-                                    if expandedTaskId == task.id {
-                                        expandedTaskId = nil
-                                    } else {
-                                        expandedTaskId = task.id
-                                    }
-                                },
-                                onSelect: {
-                                    context.selectedTaskId = task.id
-                                    context.selectedPackageId = nil
-                                    context.selectedManagerId = task.managerId
-                                    context.selectedUpgradePlanStepId = nil
-                                    if !task.supportsInlineDetails {
-                                        expandedTaskId = nil
-                                    }
-                                }
-                            )
-                            Divider()
-                        }
-                    }
-                    .helmCardSurface(cornerRadius: 12)
+                .padding(20)
+            }
+            .onAppear {
+                fulfillDashboardFocusRequest(using: scrollProxy)
+            }
+            .onChange(of: context.dashboardFocusRequestToken) { _ in
+                fulfillDashboardFocusRequest(using: scrollProxy)
+            }
+            .onChange(of: overviewState.recentTasksTop10.map { "\($0.id):\($0.status)" }) { _ in
+                collapseExpandedTaskIfNeeded()
+            }
+            .onChange(of: context.selectedTaskId) { selectedTaskId in
+                if expandedTaskId != selectedTaskId {
+                    expandedTaskId = nil
                 }
             }
-            .padding(20)
         }
-        .onChange(of: overviewState.recentTasksTop10.map { "\($0.id):\($0.status)" }) { _ in
-            collapseExpandedTaskIfNeeded()
-        }
-        .onChange(of: context.selectedTaskId) { selectedTaskId in
-            if expandedTaskId != selectedTaskId {
-                expandedTaskId = nil
+    }
+
+    private func fulfillDashboardFocusRequest(using scrollProxy: ScrollViewProxy) {
+        guard context.takeDashboardFocusRequest() == .serviceHealth else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                scrollProxy.scrollTo(WayfinderFocusTarget.serviceHealth.rawValue, anchor: .top)
             }
         }
     }
@@ -115,15 +132,7 @@ struct RedesignOverviewSectionView: View {
 private struct DashboardServiceHealthCard: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
-    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @State private var showCopiedConfirmation = false
-
-    private static let timestampFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
 
     private var connectionStatus: String {
         core.isConnected
@@ -135,13 +144,6 @@ private struct DashboardServiceHealthCard: View {
         core.isRefreshing
             ? L10n.App.Settings.ServiceHealth.Status.refreshing.localized
             : L10n.App.Settings.ServiceHealth.Status.idle.localized
-    }
-
-    private var lastCheck: String {
-        guard let lastCheckDate = appUpdate.lastCheckDate else {
-            return L10n.App.Settings.ServiceHealth.Status.never.localized
-        }
-        return Self.timestampFormatter.string(from: lastCheckDate)
     }
 
     private var managerCounts: (enabled: Int, detected: Int, missing: Int) {
@@ -173,10 +175,6 @@ private struct DashboardServiceHealthCard: View {
                 DashboardServiceHealthMetric(
                     title: L10n.App.Settings.ServiceHealth.refreshState.localized,
                     value: refreshStatus
-                )
-                DashboardServiceHealthMetric(
-                    title: L10n.App.Settings.ServiceHealth.lastCheck.localized,
-                    value: lastCheck
                 )
                 DashboardServiceHealthMetric(
                     title: L10n.App.Settings.ServiceHealth.failedTasks.localized,

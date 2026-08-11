@@ -2017,7 +2017,6 @@ struct HelmSupport {
 
     static func generateServiceHealthDiagnostics() -> String {
         let core = HelmCore.shared
-        let appUpdate = AppUpdateCoordinator.shared
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let managerCounts = serviceHealthManagerCounts(core: core)
@@ -2029,11 +2028,6 @@ struct HelmSupport {
         info += "Connection: \(core.isConnected ? "Connected" : "Disconnected")\n"
         info += "Refresh State: \(core.isRefreshing ? "Refreshing" : "Idle")\n"
         info += "Aggregate Health: \(core.aggregateHealth.key.localized)\n"
-        if let lastCheckDate = appUpdate.lastCheckDate {
-            info += "Last Check: \(isoFormatter.string(from: lastCheckDate))\n"
-        } else {
-            info += "Last Check: Never\n"
-        }
         info += "Running Tasks: \(core.runningTaskCount)\n"
         info += "Failed Tasks: \(core.failedTaskCount)\n"
         info += "Pending Updates: \(core.outdatedPackages.count)\n"

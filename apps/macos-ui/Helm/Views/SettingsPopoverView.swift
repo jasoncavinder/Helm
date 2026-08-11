@@ -242,106 +242,106 @@ struct SettingsSectionView: View {
                 if showsPane(.support) {
                     SettingsCard(title: L10n.App.Settings.SupportFeedback.section.localized, icon: "heart.fill", fill: cardFill) {
                         HStack(alignment: .top, spacing: supportButtonSpacing) {
-                        VStack(spacing: supportButtonSpacing) {
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
-                                badges: [
-                                    SettingsActionBadge(
-                                        id: "support_helm_pro",
-                                        managerId: nil,
-                                        label: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
-                                        symbol: "star.fill",
-                                        tint: HelmTheme.proAccent
-                                    )
-                                ],
-                                isProminent: true,
-                                leadingSymbol: "heart.circle.fill",
-                                alignLeading: false,
-                                contentVerticalPadding: 2,
-                                prominentStyleVerticalPadding: 2,
-                                overlayBadges: true,
-                                titleFont: .callout.weight(.semibold)
-                            ) {
-                                showSupportOptionsModal = true
-                            }
-                            .frame(height: supportButtonHeight)
-
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.sendFeedback.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                HelmSupport.emailFeedback()
-                            }
-                            .frame(height: sendFeedbackButtonHeight)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .top)
-
-                        VStack(spacing: supportButtonSpacing) {
                             VStack(spacing: supportButtonSpacing) {
                                 SettingsActionButton(
-                                    title: L10n.App.Settings.SupportFeedback.reportBug.localized,
-                                    badges: [],
-                                    isProminent: false,
-                                    useSystemStyle: true
+                                    title: L10n.App.Settings.SupportFeedback.supportHelm.localized,
+                                    badges: [
+                                        SettingsActionBadge(
+                                            id: "support_helm_pro",
+                                            managerId: nil,
+                                            label: L10n.App.Settings.SupportFeedback.gitHubSponsors.localized,
+                                            symbol: "star.fill",
+                                            tint: HelmTheme.proAccent
+                                        )
+                                    ],
+                                    isProminent: true,
+                                    leadingSymbol: "heart.circle.fill",
+                                    alignLeading: false,
+                                    contentVerticalPadding: 2,
+                                    prominentStyleVerticalPadding: 2,
+                                    overlayBadges: true,
+                                    titleFont: .callout.weight(.semibold)
                                 ) {
-                                    HelmSupport.reportBug(includeDiagnostics: includeDiagnostics)
-                                    if includeDiagnostics {
-                                        showCopiedBriefly()
-                                    }
+                                    showSupportOptionsModal = true
                                 }
+                                .frame(height: supportButtonHeight)
 
                                 SettingsActionButton(
-                                    title: L10n.App.Settings.SupportFeedback.requestFeature.localized,
+                                    title: L10n.App.Settings.SupportFeedback.sendFeedback.localized,
                                     badges: [],
                                     isProminent: false,
                                     useSystemStyle: true
                                 ) {
-                                    HelmSupport.requestFeature(includeDiagnostics: includeDiagnostics)
-                                    if includeDiagnostics {
-                                        showCopiedBriefly()
+                                    HelmSupport.emailFeedback()
+                                }
+                                .frame(height: sendFeedbackButtonHeight)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+
+                            VStack(spacing: supportButtonSpacing) {
+                                VStack(spacing: supportButtonSpacing) {
+                                    SettingsActionButton(
+                                        title: L10n.App.Settings.SupportFeedback.reportBug.localized,
+                                        badges: [],
+                                        isProminent: false,
+                                        useSystemStyle: true
+                                    ) {
+                                        HelmSupport.reportBug(includeDiagnostics: includeDiagnostics)
+                                        if includeDiagnostics {
+                                            showCopiedBriefly()
+                                        }
+                                    }
+
+                                    SettingsActionButton(
+                                        title: L10n.App.Settings.SupportFeedback.requestFeature.localized,
+                                        badges: [],
+                                        isProminent: false,
+                                        useSystemStyle: true
+                                    ) {
+                                        HelmSupport.requestFeature(includeDiagnostics: includeDiagnostics)
+                                        if includeDiagnostics {
+                                            showCopiedBriefly()
+                                        }
                                     }
                                 }
-                            }
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: SupportTopGroupHeightKey.self,
-                                        value: proxy.size.height
-                                    )
-                                }
-                            )
+                                .background(
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(
+                                            key: SupportTopGroupHeightKey.self,
+                                            value: proxy.size.height
+                                        )
+                                    }
+                                )
 
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.copyDiagnostics.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                HelmSupport.copyDiagnosticsToClipboard()
-                                showCopiedBriefly()
-                            }
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: SupportBottomButtonHeightKey.self,
-                                        value: proxy.size.height
-                                    )
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.SupportFeedback.copyDiagnostics.localized,
+                                    badges: [],
+                                    isProminent: false,
+                                    useSystemStyle: true
+                                ) {
+                                    HelmSupport.copyDiagnosticsToClipboard()
+                                    showCopiedBriefly()
                                 }
-                            )
+                                .background(
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(
+                                            key: SupportBottomButtonHeightKey.self,
+                                            value: proxy.size.height
+                                        )
+                                    }
+                                )
 
-                            SettingsActionButton(
-                                title: L10n.App.Settings.SupportFeedback.copyStructuredExport.localized,
-                                badges: [],
-                                isProminent: false,
-                                useSystemStyle: true
-                            ) {
-                                HelmSupport.copyStructuredDiagnosticsToClipboard()
-                                showCopiedBriefly()
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.SupportFeedback.copyStructuredExport.localized,
+                                    badges: [],
+                                    isProminent: false,
+                                    useSystemStyle: true
+                                ) {
+                                    HelmSupport.copyStructuredDiagnosticsToClipboard()
+                                    showCopiedBriefly()
+                                }
                             }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .top)
+                            .frame(maxWidth: .infinity, alignment: .top)
                         }
                         .onPreferenceChange(SupportTopGroupHeightKey.self) { height in
                             supportTopGroupHeight = height

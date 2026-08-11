@@ -175,6 +175,8 @@ final class ControlCenterContext: ObservableObject {
     @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?
     @Published var managerInstallSheetRequestToken: Int = 0
+    @Published private(set) var dashboardFocusRequestToken: Int = 0
+    private var pendingDashboardFocusTarget: WayfinderFocusTarget?
 
     func presentUpgradeSheet(in host: UpgradeSheetHost) {
         upgradeSheetHost = host
@@ -207,6 +209,11 @@ final class ControlCenterContext: ObservableObject {
 
         selectedSection = deepLink.destination.legacyControlCenterSection
 
+        if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
+            pendingDashboardFocusTarget = .serviceHealth
+            dashboardFocusRequestToken &+= 1
+        }
+
         guard let entityID = deepLink.entityID else { return }
         switch deepLink.destination {
         case .dashboard:
@@ -220,6 +227,11 @@ final class ControlCenterContext: ObservableObject {
         case .environment:
             selectedManagerId = entityID
         }
+    }
+
+    func takeDashboardFocusRequest() -> WayfinderFocusTarget? {
+        defer { pendingDashboardFocusTarget = nil }
+        return pendingDashboardFocusTarget
     }
 
     func alignInspectorSelection(for section: ControlCenterSection?) {
