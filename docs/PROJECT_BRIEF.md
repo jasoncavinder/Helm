@@ -362,6 +362,8 @@ Requirements:
 - No shell-based update mechanisms
 - Manual approval required for installation; automatic scheduled update checks are user-configurable
 - Beta and release-candidate updates are explicit opt-in; stable updates remain the default
+- Scheduled direct-channel checks are information-only: availability appears in Helm without presenting Sparkle's install UI.
+- Direct-channel users may explicitly opt into including Helm in Upgrade All. Helm must run last, and Sparkle retains confirmation, installation, and relaunch authority.
 
 Channel-specific update policy:
 - Direct Developer ID consumer build: Sparkle-based updates.
@@ -372,6 +374,8 @@ Channel-specific update policy:
 Self-update behavior must not depend on Homebrew and must remain decoupled from licensing authority.
 Helm's own bundle must not appear in the Sparkle apps manager because self-update authority belongs to the channel-aware Helm updater.
 The direct-channel Sparkle feed keeps stable releases in the default channel and prereleases in the `beta` channel so prerelease publication cannot displace the stable update path.
+Third-party Sparkle apps may appear in reviewed plans, but remain interactive vendor-managed steps until Helm has a trustworthy per-app completion contract. They must not be counted as automatic bulk work.
+Fleet update policy may reuse the same sequencing concepts, but managed Helm deployment remains PKG/MDM-controlled rather than Sparkle-controlled.
 
 ---
 

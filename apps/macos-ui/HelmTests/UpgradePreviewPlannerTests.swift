@@ -72,7 +72,8 @@ final class UpgradePreviewPlannerTests: XCTestCase {
             step(id: "standard:one", order: 5, manager: "npm", authority: "standard", package: "one"),
             step(id: "guarded:two", order: 1, manager: "softwareupdate", authority: "guarded", package: "two"),
             step(id: "authoritative:three", order: 99, manager: "mise", authority: "authoritative", package: "three"),
-            step(id: "standard:four", order: 1, manager: "pip", authority: "standard", package: "four")
+            step(id: "standard:four", order: 1, manager: "pip", authority: "standard", package: "four"),
+            step(id: "interactive:five", order: 0, manager: "sparkle", authority: "interactive", package: "five")
         ]
 
         let sorted = UpgradePreviewPlanner.sortedForExecution(steps)
@@ -80,8 +81,40 @@ final class UpgradePreviewPlannerTests: XCTestCase {
             "authoritative:three",
             "standard:four",
             "standard:one",
-            "guarded:two"
+            "guarded:two",
+            "interactive:five"
         ])
+    }
+
+    func testAutomaticExecutionPolicyKeepsExternalSparkleInteractiveAndHelmOptIn() {
+        XCTAssertFalse(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: UpgradePreviewPlanner.externalSparkleAction,
+                managerId: "sparkle",
+                includeHelmSelfUpdate: true
+            )
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: UpgradePreviewPlanner.helmSelfUpdateAction,
+                managerId: UpgradePreviewPlanner.helmSelfUpdateManagerId,
+                includeHelmSelfUpdate: false
+            )
+        )
+        XCTAssertTrue(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: UpgradePreviewPlanner.helmSelfUpdateAction,
+                managerId: UpgradePreviewPlanner.helmSelfUpdateManagerId,
+                includeHelmSelfUpdate: true
+            )
+        )
+        XCTAssertTrue(
+            UpgradePreviewPlanner.runsAutomatically(
+                action: "upgrade",
+                managerId: "homebrew_formula",
+                includeHelmSelfUpdate: false
+            )
+        )
     }
 
     func testScopedUpgradePlanStepsFiltersByManagerAndPackage() {

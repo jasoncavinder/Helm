@@ -1,6 +1,59 @@
 import XCTest
 
 final class AppUpdateConfigurationTests: XCTestCase {
+    func testAutomaticUpdateScheduleRequiresEligibilityAndOptIn() {
+        XCTAssertNil(
+            AppUpdateSchedulePolicy.nextCheckDelay(
+                canCheckForUpdates: false,
+                autoCheckEnabled: true,
+                lastCheckDate: nil,
+                frequencyMinutes: 1_440
+            )
+        )
+        XCTAssertNil(
+            AppUpdateSchedulePolicy.nextCheckDelay(
+                canCheckForUpdates: true,
+                autoCheckEnabled: false,
+                lastCheckDate: nil,
+                frequencyMinutes: 1_440
+            )
+        )
+    }
+
+    func testAutomaticUpdateScheduleRunsSoonWithoutHistoryAndHonorsFrequency() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        XCTAssertEqual(
+            AppUpdateSchedulePolicy.nextCheckDelay(
+                canCheckForUpdates: true,
+                autoCheckEnabled: true,
+                lastCheckDate: nil,
+                frequencyMinutes: 1_440,
+                now: now
+            ),
+            1
+        )
+        XCTAssertEqual(
+            AppUpdateSchedulePolicy.nextCheckDelay(
+                canCheckForUpdates: true,
+                autoCheckEnabled: true,
+                lastCheckDate: now.addingTimeInterval(-300),
+                frequencyMinutes: 10,
+                now: now
+            ),
+            300
+        )
+        XCTAssertEqual(
+            AppUpdateSchedulePolicy.nextCheckDelay(
+                canCheckForUpdates: true,
+                autoCheckEnabled: true,
+                lastCheckDate: now.addingTimeInterval(-601),
+                frequencyMinutes: 10,
+                now: now
+            ),
+            1
+        )
+    }
+
     func testSparklePrereleaseChannelIsOptIn() {
         XCTAssertEqual(
             HelmSparkleUpdateChannel.allowedChannels(prereleaseUpdatesEnabled: false),

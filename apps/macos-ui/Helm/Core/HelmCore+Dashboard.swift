@@ -347,6 +347,11 @@ extension HelmCore {
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {
+        if package.managerId == Self.helmSelfUpdateManagerId {
+            return package.status == .upgradable
+                && AppUpdateCoordinator.shared.availableUpdate != nil
+                && AppUpdateCoordinator.shared.canCheckForUpdates
+        }
         if package.managerId == "sparkle" {
             return package.status == .upgradable
                 && package.packageIdentifier?.hasSuffix(".app") == true
@@ -1017,14 +1022,20 @@ extension HelmCore {
                 case .keepLocalState:
                     break
                 case .clearLocalState:
+                    let shouldRunHelmSelfUpdate = self.pendingHelmSelfUpdateWorkflowId == workflowId
+                    self.pendingHelmSelfUpdateWorkflowId = nil
                     self.scopedUpgradeWorkflowId = nil
                     self.scopedUpgradePlanRunInProgress = false
                     self.scopedUpgradeWorkflowStartState.clear(workflowId: workflowId)
+                    if shouldRunHelmSelfUpdate {
+                        AppUpdateCoordinator.shared.checkForUpdates()
+                    }
                 case .recoverLocalState:
                     taskSyncLogger.warning(
                         "Upgrade workflow status remained indeterminate; clearing local workflow UI state (workflow_id=\(workflowId), retries=\(UpgradeWorkflowStatusReconciliationState.maximumIndeterminateResults), budget_seconds=\(Int(UpgradeWorkflowStatusReconciliationState.recoveryBudget)))"
                     )
                     self.scopedUpgradeWorkflowId = nil
+                    self.pendingHelmSelfUpdateWorkflowId = nil
                     self.scopedUpgradePlanRunInProgress = false
                     self.scopedUpgradeWorkflowStartState.clear(workflowId: workflowId)
                     self.recordLastError(

@@ -157,6 +157,21 @@ struct SettingsSectionView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(L10n.App.Settings.Label.includeHelmInUpgradeAll.localized, isOn: Binding(
+                                get: { appUpdate.includeHelmInUpgradeAll },
+                                set: { appUpdate.setIncludeHelmInUpgradeAll($0) }
+                            ))
+                            .toggleStyle(.switch)
+                            .disabled(!appUpdate.canCheckForUpdates)
+
+                            Text(L10n.App.Settings.Label.includeHelmInUpgradeAllDescription.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
 

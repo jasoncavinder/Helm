@@ -103,6 +103,11 @@ extension HelmCore {
     func upgradePackage(_ package: PackageItem) {
         guard canUpgradeIndividually(package), !upgradeActionPackageIds.contains(package.id) else { return }
 
+        if package.managerId == Self.helmSelfUpdateManagerId {
+            AppUpdateCoordinator.shared.checkForUpdates()
+            return
+        }
+
         if package.managerId == "sparkle" {
             guard let bundlePath = package.packageIdentifier,
                   ExternalSparkleUpdateCoordinator.shared.checkForUpdates(bundlePath: bundlePath) else {
@@ -204,7 +209,15 @@ extension HelmCore {
             managerScopeId: managerScopeId,
             packageFilter: packageFilter
         )
-        guard !scopedSteps.isEmpty else { return }
+        let backendSteps = scopedSteps.filter(Self.isBackendManagedUpgradePlanStep)
+        let includeHelmSelfUpdate = scopedSteps.contains(where: Self.isHelmSelfUpdatePlanStep)
+            && AppUpdateCoordinator.shared.includeHelmInUpgradeAll
+        guard !backendSteps.isEmpty || includeHelmSelfUpdate else { return }
+
+        if backendSteps.isEmpty, includeHelmSelfUpdate {
+            AppUpdateCoordinator.shared.checkForUpdates()
+            return
+        }
 
         startScopedUpgradeWorkflow(
             includePinned: upgradePlanIncludePinned,
@@ -212,7 +225,8 @@ extension HelmCore {
             managerScopeId: managerScopeId,
             packageFilter: packageFilter,
             source: "core.actions",
-            action: "runUpgradePlanScoped"
+            action: "runUpgradePlanScoped",
+            includeHelmSelfUpdate: includeHelmSelfUpdate
         )
     }
 
@@ -222,7 +236,8 @@ extension HelmCore {
         managerScopeId: String,
         packageFilter: String,
         source: String,
-        action: String
+        action: String,
+        includeHelmSelfUpdate: Bool = false
     ) {
         guard scopedUpgradeWorkflowId == nil,
               !scopedUpgradeWorkflowStartState.isInFlight,
@@ -271,6 +286,9 @@ extension HelmCore {
                 if cancellationPending {
                     self.cancelScopedUpgradeWorkflow(workflowId)
                 } else {
+                    if includeHelmSelfUpdate {
+                        self.pendingHelmSelfUpdateWorkflowId = workflowId
+                    }
                     self.refreshScopedUpgradeWorkflowStatus()
                 }
             }
@@ -280,6 +298,9 @@ extension HelmCore {
     func cancelRemainingUpgradePlanSteps(managerScopeId: String, packageFilter: String) {
         scopedUpgradeWorkflowStartState.requestCancellation()
         if let workflowId = scopedUpgradeWorkflowId {
+            if pendingHelmSelfUpdateWorkflowId == workflowId {
+                pendingHelmSelfUpdateWorkflowId = nil
+            }
             cancelScopedUpgradeWorkflow(workflowId)
         }
 
