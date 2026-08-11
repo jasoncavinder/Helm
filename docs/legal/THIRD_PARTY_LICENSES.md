@@ -18,11 +18,11 @@ The Helm project license (`LICENSE`) does not replace third-party license obliga
 
 ---
 
-## Snapshot (Audited 2026-08-08)
+## Snapshot (Audited 2026-08-10)
 
 Release context:
 
-- source candidate: `v0.19.0-rc.2`
+- source candidate: `v0.19.0-rc.3`
 - published stable baseline: `v0.18.2`
 
 ### 1) macOS App Runtime Dependencies
@@ -67,7 +67,7 @@ Direct dependencies:
 
 Additional lockfile notes:
 
-- `nanoid` `3.3.18` is MIT-licensed and includes the security fix carried by this candidate.
+- `nanoid` `3.3.18` is MIT-licensed and retains the security fix shipped in the RC2 lineage.
 - Platform `@img/sharp-libvips-*` packages appear under `LGPL-3.0-or-later`.
 - The lockfile scan found no `UNKNOWN` or `NOASSERTION` package licenses.
 

@@ -677,7 +677,7 @@ Exit Criteria:
 
 ## 0.19.x — Native Experience Foundation & First-Run Value (rc)
 
-Status: `v0.19.0-rc.2` source preparation includes the Original Wayfinder native shell and dedicated Settings panes. The Environment Brief remains debug-gated pending Issue #388, and operational-card relocation plus legacy Settings destination removal continue after this candidate.
+Status: published `v0.19.0-rc.2` includes the Original Wayfinder native shell and dedicated Settings panes. The narrow `v0.19.0-rc.3` source candidate corrects post-update language-default migration behavior. The Environment Brief remains debug-gated pending Issue #388, and operational-card relocation plus legacy Settings destination removal continue after this candidate.
 
 Goal:
 
