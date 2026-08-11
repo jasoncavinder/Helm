@@ -175,6 +175,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?
     @Published var managerInstallSheetRequestToken: Int = 0
+    @Published var dismissedFirstRunPreview: Bool = false
     @Published private(set) var dashboardFocusRequestToken: Int = 0
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
 
@@ -241,6 +242,17 @@ final class ControlCenterContext: ObservableObject {
     func requestManagerInstallSheet(for managerId: String) {
         managerInstallSheetRequestManagerId = managerId
         managerInstallSheetRequestToken += 1
+    }
+
+    func shouldPresentFirstRun(
+        mode: EnvironmentBriefFirstRunMode,
+        hasCompletedOnboarding: Bool
+    ) -> Bool {
+        EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            mode: mode,
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            dismissedPreview: dismissedFirstRunPreview
+        )
     }
 
     private func clearInspectorSelection(except section: ControlCenterSection?) {

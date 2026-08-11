@@ -6,7 +6,6 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
-    @State private var dismissedFirstRunPreview = false
     private let sidebarWidth: CGFloat = 232
 
     private var firstRunMode: EnvironmentBriefFirstRunMode {
@@ -14,10 +13,9 @@ struct ControlCenterWindowView: View {
     }
 
     private var presentsFirstRun: Bool {
-        EnvironmentBriefFirstRunConfiguration.shouldPresent(
+        context.shouldPresentFirstRun(
             mode: firstRunMode,
-            hasCompletedOnboarding: core.hasCompletedOnboarding,
-            dismissedPreview: dismissedFirstRunPreview
+            hasCompletedOnboarding: core.hasCompletedOnboarding
         )
     }
 
@@ -213,7 +211,7 @@ struct ControlCenterWindowView: View {
     }
 
     private func completeFirstRun() {
-        dismissedFirstRunPreview = true
+        context.dismissedFirstRunPreview = true
         if !core.hasCompletedOnboarding {
             core.completeOnboarding()
             core.triggerRefresh()
