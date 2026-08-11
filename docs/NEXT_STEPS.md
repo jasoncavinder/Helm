@@ -202,7 +202,7 @@ Current checkpoint:
     - persist accepted license version + timestamp and re-prompt automatically when tracked license version changes
     - expose `View License Terms` in About overlay for post-onboarding re-review
   - post-rc.3 control-center/popover workflow follow-up delivered on `dev`:
-    - suppress popover while Control Center is open and focus Control Center on status-item clicks during that state
+    - focus Dashboard on primary status-item clicks while it is open, while preserving secondary-click access to the shared popover alongside it
     - make popover health + metric cards and overview metric cards route directly to their Control Center sections
     - extend top-bar drag surface to match the full visible top bar
   - post-rc.3 manager-priority/inspector follow-up delivered on `dev`:
@@ -457,7 +457,7 @@ Next release targets:
 - [x] post-`rc.2` diagnostics/runtime hardening — task-output store now enforces bounded command/output buffering for long-running tasks, and Hungarian locale coverage includes the new task/inspector strings.
 - [x] post-`rc.3` updater release-notes hosting — release workflow now generates a per-tag website release-notes HTML page from `CHANGELOG.md`, publishes it with appcast updates, and links Sparkle release-notes URLs to the hosted page.
 - [x] post-`rc.3` onboarding/legal acceptance — Developer ID onboarding now requires explicit license-terms acceptance tracked by version + timestamp, with re-prompting on license-version changes and a persistent About link to review terms.
-- [x] post-`rc.3` popover/control-center interaction hardening — status-item popover no longer coexists with Control Center; status-item clicks focus Control Center while open; popover/overview health and metrics now deep-link to the appropriate Control Center section.
+- [x] post-`rc.3` popover/Dashboard interaction hardening — primary status-item clicks focus Dashboard while open; secondary clicks preserve access to the shared popover alongside it; popover/overview health and metrics deep-link to the appropriate Dashboard section.
 - [x] post-`rc.3` manager-priority workflow — manager cards are priority-ordered by authority with installed-first enforcement, drag-reorder support, and advanced-settings restore-default-priority action.
 - [x] post-`rc.3` manager inspector install-metadata expansion — inspector now shows all discovered executable paths (active path emphasized), install-method metadata with recommended/preferred tags, and expanded per-manager install-method catalogs.
 - [x] post-`rc.3` About diagnostics metadata enhancement — About overlay now surfaces build number, distribution channel, update authority, and last update-check timestamp.

@@ -12,6 +12,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 ### Fixed
 - npm searches shorter than two trimmed characters now return no results without invoking npm, avoiding npm's minimum-query-length error during incremental package search.
 
+### Changed
+- Status-item activation now keeps the popover available on secondary click while Dashboard is open; primary click focuses the open Dashboard, and either click toggles the popover while Dashboard is closed.
+
 ## [0.19.0-rc.4] - 2026-08-11
 
 ### Added
