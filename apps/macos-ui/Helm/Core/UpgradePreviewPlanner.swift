@@ -12,6 +12,7 @@ struct PackageRuntimeStateProjection: Codable, Hashable {
 
 struct UpgradePreviewPlanner {
     static let externalSparkleAction = "external_sparkle"
+    static let externalSparkleStepPrefix = "sparkle-external:"
     static let helmSelfUpdateAction = "helm_self_update"
     static let helmSelfUpdateManagerId = "helm_self_update"
 
@@ -35,6 +36,12 @@ struct UpgradePreviewPlanner {
     struct ExternalSparkleUpdate: Equatable {
         let id: String
         let packageName: String
+    }
+
+    static func externalSparklePackageId(stepId: String) -> String? {
+        guard stepId.hasPrefix(externalSparkleStepPrefix) else { return nil }
+        let packageId = String(stepId.dropFirst(externalSparkleStepPrefix.count))
+        return packageId.isEmpty ? nil : packageId
     }
 
     struct Candidate {
@@ -160,7 +167,7 @@ struct UpgradePreviewPlanner {
         }) {
             steps.append(
                 PlanStep(
-                    id: "sparkle-external:\(update.id)",
+                    id: "\(externalSparkleStepPrefix)\(update.id)",
                     orderIndex: orderIndex,
                     managerId: "sparkle",
                     authority: "interactive",
@@ -292,6 +299,64 @@ struct UpgradePreviewPlanner {
             return false
         }
         return true
+    }
+}
+
+struct UpgradePlanCompletion: Equatable {
+    let workflowId: String
+    let remainingExternalSparkleStepIds: [String]
+    let completedNormally: Bool
+
+    var remainingInteractiveCount: Int {
+        remainingExternalSparkleStepIds.count
+    }
+}
+
+struct UpgradePlanCompletionTracker {
+    private var workflowId: String?
+    private var externalSparkleStepIds: Set<String> = []
+    private var observedAcceptedOrActive = false
+    private var wasCancelled = false
+
+    mutating func begin(workflowId: String, externalSparkleStepIds: [String]) {
+        self.workflowId = workflowId
+        self.externalSparkleStepIds = Set(externalSparkleStepIds)
+        observedAcceptedOrActive = false
+        wasCancelled = false
+    }
+
+    mutating func markAccepted(workflowId: String) {
+        guard self.workflowId == workflowId else { return }
+        observedAcceptedOrActive = true
+    }
+
+    mutating func markObservedActive(workflowId: String) {
+        markAccepted(workflowId: workflowId)
+    }
+
+    mutating func markCancelled(workflowId: String) {
+        guard self.workflowId == workflowId else { return }
+        wasCancelled = true
+    }
+
+    mutating func finish(
+        workflowId: String,
+        currentExternalSparkleStepIds: Set<String>,
+        forceInterrupted: Bool = false
+    ) -> UpgradePlanCompletion? {
+        guard self.workflowId == workflowId else { return nil }
+        let completion = UpgradePlanCompletion(
+            workflowId: workflowId,
+            remainingExternalSparkleStepIds: externalSparkleStepIds
+                .intersection(currentExternalSparkleStepIds)
+                .sorted(),
+            completedNormally: observedAcceptedOrActive && !wasCancelled && !forceInterrupted
+        )
+        self.workflowId = nil
+        externalSparkleStepIds = []
+        observedAcceptedOrActive = false
+        wasCancelled = false
+        return completion
     }
 }
 

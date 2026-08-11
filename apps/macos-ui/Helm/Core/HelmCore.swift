@@ -464,6 +464,7 @@ final class HelmCore: ObservableObject {
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
     @Published var upgradePlanTaskProjectionByStepId: [String: UpgradePlanTaskProjection] = [:]
     @Published var upgradePlanFailureGroups: [UpgradePlanFailureGroup] = []
+    @Published var upgradePlanCompletion: UpgradePlanCompletion?
     @Published var upgradePlanAllowOsUpdates: Bool = false
     @Published var upgradePlanIncludePinned: Bool = false
     @Published var scopedUpgradePlanRunInProgress: Bool = false
@@ -575,6 +576,7 @@ final class HelmCore: ObservableObject {
     var pendingHelmSelfUpdateWorkflowId: String?
     var scopedUpgradeWorkflowStartState = UpgradeWorkflowStartState()
     var scopedUpgradeWorkflowStatusReconciliationState = UpgradeWorkflowStatusReconciliationState()
+    var upgradePlanCompletionTracker = UpgradePlanCompletionTracker()
     var scopedUpgradeWorkflowStatusCheckInFlight = false
     private var reconnectAttempt: Int = 0
     private var lastTaskSnapshotRefreshAt: Date = .distantPast

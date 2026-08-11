@@ -1018,15 +1018,25 @@ extension HelmCore {
                 case .none:
                     resolvedIsActive = nil
                 }
+                if resolvedIsActive == true {
+                    self.upgradePlanCompletionTracker.markObservedActive(workflowId: workflowId)
+                }
                 switch self.scopedUpgradeWorkflowStatusReconciliationState.reconcile(isActive: resolvedIsActive) {
                 case .keepLocalState:
                     break
                 case .clearLocalState:
+                    let completion = self.upgradePlanCompletionTracker.finish(
+                        workflowId: workflowId,
+                        currentExternalSparkleStepIds: Set(
+                            self.upgradePlanSteps.filter(Self.isExternalSparklePlanStep).map(\.id)
+                        )
+                    )
                     let shouldRunHelmSelfUpdate = self.pendingHelmSelfUpdateWorkflowId == workflowId
                     self.pendingHelmSelfUpdateWorkflowId = nil
                     self.scopedUpgradeWorkflowId = nil
                     self.scopedUpgradePlanRunInProgress = false
                     self.scopedUpgradeWorkflowStartState.clear(workflowId: workflowId)
+                    self.upgradePlanCompletion = completion
                     if shouldRunHelmSelfUpdate {
                         AppUpdateCoordinator.shared.checkForUpdates()
                     }
@@ -1034,10 +1044,18 @@ extension HelmCore {
                     taskSyncLogger.warning(
                         "Upgrade workflow status remained indeterminate; clearing local workflow UI state (workflow_id=\(workflowId), retries=\(UpgradeWorkflowStatusReconciliationState.maximumIndeterminateResults), budget_seconds=\(Int(UpgradeWorkflowStatusReconciliationState.recoveryBudget)))"
                     )
+                    let completion = self.upgradePlanCompletionTracker.finish(
+                        workflowId: workflowId,
+                        currentExternalSparkleStepIds: Set(
+                            self.upgradePlanSteps.filter(Self.isExternalSparklePlanStep).map(\.id)
+                        ),
+                        forceInterrupted: true
+                    )
                     self.scopedUpgradeWorkflowId = nil
                     self.pendingHelmSelfUpdateWorkflowId = nil
                     self.scopedUpgradePlanRunInProgress = false
                     self.scopedUpgradeWorkflowStartState.clear(workflowId: workflowId)
+                    self.upgradePlanCompletion = completion
                     self.recordLastError(
                         source: "core.dashboard",
                         action: "isUpgradeWorkflowActive.indeterminate_recovery",

@@ -596,3 +596,59 @@ final class PackageActionTrackingTests: XCTestCase {
         XCTAssertEqual(names, ["zig"])
     }
 }
+
+final class UpgradePlanCompletionTrackerTests: XCTestCase {
+    func testExternalSparklePackageIdPreservesPackageIdentity() {
+        XCTAssertEqual(
+            UpgradePreviewPlanner.externalSparklePackageId(
+                stepId: "sparkle-external:sparkle:/Applications/Example.app"
+            ),
+            "sparkle:/Applications/Example.app"
+        )
+        XCTAssertNil(UpgradePreviewPlanner.externalSparklePackageId(stepId: "npm:example"))
+    }
+
+    func testNormalCompletionKeepsOnlyStillAvailableInteractiveSteps() {
+        var tracker = UpgradePlanCompletionTracker()
+        tracker.begin(
+            workflowId: "workflow",
+            externalSparkleStepIds: ["sparkle-external:one", "sparkle-external:two"]
+        )
+        tracker.markAccepted(workflowId: "workflow")
+
+        let completion = tracker.finish(
+            workflowId: "workflow",
+            currentExternalSparkleStepIds: ["sparkle-external:two", "sparkle-external:three"]
+        )
+
+        XCTAssertEqual(completion?.remainingExternalSparkleStepIds, ["sparkle-external:two"])
+        XCTAssertEqual(completion?.remainingInteractiveCount, 1)
+        XCTAssertEqual(completion?.completedNormally, true)
+    }
+
+    func testCancelledAndInterruptedWorkflowsDoNotCompleteNormally() {
+        var cancelledTracker = UpgradePlanCompletionTracker()
+        cancelledTracker.begin(workflowId: "cancelled", externalSparkleStepIds: [])
+        cancelledTracker.markAccepted(workflowId: "cancelled")
+        cancelledTracker.markCancelled(workflowId: "cancelled")
+        XCTAssertEqual(
+            cancelledTracker.finish(
+                workflowId: "cancelled",
+                currentExternalSparkleStepIds: []
+            )?.completedNormally,
+            false
+        )
+
+        var interruptedTracker = UpgradePlanCompletionTracker()
+        interruptedTracker.begin(workflowId: "interrupted", externalSparkleStepIds: [])
+        interruptedTracker.markObservedActive(workflowId: "interrupted")
+        XCTAssertEqual(
+            interruptedTracker.finish(
+                workflowId: "interrupted",
+                currentExternalSparkleStepIds: [],
+                forceInterrupted: true
+            )?.completedNormally,
+            false
+        )
+    }
+}
