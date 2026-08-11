@@ -20,8 +20,8 @@ enum HelmTab: CaseIterable {
 struct NavigationBarView: View {
     @Binding var selectedTab: HelmTab
     @Binding var searchText: String
-    @Binding var showSettings: Bool
     @ObservedObject var core = HelmCore.shared
+    @EnvironmentObject private var context: ControlCenterContext
 
     var body: some View {
         VStack(spacing: 8) {
@@ -41,16 +41,13 @@ struct NavigationBarView: View {
 
                 Spacer()
 
-                Button(action: { showSettings.toggle() }) {
+                Button(action: { context.settingsOpenRouter.requestOpen() }) {
                     Image(systemName: "gearshape")
                         .font(.body)
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.App.Settings.Tab.title.localized)
-                .popover(isPresented: $showSettings, arrowEdge: .top) {
-                    SettingsPopoverView()
-                }
             }
 
             HStack {

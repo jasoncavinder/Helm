@@ -6,7 +6,6 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
     case packages
     case managers
     case tasks
-    case settings
 
     var id: String { rawValue }
 
@@ -29,8 +28,6 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
             return "app.wayfinder.destination.activity".localized
         case .managers:
             return "app.wayfinder.destination.environment".localized
-        case .settings:
-            return L10n.App.Settings.Tab.title.localized
         }
     }
 
@@ -46,14 +43,12 @@ enum ControlCenterSection: String, CaseIterable, Identifiable {
             return "waveform.path.ecg"
         case .managers:
             return "point.3.connected.trianglepath.dotted"
-        case .settings:
-            return "gearshape"
         }
     }
 
     var supportsInspector: Bool {
         switch self {
-        case .overview, .settings:
+        case .overview:
             return false
         case .updates, .packages, .managers, .tasks:
             return true
@@ -209,12 +204,6 @@ final class ControlCenterContext: ObservableObject {
 
     func navigate(to deepLink: WayfinderDeepLink) {
         clearInspectorSelection()
-
-        // Remove this compatibility route when service health moves into the native Dashboard.
-        if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
-            selectedSection = .settings
-            return
-        }
 
         selectedSection = deepLink.destination.legacyControlCenterSection
 

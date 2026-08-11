@@ -30,7 +30,7 @@ final class HelmSettingsOpenRouter {
         if #available(macOS 14.0, *) {
             requestRegisteredOpen()
         } else {
-            openLegacySettings()
+            openVenturaSettingsScene()
         }
     }
 
@@ -42,7 +42,7 @@ final class HelmSettingsOpenRouter {
         action()
     }
 
-    private func openLegacySettings() {
+    private func openVenturaSettingsScene() {
         if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
             NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
         }
