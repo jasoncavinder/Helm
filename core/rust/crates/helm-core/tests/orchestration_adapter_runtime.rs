@@ -58,19 +58,19 @@ async fn wait_until(condition: impl FnMut() -> bool) -> bool {
 }
 
 #[tokio::test]
-async fn wait_until_for_rejects_conditions_that_flip_after_timeout() {
-    let start = tokio::time::Instant::now();
-    let completed = wait_until_for(
-        Duration::from_millis(19),
-        Duration::from_millis(10),
-        || tokio::time::Instant::now().duration_since(start) >= Duration::from_millis(15),
-    )
+async fn wait_until_for_does_not_poll_condition_after_timeout() {
+    let mut checks = 0;
+    let completed = wait_until_for(Duration::from_millis(10), Duration::from_millis(20), || {
+        checks += 1;
+        checks > 1
+    })
     .await;
 
     assert!(
         !completed,
-        "condition should not succeed after the timeout budget expires"
+        "condition should not be polled after the timeout budget expires"
     );
+    assert_eq!(checks, 1, "condition should only be checked before timeout");
 }
 
 #[derive(Clone)]
