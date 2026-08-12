@@ -153,20 +153,23 @@ fn prepare_command_for_spawn_with_privileged_executor(
         });
     }
 
-    if let Some(executor_path) = resolve_privileged_executor_path(
-        request.manager,
-        request.task_type,
-        request.action,
-        privileged_executor_override,
-    )? {
-        let operation = request.privileged_operation.ok_or_else(|| {
-            process_failure(
-                request.manager,
-                request.task_type,
-                request.action,
-                "elevated command is missing its privileged operation".to_string(),
-            )
-        })?;
+    let operation = request.privileged_operation.ok_or_else(|| {
+        process_failure(
+            request.manager,
+            request.task_type,
+            request.action,
+            "elevated command is missing its privileged operation".to_string(),
+        )
+    })?;
+
+    if operation.supports_privileged_executor()
+        && let Some(executor_path) = resolve_privileged_executor_path(
+            request.manager,
+            request.task_type,
+            request.action,
+            privileged_executor_override,
+        )?
+    {
         let elevated = CommandSpec::new(executor_path)
             .args(["--operation", operation.identifier(), "--program"])
             .arg(request.command.program.to_string_lossy().to_string())
@@ -1677,6 +1680,52 @@ mod tests {
         assert!(!prepared.command_display.contains("/usr/bin/sudo"));
 
         let _ = fs::remove_file(prepared.command.program);
+    }
+
+    #[test]
+    fn prepare_command_keeps_mas_on_sudo_until_helper_contract_exists() {
+        let executor_path = std::env::temp_dir().join("helm-privileged-executor-mas-test");
+        fs::write(&executor_path, "#!/bin/sh\nexit 0\n")
+            .expect("should write privileged executor test file");
+        let askpass_path = std::env::temp_dir().join("helm-askpass-mas-test.sh");
+        fs::write(&askpass_path, "#!/bin/sh\nexit 0\n").expect("should write askpass test file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&executor_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod privileged executor test file");
+            fs::set_permissions(&askpass_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod askpass test file");
+        }
+
+        let request = ProcessSpawnRequest::new(
+            ManagerId::Mas,
+            TaskType::Install,
+            ManagerAction::Install,
+            CommandSpec::new("mas").args(["install", "497799835"]),
+        )
+        .privileged_operation(PrivilegedOperation::MacAppStoreInstall);
+
+        let prepared = prepare_command_for_spawn_with_privileged_executor(
+            &request,
+            Some(askpass_path.as_path()),
+            Some(executor_path.as_path()),
+        )
+        .expect("MAS should remain on sudo until the helper contract is complete");
+
+        assert_eq!(prepared.command.program, PathBuf::from("/usr/bin/sudo"));
+        assert_eq!(
+            prepared
+                .command
+                .args
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["-A", "--", "mas", "install", "497799835"]
+        );
+
+        let _ = fs::remove_file(executor_path);
+        let _ = fs::remove_file(askpass_path);
     }
 
     #[test]

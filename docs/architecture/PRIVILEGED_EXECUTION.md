@@ -15,6 +15,8 @@ The core process request now carries both:
 
 Validation fails closed when those fields disagree. The current `sudo -A` askpass path remains the fallback until the signed helper, Service Management registration UX, and release packaging land together.
 
+Current implementation also keeps Mac App Store mutations on the existing askpass path even if a trusted privileged executor is configured, because the MAS constraint below is unresolved.
+
 When the embedded service programmatically configures a trusted absolute executor, the process executor forwards a structured invocation:
 
 ```text

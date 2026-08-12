@@ -55,6 +55,16 @@ impl PrivilegedOperation {
             Self::MacPortsRemoveFiles => "macports.remove_files",
         }
     }
+
+    pub const fn supports_privileged_executor(self) -> bool {
+        !matches!(
+            self,
+            Self::MacAppStoreInstall
+                | Self::MacAppStoreGet
+                | Self::MacAppStoreUninstall
+                | Self::MacAppStoreUpgrade
+        )
+    }
 }
 
 pub type ExecutionResult<T> = Result<T, CoreError>;
