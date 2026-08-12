@@ -29,18 +29,21 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 |---|---|
 | 0.13.x | UI/UX Analysis & Redesign — full UX audit, interaction model, visual system refresh, accessibility, onboarding walkthrough, inspector sidebar, support & feedback entry points (`v0.13.0` stable released) |
 | 0.14.x | Platform, Detection & Optional Managers — Docker, Xcode, Rosetta, Sparkle, Setapp, Homebrew casks, optional managers (`v0.14.x` stable, latest patch `v0.14.1`) |
-| 0.15.x | Advanced Upgrade Transparency — richer execution-plan visibility, failure isolation, and operator controls (`v0.15.0` released) |
+| 0.15.x | Upgrade Preview & Execution Transparency — richer execution-plan visibility, failure isolation, and operator controls (`v0.15.0` released) |
 | 0.16.x | Self-Update & Installer Hardening — Sparkle integration for direct Developer ID channel, signed verification (`v0.16.x` stable, latest patch `v0.16.2`) |
-| 0.17.x | Diagnostics & Logging + Release Hardening — task log viewer, structured diagnostics export, manager-detection diagnostics, onboarding/detection hardening, manager-selection controls, and stable release follow-up fixes (`v0.17.0` stable, latest patch `v0.17.12`) |
+| 0.17.x | Diagnostics & Logging — task log viewer, structured diagnostics export, manager-detection diagnostics, onboarding/detection hardening, manager-selection controls, and stable release follow-up fixes (`v0.17.0` stable, latest patch `v0.17.12`) |
 | 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge, migration-safety hardening, internal advisory cache foundation, and pre-1.0 experience-definition contracts (`v0.18.2` final containment release; `v0.18.0` withdrawn) |
 
-> **Current Track:** `v0.18.2` is stable on `main` as the final v0.18 containment release, `v0.18.0` remains withdrawn, and native-experience/first-run implementation is next in `v0.19.x`. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Current Track:** `v0.18.2` remains the stable release, `v0.19.0-rc.4` is the published opt-in prerelease, and focused RC5 stabilization is in progress. `v0.18.0` remains withdrawn. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
-## Planned
+## Active and Planned
 
 | Version | Milestone |
 |---|---|
-| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines |
+| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines (`v0.19.0-rc.4` published; RC5 stabilization in progress) |
+| 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, action hierarchy, and continuous plan-to-recovery presentation |
+| 0.21.x | Accessibility, System Integration & Resilience — keyboard and VoiceOver parity, system integration, offline/partial-state recovery, and first-run receipts |
+| 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, visual/state validation, moderated usability, and UI lock |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set |
 
 ## Post-1.0

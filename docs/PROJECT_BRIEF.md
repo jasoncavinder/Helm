@@ -440,7 +440,7 @@ This scope is planned for 1.x and is not a 1.0 release gate.
 6. `0.10.x` core language manager delivery (completed): npm/pipx/pip/cargo/cargo-binstall end-to-end plus hardening baseline.
 7. `0.11.x-0.12.x` language + localization expansion (completed): extended language adapters (pnpm/yarn/poetry/rubygems/bundler), non-English locale hardening, upgrade preview, dry-run.
 8. `0.13.x-0.18.x` UX/platform, reliability & groundwork (completed): initial UI/UX redesign, platform managers (docker/xcode), self-update, diagnostics, doctor/repair, local security staging, and planning-only pre-1.0 design definition.
-9. `0.19.x-0.22.x` native macOS experience and release hardening (planned): native foundation and first-run value, core workflow redesign, accessibility/system integration, then fit/finish, stress, and design validation.
+9. `0.19.x-0.22.x` native macOS experience and release hardening (active/planned): active v0.19 native foundation and first-run value, followed by planned core workflow redesign, accessibility/system integration, then fit/finish, stress, and design validation.
 10. `1.0.0` stabilization: release criteria closure, documentation lock, native-experience sign-off, and production readiness sign-off.
 
 ---
