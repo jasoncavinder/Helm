@@ -551,6 +551,37 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func startSelectedUpgradeWorkflowWithId(
+        workflowId: String,
+        includePinned: Bool,
+        allowOsUpdates: Bool,
+        managerScopeId: String,
+        packageFilter: String,
+        selectedStepIdsJSON: String,
+        withReply reply: @escaping (Bool) -> Void
+    ) {
+        let result = workflowId.withCString { workflow in
+            managerScopeId.withCString { scope in
+                packageFilter.withCString { filter in
+                    selectedStepIdsJSON.withCString { selectedStepIds in
+                        helm_start_selected_upgrade_workflow_with_id(
+                            workflow,
+                            includePinned,
+                            allowOsUpdates,
+                            scope,
+                            filter,
+                            selectedStepIds
+                        )
+                    }
+                }
+            }
+        }
+        if !result {
+            logger.warning("helm_start_selected_upgrade_workflow_with_id returned false")
+        }
+        reply(result)
+    }
+
     func cancelUpgradeWorkflow(workflowId: String, withReply reply: @escaping (Bool) -> Void) {
         let result = workflowId.withCString(helm_cancel_upgrade_workflow)
         reply(result)

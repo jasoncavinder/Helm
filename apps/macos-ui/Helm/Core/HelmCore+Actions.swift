@@ -242,17 +242,24 @@ extension HelmCore {
         }
     }
 
-    func runUpgradePlanScoped(managerScopeId: String, packageFilter: String) {
+    func runUpgradePlanScoped(
+        managerScopeId: String,
+        packageFilter: String,
+        selectedStepIds: Set<String>? = nil
+    ) {
         let scopedSteps = HelmCore.scopedUpgradePlanSteps(
             from: upgradePlanSteps,
             managerScopeId: managerScopeId,
             packageFilter: packageFilter
         )
-        let backendSteps = scopedSteps.filter(Self.isBackendManagedUpgradePlanStep)
-        let externalSparkleStepIds = scopedSteps
+        let includedSteps = selectedStepIds.map { selectedStepIds in
+            scopedSteps.filter { selectedStepIds.contains($0.id) }
+        } ?? scopedSteps
+        let backendSteps = includedSteps.filter(Self.isBackendManagedUpgradePlanStep)
+        let externalSparkleStepIds = includedSteps
             .filter(Self.isExternalSparklePlanStep)
             .map(\.id)
-        let includeHelmSelfUpdate = scopedSteps.contains(where: Self.isHelmSelfUpdatePlanStep)
+        let includeHelmSelfUpdate = includedSteps.contains(where: Self.isHelmSelfUpdatePlanStep)
             && AppUpdateCoordinator.shared.includeHelmInUpgradeAll
         guard !backendSteps.isEmpty || includeHelmSelfUpdate else { return }
 
@@ -269,7 +276,8 @@ extension HelmCore {
             source: "core.actions",
             action: "runUpgradePlanScoped",
             includeHelmSelfUpdate: includeHelmSelfUpdate,
-            externalSparkleStepIds: externalSparkleStepIds
+            externalSparkleStepIds: externalSparkleStepIds,
+            selectedBackendStepIds: selectedStepIds == nil ? nil : backendSteps.map(\.id)
         )
     }
 
@@ -281,7 +289,8 @@ extension HelmCore {
         source: String,
         action: String,
         includeHelmSelfUpdate: Bool = false,
-        externalSparkleStepIds: [String] = []
+        externalSparkleStepIds: [String] = [],
+        selectedBackendStepIds: [String]? = nil
     ) {
         guard scopedUpgradeWorkflowId == nil,
               !scopedUpgradeWorkflowStartState.isInFlight,
@@ -293,6 +302,18 @@ extension HelmCore {
                 taskType: "upgrade"
             )
             return
+        }
+
+        let selectedStepIdsJSON: String?
+        if let selectedBackendStepIds {
+            guard let data = try? JSONEncoder().encode(selectedBackendStepIds.sorted()),
+                  let encoded = String(data: data, encoding: .utf8) else {
+                recordLastError(source: source, action: "\(action).encode_selection", taskType: "upgrade")
+                return
+            }
+            selectedStepIdsJSON = encoded
+        } else {
+            selectedStepIdsJSON = nil
         }
 
         let workflowId = "upgrade-workflow-\(UUID().uuidString.lowercased())"
@@ -311,13 +332,24 @@ extension HelmCore {
             action: "\(action).start",
             taskType: "upgrade",
             operation: { completion in
-                service.startScopedUpgradeWorkflowWithId(
-                    workflowId: workflowId,
-                    includePinned: includePinned,
-                    allowOsUpdates: allowOsUpdates,
-                    managerScopeId: managerScopeId,
-                    packageFilter: packageFilter
-                ) { completion($0) }
+                if let selectedStepIdsJSON {
+                    service.startSelectedUpgradeWorkflowWithId(
+                        workflowId: workflowId,
+                        includePinned: includePinned,
+                        allowOsUpdates: allowOsUpdates,
+                        managerScopeId: managerScopeId,
+                        packageFilter: packageFilter,
+                        selectedStepIdsJSON: selectedStepIdsJSON
+                    ) { completion($0) }
+                } else {
+                    service.startScopedUpgradeWorkflowWithId(
+                        workflowId: workflowId,
+                        includePinned: includePinned,
+                        allowOsUpdates: allowOsUpdates,
+                        managerScopeId: managerScopeId,
+                        packageFilter: packageFilter
+                    ) { completion($0) }
+                }
             },
             fallback: false
         ) { [weak self] accepted in

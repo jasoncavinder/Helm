@@ -187,6 +187,35 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         XCTAssertEqual(packageScoped.map(\.id), ["pip:requests"])
     }
 
+    func testPlanSelectionDefaultsNewStepsOnAndPreservesDeselection() {
+        let initial = UpgradePreviewPlanner.reconcileSelection(
+            selectedStepIds: [],
+            knownStepIds: [],
+            availableStepIds: ["mas:Pages", "npm:typescript"]
+        )
+        XCTAssertEqual(initial.selectedStepIds, ["mas:Pages", "npm:typescript"])
+
+        let refreshed = UpgradePreviewPlanner.reconcileSelection(
+            selectedStepIds: ["npm:typescript"],
+            knownStepIds: initial.knownStepIds,
+            availableStepIds: ["mas:Pages", "mas:Numbers", "npm:typescript"]
+        )
+
+        XCTAssertEqual(refreshed.selectedStepIds, ["mas:Numbers", "npm:typescript"])
+        XCTAssertEqual(refreshed.knownStepIds, ["mas:Pages", "mas:Numbers", "npm:typescript"])
+    }
+
+    func testPlanSelectionDropsStepsNoLongerAvailable() {
+        let refreshed = UpgradePreviewPlanner.reconcileSelection(
+            selectedStepIds: ["mas:Pages", "npm:typescript"],
+            knownStepIds: ["mas:Pages", "npm:typescript"],
+            availableStepIds: ["npm:typescript"]
+        )
+
+        XCTAssertEqual(refreshed.selectedStepIds, ["npm:typescript"])
+        XCTAssertEqual(refreshed.knownStepIds, ["npm:typescript"])
+    }
+
     func testShouldRunScopedStepHonorsRuntimeProjectionAndSafeMode() {
         XCTAssertTrue(
             UpgradePreviewPlanner.shouldRunScopedStep(

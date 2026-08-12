@@ -54,6 +54,11 @@ struct UpgradePreviewPlanner {
         let status: String
     }
 
+    struct SelectionState: Equatable {
+        let selectedStepIds: Set<String>
+        let knownStepIds: Set<String>
+    }
+
     static let allManagersScopeId = "__all_managers__"
 
     static func count(
@@ -216,6 +221,20 @@ struct UpgradePreviewPlanner {
                 }
             return managerMatches && packageMatches
         }
+    }
+
+    static func reconcileSelection(
+        selectedStepIds: Set<String>,
+        knownStepIds: Set<String>,
+        availableStepIds: Set<String>
+    ) -> SelectionState {
+        let newlyAvailableStepIds = availableStepIds.subtracting(knownStepIds)
+        return SelectionState(
+            selectedStepIds: selectedStepIds
+                .intersection(availableStepIds)
+                .union(newlyAvailableStepIds),
+            knownStepIds: availableStepIds
+        )
     }
 
     static func shouldRunScopedStep(
