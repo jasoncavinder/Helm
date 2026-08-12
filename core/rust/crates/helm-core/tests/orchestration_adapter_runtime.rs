@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
     AdapterRequest, AdapterResponse, AdapterResult, InstallRequest, ListInstalledRequest,
@@ -36,17 +36,41 @@ fn test_db_path(test_name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
 }
 
-async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(1);
-    loop {
-        if condition() {
-            return true;
+async fn wait_until_for(
+    timeout: Duration,
+    poll_interval: Duration,
+    mut condition: impl FnMut() -> bool,
+) -> bool {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if condition() {
+                return;
+            }
+            tokio::time::sleep(poll_interval).await;
         }
-        if Instant::now() >= deadline {
-            return false;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await
+    .is_ok()
+}
+
+async fn wait_until(condition: impl FnMut() -> bool) -> bool {
+    wait_until_for(Duration::from_secs(1), Duration::from_millis(10), condition).await
+}
+
+#[tokio::test]
+async fn wait_until_for_rejects_conditions_that_flip_after_timeout() {
+    let start = tokio::time::Instant::now();
+    let completed = wait_until_for(
+        Duration::from_millis(19),
+        Duration::from_millis(10),
+        || tokio::time::Instant::now().duration_since(start) >= Duration::from_millis(15),
+    )
+    .await;
+
+    assert!(
+        !completed,
+        "condition should not succeed after the timeout budget expires"
+    );
 }
 
 #[derive(Clone)]
