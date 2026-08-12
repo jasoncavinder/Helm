@@ -9,6 +9,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 ### Added
 - Interactive third-party Sparkle steps in Plan now offer direct vendor update and Open App actions in both the row and inspector. When automatic Plan work finishes with those steps remaining, Helm shows an in-app handoff and, while its interfaces are hidden, a system notification that opens Plan.
 
+### Fixed
+- npm searches shorter than two trimmed characters now return no results without invoking npm, avoiding npm's minimum-query-length error during incremental package search.
+
 ### Changed
 - Status-item activation now keeps the popover available on secondary click while Dashboard is open; primary click focuses the open Dashboard, and either click toggles the popover while Dashboard is closed.
 
