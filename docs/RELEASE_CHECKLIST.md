@@ -62,7 +62,43 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.4 (Updater Plan and Wayfinder Stabilization RC, Source Candidate Prepared)
+## v0.19.0-rc.5 (Focused Post-RC4 Stabilization, Planned)
+
+### Candidate Scope
+
+- [ ] Carry only the post-RC4 behavior already merged through PRs `#419`-`#422` plus release-blocking fixes discovered by the focused readiness pass.
+- [ ] Preserve Dashboard-aware status-item routing: with Dashboard closed either click opens the popover; with Dashboard open primary click focuses Dashboard and secondary click opens the popover.
+- [ ] Preserve third-party Sparkle updates as explicit interactive Plan steps with vendor update and Open App actions rather than falsely counting them as automatic work.
+- [ ] Preserve npm's two-character remote-search minimum without surfacing an error for a one-character query.
+- [ ] Replace routine task-completion alerts with default-on, deduplicated update notifications whose Review Plan and guarded Upgrade All actions retain Helm's existing policy and confirmation flow.
+- [ ] Keep Issue `#388` and the Environment Brief outside production routing.
+
+### Required Validation
+
+- [ ] Complete `docs/validation/v0.19.0-rc.5-readiness.md` and record any release-blocking finding before version preparation.
+- [ ] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
+- [ ] Confirm Settings opens from Command-Comma, the popover, and Dashboard without duplicate windows or the macOS “Please use SettingsLink” runtime warning.
+- [ ] Confirm notification actions revalidate current eligibility and never begin update work without Helm's confirmation sheet.
+- [ ] Confirm no routine “all tasks complete” notification is delivered.
+- [ ] Re-audit dependency/license scope if the dependency graph changes; otherwise retain the RC4 audit record.
+- [ ] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.5` before any tag or publication mutation.
+- [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
+- [ ] No known release-critical regression remains open; Issue `#388` remains non-production behind the retained first-run gate.
+
+### Publication
+
+- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.5` or publishing artifacts.
+- [ ] Publish `v0.19.0-rc.5` as a GitHub prerelease that does not become latest.
+- [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.5`.
+- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
+### Installed-Candidate Validation
+
+- [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.5` from the signed `v0.19.0-rc.4` installation.
+- [ ] Confirm the actionable-notification preference and Plan deep links persist after the installed update.
+- [ ] Complete a short installed-candidate soak before deciding whether to prepare `v0.19.0` stable.
+
+## v0.19.0-rc.4 (Updater Plan and Wayfinder Stabilization RC, Published)
 
 ### Candidate Scope
 
@@ -79,21 +115,29 @@ This checklist is required before creating a release tag on `main`.
 - [x] Sparkle/appcast dry-run checklist passes while stable metadata remains on `v0.18.2` and RC metadata remains on `v0.19.0-rc.3` before publication.
 - [x] Re-audit the unchanged Rust runtime/build and website dependency-license inventories for the candidate.
 - [x] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.4` before any tag or publication mutation.
-- [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
+- [x] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
 - [x] No known release-critical regression remains open; Issue #388 remains non-production behind the retained first-run gate.
 
 ### Publication
 
-- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.4` or publishing artifacts.
-- [ ] Publish `v0.19.0-rc.4` as a GitHub prerelease that does not become latest.
-- [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.4`.
-- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+- [x] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.4` or publishing artifacts.
+- [x] Publish `v0.19.0-rc.4` as a GitHub prerelease that does not become latest.
+- [x] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.4`.
+- [x] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
 
 ### Installed-Candidate Validation
 
 - [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.4` from the signed `v0.19.0-rc.3` installation.
 - [ ] Confirm Helm self-update availability appears consistently in Library, the Plan badge, and Plan after relaunch.
 - [ ] Confirm the default-off Upgrade All preference and explicit Sparkle confirmation behavior remain intact in the installed candidate.
+
+### Closeout Record
+
+- `v0.19.0-rc.4` was published as a GitHub prerelease on 2026-08-11 from tagged `main` revision `c1c5e2a72dce37f196963d646f4935d1042444f6`; it did not replace stable `v0.18.2` as `releases/latest`.
+- Direct GUI and CLI artifacts are published. Publication PRs `#417` and `#418` merged RC CLI metadata plus the beta appcast/release notes into `main`.
+- Public metadata keeps the default appcast and stable CLI pointer on `v0.18.2`, while the beta appcast and `latest-rc.json` point to `v0.19.0-rc.4`.
+- Post-publication `Release Publish Verify` run `31539916355`, `Appcast Drift Guard` run `31539916304`, and `CLI Update Metadata Drift Guard` run `31540088081` passed after metadata convergence.
+- Installed RC3-to-RC4 Sparkle evidence remains unchecked above until explicitly confirmed; release publication and metadata convergence do not substitute for that owner check.
 
 ## v0.19.0-rc.3 (System Language Migration RC, Published; Manual Persistence Subcheck Pending)
 

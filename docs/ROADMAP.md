@@ -677,7 +677,7 @@ Exit Criteria:
 
 ## 0.19.x — Native Experience Foundation & First-Run Value (rc)
 
-Status: prepared `v0.19.0-rc.4` source candidate builds on published RC3 with integrated updater-plan visibility, one live-localized status-item popover, completed Dashboard/Settings cleanup, and approved Wayfinder polish. RC2-to-RC3 installed-candidate validation is complete. The Environment Brief remains debug-gated pending Issue #388, and public stable/RC metadata remains on `v0.18.2`/`v0.19.0-rc.3` until RC4 publication.
+Status: published `v0.19.0-rc.4` provides integrated updater-plan visibility, one live-localized status-item popover, completed Dashboard/Settings cleanup, and approved Wayfinder polish. Focused post-RC4 stabilization on `dev` covers Dashboard-aware status-item routing, explicit third-party Sparkle Plan actions, npm short-query handling, and actionable update notifications for planned RC5 validation. The Environment Brief remains debug-gated pending Issue #388, and public stable/RC metadata remains isolated on `v0.18.2`/`v0.19.0-rc.4`.
 
 Goal:
 
