@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
-use crate::execution::{CommandSpec, ProcessSpawnRequest};
+use crate::execution::{CommandSpec, PrivilegedOperation, ProcessSpawnRequest};
 use crate::models::{
     ActionSafety, CachedSearchResult, Capability, CoreError, CoreErrorKind, DetectionInfo,
     InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
@@ -274,7 +274,7 @@ pub fn mas_install_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpaw
         CommandSpec::new(MAS_COMMAND).args(["install", app_id]),
         MUTATION_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::MacAppStoreInstall)
 }
 
 pub fn mas_get_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpawnRequest {
@@ -285,7 +285,7 @@ pub fn mas_get_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpawnReq
         CommandSpec::new(MAS_COMMAND).args(["get", app_id]),
         MUTATION_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::MacAppStoreGet)
 }
 
 pub fn mas_uninstall_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSpawnRequest {
@@ -296,7 +296,7 @@ pub fn mas_uninstall_request(task_id: Option<TaskId>, app_id: &str) -> ProcessSp
         CommandSpec::new(MAS_COMMAND).args(["uninstall", app_id]),
         MUTATION_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::MacAppStoreUninstall)
 }
 
 pub fn mas_upgrade_request(task_id: Option<TaskId>, app_id: Option<&str>) -> ProcessSpawnRequest {
@@ -312,7 +312,7 @@ pub fn mas_upgrade_request(task_id: Option<TaskId>, app_id: Option<&str>) -> Pro
         command,
         MUTATION_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::MacAppStoreUpgrade)
 }
 
 fn mas_request(
@@ -633,6 +633,7 @@ mod tests {
         ListInstalledRequest, ListOutdatedRequest, ManagerAdapter, SearchRequest, UninstallRequest,
         UpgradeRequest,
     };
+    use crate::execution::PrivilegedOperation;
     use crate::models::{
         CoreErrorKind, ManagerAction, ManagerId, PackageRef, SearchQuery, TaskId, TaskType,
     };
@@ -879,6 +880,10 @@ mod tests {
             vec!["install".to_string(), "497799835".to_string()]
         );
         assert!(install.requires_elevation);
+        assert_eq!(
+            install.privileged_operation,
+            Some(PrivilegedOperation::MacAppStoreInstall)
+        );
 
         let get = mas_get_request(None, "497799835");
         assert_eq!(
@@ -886,6 +891,10 @@ mod tests {
             vec!["get".to_string(), "497799835".to_string()]
         );
         assert!(get.requires_elevation);
+        assert_eq!(
+            get.privileged_operation,
+            Some(PrivilegedOperation::MacAppStoreGet)
+        );
 
         let uninstall = mas_uninstall_request(None, "497799835");
         assert_eq!(
@@ -893,6 +902,10 @@ mod tests {
             vec!["uninstall".to_string(), "497799835".to_string()]
         );
         assert!(uninstall.requires_elevation);
+        assert_eq!(
+            uninstall.privileged_operation,
+            Some(PrivilegedOperation::MacAppStoreUninstall)
+        );
 
         let targeted_upgrade = mas_upgrade_request(None, Some("497799835"));
         assert_eq!(
@@ -900,10 +913,18 @@ mod tests {
             vec!["upgrade".to_string(), "497799835".to_string()]
         );
         assert!(targeted_upgrade.requires_elevation);
+        assert_eq!(
+            targeted_upgrade.privileged_operation,
+            Some(PrivilegedOperation::MacAppStoreUpgrade)
+        );
 
         let all_upgrade = mas_upgrade_request(None, None);
         assert_eq!(all_upgrade.command.args, vec!["upgrade".to_string()]);
         assert!(all_upgrade.requires_elevation);
+        assert_eq!(
+            all_upgrade.privileged_operation,
+            Some(PrivilegedOperation::MacAppStoreUpgrade)
+        );
     }
 
     #[derive(Clone)]

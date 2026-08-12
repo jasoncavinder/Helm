@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
-use crate::execution::{CommandSpec, ProcessSpawnRequest};
+use crate::execution::{CommandSpec, PrivilegedOperation, ProcessSpawnRequest};
 use crate::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, InstalledPackage,
     ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId,
@@ -211,7 +211,7 @@ pub fn xcode_command_line_tools_upgrade_request(
         CommandSpec::new(SOFTWAREUPDATE_COMMAND).args(["-i", label]),
         UPGRADE_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::XcodeCommandLineToolsUpdate)
 }
 
 fn xcode_command_line_tools_request(
@@ -384,6 +384,7 @@ mod tests {
         xcode_command_line_tools_detect_request, xcode_command_line_tools_list_outdated_request,
         xcode_command_line_tools_upgrade_request,
     };
+    use crate::execution::PrivilegedOperation;
     use crate::models::{ManagerAction, ManagerId, TaskType};
 
     const PKGUTIL_FIXTURE: &str =
@@ -454,6 +455,10 @@ mod tests {
             vec!["-i", "Command Line Tools for Xcode-16.3"]
         );
         assert!(request.requires_elevation);
+        assert_eq!(
+            request.privileged_operation,
+            Some(PrivilegedOperation::XcodeCommandLineToolsUpdate)
+        );
     }
 
     #[test]

@@ -6,7 +6,7 @@ pub mod tokio_process;
 
 pub use task_output_store::TaskOutputRecord;
 #[cfg(unix)]
-pub use tokio_process::TokioProcessExecutor;
+pub use tokio_process::{TokioProcessExecutor, configure_privileged_executor};
 
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -17,6 +17,45 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 use std::time::{Duration, SystemTime};
 
 use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PrivilegedOperation {
+    MacAppStoreInstall,
+    MacAppStoreGet,
+    MacAppStoreUninstall,
+    MacAppStoreUpgrade,
+    SoftwareUpdateAll,
+    XcodeCommandLineToolsUpdate,
+    RosettaInstall,
+    MacPortsInstall,
+    MacPortsUninstall,
+    MacPortsUpgrade,
+    MacPortsManagerUninstall,
+    MacPortsDeleteAccount,
+    MacPortsDeleteGroup,
+    MacPortsRemoveFiles,
+}
+
+impl PrivilegedOperation {
+    pub const fn identifier(self) -> &'static str {
+        match self {
+            Self::MacAppStoreInstall => "mac_app_store.install",
+            Self::MacAppStoreGet => "mac_app_store.get",
+            Self::MacAppStoreUninstall => "mac_app_store.uninstall",
+            Self::MacAppStoreUpgrade => "mac_app_store.upgrade",
+            Self::SoftwareUpdateAll => "software_update.install_all",
+            Self::XcodeCommandLineToolsUpdate => "xcode_command_line_tools.update",
+            Self::RosettaInstall => "rosetta.install",
+            Self::MacPortsInstall => "macports.install",
+            Self::MacPortsUninstall => "macports.uninstall",
+            Self::MacPortsUpgrade => "macports.upgrade",
+            Self::MacPortsManagerUninstall => "macports.manager_uninstall",
+            Self::MacPortsDeleteAccount => "macports.delete_account",
+            Self::MacPortsDeleteGroup => "macports.delete_group",
+            Self::MacPortsRemoveFiles => "macports.remove_files",
+        }
+    }
+}
 
 pub type ExecutionResult<T> = Result<T, CoreError>;
 
@@ -122,6 +161,7 @@ pub struct ProcessSpawnRequest {
     pub action: ManagerAction,
     pub command: CommandSpec,
     pub requires_elevation: bool,
+    pub privileged_operation: Option<PrivilegedOperation>,
     pub timeout: Option<Duration>,
     pub idle_timeout: Option<Duration>,
     pub requested_at: SystemTime,
@@ -141,6 +181,7 @@ impl ProcessSpawnRequest {
             action,
             command,
             requires_elevation: false,
+            privileged_operation: None,
             timeout: None,
             idle_timeout: None,
             requested_at: SystemTime::now(),
@@ -154,6 +195,15 @@ impl ProcessSpawnRequest {
 
     pub fn requires_elevation(mut self, requires_elevation: bool) -> Self {
         self.requires_elevation = requires_elevation;
+        if !requires_elevation {
+            self.privileged_operation = None;
+        }
+        self
+    }
+
+    pub fn privileged_operation(mut self, operation: PrivilegedOperation) -> Self {
+        self.requires_elevation = true;
+        self.privileged_operation = Some(operation);
         self
     }
 
@@ -170,6 +220,15 @@ impl ProcessSpawnRequest {
     pub fn validate(&self) -> ExecutionResult<()> {
         self.command
             .validate(self.manager, self.task_type, self.action)?;
+
+        if self.requires_elevation != self.privileged_operation.is_some() {
+            return Err(invalid_input(
+                self.manager,
+                self.task_type,
+                self.action,
+                "elevated commands must declare exactly one privileged operation",
+            ));
+        }
 
         if let Some(timeout) = self.timeout
             && timeout.is_zero()
@@ -793,6 +852,66 @@ mod tests {
             fs::create_dir_all(parent).expect("failed to create temp test directory");
         }
         fs::write(path, b"#!/bin/sh\nexit 0\n").expect("failed to write placeholder executable");
+    }
+
+    #[test]
+    fn elevated_request_requires_a_privileged_operation() {
+        let request = ProcessSpawnRequest::new(
+            ManagerId::SoftwareUpdate,
+            TaskType::Upgrade,
+            ManagerAction::Upgrade,
+            CommandSpec::new("/usr/sbin/softwareupdate").args(["-i", "-a"]),
+        )
+        .requires_elevation(true);
+
+        let error = request
+            .validate()
+            .expect_err("untyped elevated request must fail closed");
+        assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+        assert!(error.message.contains("privileged operation"));
+    }
+
+    #[test]
+    fn privileged_operation_sets_a_consistent_elevation_contract() {
+        let request = ProcessSpawnRequest::new(
+            ManagerId::SoftwareUpdate,
+            TaskType::Upgrade,
+            ManagerAction::Upgrade,
+            CommandSpec::new("/usr/sbin/softwareupdate").args(["-i", "-a"]),
+        )
+        .privileged_operation(PrivilegedOperation::SoftwareUpdateAll);
+
+        request.validate().expect("typed request should validate");
+        assert!(request.requires_elevation);
+        assert_eq!(
+            request.privileged_operation,
+            Some(PrivilegedOperation::SoftwareUpdateAll)
+        );
+        assert_eq!(
+            request
+                .privileged_operation
+                .expect("operation should be present")
+                .identifier(),
+            "software_update.install_all"
+        );
+    }
+
+    #[test]
+    fn clearing_elevation_also_clears_the_privileged_operation() {
+        let request = ProcessSpawnRequest::new(
+            ManagerId::SoftwareUpdate,
+            TaskType::Upgrade,
+            ManagerAction::Upgrade,
+            CommandSpec::new("/usr/sbin/softwareupdate").args(["-i", "-a"]),
+        )
+        .privileged_operation(PrivilegedOperation::SoftwareUpdateAll)
+        .requires_elevation(false);
+
+        request
+            .validate()
+            .expect("non-elevated request should validate");
+        assert!(!request.requires_elevation);
+        assert_eq!(request.privileged_operation, None);
     }
 
     #[test]

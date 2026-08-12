@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
-use crate::execution::{CommandSpec, ProcessSpawnRequest};
+use crate::execution::{CommandSpec, PrivilegedOperation, ProcessSpawnRequest};
 use crate::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
     ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, OutdatedPackage, PackageRef,
@@ -160,7 +160,7 @@ pub fn softwareupdate_upgrade_request(task_id: Option<TaskId>) -> ProcessSpawnRe
         CommandSpec::new(SOFTWAREUPDATE_COMMAND).args(["-i", "-a"]),
         UPGRADE_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::SoftwareUpdateAll)
 }
 
 fn softwareupdate_request(
@@ -316,6 +316,7 @@ mod tests {
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
         ListOutdatedRequest, ManagerAdapter, UpgradeRequest,
     };
+    use crate::execution::PrivilegedOperation;
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskId, TaskType};
 
     use super::{
@@ -501,6 +502,10 @@ mod tests {
         assert_eq!(request.action, ManagerAction::Upgrade);
         assert_eq!(request.task_type, TaskType::Upgrade);
         assert!(request.requires_elevation);
+        assert_eq!(
+            request.privileged_operation,
+            Some(PrivilegedOperation::SoftwareUpdateAll)
+        );
         assert_eq!(request.task_id, Some(TaskId(100)));
     }
 

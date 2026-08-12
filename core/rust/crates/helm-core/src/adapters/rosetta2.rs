@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
 use crate::adapters::rosetta2_process::host_is_apple_silicon;
-use crate::execution::{CommandSpec, ProcessSpawnRequest};
+use crate::execution::{CommandSpec, PrivilegedOperation, ProcessSpawnRequest};
 use crate::models::{
     ActionSafety, Capability, CoreError, CoreErrorKind, DetectionInfo, ManagerAction,
     ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, TaskId, TaskType,
@@ -138,7 +138,7 @@ pub fn rosetta2_install_request(task_id: Option<TaskId>) -> ProcessSpawnRequest 
         CommandSpec::new(SOFTWAREUPDATE_COMMAND).args(["--install-rosetta", "--agree-to-license"]),
         INSTALL_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::RosettaInstall)
 }
 
 fn rosetta2_request(
@@ -179,6 +179,7 @@ mod tests {
         rosetta2_detect_request, rosetta2_install_request,
     };
     use crate::adapters::rosetta2_process::host_is_apple_silicon;
+    use crate::execution::PrivilegedOperation;
     use crate::models::{ManagerAction, ManagerId, PackageRef, TaskType};
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/rosetta2/pkgutil_info.txt");
@@ -217,6 +218,10 @@ mod tests {
             vec!["--install-rosetta", "--agree-to-license"]
         );
         assert!(request.requires_elevation);
+        assert_eq!(
+            request.privileged_operation,
+            Some(PrivilegedOperation::RosettaInstall)
+        );
     }
 
     #[test]
