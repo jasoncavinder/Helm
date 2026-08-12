@@ -47,6 +47,10 @@ final class HelmSettingsOpenRouter {
     func requestOpen() {
         activateApp()
         if #available(macOS 14.0, *) {
+            guard !registrations.isEmpty else {
+                openVenturaSettings()
+                return
+            }
             requestRegisteredOpen()
         } else {
             openVenturaSettings()

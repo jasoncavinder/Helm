@@ -35,7 +35,7 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         router.unregister(registrationID)
     }
 
-    func testRequestOpenDefersUntilModernBridgeRegistersWithoutVenturaFallback() throws {
+    func testRequestOpenFallsBackImmediatelyWhenModernBridgeIsUnavailable() throws {
         guard #available(macOS 14.0, *) else {
             throw XCTSkip("Modern Settings bridge behavior requires macOS 14 or newer")
         }
@@ -46,23 +46,11 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
             activateApp: { activateCount += 1 },
             openVenturaSettings: { venturaOpenCount += 1 }
         )
-        var deferredOpenCount = 0
-        let openExpectation = expectation(description: "Deferred Settings request opens")
 
         router.requestOpen()
 
         XCTAssertEqual(activateCount, 1)
-        XCTAssertEqual(venturaOpenCount, 0)
-
-        let registrationID = router.register {
-            deferredOpenCount += 1
-            openExpectation.fulfill()
-        }
-        wait(for: [openExpectation], timeout: 1)
-
-        XCTAssertEqual(deferredOpenCount, 1)
-        XCTAssertEqual(venturaOpenCount, 0)
-        router.unregister(registrationID)
+        XCTAssertEqual(venturaOpenCount, 1)
     }
 
     func testRequestOpenUsesRegisteredModernBridgeWithoutVenturaFallback() throws {
