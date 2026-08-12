@@ -12,6 +12,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ### Fixed
 - npm searches shorter than two trimmed characters now return no results without invoking npm, avoiding npm's minimum-query-length error during incremental package search.
+- XPC availability now requires a verified service handshake, reconnect attempts use one bounded exponential-backoff timer, and refresh requests made while disconnected resume after reconnection instead of producing a rapidly changing popover or overlapping connection attempts.
+- mise outdated parsing now accepts configured tools whose current version is `null`, preserving their available candidate version instead of failing the entire manager refresh.
 
 ### Changed
 - Status-item activation now keeps the popover available on secondary click while Dashboard is open; primary click focuses the open Dashboard, and either click toggles the popover while Dashboard is closed.
