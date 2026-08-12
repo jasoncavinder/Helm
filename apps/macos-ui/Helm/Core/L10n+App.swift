@@ -303,6 +303,8 @@ extension L10n {
                 static let japanese = "app.settings.label.language.japanese"
                 static let hungarian = "app.settings.label.language.hungarian"
                 static let launchAtLogin = "app.settings.label.launch_at_login"
+                static let notifications = "app.settings.label.notifications"
+                static let notificationsDescription = "app.settings.label.notifications_description"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
                 static let prereleaseUpdates = "app.settings.label.prerelease_updates"
@@ -488,6 +490,12 @@ extension L10n {
             struct Completion {
                 static let title = "app.updates.completion.interactive_remaining.title"
                 static let message = "app.updates.completion.interactive_remaining.message"
+            }
+            struct Notification {
+                static let availableTitle = "app.updates.notification.available.title"
+                static let availableMessage = "app.updates.notification.available.message"
+                static let reviewPlan = "app.updates.notification.action.review_plan"
+                static let upgradeAll = "app.updates.notification.action.upgrade_all"
             }
         }
         struct DryRun {
@@ -735,8 +743,6 @@ extension L10n.App {
         }
 
         struct Notification {
-            static let allCompleteTitle = "app.tasks.notification.all_complete.title"
-            static let allCompleteMessage = "app.tasks.notification.all_complete.message"
             static let timeoutPromptTitle = "app.tasks.notification.timeout_prompt.title"
             static let timeoutPromptMessage = "app.tasks.notification.timeout_prompt.message"
             static let timeoutPromptActionWait = "app.tasks.notification.timeout_prompt.action_wait"

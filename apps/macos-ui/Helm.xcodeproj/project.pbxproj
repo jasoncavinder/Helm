@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		N42200000000000000000001 /* AppNotificationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = N42200000000000000000011 /* AppNotificationPolicy.swift */; };
+		N42200000000000000000002 /* AppNotificationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = N42200000000000000000011 /* AppNotificationPolicy.swift */; };
+		N42200000000000000000003 /* AppNotificationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N42200000000000000000012 /* AppNotificationPolicyTests.swift */; };
 		C41900000000000000000001 /* StatusItemActivationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41900000000000000000011 /* StatusItemActivationPolicy.swift */; };
 		C41900000000000000000002 /* StatusItemActivationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41900000000000000000011 /* StatusItemActivationPolicy.swift */; };
 		C41900000000000000000003 /* StatusItemActivationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */; };
@@ -131,6 +134,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		N42200000000000000000011 /* AppNotificationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotificationPolicy.swift; sourceTree = "<group>"; };
+		N42200000000000000000012 /* AppNotificationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotificationPolicyTests.swift; sourceTree = "<group>"; };
 		C41900000000000000000011 /* StatusItemActivationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemActivationPolicy.swift; sourceTree = "<group>"; };
 		C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemActivationPolicyTests.swift; sourceTree = "<group>"; };
 		A41200000000000000000002 /* AppUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateCoordinator.swift; sourceTree = "<group>"; };
@@ -296,6 +301,7 @@
 		8CFB6D4A2F3D1D1D002372B8 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				N42200000000000000000011 /* AppNotificationPolicy.swift */,
 				C41900000000000000000011 /* StatusItemActivationPolicy.swift */,
 				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
 				A41200000000000000000002 /* AppUpdateCoordinator.swift */,
@@ -475,6 +481,7 @@
 		C10000000000000000000006 /* HelmTests */ = {
 			isa = PBXGroup;
 			children = (
+				N42200000000000000000012 /* AppNotificationPolicyTests.swift */,
 				C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */,
 				Z100000000000000000000002 /* FirstRunPresentationSupportTests.swift */,
 				W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */,
@@ -648,6 +655,7 @@
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				N42200000000000000000001 /* AppNotificationPolicy.swift in Sources */,
 				C41900000000000000000001 /* StatusItemActivationPolicy.swift in Sources */,
 				A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */,
 				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
@@ -715,6 +723,8 @@
 		C10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				N42200000000000000000002 /* AppNotificationPolicy.swift in Sources */,
+				N42200000000000000000003 /* AppNotificationPolicyTests.swift in Sources */,
 				C41900000000000000000002 /* StatusItemActivationPolicy.swift in Sources */,
 				C41900000000000000000003 /* StatusItemActivationPolicyTests.swift in Sources */,
 				J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */,

@@ -39,6 +39,11 @@ extension HelmCore {
         refreshLaunchAtLogin()
     }
 
+    func setNotificationsEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.notificationsEnabledKey)
+        notificationsEnabled = enabled
+    }
+
     // MARK: - Bundled CLI Shim
 
     static func defaultHelmCliShimURL() -> URL {

@@ -119,6 +119,20 @@ struct SettingsSectionView: View {
 
                 if showsPane(.updates) {
                     SettingsCard(title: L10n.App.Section.updates.localized, icon: "arrow.triangle.2.circlepath", fill: cardFill) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(L10n.App.Settings.Label.notifications.localized, isOn: Binding(
+                                get: { core.notificationsEnabled },
+                                set: { core.setNotificationsEnabled($0) }
+                            ))
+                            .toggleStyle(.switch)
+
+                            Text(L10n.App.Settings.Label.notificationsDescription.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Divider()
+
                         Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: Binding(
                             get: { appUpdate.autoCheckEnabled },
                             set: { appUpdate.setAutoCheckEnabled($0) }
