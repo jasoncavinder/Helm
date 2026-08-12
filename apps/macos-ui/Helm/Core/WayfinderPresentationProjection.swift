@@ -69,7 +69,7 @@ enum WayfinderCondition: Equatable {
     var footerStatus: WayfinderFooterStatus {
         switch self {
         case .updatesReady:
-            return .updatesAvailable
+            return .attention
         case .activeWork, .refreshing:
             return .running
         case .failedOrInterrupted:
@@ -84,7 +84,6 @@ enum WayfinderCondition: Equatable {
 
 enum WayfinderFooterStatus: Equatable {
     case healthy
-    case updatesAvailable
     case running
     case attention
     case error
@@ -93,8 +92,6 @@ enum WayfinderFooterStatus: Equatable {
         switch self {
         case .healthy:
             return "app.health.healthy"
-        case .updatesAvailable:
-            return "app.health.updates_available"
         case .running:
             return "app.health.running"
         case .attention:
@@ -108,8 +105,6 @@ enum WayfinderFooterStatus: Equatable {
         switch self {
         case .healthy:
             return "checkmark.circle.fill"
-        case .updatesAvailable:
-            return "arrow.up.circle.fill"
         case .running:
             return "arrow.triangle.2.circlepath"
         case .attention:

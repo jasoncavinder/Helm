@@ -117,14 +117,14 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(projection.content.primaryAction.focus, .primaryContent)
     }
 
-    func testFooterStatusSeparatesUpdatesFromAttentionAndFollowsProjectionRoute() {
+    func testFooterAttentionRoutesToTheRelevantAction() {
         let updates = project(WayfinderProjectionInput(updateCount: 2)).content
         let finding = project(
             WayfinderProjectionInput(actionableFindingIDs: ["npm"])
         ).content
         let running = project(WayfinderProjectionInput(activeTaskIDs: ["task-1"])).content
 
-        XCTAssertEqual(updates.condition.footerStatus, .updatesAvailable)
+        XCTAssertEqual(updates.condition.footerStatus, .attention)
         XCTAssertEqual(updates.primaryAction.destination, .plan)
         XCTAssertEqual(finding.condition.footerStatus, .attention)
         XCTAssertEqual(finding.primaryAction.destination, .environment)

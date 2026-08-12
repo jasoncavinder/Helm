@@ -76,7 +76,7 @@ struct ControlCenterWindowView: View {
                 }
             }
         }
-        .frame(minWidth: 860, minHeight: 600)
+        .frame(minWidth: 1024, minHeight: 640)
         .background(
             LinearGradient(
                 colors: colorScheme == .dark

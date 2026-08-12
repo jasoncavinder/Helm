@@ -303,8 +303,6 @@ struct WayfinderFooterStatusBadge: View {
         switch status {
         case .healthy:
             return HelmTheme.stateHealthy
-        case .updatesAvailable:
-            return HelmTheme.blue500
         case .running:
             return HelmTheme.stateRunning
         case .attention:
