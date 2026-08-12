@@ -6,6 +6,7 @@ PROJECT_FILE="$ROOT_DIR/apps/macos-ui/Helm.xcodeproj/project.pbxproj"
 DAEMON_PLIST="$ROOT_DIR/apps/macos-ui/HelmPrivilegedHelper/com.jasoncavinder.Helm.PrivilegedHelper.plist"
 RELEASE_WORKFLOW="$ROOT_DIR/.github/workflows/release-macos-dmg.yml"
 DMG_VERIFIER="$ROOT_DIR/apps/macos-ui/scripts/verify_release_dmg.sh"
+CHANNEL_FILTER_SCRIPT="$ROOT_DIR/apps/macos-ui/scripts/strip_privileged_helper_for_non_developer_channel.sh"
 
 python3 - "$DAEMON_PLIST" <<'PY'
 import plistlib
@@ -25,6 +26,9 @@ grep -Fq 'productType = "com.apple.product-type.tool";' "$PROJECT_FILE"
 grep -Fq 'dstPath = Contents/Library/LaunchServices;' "$PROJECT_FILE"
 grep -Fq 'dstPath = Contents/Library/LaunchDaemons;' "$PROJECT_FILE"
 grep -Fq 'ATTRIBUTES = (CodeSignOnCopy, );' "$PROJECT_FILE"
+grep -Fq 'Strip Privileged Helper For Non-Developer Channel' "$PROJECT_FILE"
+grep -Fq 'strip_privileged_helper_for_non_developer_channel.sh' "$PROJECT_FILE"
+grep -Fq 'HELM_DISTRIBUTION_CHANNEL:-developer_id' "$CHANNEL_FILTER_SCRIPT"
 grep -Fq 'Contents/Library/LaunchServices/HelmPrivilegedHelper' "$RELEASE_WORKFLOW"
 grep -Fq 'Identifier=com.jasoncavinder.Helm.PrivilegedHelper' "$RELEASE_WORKFLOW"
 grep -Fq 'Contents/Library/LaunchServices/HelmPrivilegedHelper' "$DMG_VERIFIER"

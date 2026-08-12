@@ -13,7 +13,7 @@ The core process request carries both:
 - `requires_elevation`, retained temporarily for current executor compatibility
 - exactly one typed `PrivilegedOperation` whenever elevation is required
 
-Validation fails closed when those fields disagree. A first-class `HelmPrivilegedHelper` executable and launch-daemon plist are now embedded in the app build. Developer ID packaging signs the helper independently and verifies its exact identifier and metadata before accepting a DMG.
+Validation fails closed when those fields disagree. A first-class `HelmPrivilegedHelper` executable and launch-daemon plist are now embedded only in `developer_id` app bundles. Developer ID packaging signs the helper independently and verifies its exact identifier and metadata before accepting a DMG.
 
 The embedded executable is intentionally inactive at this checkpoint: Helm does not register it through Service Management or configure it as the trusted executor. The current `sudo -A` askpass path therefore remains the runtime implementation. Mac App Store and all MacPorts mutations remain on askpass even if a trusted privileged executor is configured, because their bounded helper designs are unresolved.
 
@@ -90,7 +90,7 @@ The helper must not solve this constraint by broadly allowlisting Homebrew paths
 
 ## Distribution And Release Rules
 
-- Developer ID: the launch daemon is embedded and release automation signs and verifies its executable and plist independently. Runtime activation still requires Service Management registration, user approval where required, and signed/notarized installed-build QA.
+- Developer ID: the launch daemon is embedded only in the direct-channel bundle, and release automation signs and verifies its executable and plist independently. Runtime activation still requires Service Management registration, user approval where required, and signed/notarized installed-build QA.
 - Mac App Store: helper availability and entitlement policy require a separate channel decision; Developer ID assumptions must not leak into the MAS profile.
 - Setapp and Fleet: registration and update authority remain channel-specific. Fleet may later manage helper approval through deployment policy, but cannot weaken the operation allowlist.
 - Unsigned development builds may test request validation and helper protocol behavior, but cannot be treated as evidence that launch-daemon registration, approval, signing, or notarization works.

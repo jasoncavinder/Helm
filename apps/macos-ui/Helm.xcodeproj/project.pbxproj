@@ -632,6 +632,7 @@
 				8CE1FDCC2F3D2AD8000A3945 /* Embed XPC Services */,
 				R42810000000000000000040 /* Embed Privileged Helper */,
 				R42810000000000000000041 /* Embed Launch Daemon */,
+				R42910000000000000000001 /* Strip Privileged Helper For Non-Developer Channel */,
 			);
 			buildRules = (
 			);
@@ -752,6 +753,15 @@
 			shellPath = /bin/sh;
 			shellScript = (
 				"$SRCROOT/scripts/build_rust.sh",
+				"",
+			);
+		};
+		R42910000000000000000001 /* Strip Privileged Helper For Non-Developer Channel */ = {
+			isa = PBXShellScriptBuildPhase;
+			name = "Strip Privileged Helper For Non-Developer Channel";
+			shellPath = /bin/sh;
+			shellScript = (
+				"$SRCROOT/scripts/strip_privileged_helper_for_non_developer_channel.sh",
 				"",
 			);
 		};
