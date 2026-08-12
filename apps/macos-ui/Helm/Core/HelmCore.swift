@@ -771,9 +771,26 @@ final class HelmCore: ObservableObject {
             return
         }
 
-        service.getSafeMode { [weak self] enabled in
+        withTimeout(
+            5,
+            source: "core.xpc",
+            action: "connectionHandshake",
+            taskType: "connection",
+            operation: { completion in
+                service.getSafeMode { enabled in
+                    completion(enabled)
+                }
+            },
+            fallback: nil
+        ) { [weak self] enabled in
+            guard let self else { return }
+            guard let enabled else {
+                logger.error("XPC connection handshake timed out")
+                self.handleConnectionFailure(generation: generation)
+                return
+            }
             DispatchQueue.main.async {
-                self?.completeConnectionHandshake(
+                self.completeConnectionHandshake(
                     generation: generation,
                     safeModeEnabled: enabled
                 )
