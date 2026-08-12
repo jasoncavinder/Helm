@@ -76,7 +76,7 @@ struct ControlCenterWindowView: View {
                 }
             }
         }
-        .frame(minWidth: 860, minHeight: 600)
+        .frame(minWidth: 1024, minHeight: 640)
         .background(
             LinearGradient(
                 colors: colorScheme == .dark
@@ -364,6 +364,10 @@ private struct ControlCenterSidebarView: View {
     @Environment(\.colorScheme) private var colorScheme
     let sidebarWidth: CGFloat
 
+    private var footerProjection: WayfinderProjectionContent {
+        overviewState.wayfinderProjection.content
+    }
+
     private var workspaceSelection: Binding<ControlCenterSection?> {
         Binding(
             get: { context.selectedSection },
@@ -436,7 +440,7 @@ private struct ControlCenterSidebarView: View {
 
                 Spacer()
 
-                HealthBadgeView(status: overviewState.aggregateHealth)
+                footerStatusView
             }
             .font(.caption.weight(.medium))
             .padding(.horizontal, 18)
@@ -447,6 +451,23 @@ private struct ControlCenterSidebarView: View {
         .background(
             ControlCenterSidebarSurface(colorScheme: colorScheme)
         )
+    }
+
+    @ViewBuilder
+    private var footerStatusView: some View {
+        let status = footerProjection.condition.footerStatus
+        if status.isActionable {
+            Button {
+                context.navigate(to: footerProjection.primaryAction)
+            } label: {
+                WayfinderFooterStatusBadge(status: status)
+            }
+            .buttonStyle(.plain)
+            .helmPointer()
+            .accessibilityHint(footerProjection.primaryActionTitle.localized)
+        } else {
+            WayfinderFooterStatusBadge(status: status)
+        }
     }
 
     @ViewBuilder

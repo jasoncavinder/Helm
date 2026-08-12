@@ -711,7 +711,7 @@ private extension AppDelegate {
             window.contentViewController = hostingController
             window.autorecalculatesKeyViewLoop = true
             window.isReleasedWhenClosed = false
-            window.minSize = NSSize(width: 860, height: 600)
+            window.minSize = NSSize(width: 1024, height: 640)
             let frameAutosaveName = "HelmDashboardWindow"
             let restoredFrame = window.setFrameUsingName(frameAutosaveName)
             window.setFrameAutosaveName(frameAutosaveName)

@@ -57,6 +57,7 @@
 //! | `helm_upgrade_all` | Upgrade |
 //! | `helm_start_scoped_upgrade_workflow` | Upgrade |
 //! | `helm_start_scoped_upgrade_workflow_with_id` | Upgrade |
+//! | `helm_start_selected_upgrade_workflow_with_id` | Upgrade |
 //! | `helm_cancel_upgrade_workflow` | Upgrade |
 //! | `helm_upgrade_package` | Upgrade |
 //! | `helm_list_pins` | Pinning |
@@ -543,6 +544,17 @@ unsafe fn parse_required_cstr_arg(raw: *const c_char) -> Result<String, &'static
         return Err(SERVICE_ERROR_INVALID_INPUT);
     }
     Ok(value.to_string())
+}
+
+unsafe fn parse_package_filter_cstr_arg(raw: *const c_char) -> Result<String, &'static str> {
+    if raw.is_null() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let c_str = unsafe { CStr::from_ptr(raw) };
+    c_str
+        .to_str()
+        .map(|value| value.to_string())
+        .map_err(|_| SERVICE_ERROR_INVALID_INPUT)
 }
 
 fn manager_install_plan_error_key(
@@ -7272,15 +7284,16 @@ pub extern "C" fn helm_preview_upgrade_plan(
         }
     }
 
-    if state.runtime.is_manager_enabled(ManagerId::Mas) && !targets.mas.is_empty() {
-        push_upgrade_plan_step_with_extra_reason_args(
-            &mut steps,
-            ManagerId::Mas,
-            MAS_ALL_PACKAGES_TARGET.to_string(),
-            false,
-            &mut order_index,
-            vec![("package_names", targets.mas.join("\n"))],
-        );
+    if state.runtime.is_manager_enabled(ManagerId::Mas) {
+        for package_name in targets.mas {
+            push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Mas,
+                package_name,
+                false,
+                &mut order_index,
+            );
+        }
     }
 
     if state.runtime.is_manager_enabled(ManagerId::Mise) {
@@ -7572,6 +7585,25 @@ fn preview_upgrade_workflow_steps(
     ))
 }
 
+fn retain_selected_upgrade_workflow_steps(
+    steps: &mut Vec<FfiUpgradePlanStep>,
+    selected_step_ids: &std::collections::HashSet<String>,
+) -> Result<(), &'static str> {
+    let available_step_ids = steps
+        .iter()
+        .map(|step| step.step_id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    if selected_step_ids.is_empty()
+        || !selected_step_ids
+            .iter()
+            .all(|step_id| available_step_ids.contains(step_id.as_str()))
+    {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    steps.retain(|step| selected_step_ids.contains(&step.step_id));
+    Ok(())
+}
+
 fn upgrade_workflow_request(
     store: &SqliteStore,
     step: &FfiUpgradePlanStep,
@@ -7631,6 +7663,7 @@ fn start_scoped_upgrade_workflow(
     workflow_id: String,
     manager_scope_id: String,
     package_filter: String,
+    selected_step_ids: Option<std::collections::HashSet<String>>,
 ) -> Result<(), &'static str> {
     if manager_scope_id != ALL_MANAGERS_UPGRADE_SCOPE
         && manager_scope_id.parse::<ManagerId>().is_err()
@@ -7638,12 +7671,15 @@ fn start_scoped_upgrade_workflow(
         return Err(SERVICE_ERROR_INVALID_INPUT);
     }
 
-    let steps = preview_upgrade_workflow_steps(
+    let mut steps = preview_upgrade_workflow_steps(
         include_pinned,
         allow_os_updates,
         &manager_scope_id,
         &package_filter,
     )?;
+    if let Some(selected_step_ids) = selected_step_ids {
+        retain_selected_upgrade_workflow_steps(&mut steps, &selected_step_ids)?;
+    }
     let (store, runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = guard.as_ref().ok_or(SERVICE_ERROR_INTERNAL)?;
@@ -7708,13 +7744,9 @@ pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow(
         Ok(value) => value,
         Err(error) => return return_error_ptr(error),
     };
-    let package_filter = if package_filter.is_null() {
-        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
-    } else {
-        match unsafe { CStr::from_ptr(package_filter) }.to_str() {
-            Ok(value) => value.to_string(),
-            Err(_) => return return_error_ptr(SERVICE_ERROR_INVALID_INPUT),
-        }
+    let package_filter = match unsafe { parse_package_filter_cstr_arg(package_filter) } {
+        Ok(value) => value,
+        Err(error) => return return_error_ptr(error),
     };
     let workflow_id = next_upgrade_workflow_id();
     match start_scoped_upgrade_workflow(
@@ -7723,6 +7755,7 @@ pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow(
         workflow_id.clone(),
         manager_scope_id,
         package_filter,
+        None,
     ) {
         Ok(()) => CString::new(workflow_id)
             .map(CString::into_raw)
@@ -7756,13 +7789,9 @@ pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow_with_id(
         Ok(value) => value,
         Err(error) => return return_error_bool(error),
     };
-    let package_filter = if package_filter.is_null() {
-        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
-    } else {
-        match unsafe { CStr::from_ptr(package_filter) }.to_str() {
-            Ok(value) => value.to_string(),
-            Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
-        }
+    let package_filter = match unsafe { parse_package_filter_cstr_arg(package_filter) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
     };
     start_scoped_upgrade_workflow(
         include_pinned,
@@ -7770,6 +7799,59 @@ pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow_with_id(
         workflow_id,
         manager_scope_id,
         package_filter,
+        None,
+    )
+    .is_ok()
+}
+
+/// Start a scoped bulk upgrade workflow containing only explicitly selected preview steps.
+///
+/// The selected identifiers must be a non-empty JSON string array and every identifier must
+/// still exist in the current scoped preview. Stale or unknown identifiers fail closed.
+///
+/// # Safety
+///
+/// All string arguments must be valid, non-null UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_start_selected_upgrade_workflow_with_id(
+    workflow_id: *const c_char,
+    include_pinned: bool,
+    allow_os_updates: bool,
+    manager_scope_id: *const c_char,
+    package_filter: *const c_char,
+    selected_step_ids_json: *const c_char,
+) -> bool {
+    clear_last_error_key();
+    let workflow_id = match unsafe { parse_required_cstr_arg(workflow_id) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
+    };
+    let manager_scope_id = match unsafe { parse_required_cstr_arg(manager_scope_id) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
+    };
+    let package_filter = match unsafe { parse_package_filter_cstr_arg(package_filter) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
+    };
+    let selected_step_ids_json = match unsafe { parse_required_cstr_arg(selected_step_ids_json) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
+    };
+    let selected_step_ids = match serde_json::from_str::<Vec<String>>(&selected_step_ids_json) {
+        Ok(step_ids) => step_ids
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>(),
+        Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
+    };
+
+    start_scoped_upgrade_workflow(
+        include_pinned,
+        allow_os_updates,
+        workflow_id,
+        manager_scope_id,
+        package_filter,
+        Some(selected_step_ids),
     )
     .is_ok()
 }
@@ -7862,6 +7944,7 @@ pub extern "C" fn helm_upgrade_all(include_pinned: bool, allow_os_updates: bool)
         next_upgrade_workflow_id(),
         ALL_MANAGERS_UPGRADE_SCOPE.to_string(),
         String::new(),
+        None,
     )
     .is_ok()
 }
@@ -11464,20 +11547,20 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 mod tests {
     use super::{
         ALL_MANAGERS_UPGRADE_SCOPE, CoordinatorRequest, CoordinatorWorkflowRequest,
-        FfiUpgradePlanStep, MAS_ALL_PACKAGES_TARGET, SERVICE_ERROR_UNSUPPORTED_CAPABILITY,
+        FfiUpgradePlanStep, SERVICE_ERROR_INVALID_INPUT, SERVICE_ERROR_UNSUPPORTED_CAPABILITY,
         UpgradeWorkflowControl, build_manager_statuses, build_manager_uninstall_plan,
         build_manager_uninstall_preview, build_visible_tasks, collect_upgrade_all_targets,
         homebrew_probe_candidates, manager_allows_individual_package_install,
         manager_allows_individual_package_uninstall, manager_authority_key,
         manager_participates_in_catalog_sync, manager_participates_in_package_search,
         manager_uninstall_label_for_route, parse_homebrew_config_version,
-        prune_expired_upgrade_workflow_reservations, push_upgrade_plan_step,
-        push_upgrade_plan_step_with_extra_reason_args, repair_confirmation_satisfied,
+        parse_package_filter_cstr_arg, prune_expired_upgrade_workflow_reservations,
+        push_upgrade_plan_step, repair_confirmation_satisfied,
         resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
-        run_external_updates_workflow_steps, rustup_probe_candidates,
-        scoped_upgrade_workflow_steps, search_label_args, search_label_key_for_query,
-        search_task_type_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
-        upgrade_task_label_for,
+        retain_selected_upgrade_workflow_steps, run_external_updates_workflow_steps,
+        rustup_probe_candidates, scoped_upgrade_workflow_steps, search_label_args,
+        search_label_key_for_query, search_task_type_for_query, upgrade_plan_step_id,
+        upgrade_reason_label_for, upgrade_task_label_for,
     };
     use helm_core::adapters::{
         AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, UninstallRequest,
@@ -12893,25 +12976,85 @@ mod tests {
     }
 
     #[test]
-    fn scoped_upgrade_workflow_filters_collapsed_mas_step_by_reason_args() {
+    fn scoped_upgrade_workflow_exposes_and_filters_individual_mas_steps() {
         let mut steps = Vec::new();
         let mut order_index = 0;
-        push_upgrade_plan_step_with_extra_reason_args(
+        push_upgrade_plan_step(
             &mut steps,
             ManagerId::Mas,
-            MAS_ALL_PACKAGES_TARGET.to_string(),
+            "GarageBand".to_string(),
             false,
             &mut order_index,
-            vec![("package_names", "GarageBand\nPages\nWhatsApp".to_string())],
+        );
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Mas,
+            "Pages".to_string(),
+            false,
+            &mut order_index,
         );
 
         let filtered = scoped_upgrade_workflow_steps(steps, "mas", "pages");
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].step_id, "mas:__all__");
-        assert_eq!(
-            filtered[0].reason_label_key,
-            "service.task.label.upgrade.mas_all"
+        assert_eq!(filtered[0].step_id, "mas:Pages");
+        assert_eq!(filtered[0].package_name, "Pages");
+    }
+
+    #[test]
+    fn selected_upgrade_workflow_keeps_only_exact_preview_steps() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Mas,
+            "Pages".to_string(),
+            false,
+            &mut order_index,
         );
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Npm,
+            "typescript".to_string(),
+            false,
+            &mut order_index,
+        );
+
+        let selected = ["mas:Pages".to_string()].into_iter().collect();
+        assert!(retain_selected_upgrade_workflow_steps(&mut steps, &selected).is_ok());
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].step_id, "mas:Pages");
+    }
+
+    #[test]
+    fn selected_upgrade_workflow_rejects_empty_or_stale_selection() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::Npm,
+            "typescript".to_string(),
+            false,
+            &mut order_index,
+        );
+
+        assert_eq!(
+            retain_selected_upgrade_workflow_steps(&mut steps.clone(), &Default::default()),
+            Err(SERVICE_ERROR_INVALID_INPUT)
+        );
+        let stale = ["npm:eslint".to_string()].into_iter().collect();
+        assert_eq!(
+            retain_selected_upgrade_workflow_steps(&mut steps, &stale),
+            Err(SERVICE_ERROR_INVALID_INPUT)
+        );
+    }
+
+    #[test]
+    fn package_filter_parser_accepts_empty_string() {
+        let filter = CString::new("").expect("empty CString should build");
+
+        let parsed = unsafe { parse_package_filter_cstr_arg(filter.as_ptr()) };
+
+        assert_eq!(parsed, Ok(String::new()));
     }
 
     #[test]

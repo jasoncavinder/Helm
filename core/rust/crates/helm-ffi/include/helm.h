@@ -252,6 +252,23 @@ bool helm_start_scoped_upgrade_workflow_with_id(const char *workflow_id,
                                                 const char *package_filter);
 
 /**
+ * Start a scoped bulk upgrade workflow containing only explicitly selected preview steps.
+ *
+ * The selected identifiers must be a non-empty JSON string array and every identifier must
+ * still exist in the current scoped preview. Stale or unknown identifiers fail closed.
+ *
+ * # Safety
+ *
+ * All string arguments must be valid, non-null UTF-8 C strings.
+ */
+bool helm_start_selected_upgrade_workflow_with_id(const char *workflow_id,
+                                                  bool include_pinned,
+                                                  bool allow_os_updates,
+                                                  const char *manager_scope_id,
+                                                  const char *package_filter,
+                                                  const char *selected_step_ids_json);
+
+/**
  * Stop a bulk upgrade workflow before it schedules another authority phase.
  * Existing individual tasks remain cancellable through `helm_cancel_task`.
  *

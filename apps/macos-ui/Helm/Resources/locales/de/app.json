@@ -211,6 +211,7 @@
   "app.settings.alert.upgrade_all.dry_run_result_message": "Trockenlauf abgeschlossen. Keine Aufgaben eingereiht.\n\nGeplante Aktionen:\n{summary}",
   "app.window.control_center": "Helm Dashboard",
   "app.health.healthy": "Fehlerfrei",
+  "app.health.updates_available": "Aktualisierungen verfügbar",
   "app.health.attention": "Achtung",
   "app.health.error": "Fehler",
   "app.health.running": "Läuft",

@@ -211,6 +211,7 @@
   "app.settings.alert.upgrade_all.dry_run_result_message": "Simulation terminée. Aucune tâche lancée.\n\nActions planifiées :\n{summary}",
   "app.window.control_center": "Tableau de bord Helm",
   "app.health.healthy": "Sain",
+  "app.health.updates_available": "Mises à jour disponibles",
   "app.health.attention": "Attention",
   "app.health.error": "Erreur",
   "app.health.running": "En cours",
