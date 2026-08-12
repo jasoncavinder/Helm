@@ -423,6 +423,7 @@ final class HelmCore: ObservableObject {
     private static let acceptedLicenseTermsVersionKey = "acceptedLicenseTermsVersion"
     private static let acceptedLicenseTermsAcceptedAtUnixKey = "acceptedLicenseTermsAcceptedAtUnix"
     static let launchAtLoginEnabledKey = "launchAtLoginEnabled"
+    static let notificationsEnabledKey = "notificationsEnabled"
     static let managerPriorityOverridesKey = "managerPriorityOverrides"
 
     @Published var isInitialized = false
@@ -528,6 +529,11 @@ final class HelmCore: ObservableObject {
     @Published var launchAtLoginEnabled: Bool = UserDefaults.standard.bool(
         forKey: HelmCore.launchAtLoginEnabledKey
     )
+    @Published var notificationsEnabled: Bool = {
+        AppNotificationPreference.resolvedEnabled(
+            storedValue: UserDefaults.standard.object(forKey: HelmCore.notificationsEnabledKey)
+        )
+    }()
     @Published var helmCliShimInstalled: Bool = false
     @Published var helmCliBundledAvailable: Bool = false
     @Published var helmCliShimOperationInProgress: Bool = false

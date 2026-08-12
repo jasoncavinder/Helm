@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private let core = HelmCore.shared
     let controlCenterContext = ControlCenterContext()
     private let notificationCenter = UNUserNotificationCenter.current()
-    private var hasObservedInFlightTasks = false
+    private var observedUpdateFingerprint: String?
     private var announcedTimeoutPromptIds: Set<String> = []
     private var announcedUpgradePlanCompletionWorkflowId: String?
     private static let timeoutPromptCategoryId = "helm.task.timeout.prompt"
@@ -28,7 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private static let timeoutPromptTaskIdUserInfoKey = "task_id"
     private static let timeoutPromptIdUserInfoKey = "prompt_id"
     private static let upgradePlanCompletionCategoryId = "helm.upgrade-plan.completed"
-    private static let upgradePlanReviewActionId = "helm.upgrade-plan.completed.review"
+    private static let updatesAvailableReviewCategoryId = "helm.updates.available.review"
+    private static let updatesAvailableUpgradeCategoryId = "helm.updates.available.upgrade"
+    private static let reviewPlanActionId = "helm.updates.review-plan"
+    private static let upgradeAllActionId = "helm.updates.upgrade-all"
+    private static let updatesAvailableNotificationId = "helm.updates.available"
     private var isControlCenterVisible: Bool {
         controlCenterWindowController?.window?.isVisible == true
     }
@@ -274,6 +278,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             .store(in: &cancellables)
 
+        LocalizationManager.shared.$currentLocale
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.registerUserNotificationCategories()
+            }
+            .store(in: &cancellables)
+
         core.$taskTimeoutPrompts
             .receive(on: RunLoop.main)
             .sink { [weak self] prompts in
@@ -281,10 +293,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             .store(in: &cancellables)
 
-        core.$activeTasks
+        core.$notificationsEnabled
+            .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { [weak self] tasks in
-                self?.handleActiveTasksUpdated(tasks)
+            .sink { [weak self] enabled in
+                self?.handleNotificationsEnabledChanged(enabled)
+            }
+            .store(in: &cancellables)
+
+        Publishers.CombineLatest4(
+            core.$outdatedPackages,
+            core.$managerStatuses,
+            core.$safeModeEnabled,
+            AppUpdateCoordinator.shared.$includeHelmInUpgradeAll
+        )
+            .debounce(for: .milliseconds(750), scheduler: RunLoop.main)
+            .sink { [weak self] packages, _, _, _ in
+                self?.handleUpdateAvailabilityChanged(packages)
             }
             .store(in: &cancellables)
 
@@ -421,12 +446,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
 private extension AppDelegate {
     var shouldSuppressTaskNotifications: Bool {
-        panel.isVisible || isControlCenterVisible
+        !core.notificationsEnabled || panel.isVisible || isControlCenterVisible
     }
 
     func configureUserNotifications() {
         notificationCenter.delegate = self
+        registerUserNotificationCategories()
 
+        guard core.notificationsEnabled else { return }
+        requestNotificationAuthorization()
+    }
+
+    func registerUserNotificationCategories() {
         let waitAction = UNNotificationAction(
             identifier: Self.timeoutPromptActionWaitId,
             title: L10n.App.Tasks.Notification.timeoutPromptActionWait.localized,
@@ -444,8 +475,13 @@ private extension AppDelegate {
             options: [.customDismissAction]
         )
         let reviewPlanAction = UNNotificationAction(
-            identifier: Self.upgradePlanReviewActionId,
-            title: L10n.App.Popover.Banner.review.localized,
+            identifier: Self.reviewPlanActionId,
+            title: L10n.App.Updates.Notification.reviewPlan.localized,
+            options: [.foreground]
+        )
+        let upgradeAllAction = UNNotificationAction(
+            identifier: Self.upgradeAllActionId,
+            title: L10n.App.Updates.Notification.upgradeAll.localized,
             options: [.foreground]
         )
         let upgradePlanCompletionCategory = UNNotificationCategory(
@@ -454,11 +490,27 @@ private extension AppDelegate {
             intentIdentifiers: [],
             options: []
         )
+        let updatesAvailableReviewCategory = UNNotificationCategory(
+            identifier: Self.updatesAvailableReviewCategoryId,
+            actions: [reviewPlanAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        let updatesAvailableUpgradeCategory = UNNotificationCategory(
+            identifier: Self.updatesAvailableUpgradeCategoryId,
+            actions: [reviewPlanAction, upgradeAllAction],
+            intentIdentifiers: [],
+            options: []
+        )
         notificationCenter.setNotificationCategories([
             timeoutPromptCategory,
             upgradePlanCompletionCategory,
+            updatesAvailableReviewCategory,
+            updatesAvailableUpgradeCategory,
         ])
+    }
 
+    func requestNotificationAuthorization() {
         notificationCenter.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
                 appDelegateLogger.warning("notification authorization request failed: \(error.localizedDescription, privacy: .public)")
@@ -466,6 +518,17 @@ private extension AppDelegate {
             }
             appDelegateLogger.info("notification authorization granted=\(granted, privacy: .public)")
         }
+    }
+
+    func handleNotificationsEnabledChanged(_ enabled: Bool) {
+        guard enabled else {
+            announcedTimeoutPromptIds = []
+            announcedUpgradePlanCompletionWorkflowId = nil
+            notificationCenter.removeAllPendingNotificationRequests()
+            notificationCenter.removeAllDeliveredNotifications()
+            return
+        }
+        requestNotificationAuthorization()
     }
 
     func handleTaskTimeoutPrompts(_ prompts: [CoreTaskTimeoutPrompt]) {
@@ -480,33 +543,56 @@ private extension AppDelegate {
         }
     }
 
-    func handleActiveTasksUpdated(_ tasks: [TaskItem]) {
-        let hasInFlight = tasks.contains(where: \.isRunning)
-        if hasInFlight {
-            hasObservedInFlightTasks = true
-            return
-        }
-        guard hasObservedInFlightTasks else { return }
-        guard !core.scopedUpgradePlanRunInProgress else { return }
-        hasObservedInFlightTasks = false
-
-        guard !shouldSuppressTaskNotifications else { return }
-        postTasksCompletedNotification()
-    }
-
     func handleUpgradePlanCompletion(_ completion: UpgradePlanCompletion) {
-        hasObservedInFlightTasks = false
         guard completion.completedNormally,
               announcedUpgradePlanCompletionWorkflowId != completion.workflowId else {
             return
         }
         announcedUpgradePlanCompletionWorkflowId = completion.workflowId
         guard !shouldSuppressTaskNotifications else { return }
-        guard completion.remainingInteractiveCount > 0 else {
-            postTasksCompletedNotification()
-            return
-        }
+        guard completion.remainingInteractiveCount > 0 else { return }
         postUpgradePlanCompletionNotification(completion)
+    }
+
+    func handleUpdateAvailabilityChanged(_ packages: [PackageItem]) {
+        let interactiveSurfaceVisible = panel.isVisible || isControlCenterVisible
+        let automaticUpdateCount = core.upgradeAllPreviewCount(
+            includePinned: false,
+            allowOsUpdates: true
+        )
+        var updateIdentifiers = packages.map { package in
+            [
+                package.managerId,
+                package.id,
+                package.version,
+                package.latestVersion ?? "",
+            ].joined(separator: "|")
+        }
+        if !packages.isEmpty {
+            updateIdentifiers.append("upgrade-all-available:\(automaticUpdateCount > 0)")
+        }
+        let evaluation = AppUpdateNotificationPolicy.evaluate(
+            updateIdentifiers: updateIdentifiers,
+            previousFingerprint: observedUpdateFingerprint,
+            notificationsEnabled: core.notificationsEnabled,
+            interactiveSurfaceVisible: interactiveSurfaceVisible
+        )
+        observedUpdateFingerprint = evaluation.observedFingerprint
+
+        if evaluation.observedFingerprint == nil || interactiveSurfaceVisible {
+            notificationCenter.removePendingNotificationRequests(
+                withIdentifiers: [Self.updatesAvailableNotificationId]
+            )
+            notificationCenter.removeDeliveredNotifications(
+                withIdentifiers: [Self.updatesAvailableNotificationId]
+            )
+        }
+
+        guard evaluation.shouldNotify else { return }
+        postUpdatesAvailableNotification(
+            count: packages.count,
+            allowsUpgradeAll: automaticUpdateCount > 0
+        )
     }
 
     func postTaskTimeoutPromptNotification(_ prompt: CoreTaskTimeoutPrompt) {
@@ -543,21 +629,26 @@ private extension AppDelegate {
         }
     }
 
-    func postTasksCompletedNotification() {
+    func postUpdatesAvailableNotification(count: Int, allowsUpgradeAll: Bool) {
         let content = UNMutableNotificationContent()
-        content.title = L10n.App.Tasks.Notification.allCompleteTitle.localized
-        content.body = L10n.App.Tasks.Notification.allCompleteMessage.localized
+        content.title = L10n.App.Updates.Notification.availableTitle.localized(with: [
+            "count": count
+        ])
+        content.body = L10n.App.Updates.Notification.availableMessage.localized
         content.sound = .default
+        content.categoryIdentifier = allowsUpgradeAll
+            ? Self.updatesAvailableUpgradeCategoryId
+            : Self.updatesAvailableReviewCategoryId
 
         let request = UNNotificationRequest(
-            identifier: "helm.tasks.completed.\(Int(Date().timeIntervalSince1970))",
+            identifier: Self.updatesAvailableNotificationId,
             content: content,
             trigger: nil
         )
         notificationCenter.add(request) { error in
             if let error {
                 appDelegateLogger.warning(
-                    "failed to post tasks-completed notification: \(error.localizedDescription, privacy: .public)"
+                    "failed to post updates-available notification: \(error.localizedDescription, privacy: .public)"
                 )
             }
         }
@@ -667,7 +758,7 @@ extension AppDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        completionHandler(core.notificationsEnabled ? [.banner, .sound] : [])
     }
 
     func userNotificationCenter(
@@ -679,14 +770,23 @@ extension AppDelegate {
 
         let userInfo = response.notification.request.content.userInfo
         let categoryIdentifier = response.notification.request.content.categoryIdentifier
-        if categoryIdentifier == Self.upgradePlanCompletionCategoryId {
+        if categoryIdentifier == Self.upgradePlanCompletionCategoryId
+            || categoryIdentifier == Self.updatesAvailableReviewCategoryId
+            || categoryIdentifier == Self.updatesAvailableUpgradeCategoryId {
+            let presentsUpgradeSheet = response.actionIdentifier == Self.upgradeAllActionId
             guard response.actionIdentifier == UNNotificationDefaultActionIdentifier
-                    || response.actionIdentifier == Self.upgradePlanReviewActionId else {
+                    || response.actionIdentifier == Self.reviewPlanActionId
+                    || presentsUpgradeSheet else {
                 return
             }
             DispatchQueue.main.async { [weak self] in
-                self?.controlCenterContext.select(.updates)
-                self?.openControlCenter()
+                guard let self else { return }
+                controlCenterContext.select(.updates)
+                openControlCenter()
+                if presentsUpgradeSheet,
+                   core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true) > 0 {
+                    controlCenterContext.presentUpgradeSheet(in: .controlCenter)
+                }
             }
             return
         }
