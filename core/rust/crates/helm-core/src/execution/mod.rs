@@ -57,13 +57,22 @@ impl PrivilegedOperation {
     }
 
     pub const fn supports_privileged_executor(self) -> bool {
-        !matches!(
-            self,
+        match self {
             Self::MacAppStoreInstall
-                | Self::MacAppStoreGet
-                | Self::MacAppStoreUninstall
-                | Self::MacAppStoreUpgrade
-        )
+            | Self::MacAppStoreGet
+            | Self::MacAppStoreUninstall
+            | Self::MacAppStoreUpgrade => false,
+            Self::SoftwareUpdateAll
+            | Self::XcodeCommandLineToolsUpdate
+            | Self::RosettaInstall
+            | Self::MacPortsInstall
+            | Self::MacPortsUninstall
+            | Self::MacPortsUpgrade
+            | Self::MacPortsManagerUninstall
+            | Self::MacPortsDeleteAccount
+            | Self::MacPortsDeleteGroup
+            | Self::MacPortsRemoveFiles => true,
+        }
     }
 }
 
