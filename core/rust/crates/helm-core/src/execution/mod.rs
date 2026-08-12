@@ -61,17 +61,17 @@ impl PrivilegedOperation {
             Self::MacAppStoreInstall
             | Self::MacAppStoreGet
             | Self::MacAppStoreUninstall
-            | Self::MacAppStoreUpgrade => false,
-            Self::SoftwareUpdateAll
-            | Self::XcodeCommandLineToolsUpdate
-            | Self::RosettaInstall
+            | Self::MacAppStoreUpgrade
             | Self::MacPortsInstall
             | Self::MacPortsUninstall
             | Self::MacPortsUpgrade
             | Self::MacPortsManagerUninstall
             | Self::MacPortsDeleteAccount
             | Self::MacPortsDeleteGroup
-            | Self::MacPortsRemoveFiles => true,
+            | Self::MacPortsRemoveFiles => false,
+            Self::SoftwareUpdateAll | Self::XcodeCommandLineToolsUpdate | Self::RosettaInstall => {
+                true
+            }
         }
     }
 }
@@ -931,6 +931,32 @@ mod tests {
             .expect("non-elevated request should validate");
         assert!(!request.requires_elevation);
         assert_eq!(request.privileged_operation, None);
+    }
+
+    #[test]
+    fn privileged_executor_support_is_explicitly_limited_to_fixed_apple_tools() {
+        for operation in [
+            PrivilegedOperation::SoftwareUpdateAll,
+            PrivilegedOperation::XcodeCommandLineToolsUpdate,
+            PrivilegedOperation::RosettaInstall,
+        ] {
+            assert!(operation.supports_privileged_executor());
+        }
+        for operation in [
+            PrivilegedOperation::MacAppStoreInstall,
+            PrivilegedOperation::MacAppStoreGet,
+            PrivilegedOperation::MacAppStoreUninstall,
+            PrivilegedOperation::MacAppStoreUpgrade,
+            PrivilegedOperation::MacPortsInstall,
+            PrivilegedOperation::MacPortsUninstall,
+            PrivilegedOperation::MacPortsUpgrade,
+            PrivilegedOperation::MacPortsManagerUninstall,
+            PrivilegedOperation::MacPortsDeleteAccount,
+            PrivilegedOperation::MacPortsDeleteGroup,
+            PrivilegedOperation::MacPortsRemoveFiles,
+        ] {
+            assert!(!operation.supports_privileged_executor());
+        }
     }
 
     #[test]

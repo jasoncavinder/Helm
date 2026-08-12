@@ -112,6 +112,18 @@
 		C38200000000000000000001 /* ControlCenterSplitViewBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38200000000000000000011 /* ControlCenterSplitViewBridge.swift */; };
 		C38200000000000000000002 /* ControlCenterSplitViewBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38200000000000000000011 /* ControlCenterSplitViewBridge.swift */; };
 		C38200000000000000000003 /* ControlCenterSplitViewBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38200000000000000000012 /* ControlCenterSplitViewBridgeTests.swift */; };
+		R42810000000000000000001 /* HelmPrivilegedHelper in Embed Privileged Helper */ = {isa = PBXBuildFile; fileRef = R42810000000000000000020 /* HelmPrivilegedHelper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		R42810000000000000000002 /* com.jasoncavinder.Helm.PrivilegedHelper.plist in Embed Launch Daemon */ = {isa = PBXBuildFile; fileRef = R42810000000000000000028 /* com.jasoncavinder.Helm.PrivilegedHelper.plist */; };
+		R42810000000000000000003 /* PrivilegedHelperModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000021 /* PrivilegedHelperModels.swift */; };
+		R42810000000000000000004 /* PrivilegedOperationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000022 /* PrivilegedOperationPolicy.swift */; };
+		R42810000000000000000005 /* CodeSigningValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000023 /* CodeSigningValidator.swift */; };
+		R42810000000000000000006 /* PrivilegedHelperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000024 /* PrivilegedHelperService.swift */; };
+		R42810000000000000000007 /* PrivilegedHelperDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000025 /* PrivilegedHelperDelegate.swift */; };
+		R42810000000000000000008 /* PrivilegedHelperClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000026 /* PrivilegedHelperClient.swift */; };
+		R42810000000000000000009 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000027 /* main.swift */; };
+		R4281000000000000000000A /* PrivilegedHelperModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000021 /* PrivilegedHelperModels.swift */; };
+		R4281000000000000000000B /* PrivilegedOperationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000022 /* PrivilegedOperationPolicy.swift */; };
+		R4281000000000000000000C /* PrivilegedOperationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000029 /* PrivilegedOperationPolicyTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -121,6 +133,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 8CE1FDBF2F3D2AD7000A3945;
 			remoteInfo = HelmService;
+		};
+		R42810000000000000000080 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000080000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = R42810000000000000000050;
+			remoteInfo = HelmPrivilegedHelper;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -133,6 +152,26 @@
 				8CE1FDCB2F3D2AD8000A3945 /* HelmService.xpc in Embed XPC Services */,
 			);
 			name = "Embed XPC Services";
+		};
+		R42810000000000000000040 /* Embed Privileged Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = Contents/Library/LaunchServices;
+			dstSubfolderSpec = 1;
+			files = (
+				R42810000000000000000001 /* HelmPrivilegedHelper in Embed Privileged Helper */,
+			);
+			name = "Embed Privileged Helper";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		R42810000000000000000041 /* Embed Launch Daemon */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = Contents/Library/LaunchDaemons;
+			dstSubfolderSpec = 1;
+			files = (
+				R42810000000000000000002 /* com.jasoncavinder.Helm.PrivilegedHelper.plist in Embed Launch Daemon */,
+			);
+			name = "Embed Launch Daemon";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
@@ -153,6 +192,16 @@
 		8CE1FDD62F3D2BA9000A3945 /* main.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		8CE1FDD72F3D2BA9000A3945 /* HelmServiceDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HelmServiceDelegate.swift; sourceTree = "<group>"; };
 		8CE1FDDE2F3D3249000A3945 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = "../../../service/macos-service/Info.plist"; sourceTree = "<group>"; };
+		R42810000000000000000020 /* HelmPrivilegedHelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = HelmPrivilegedHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		R42810000000000000000021 /* PrivilegedHelperModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedHelperModels.swift; sourceTree = "<group>"; };
+		R42810000000000000000022 /* PrivilegedOperationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedOperationPolicy.swift; sourceTree = "<group>"; };
+		R42810000000000000000023 /* CodeSigningValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeSigningValidator.swift; sourceTree = "<group>"; };
+		R42810000000000000000024 /* PrivilegedHelperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedHelperService.swift; sourceTree = "<group>"; };
+		R42810000000000000000025 /* PrivilegedHelperDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedHelperDelegate.swift; sourceTree = "<group>"; };
+		R42810000000000000000026 /* PrivilegedHelperClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedHelperClient.swift; sourceTree = "<group>"; };
+		R42810000000000000000027 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		R42810000000000000000028 /* com.jasoncavinder.Helm.PrivilegedHelper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = com.jasoncavinder.Helm.PrivilegedHelper.plist; sourceTree = "<group>"; };
+		R42810000000000000000029 /* PrivilegedOperationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedOperationPolicyTests.swift; sourceTree = "<group>"; };
 		8CE1FDE02F3D3410000A3945 /* HelmService-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "HelmService-Bridging-Header.h"; path = "../../../service/macos-service/HelmService-Bridging-Header.h"; sourceTree = "<group>"; };
 		8CFB6D482F3D1B24002372B8 /* libhelm_ffi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libhelm_ffi.a; path = Generated/libhelm_ffi.a; sourceTree = "<group>"; };
 		8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HelmCore.swift; sourceTree = "<group>"; };
@@ -238,6 +287,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		R42810000000000000000071 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 		8CE1FDBD2F3D2AD7000A3945 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -409,6 +463,7 @@
 				A10000040000000000000002 /* Helm */,
 				C10000000000000000000006 /* HelmTests */,
 				8CE1FDC12F3D2AD7000A3945 /* HelmService */,
+				R42810000000000000000030 /* HelmPrivilegedHelper */,
 				A10000040000000000000003 /* Products */,
 				8CFB6D472F3D1B24002372B8 /* Frameworks */,
 				8CEC4C9B2F3DA4B500CA3470 /* Recovered References */,
@@ -444,6 +499,7 @@
 			children = (
 				A10000020000000000000006 /* Helm.app */,
 				8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */,
+				R42810000000000000000020 /* HelmPrivilegedHelper */,
 				C10000000000000000000004 /* HelmTests.xctest */,
 			);
 			name = Products;
@@ -487,6 +543,7 @@
 		C10000000000000000000006 /* HelmTests */ = {
 			isa = PBXGroup;
 			children = (
+				R42810000000000000000029 /* PrivilegedOperationPolicyTests.swift */,
 				N42200000000000000000012 /* AppNotificationPolicyTests.swift */,
 				C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */,
 				C42400000000000000000012 /* ServiceConnectionRetryPolicyTests.swift */,
@@ -504,6 +561,29 @@
 				Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */,
 			);
 			path = HelmTests;
+			sourceTree = "<group>";
+		};
+		R42810000000000000000030 /* HelmPrivilegedHelper */ = {
+			isa = PBXGroup;
+			children = (
+				R42810000000000000000031 /* Sources */,
+				R42810000000000000000028 /* com.jasoncavinder.Helm.PrivilegedHelper.plist */,
+			);
+			path = HelmPrivilegedHelper;
+			sourceTree = "<group>";
+		};
+		R42810000000000000000031 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				R42810000000000000000021 /* PrivilegedHelperModels.swift */,
+				R42810000000000000000022 /* PrivilegedOperationPolicy.swift */,
+				R42810000000000000000023 /* CodeSigningValidator.swift */,
+				R42810000000000000000024 /* PrivilegedHelperService.swift */,
+				R42810000000000000000025 /* PrivilegedHelperDelegate.swift */,
+				R42810000000000000000026 /* PrivilegedHelperClient.swift */,
+				R42810000000000000000027 /* main.swift */,
+			);
+			path = Sources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -525,6 +605,23 @@
 			productReference = 8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */;
 			productType = "com.apple.product-type.xpc-service";
 		};
+		R42810000000000000000050 /* HelmPrivilegedHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = R42810000000000000000060 /* Build configuration list for PBXNativeTarget "HelmPrivilegedHelper" */;
+			buildPhases = (
+				R42810000000000000000070 /* Sources */,
+				R42810000000000000000071 /* Frameworks */,
+				R42810000000000000000072 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HelmPrivilegedHelper;
+			productName = HelmPrivilegedHelper;
+			productReference = R42810000000000000000020 /* HelmPrivilegedHelper */;
+			productType = "com.apple.product-type.tool";
+		};
 		A10000050000000000000001 /* Helm */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A10000070000000000000002 /* Build configuration list for PBXNativeTarget "Helm" */;
@@ -533,11 +630,14 @@
 				A10000030000000000000001 /* Frameworks */,
 				A10000060000000000000002 /* Resources */,
 				8CE1FDCC2F3D2AD8000A3945 /* Embed XPC Services */,
+				R42810000000000000000040 /* Embed Privileged Helper */,
+				R42810000000000000000041 /* Embed Launch Daemon */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				8CE1FDCA2F3D2AD8000A3945 /* PBXTargetDependency */,
+				R42810000000000000000081 /* PBXTargetDependency */,
 			);
 			name = Helm;
 			packageProductDependencies = (
@@ -575,6 +675,9 @@
 					8CE1FDBF2F3D2AD7000A3945 = {
 						CreatedOnToolsVersion = 14.2;
 					};
+					R42810000000000000000050 = {
+						CreatedOnToolsVersion = 26.0;
+					};
 					A10000050000000000000001 = {
 						CreatedOnToolsVersion = 14.0;
 					};
@@ -601,12 +704,18 @@
 			targets = (
 				A10000050000000000000001 /* Helm */,
 				8CE1FDBF2F3D2AD7000A3945 /* HelmService */,
+				R42810000000000000000050 /* HelmPrivilegedHelper */,
 				C10000000000000000000009 /* HelmTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		R42810000000000000000072 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 		8CE1FDBE2F3D2AD7000A3945 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -649,6 +758,18 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		R42810000000000000000070 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				R42810000000000000000003 /* PrivilegedHelperModels.swift in Sources */,
+				R42810000000000000000004 /* PrivilegedOperationPolicy.swift in Sources */,
+				R42810000000000000000005 /* CodeSigningValidator.swift in Sources */,
+				R42810000000000000000006 /* PrivilegedHelperService.swift in Sources */,
+				R42810000000000000000007 /* PrivilegedHelperDelegate.swift in Sources */,
+				R42810000000000000000008 /* PrivilegedHelperClient.swift in Sources */,
+				R42810000000000000000009 /* main.swift in Sources */,
+			);
+		};
 		8CE1FDBC2F3D2AD7000A3945 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -731,6 +852,9 @@
 		C10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				R4281000000000000000000A /* PrivilegedHelperModels.swift in Sources */,
+				R4281000000000000000000B /* PrivilegedOperationPolicy.swift in Sources */,
+				R4281000000000000000000C /* PrivilegedOperationPolicyTests.swift in Sources */,
 				N42200000000000000000002 /* AppNotificationPolicy.swift in Sources */,
 				N42200000000000000000003 /* AppNotificationPolicyTests.swift in Sources */,
 				C41900000000000000000002 /* StatusItemActivationPolicy.swift in Sources */,
@@ -771,9 +895,53 @@
 			target = 8CE1FDBF2F3D2AD7000A3945 /* HelmService */;
 			targetProxy = 8CE1FDC92F3D2AD8000A3945 /* PBXContainerItemProxy */;
 		};
+		R42810000000000000000081 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = R42810000000000000000050 /* HelmPrivilegedHelper */;
+			targetProxy = R42810000000000000000080 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		R42810000000000000000061 /* Debug configuration for PBXNativeTarget "HelmPrivilegedHelper" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm.PrivilegedHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		R42810000000000000000062 /* Release configuration for PBXNativeTarget "HelmPrivilegedHelper" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = V73WPJR9M4;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
+				PRODUCT_BUNDLE_IDENTIFIER = com.jasoncavinder.Helm.PrivilegedHelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		8CE1FDCD2F3D2AD8000A3945 /* Debug configuration for PBXNativeTarget "HelmService" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A40000000000000000000001 /* HelmVersion.base.xcconfig */;
@@ -1098,6 +1266,14 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		R42810000000000000000060 /* Build configuration list for PBXNativeTarget "HelmPrivilegedHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				R42810000000000000000061 /* Debug configuration for PBXNativeTarget "HelmPrivilegedHelper" */,
+				R42810000000000000000062 /* Release configuration for PBXNativeTarget "HelmPrivilegedHelper" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		8CE1FDCF2F3D2AD8000A3945 /* Build configuration list for PBXNativeTarget "HelmService" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

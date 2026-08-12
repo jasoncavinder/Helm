@@ -262,7 +262,7 @@ jobs:
             OTHER_CODE_SIGN_FLAGS="--timestamp" \
             build
 
-      - name: Re-sign Sparkle nested binaries for notarization
+      - name: Re-sign nested executables for notarization
         if: ${{ env.VERIFY_ONLY != 'true' }}
         run: |
           set -euo pipefail
@@ -270,14 +270,17 @@ jobs:
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release/Helm.app"
           SPARKLE_VERSION_DIR="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
           BUNDLED_CLI_BIN="$APP_PATH/Contents/Resources/helm-cli"
+          PRIVILEGED_HELPER_BIN="$APP_PATH/Contents/Library/LaunchServices/HelmPrivilegedHelper"
           SIGN_IDENTITY="Developer ID Application"
 
           test -d "$APP_PATH"
           test -d "$SPARKLE_VERSION_DIR"
           test -f "$BUNDLED_CLI_BIN"
+          test -f "$PRIVILEGED_HELPER_BIN"
 
           # Sign bundled CLI resource explicitly so notarization accepts the nested executable.
           codesign --force --timestamp --options runtime --sign "$SIGN_IDENTITY" "$BUNDLED_CLI_BIN"
+          codesign --force --timestamp --options runtime --identifier com.jasoncavinder.Helm.PrivilegedHelper --sign "$SIGN_IDENTITY" "$PRIVILEGED_HELPER_BIN"
           codesign --force --timestamp --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Autoupdate"
           codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/Updater.app"
           codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc"
@@ -287,6 +290,7 @@ jobs:
 
           echo "=== Sparkle signing check ==="
           codesign -dv --verbose=4 "$BUNDLED_CLI_BIN" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp=|flags=0x10000\\(runtime\\)"
+          codesign -dv --verbose=4 "$PRIVILEGED_HELPER_BIN" 2>&1 | grep -E "Identifier=com.jasoncavinder.Helm.PrivilegedHelper|Authority=Developer ID Application|Timestamp=|flags=0x10000\\(runtime\\)"
           codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Autoupdate" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
           codesign -dv --verbose=4 "$SPARKLE_VERSION_DIR/Updater.app/Contents/MacOS/Updater" 2>&1 | grep -E "Authority=Developer ID Application|Timestamp="
 
@@ -298,10 +302,21 @@ jobs:
           HELM_BIN="$APP_PATH/Contents/MacOS/Helm"
           XPC_BIN="$APP_PATH/Contents/XPCServices/HelmService.xpc/Contents/MacOS/HelmService"
           CLI_BIN="$APP_PATH/Contents/Resources/helm-cli"
+          PRIVILEGED_HELPER_BIN="$APP_PATH/Contents/Library/LaunchServices/HelmPrivilegedHelper"
+          PRIVILEGED_HELPER_PLIST="$APP_PATH/Contents/Library/LaunchDaemons/com.jasoncavinder.Helm.PrivilegedHelper.plist"
           APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
           SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 
           test -d "$APP_PATH"
+          test -f "$PRIVILEGED_HELPER_BIN"
+          test -f "$PRIVILEGED_HELPER_PLIST"
+
+          HELPER_LABEL=$(/usr/libexec/PlistBuddy -c "Print :Label" "$PRIVILEGED_HELPER_PLIST")
+          HELPER_PROGRAM=$(/usr/libexec/PlistBuddy -c "Print :BundleProgram" "$PRIVILEGED_HELPER_PLIST")
+          HELPER_MACH_SERVICE=$(/usr/libexec/PlistBuddy -c "Print :MachServices:com.jasoncavinder.Helm.PrivilegedHelper" "$PRIVILEGED_HELPER_PLIST")
+          test "$HELPER_LABEL" = "com.jasoncavinder.Helm.PrivilegedHelper"
+          test "$HELPER_PROGRAM" = "Contents/Library/LaunchServices/HelmPrivilegedHelper"
+          test "$HELPER_MACH_SERVICE" = "true"
 
           echo "=== Update channel metadata ==="
           CHANNEL=$(/usr/libexec/PlistBuddy -c "Print :HelmDistributionChannel" "$APP_INFO_PLIST")
@@ -351,6 +366,7 @@ jobs:
 
           echo "=== Architectures ==="
           lipo -archs "$HELM_BIN"
+          lipo -archs "$PRIVILEGED_HELPER_BIN"
 
           echo "=== Codesign verify (deep, strict) ==="
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
@@ -370,6 +386,10 @@ jobs:
           echo "=== HelmService binary: codesign details ==="
           codesign -dv --verbose=4 "$XPC_BIN" 2>&1
 
+          echo "=== HelmPrivilegedHelper binary: codesign details ==="
+          codesign -dv --verbose=4 "$PRIVILEGED_HELPER_BIN" 2>&1
+          codesign -dv --verbose=4 "$PRIVILEGED_HELPER_BIN" 2>&1 | grep -q "Identifier=com.jasoncavinder.Helm.PrivilegedHelper"
+
           echo "=== Notarization pre-check: hardened runtime flags ==="
           # CodeDirectory flags should include 'runtime' for hardened runtime
           if codesign -dv --verbose=4 "$HELM_BIN" 2>&1 | grep -q "flags=0x10000(runtime)"; then
@@ -388,6 +408,12 @@ jobs:
             echo "::error::Bundled helm-cli: hardened runtime flag NOT detected in codesign output"
             exit 1
           fi
+          if codesign -dv --verbose=4 "$PRIVILEGED_HELPER_BIN" 2>&1 | grep -q "flags=0x10000(runtime)"; then
+            echo "HelmPrivilegedHelper: hardened runtime flag present ✓"
+          else
+            echo "::error::HelmPrivilegedHelper: hardened runtime flag NOT detected in codesign output"
+            exit 1
+          fi
 
           echo "=== Notarization pre-check: get-task-allow must be absent ==="
           if codesign -d --entitlements :- "$HELM_BIN" 2>/dev/null | grep -q "get-task-allow"; then
@@ -401,6 +427,12 @@ jobs:
             exit 1
           else
             echo "HelmService: no get-task-allow ✓"
+          fi
+          if codesign -d --entitlements :- "$PRIVILEGED_HELPER_BIN" 2>/dev/null | grep -q "get-task-allow"; then
+            echo "::error::HelmPrivilegedHelper: get-task-allow entitlement present — notarization will fail"
+            exit 1
+          else
+            echo "HelmPrivilegedHelper: no get-task-allow ✓"
           fi
 
       - name: Create polished drag-to-Applications DMG

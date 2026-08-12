@@ -10,6 +10,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Interactive third-party Sparkle steps in Plan now offer direct vendor update and Open App actions in both the row and inspector. When automatic Plan work finishes with those steps remaining, Helm shows an in-app handoff and, while its interfaces are hidden, a system notification that opens Plan.
 - A default-on Notifications setting now controls actionable Helm alerts. Newly observed updates can notify while Helm's interfaces are hidden, with Review Plan and, when eligible automatic work exists, Upgrade All actions that preserve the existing confirmation and safety flow.
 - Plan updates are now checked by default and may be individually included or excluded before execution; the service validates and runs only the exact selected backend steps.
+- Developer ID builds now contain an inactive native privileged-helper foundation with exact signed-caller validation, a fail-closed allowlist limited to fixed Apple `softwareupdate` operations, and release checks for helper embedding, signing, and launch-daemon metadata. Runtime registration remains disabled, so this checkpoint does not replace the existing askpass flow.
 
 ### Fixed
 - npm searches shorter than two trimmed characters now return no results without invoking npm, avoiding npm's minimum-query-length error during incremental package search.

@@ -66,11 +66,12 @@ This checklist is required before creating a release tag on `main`.
 
 ### Candidate Scope
 
-- [ ] Carry only the post-RC4 behavior already merged through PRs `#419`-`#422` plus release-blocking fixes discovered by the focused readiness pass.
+- [ ] Carry only the reviewed post-RC4 stabilization delta plus release-blocking fixes discovered by the focused readiness pass.
 - [ ] Preserve Dashboard-aware status-item routing: with Dashboard closed either click opens the popover; with Dashboard open primary click focuses Dashboard and secondary click opens the popover.
 - [ ] Preserve third-party Sparkle updates as explicit interactive Plan steps with vendor update and Open App actions rather than falsely counting them as automatic work.
 - [ ] Preserve npm's two-character remote-search minimum without surfacing an error for a one-character query.
 - [ ] Replace routine task-completion alerts with default-on, deduplicated update notifications whose Review Plan and guarded Upgrade All actions retain Helm's existing policy and confirmation flow.
+- [ ] Preserve the embedded native helper, strict signed-caller/Apple-operation allowlist, and release packaging checks as inactive infrastructure; do not claim native authorization until registration, approval-state handling, runtime activation, and signed installed-build QA are complete.
 - [ ] Keep Issue `#388` and the Environment Brief outside production routing.
 
 ### Required Validation
