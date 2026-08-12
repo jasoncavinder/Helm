@@ -296,6 +296,39 @@ struct HealthBadgeView: View {
     }
 }
 
+struct WayfinderFooterStatusBadge: View {
+    let status: WayfinderFooterStatus
+
+    private var color: Color {
+        switch status {
+        case .healthy:
+            return HelmTheme.stateHealthy
+        case .updatesAvailable:
+            return HelmTheme.blue500
+        case .running:
+            return HelmTheme.stateRunning
+        case .attention:
+            return HelmTheme.stateAttention
+        case .error:
+            return HelmTheme.stateError
+        }
+    }
+
+    var body: some View {
+        Label(status.titleKey.localized, systemImage: status.icon)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .foregroundColor(color)
+            .background(
+                Capsule()
+                    .fill(color.opacity(0.15))
+            )
+            .contentShape(Capsule())
+            .accessibilityLabel(status.titleKey.localized)
+    }
+}
+
 func authority(for managerId: String) -> ManagerAuthority {
     guard let manager = ManagerInfo.all.first(where: { $0.id == managerId }) else {
         return .standard

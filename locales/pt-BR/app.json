@@ -211,6 +211,7 @@
   "app.settings.alert.upgrade_all.dry_run_result_message": "Simulação concluída. Nenhuma tarefa foi enfileirada.\n\nAções planejadas:\n{summary}",
   "app.window.control_center": "Painel do Helm",
   "app.health.healthy": "Saudável",
+  "app.health.updates_available": "Atualizações disponíveis",
   "app.health.attention": "Atenção",
   "app.health.error": "Erro",
   "app.health.running": "Em execução",

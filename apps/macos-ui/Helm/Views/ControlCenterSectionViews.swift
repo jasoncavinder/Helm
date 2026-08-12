@@ -345,12 +345,15 @@ struct RedesignUpdatesSectionView: View {
         }
     }
 
-    private var requiresPrivileges: Bool {
-        selectedScopedPlanSteps.contains { step in
-            step.managerId == "homebrew_formula"
-                || step.managerId == "softwareupdate"
-                || step.managerId == "mas"
-        }
+    private var riskSummary: UpgradePreviewPlanner.RiskSummary {
+        UpgradePreviewPlanner.riskSummary(
+            for: selectedScopedPlanSteps.map {
+                .init(managerId: $0.managerId, packageName: $0.packageName)
+            },
+            restartRequiredCandidates: core.outdatedPackages
+                .filter(\.restartRequired)
+                .map { .init(managerId: $0.managerId, packageName: $0.name) }
+        )
     }
 
     private func planStepTitle(_ step: CoreUpgradePlanStep) -> String {
@@ -407,17 +410,6 @@ struct RedesignUpdatesSectionView: View {
                 return package
             }
             .joined(separator: ", ")
-    }
-
-    private var mayRequireReboot: Bool {
-        selectedScopedPlanSteps.contains { step in
-            if step.managerId == "softwareupdate" {
-                return true
-            }
-            return core.outdatedPackages.contains { pkg in
-                pkg.managerId == step.managerId && pkg.name == step.packageName && pkg.restartRequired
-            }
-        }
     }
 
     private var scopedFailedStepIds: [String] {
@@ -633,8 +625,14 @@ struct RedesignUpdatesSectionView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.App.Updates.riskFlags.localized)
                         .font(.headline)
-                    riskRow(flag: L10n.App.Updates.Risk.privileged.localized, active: requiresPrivileges)
-                    riskRow(flag: L10n.App.Updates.Risk.reboot.localized, active: mayRequireReboot)
+                    riskRow(
+                        flag: L10n.App.Updates.Risk.privileged.localized,
+                        active: riskSummary.requiresElevatedPrivileges
+                    )
+                    riskRow(
+                        flag: L10n.App.Updates.Risk.reboot.localized,
+                        active: riskSummary.mayRequireReboot
+                    )
                 }
 
                 if !scopedFailureGroups.isEmpty {

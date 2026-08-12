@@ -423,6 +423,7 @@ extension L10n {
         }
         struct Health {
             static let healthy = "app.health.healthy"
+            static let updatesAvailable = "app.health.updates_available"
             static let attention = "app.health.attention"
             static let error = "app.health.error"
             static let running = "app.health.running"

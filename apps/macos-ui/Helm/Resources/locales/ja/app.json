@@ -211,6 +211,7 @@
   "app.settings.alert.upgrade_all.dry_run_result_message": "ドライランが完了しました。タスクはキューに追加されていません。\n\n計画されたアクション:\n{summary}",
   "app.window.control_center": "Helm ダッシュボード",
   "app.health.healthy": "正常",
+  "app.health.updates_available": "アップデートあり",
   "app.health.attention": "要注意",
   "app.health.error": "エラー",
   "app.health.running": "実行中",

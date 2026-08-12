@@ -65,6 +65,63 @@ enum WayfinderCondition: Equatable {
     case refreshing
     case serviceUnavailable
     case healthy
+
+    var footerStatus: WayfinderFooterStatus {
+        switch self {
+        case .updatesReady:
+            return .updatesAvailable
+        case .activeWork, .refreshing:
+            return .running
+        case .failedOrInterrupted:
+            return .error
+        case .approvalRequired, .actionableFinding, .serviceUnavailable:
+            return .attention
+        case .healthy:
+            return .healthy
+        }
+    }
+}
+
+enum WayfinderFooterStatus: Equatable {
+    case healthy
+    case updatesAvailable
+    case running
+    case attention
+    case error
+
+    var titleKey: String {
+        switch self {
+        case .healthy:
+            return "app.health.healthy"
+        case .updatesAvailable:
+            return "app.health.updates_available"
+        case .running:
+            return "app.health.running"
+        case .attention:
+            return "app.health.attention"
+        case .error:
+            return "app.health.error"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .healthy:
+            return "checkmark.circle.fill"
+        case .updatesAvailable:
+            return "arrow.up.circle.fill"
+        case .running:
+            return "arrow.triangle.2.circlepath"
+        case .attention:
+            return "exclamationmark.triangle.fill"
+        case .error:
+            return "xmark.octagon.fill"
+        }
+    }
+
+    var isActionable: Bool {
+        self != .healthy
+    }
 }
 
 struct WayfinderCoverage: Equatable {

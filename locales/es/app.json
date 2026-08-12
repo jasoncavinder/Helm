@@ -211,6 +211,7 @@
   "app.settings.alert.upgrade_all.dry_run_result_message": "Simulación completada. No se encolaron tareas.\n\nAcciones planificadas:\n{summary}",
   "app.window.control_center": "Panel de Helm",
   "app.health.healthy": "Saludable",
+  "app.health.updates_available": "Actualizaciones disponibles",
   "app.health.attention": "Atención",
   "app.health.error": "Error",
   "app.health.running": "En ejecución",

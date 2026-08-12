@@ -59,6 +59,16 @@ struct UpgradePreviewPlanner {
         let knownStepIds: Set<String>
     }
 
+    struct RiskCandidate: Equatable {
+        let managerId: String
+        let packageName: String
+    }
+
+    struct RiskSummary: Equatable {
+        let requiresElevatedPrivileges: Bool
+        let mayRequireReboot: Bool
+    }
+
     static let allManagersScopeId = "__all_managers__"
 
     static func count(
@@ -235,6 +245,25 @@ struct UpgradePreviewPlanner {
                 .union(newlyAvailableStepIds),
             knownStepIds: availableStepIds
         )
+    }
+
+    static func riskSummary(
+        for selectedCandidates: [RiskCandidate],
+        restartRequiredCandidates: [RiskCandidate]
+    ) -> RiskSummary {
+        let restartRequiredKeys = Set(restartRequiredCandidates.map(riskKey))
+        return RiskSummary(
+            requiresElevatedPrivileges: selectedCandidates.contains {
+                $0.managerId == "softwareupdate" || $0.managerId == "mas"
+            },
+            mayRequireReboot: selectedCandidates.contains {
+                $0.managerId == "softwareupdate" || restartRequiredKeys.contains(riskKey($0))
+            }
+        )
+    }
+
+    private static func riskKey(_ candidate: RiskCandidate) -> String {
+        "\(candidate.managerId):\(candidate.packageName)"
     }
 
     static func shouldRunScopedStep(

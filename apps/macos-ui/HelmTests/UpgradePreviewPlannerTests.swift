@@ -216,6 +216,54 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         XCTAssertEqual(refreshed.knownStepIds, ["npm:typescript"])
     }
 
+    func testRiskSummaryUsesOnlySelectedCandidates() {
+        let appStore = UpgradePreviewPlanner.RiskCandidate(managerId: "mas", packageName: "Pages")
+        let homebrew = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "homebrew_formula",
+            packageName: "ripgrep"
+        )
+        let macOS = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "softwareupdate",
+            packageName: "macOS"
+        )
+
+        XCTAssertEqual(
+            UpgradePreviewPlanner.riskSummary(
+                for: [appStore, homebrew, macOS],
+                restartRequiredCandidates: []
+            ),
+            .init(requiresElevatedPrivileges: true, mayRequireReboot: true)
+        )
+        XCTAssertEqual(
+            UpgradePreviewPlanner.riskSummary(
+                for: [homebrew],
+                restartRequiredCandidates: [appStore]
+            ),
+            .init(requiresElevatedPrivileges: false, mayRequireReboot: false)
+        )
+    }
+
+    func testRiskSummaryMatchesRestartRequirementByManagerAndPackage() {
+        let selected = UpgradePreviewPlanner.RiskCandidate(managerId: "npm", packageName: "example")
+        let otherManager = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "homebrew_formula",
+            packageName: "example"
+        )
+
+        XCTAssertTrue(
+            UpgradePreviewPlanner.riskSummary(
+                for: [selected],
+                restartRequiredCandidates: [selected]
+            ).mayRequireReboot
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.riskSummary(
+                for: [selected],
+                restartRequiredCandidates: [otherManager]
+            ).mayRequireReboot
+        )
+    }
+
     func testShouldRunScopedStepHonorsRuntimeProjectionAndSafeMode() {
         XCTAssertTrue(
             UpgradePreviewPlanner.shouldRunScopedStep(

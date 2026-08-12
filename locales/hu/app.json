@@ -211,6 +211,7 @@
   "app.settings.alert.upgrade_all.dry_run_result_message": "Dry run complete. No tasks were queued.\n\nPlanned actions:\n{summary}",
   "app.window.control_center": "Helm vezérlőpult",
   "app.health.healthy": "Healthy",
+  "app.health.updates_available": "Frissítések érhetők el",
   "app.health.attention": "Attention",
   "app.health.error": "Error",
   "app.health.running": "Running",
