@@ -546,6 +546,17 @@ unsafe fn parse_required_cstr_arg(raw: *const c_char) -> Result<String, &'static
     Ok(value.to_string())
 }
 
+unsafe fn parse_package_filter_cstr_arg(raw: *const c_char) -> Result<String, &'static str> {
+    if raw.is_null() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let c_str = unsafe { CStr::from_ptr(raw) };
+    c_str
+        .to_str()
+        .map(|value| value.to_string())
+        .map_err(|_| SERVICE_ERROR_INVALID_INPUT)
+}
+
 fn manager_install_plan_error_key(
     error: helm_core::manager_lifecycle::ManagerInstallPlanError,
 ) -> &'static str {
@@ -7733,13 +7744,9 @@ pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow(
         Ok(value) => value,
         Err(error) => return return_error_ptr(error),
     };
-    let package_filter = if package_filter.is_null() {
-        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
-    } else {
-        match unsafe { CStr::from_ptr(package_filter) }.to_str() {
-            Ok(value) => value.to_string(),
-            Err(_) => return return_error_ptr(SERVICE_ERROR_INVALID_INPUT),
-        }
+    let package_filter = match unsafe { parse_package_filter_cstr_arg(package_filter) } {
+        Ok(value) => value,
+        Err(error) => return return_error_ptr(error),
     };
     let workflow_id = next_upgrade_workflow_id();
     match start_scoped_upgrade_workflow(
@@ -7782,13 +7789,9 @@ pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow_with_id(
         Ok(value) => value,
         Err(error) => return return_error_bool(error),
     };
-    let package_filter = if package_filter.is_null() {
-        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
-    } else {
-        match unsafe { CStr::from_ptr(package_filter) }.to_str() {
-            Ok(value) => value.to_string(),
-            Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
-        }
+    let package_filter = match unsafe { parse_package_filter_cstr_arg(package_filter) } {
+        Ok(value) => value,
+        Err(error) => return return_error_bool(error),
     };
     start_scoped_upgrade_workflow(
         include_pinned,
@@ -7827,7 +7830,7 @@ pub unsafe extern "C" fn helm_start_selected_upgrade_workflow_with_id(
         Ok(value) => value,
         Err(error) => return return_error_bool(error),
     };
-    let package_filter = match unsafe { parse_required_cstr_arg(package_filter) } {
+    let package_filter = match unsafe { parse_package_filter_cstr_arg(package_filter) } {
         Ok(value) => value,
         Err(error) => return return_error_bool(error),
     };
@@ -11551,13 +11554,13 @@ mod tests {
         manager_allows_individual_package_uninstall, manager_authority_key,
         manager_participates_in_catalog_sync, manager_participates_in_package_search,
         manager_uninstall_label_for_route, parse_homebrew_config_version,
-        prune_expired_upgrade_workflow_reservations, push_upgrade_plan_step,
-        repair_confirmation_satisfied, resolve_homebrew_manager_update_strategy,
-        resolve_rustup_uninstall_strategy, retain_selected_upgrade_workflow_steps,
-        run_external_updates_workflow_steps, rustup_probe_candidates,
-        scoped_upgrade_workflow_steps, search_label_args, search_label_key_for_query,
-        search_task_type_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
-        upgrade_task_label_for,
+        parse_package_filter_cstr_arg, prune_expired_upgrade_workflow_reservations,
+        push_upgrade_plan_step, repair_confirmation_satisfied,
+        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
+        retain_selected_upgrade_workflow_steps, run_external_updates_workflow_steps,
+        rustup_probe_candidates, scoped_upgrade_workflow_steps, search_label_args,
+        search_label_key_for_query, search_task_type_for_query, upgrade_plan_step_id,
+        upgrade_reason_label_for, upgrade_task_label_for,
     };
     use helm_core::adapters::{
         AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, UninstallRequest,
@@ -13043,6 +13046,15 @@ mod tests {
             retain_selected_upgrade_workflow_steps(&mut steps, &stale),
             Err(SERVICE_ERROR_INVALID_INPUT)
         );
+    }
+
+    #[test]
+    fn package_filter_parser_accepts_empty_string() {
+        let filter = CString::new("").expect("empty CString should build");
+
+        let parsed = unsafe { parse_package_filter_cstr_arg(filter.as_ptr()) };
+
+        assert_eq!(parsed, Ok(String::new()));
     }
 
     #[test]
