@@ -59,6 +59,9 @@ jobs:
       - name: Validate release workflow safety contracts
         run: scripts/release/tests/release_workflow_contract.sh
 
+      - name: Validate privileged helper packaging contracts
+        run: scripts/release/tests/privileged_helper_packaging_contract.sh
+
       - name: Validate Sparkle appcast channel contracts
         run: scripts/release/tests/sparkle_appcast_channels_contract.sh
 

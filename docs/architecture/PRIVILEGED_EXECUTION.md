@@ -8,14 +8,22 @@ This contract defines the boundary between ordinary process execution and a futu
 
 ## Current Checkpoint
 
-The core process request now carries both:
+The core process request carries both:
 
 - `requires_elevation`, retained temporarily for current executor compatibility
 - exactly one typed `PrivilegedOperation` whenever elevation is required
 
-Validation fails closed when those fields disagree. The current `sudo -A` askpass path remains the fallback until the signed helper, Service Management registration UX, and release packaging land together.
+Validation fails closed when those fields disagree. A first-class `HelmPrivilegedHelper` executable and launch-daemon plist are now embedded only in `developer_id` app bundles. Developer ID packaging signs the helper independently and verifies its exact identifier and metadata before accepting a DMG.
 
-Current implementation also keeps Mac App Store mutations on the existing askpass path even if a trusted privileged executor is configured, because the MAS constraint below is unresolved.
+The embedded executable is intentionally inactive at this checkpoint: Helm does not register it through Service Management or configure it as the trusted executor. The current `sudo -A` askpass path therefore remains the runtime implementation. Mac App Store and all MacPorts mutations remain on askpass even if a trusted privileged executor is configured, because their bounded helper designs are unresolved.
+
+The helper's current root-side policy accepts only these fixed Apple command shapes:
+
+- `software_update.install_all` -> `/usr/sbin/softwareupdate -i -a`
+- `xcode_command_line_tools.update` -> `/usr/sbin/softwareupdate -i <bounded Command Line Tools label>`
+- `rosetta.install` -> `/usr/sbin/softwareupdate --install-rosetta --agree-to-license`
+
+It invokes no shell, forwards no caller environment, permits only one privileged child process helper-wide, caps captured stdout/stderr while continuing to drain both streams, and terminates only the caller-owned work when its XPC connection is interrupted or invalidated. The launch daemon accepts only the exact signed helper client whose immediate parent is the exact signed Helm service; the client also requires that exact service as its immediate parent before forwarding a request.
 
 When the embedded service programmatically configures a trusted absolute executor, the process executor forwards a structured invocation:
 
@@ -39,7 +47,7 @@ Adding an operation requires adapter request-shape tests, helper-side allowlist 
 
 ## Target Native Architecture
 
-The Developer ID app will use a notarized launch daemon registered with `SMAppService.daemon(plistName:)`. Apple requires launch-daemon approval and exposes approval state through `SMAppService.Status`; Helm must explain the need before registration and route the user to Login Items when approval is required.
+The Developer ID app will activate its embedded notarized launch daemon through `SMAppService.daemon(plistName:)`. Apple requires launch-daemon approval and exposes approval state through `SMAppService.Status`; Helm must explain the need before registration and route the user to Login Items when approval is required.
 
 The target boundary is:
 
@@ -66,6 +74,7 @@ Apple references:
 - Request environment variables are not forwarded wholesale into a root process.
 - Cancellation or caller invalidation terminates the associated privileged child.
 - Registration, approval, unavailable-helper, denied-operation, and cancellation outcomes are explicit task failures or user-action states, never silent fallback.
+- The embedded helper is not a permission grant by itself. Registration and executor configuration remain separate explicit activation steps.
 
 ## Mac App Store Constraint
 
@@ -81,16 +90,15 @@ The helper must not solve this constraint by broadly allowlisting Homebrew paths
 
 ## Distribution And Release Rules
 
-- Developer ID: the launch daemon must be embedded, signed with the app, notarized, registered through Service Management, and verified in the release DMG.
+- Developer ID: the launch daemon is embedded only in the direct-channel bundle, and release automation signs and verifies its executable and plist independently. Runtime activation still requires Service Management registration, user approval where required, and signed/notarized installed-build QA.
 - Mac App Store: helper availability and entitlement policy require a separate channel decision; Developer ID assumptions must not leak into the MAS profile.
 - Setapp and Fleet: registration and update authority remain channel-specific. Fleet may later manage helper approval through deployment policy, but cannot weaken the operation allowlist.
 - Unsigned development builds may test request validation and helper protocol behavior, but cannot be treated as evidence that launch-daemon registration, approval, signing, or notarization works.
 
 ## Completion Gates
 
-Native privileged execution is not complete until all of the following pass:
+The helper target, launch-daemon plist, app embedding, fixed Apple-operation policy tests, and release packaging contract are implemented. Native privileged execution is not complete until all of the following pass:
 
-- helper target, launch-daemon plist, and app embedding are present
 - caller validation and operation allowlist tests pass
 - app registration/approval UX handles every `SMAppService.Status`
 - elevated output, cancellation, timeout, and relaunch behavior pass
