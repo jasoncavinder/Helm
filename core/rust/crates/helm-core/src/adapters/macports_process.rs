@@ -15,8 +15,8 @@ use crate::adapters::macports::{
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{
-    CommandSpec, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
-    spawn_validated,
+    CommandSpec, PrivilegedOperation, ProcessExecutor, ProcessExitStatus, ProcessOutput,
+    ProcessSpawnRequest, spawn_validated,
 };
 use crate::models::{CoreError, CoreErrorKind, ManagerId, SearchQuery};
 
@@ -134,7 +134,7 @@ impl ProcessMacPortsSource {
             crate::models::ManagerAction::Uninstall,
             CommandSpec::new(executable).args(["-fp", "uninstall", "installed"]),
         )
-        .requires_elevation(true)
+        .privileged_operation(PrivilegedOperation::MacPortsManagerUninstall)
         .timeout(std::time::Duration::from_secs(3600)))
     }
 
@@ -154,7 +154,21 @@ impl ProcessMacPortsSource {
             crate::models::ManagerAction::Uninstall,
             CommandSpec::new("/usr/bin/dscl").args([".", "-delete", record_path]),
         )
-        .requires_elevation(true)
+        .privileged_operation(match record_path {
+            "/Users/macports" => PrivilegedOperation::MacPortsDeleteAccount,
+            "/Groups/macports" => PrivilegedOperation::MacPortsDeleteGroup,
+            _ => {
+                return Err(CoreError {
+                    manager: Some(ManagerId::MacPorts),
+                    task: Some(crate::models::TaskType::Uninstall),
+                    action: Some(crate::models::ManagerAction::Uninstall),
+                    kind: CoreErrorKind::InvalidInput,
+                    message: format!(
+                        "refusing unsupported MacPorts directory record '{record_path}'"
+                    ),
+                });
+            }
+        })
         .timeout(std::time::Duration::from_secs(60));
         let _ = self.run_and_collect_stdout_accepting(request, &[])?;
         Ok(())
@@ -325,7 +339,7 @@ impl MacPortsSource for ProcessMacPortsSource {
                     .args(["-rf"])
                     .args(cleanup_paths.iter().cloned()),
             )
-            .requires_elevation(true)
+            .privileged_operation(PrivilegedOperation::MacPortsRemoveFiles)
             .timeout(std::time::Duration::from_secs(600));
             let _ = self.run_and_collect_stdout_accepting(cleanup_request, &[])?;
         }

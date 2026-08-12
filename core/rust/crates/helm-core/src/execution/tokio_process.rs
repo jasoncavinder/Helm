@@ -114,6 +114,7 @@ struct PreparedSpawnCommand {
 }
 
 static DEFAULT_SUDO_ASKPASS_PATH: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+static PRIVILEGED_EXECUTOR_PATH: OnceLock<PathBuf> = OnceLock::new();
 const HELM_SUDO_ASKPASS_ENV: &str = "HELM_SUDO_ASKPASS";
 const HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV: &str = "HELM_SUDO_ASKPASS_ALLOW_OVERRIDE";
 const WAIT_LOOP_POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -129,14 +130,55 @@ const HARD_TIMEOUT_PROMPT_EXTENSION: Duration = Duration::from_secs(30 * 60);
 const READ_TASK_TIMEOUT_EXTENSION_MAX_BUDGET: Duration = Duration::from_secs(3 * 60);
 const READ_TASK_TIMEOUT_EXTENSION_MAX_ACTIVITY_WINDOW: Duration = Duration::from_secs(6 * 60);
 
+pub fn configure_privileged_executor(path: PathBuf) -> Result<(), PathBuf> {
+    PRIVILEGED_EXECUTOR_PATH.set(path)
+}
+
 fn prepare_command_for_spawn(
     request: &ProcessSpawnRequest,
     askpass_override: Option<&Path>,
+) -> ExecutionResult<PreparedSpawnCommand> {
+    prepare_command_for_spawn_with_privileged_executor(request, askpass_override, None)
+}
+
+fn prepare_command_for_spawn_with_privileged_executor(
+    request: &ProcessSpawnRequest,
+    askpass_override: Option<&Path>,
+    privileged_executor_override: Option<&Path>,
 ) -> ExecutionResult<PreparedSpawnCommand> {
     if !request.requires_elevation {
         return Ok(PreparedSpawnCommand {
             command: request.command.clone(),
             command_display: format_command_for_display(&request.command),
+        });
+    }
+
+    let operation = request.privileged_operation.ok_or_else(|| {
+        process_failure(
+            request.manager,
+            request.task_type,
+            request.action,
+            "elevated command is missing its privileged operation".to_string(),
+        )
+    })?;
+
+    if operation.supports_privileged_executor()
+        && let Some(executor_path) = resolve_privileged_executor_path(
+            request.manager,
+            request.task_type,
+            request.action,
+            privileged_executor_override,
+        )?
+    {
+        let elevated = CommandSpec::new(executor_path)
+            .args(["--operation", operation.identifier(), "--program"])
+            .arg(request.command.program.to_string_lossy().to_string())
+            .arg("--")
+            .args(request.command.args.clone());
+
+        return Ok(PreparedSpawnCommand {
+            command_display: format_command_for_display(&elevated),
+            command: elevated,
         });
     }
 
@@ -174,6 +216,29 @@ fn prepare_command_for_spawn(
     })
 }
 
+fn resolve_privileged_executor_path(
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+    privileged_executor_override: Option<&Path>,
+) -> ExecutionResult<Option<PathBuf>> {
+    let path = privileged_executor_override
+        .map(Path::to_path_buf)
+        .or_else(|| PRIVILEGED_EXECUTOR_PATH.get().cloned());
+    let Some(path) = path else {
+        return Ok(None);
+    };
+
+    validate_trusted_executable_path(
+        path.as_path(),
+        "privileged executor",
+        manager,
+        task_type,
+        action,
+    )?;
+    Ok(Some(path))
+}
+
 fn process_context_details(command: &CommandSpec) -> (String, Option<String>) {
     let program_path = command.program.to_string_lossy().to_string();
     let path_snippet = command
@@ -200,7 +265,6 @@ fn resolve_sudo_askpass_path(
 ) -> ExecutionResult<PathBuf> {
     if let Some(path) = askpass_override {
         validate_trusted_askpass_path(path, manager, task_type, action)?;
-        validate_askpass_path(path, manager, task_type, action)?;
         return Ok(path.to_path_buf());
     }
 
@@ -217,7 +281,6 @@ fn resolve_sudo_askpass_path(
         }
         let path = PathBuf::from(path);
         validate_trusted_askpass_path(path.as_path(), manager, task_type, action)?;
-        validate_askpass_path(path.as_path(), manager, task_type, action)?;
         return Ok(path);
     }
 
@@ -225,7 +288,6 @@ fn resolve_sudo_askpass_path(
     match initialized {
         Ok(path) => {
             validate_trusted_askpass_path(path.as_path(), manager, task_type, action)?;
-            validate_askpass_path(path.as_path(), manager, task_type, action)?;
             Ok(path.clone())
         }
         Err(message) => Err(process_failure(manager, task_type, action, message.clone())),
@@ -246,15 +308,22 @@ fn validate_trusted_askpass_path(
     task_type: TaskType,
     action: ManagerAction,
 ) -> ExecutionResult<()> {
+    validate_trusted_executable_path(path, "sudo askpass helper", manager, task_type, action)
+}
+
+fn validate_trusted_executable_path(
+    path: &Path,
+    label: &str,
+    manager: ManagerId,
+    task_type: TaskType,
+    action: ManagerAction,
+) -> ExecutionResult<()> {
     if !path.is_absolute() {
         return Err(process_failure(
             manager,
             task_type,
             action,
-            format!(
-                "sudo askpass helper '{}' must be an absolute path",
-                path.display()
-            ),
+            format!("{label} '{}' must be an absolute path", path.display()),
         ));
     }
 
@@ -263,10 +332,7 @@ fn validate_trusted_askpass_path(
             manager,
             task_type,
             action,
-            format!(
-                "sudo askpass helper is unavailable at '{}': {error}",
-                path.display()
-            ),
+            format!("{label} is unavailable at '{}': {error}", path.display()),
         )
     })?;
 
@@ -275,23 +341,22 @@ fn validate_trusted_askpass_path(
             manager,
             task_type,
             action,
-            format!(
-                "sudo askpass helper '{}' must not be a symlink",
-                path.display()
-            ),
+            format!("{label} '{}' must not be a symlink", path.display()),
         ));
     }
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        if metadata.uid() != unsafe { libc::geteuid() } {
+        let owner = metadata.uid();
+        let effective_user = unsafe { libc::geteuid() };
+        if owner != 0 && owner != effective_user {
             return Err(process_failure(
                 manager,
                 task_type,
                 action,
                 format!(
-                    "sudo askpass helper '{}' must be owned by the current user",
+                    "{label} '{}' must be owned by root or the current user",
                     path.display()
                 ),
             ));
@@ -302,31 +367,19 @@ fn validate_trusted_askpass_path(
                 task_type,
                 action,
                 format!(
-                    "sudo askpass helper '{}' must not be group/world writable",
+                    "{label} '{}' must not be group/world writable",
                     path.display()
                 ),
             ));
         }
     }
 
-    Ok(())
-}
-
-fn validate_askpass_path(
-    path: &Path,
-    manager: ManagerId,
-    task_type: TaskType,
-    action: ManagerAction,
-) -> ExecutionResult<()> {
     let metadata = fs::metadata(path).map_err(|error| {
         process_failure(
             manager,
             task_type,
             action,
-            format!(
-                "sudo askpass helper is unavailable at '{}': {error}",
-                path.display()
-            ),
+            format!("{label} is unavailable at '{}': {error}", path.display()),
         )
     })?;
     if !metadata.is_file() {
@@ -334,10 +387,7 @@ fn validate_askpass_path(
             manager,
             task_type,
             action,
-            format!(
-                "sudo askpass helper path '{}' is not a file",
-                path.display()
-            ),
+            format!("{label} path '{}' is not a file", path.display()),
         ));
     }
 
@@ -349,7 +399,7 @@ fn validate_askpass_path(
                 manager,
                 task_type,
                 action,
-                format!("sudo askpass helper '{}' is not executable", path.display()),
+                format!("{label} '{}' is not executable", path.display()),
             ));
         }
     }
@@ -1481,14 +1531,14 @@ mod tests {
     use super::{
         HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, HELM_SUDO_ASKPASS_ENV, hard_timeout_activity_window,
         hard_timeout_extension_budget, prepare_command_for_spawn,
-        read_task_hard_timeout_grace_extension, resolve_effective_working_dir,
-        supports_read_task_timeout_grace,
+        prepare_command_for_spawn_with_privileged_executor, read_task_hard_timeout_grace_extension,
+        resolve_effective_working_dir, supports_read_task_timeout_grace,
     };
-    use crate::execution::{CommandSpec, ProcessSpawnRequest};
+    use crate::execution::{CommandSpec, PrivilegedOperation, ProcessSpawnRequest};
     use crate::models::{ManagerAction, ManagerId, TaskType};
     use std::ffi::OsString;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::{Mutex, OnceLock};
     use std::time::Duration;
 
@@ -1562,7 +1612,7 @@ mod tests {
                 .expect("should chmod askpass test file");
         }
 
-        let request = base_request().requires_elevation(true);
+        let request = base_request().privileged_operation(PrivilegedOperation::SoftwareUpdateAll);
         let prepared = prepare_command_for_spawn(&request, Some(askpass_path.as_path()))
             .expect("prepare should succeed");
 
@@ -1590,8 +1640,113 @@ mod tests {
     }
 
     #[test]
+    fn prepare_command_prefers_typed_privileged_executor_over_sudo() {
+        let executor_path = std::env::temp_dir().join("helm-privileged-executor-test");
+        fs::write(&executor_path, "#!/bin/sh\nexit 0\n")
+            .expect("should write privileged executor test file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&executor_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod privileged executor test file");
+        }
+
+        let request = base_request().privileged_operation(PrivilegedOperation::SoftwareUpdateAll);
+        let prepared = prepare_command_for_spawn_with_privileged_executor(
+            &request,
+            None,
+            Some(executor_path.as_path()),
+        )
+        .expect("typed privileged executor should be accepted");
+
+        assert_eq!(prepared.command.program, executor_path);
+        assert_eq!(
+            prepared
+                .command
+                .args
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec![
+                "--operation",
+                "software_update.install_all",
+                "--program",
+                "/usr/sbin/softwareupdate",
+                "--",
+                "--install",
+                "--all",
+            ]
+        );
+        assert!(!prepared.command_display.contains("/usr/bin/sudo"));
+
+        let _ = fs::remove_file(prepared.command.program);
+    }
+
+    #[test]
+    fn prepare_command_keeps_mas_on_sudo_until_helper_contract_exists() {
+        let executor_path = std::env::temp_dir().join("helm-privileged-executor-mas-test");
+        fs::write(&executor_path, "#!/bin/sh\nexit 0\n")
+            .expect("should write privileged executor test file");
+        let askpass_path = std::env::temp_dir().join("helm-askpass-mas-test.sh");
+        fs::write(&askpass_path, "#!/bin/sh\nexit 0\n").expect("should write askpass test file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&executor_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod privileged executor test file");
+            fs::set_permissions(&askpass_path, fs::Permissions::from_mode(0o700))
+                .expect("should chmod askpass test file");
+        }
+
+        let request = ProcessSpawnRequest::new(
+            ManagerId::Mas,
+            TaskType::Install,
+            ManagerAction::Install,
+            CommandSpec::new("mas").args(["install", "497799835"]),
+        )
+        .privileged_operation(PrivilegedOperation::MacAppStoreInstall);
+
+        let prepared = prepare_command_for_spawn_with_privileged_executor(
+            &request,
+            Some(askpass_path.as_path()),
+            Some(executor_path.as_path()),
+        )
+        .expect("MAS should remain on sudo until the helper contract is complete");
+
+        assert_eq!(prepared.command.program, PathBuf::from("/usr/bin/sudo"));
+        assert_eq!(
+            prepared
+                .command
+                .args
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            vec!["-A", "--", "mas", "install", "497799835"]
+        );
+
+        let _ = fs::remove_file(executor_path);
+        let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn prepare_command_rejects_relative_privileged_executor_path() {
+        let request = base_request().privileged_operation(PrivilegedOperation::SoftwareUpdateAll);
+        let result = prepare_command_for_spawn_with_privileged_executor(
+            &request,
+            None,
+            Some(Path::new("HelmPrivilegedExecutor")),
+        );
+
+        let error = match result {
+            Ok(_) => panic!("relative privileged executor must fail closed"),
+            Err(error) => error,
+        };
+        assert!(error.message.contains("must be an absolute path"));
+    }
+
+    #[test]
     fn prepare_command_rejects_relative_askpass_override_path() {
-        let request = base_request().requires_elevation(true);
+        let request = base_request().privileged_operation(PrivilegedOperation::SoftwareUpdateAll);
         let result =
             prepare_command_for_spawn(&request, Some(PathBuf::from("askpass.sh").as_path()));
         assert!(result.is_err(), "relative askpass path should be rejected");
@@ -1624,7 +1779,7 @@ mod tests {
             ScopedEnvVar::set(HELM_SUDO_ASKPASS_ENV, Some(&askpass_path.to_string_lossy()));
         let _allow_override = ScopedEnvVar::set(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, None);
 
-        let request = base_request().requires_elevation(true);
+        let request = base_request().privileged_operation(PrivilegedOperation::SoftwareUpdateAll);
         let result = prepare_command_for_spawn(&request, None);
         assert!(
             result.is_err(),
@@ -1663,7 +1818,7 @@ mod tests {
             ScopedEnvVar::set(HELM_SUDO_ASKPASS_ENV, Some(&askpass_path.to_string_lossy()));
         let _allow_override = ScopedEnvVar::set(HELM_SUDO_ASKPASS_ALLOW_OVERRIDE_ENV, Some("1"));
 
-        let request = base_request().requires_elevation(true);
+        let request = base_request().privileged_operation(PrivilegedOperation::SoftwareUpdateAll);
         let prepared = prepare_command_for_spawn(&request, None)
             .expect("env askpass override should be accepted when explicitly enabled");
         assert_eq!(
