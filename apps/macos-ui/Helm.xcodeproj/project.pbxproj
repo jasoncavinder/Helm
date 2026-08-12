@@ -13,6 +13,9 @@
 		C41900000000000000000001 /* StatusItemActivationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41900000000000000000011 /* StatusItemActivationPolicy.swift */; };
 		C41900000000000000000002 /* StatusItemActivationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41900000000000000000011 /* StatusItemActivationPolicy.swift */; };
 		C41900000000000000000003 /* StatusItemActivationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */; };
+		C42400000000000000000001 /* ServiceConnectionRetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42400000000000000000011 /* ServiceConnectionRetryPolicy.swift */; };
+		C42400000000000000000002 /* ServiceConnectionRetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42400000000000000000011 /* ServiceConnectionRetryPolicy.swift */; };
+		C42400000000000000000003 /* ServiceConnectionRetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42400000000000000000012 /* ServiceConnectionRetryPolicyTests.swift */; };
 		A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41200000000000000000002 /* AppUpdateCoordinator.swift */; };
 		8CD965322F40F02800AE2AF5 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 8CD965312F40F02800AE2AF5 /* Resources */; };
 		8CE1FDCB2F3D2AD8000A3945 /* HelmService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -138,6 +141,8 @@
 		N42200000000000000000012 /* AppNotificationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotificationPolicyTests.swift; sourceTree = "<group>"; };
 		C41900000000000000000011 /* StatusItemActivationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemActivationPolicy.swift; sourceTree = "<group>"; };
 		C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemActivationPolicyTests.swift; sourceTree = "<group>"; };
+		C42400000000000000000011 /* ServiceConnectionRetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceConnectionRetryPolicy.swift; sourceTree = "<group>"; };
+		C42400000000000000000012 /* ServiceConnectionRetryPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceConnectionRetryPolicyTests.swift; sourceTree = "<group>"; };
 		A41200000000000000000002 /* AppUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateCoordinator.swift; sourceTree = "<group>"; };
 		8CAE9C0B2F458B120075E1A3 /* HelmRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HelmRelease.entitlements; sourceTree = "<group>"; };
 		8CAE9C0C2F458B120075E1A4 /* HelmServiceRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HelmServiceRelease.entitlements; sourceTree = "<group>"; };
@@ -303,6 +308,7 @@
 			children = (
 				N42200000000000000000011 /* AppNotificationPolicy.swift */,
 				C41900000000000000000011 /* StatusItemActivationPolicy.swift */,
+				C42400000000000000000011 /* ServiceConnectionRetryPolicy.swift */,
 				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
 				A41200000000000000000002 /* AppUpdateCoordinator.swift */,
 				P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */,
@@ -483,6 +489,7 @@
 			children = (
 				N42200000000000000000012 /* AppNotificationPolicyTests.swift */,
 				C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */,
+				C42400000000000000000012 /* ServiceConnectionRetryPolicyTests.swift */,
 				Z100000000000000000000002 /* FirstRunPresentationSupportTests.swift */,
 				W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */,
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
@@ -657,6 +664,7 @@
 			files = (
 				N42200000000000000000001 /* AppNotificationPolicy.swift in Sources */,
 				C41900000000000000000001 /* StatusItemActivationPolicy.swift in Sources */,
+				C42400000000000000000001 /* ServiceConnectionRetryPolicy.swift in Sources */,
 				A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */,
 				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
@@ -727,6 +735,8 @@
 				N42200000000000000000003 /* AppNotificationPolicyTests.swift in Sources */,
 				C41900000000000000000002 /* StatusItemActivationPolicy.swift in Sources */,
 				C41900000000000000000003 /* StatusItemActivationPolicyTests.swift in Sources */,
+				C42400000000000000000002 /* ServiceConnectionRetryPolicy.swift in Sources */,
+				C42400000000000000000003 /* ServiceConnectionRetryPolicyTests.swift in Sources */,
 				J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */,
 				S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */,
 					S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
