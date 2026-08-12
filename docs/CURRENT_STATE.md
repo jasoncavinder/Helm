@@ -8,7 +8,7 @@ It reflects reality, not intention.
 
 ## Version
 
-Current documentation baseline: **0.18.2 remains the latest public stable release on `main`**, and **0.19.0-rc.4 is the published opt-in prerelease**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts before v0.19 implementation begins.
+Current documentation baseline: **0.18.2 remains the latest public stable release on `main`**, and **0.19.0-rc.4 is the published opt-in prerelease**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect. `v0.18.2` is the final v0.18 containment release and includes migration-safety hardening plus the closed Project WOW and Native Mac Experience design-definition artifacts that preceded active v0.19 implementation.
 
 Implementation baseline: **published `0.19.0-rc.4` plus the focused RC5 stabilization delta on `dev`**, which adds Dashboard-aware status-item routing, explicit third-party Sparkle Plan actions, npm short-query handling, actionable update notifications, verified single-flight XPC reconnection, and nullable-current mise outdated compatibility. RC4 publication and metadata convergence are complete; installed RC3-to-RC4 Sparkle validation remains an explicit owner check rather than an inferred result. The read-only Project WOW Environment Brief remains development-gated. Issue #388 still tracks its unresolved VoiceOver Headings-rotor and bidirectional Full Keyboard Access behavior, so the production first-run route remains on the existing onboarding flow.
 
@@ -159,6 +159,7 @@ Third-party licensing compliance status:
 - 0.15.x — Upgrade preview & execution transparency (stable checkpoint)
 - 0.16.x — Self-update & installer hardening (stable checkpoint)
 - 0.17.x — Diagnostics & logging + release-readiness hardening (stable checkpoint)
+- 0.18.x — Doctor & repair, local security groundwork, migration safety, and pre-1.0 experience definition (final containment checkpoint)
 
 ---
 

@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Release notice:** Active pre-1.0 development continues with stable `v0.18.2` on `main`. `v0.18.0` remains withdrawn because of a critical SQLite migration defect; `v0.18.2` is the final v0.18 containment release before v0.19 native-experience and first-run implementation.
+> **Release notice:** Active pre-1.0 development continues with stable `v0.18.2` on `main` and opt-in prerelease `v0.19.0-rc.4`. `v0.18.0` remains withdrawn because of a critical SQLite migration defect; `v0.18.2` is the final v0.18 containment release, while the v0.19 native-experience and first-run line is in release-candidate stabilization.
 >
-> **Testing:** Please test `v0.18.2`. If you installed `v0.18.0`, update to `v0.18.2` before further use. Report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.18.2` on the stable channel; prerelease testers may opt into `v0.19.0-rc.4`. If you installed `v0.18.0`, update to `v0.18.2` before further use. Report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -192,7 +192,10 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.16.2 | Sparkle Connectivity + Platform Baseline Alignment — network-client entitlement, feed diagnostics, macOS 11 deployment target enforcement | Completed |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Completed (`v0.17.x` stable, latest patch `v0.17.12`) |
 | 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge, migration-safety hardening, internal advisory cache foundation, and pre-1.0 experience-definition contracts (no public advisory feature surface) | Completed (`v0.18.2` final containment release; `v0.18.0` withdrawn) |
-| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines | Next |
+| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines | Active (`v0.19.0-rc.4` published; RC5 stabilization in progress) |
+| 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, action hierarchy, and continuous plan-to-recovery presentation | Planned |
+| 0.21.x | Accessibility, System Integration & Resilience — keyboard and VoiceOver parity, system integration, offline/partial-state recovery, and first-run receipts | Planned |
+| 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, visual/state validation, moderated usability, and UI lock | Planned |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
@@ -249,7 +252,7 @@ The `1.4.x` Shared Brain milestone is planned as **Postgres-first** and **provid
 - Durable Objects / D1 are not the Shared Brain system-of-record.
 - Large artifacts (if introduced later) should live in S3-compatible object storage; Postgres stores references/metadata.
 
-Current releases (through `v0.18.2`) do **not** send package/fingerprint data to a shared backend. Security-advisory value remains local-first until the `1.4.x` Shared Brain milestone.
+Current releases, including the `v0.19.0` RC line, do **not** send package/fingerprint data to a shared backend. Security-advisory value remains local-first until the `1.4.x` Shared Brain milestone.
 
 ## Repository Layout
 
