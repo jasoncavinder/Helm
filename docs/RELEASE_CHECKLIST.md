@@ -71,7 +71,8 @@ This checklist is required before creating a release tag on `main`.
 - [ ] Preserve third-party Sparkle updates as explicit interactive Plan steps with vendor update and Open App actions rather than falsely counting them as automatic work.
 - [ ] Preserve npm's two-character remote-search minimum without surfacing an error for a one-character query.
 - [ ] Replace routine task-completion alerts with default-on, deduplicated update notifications whose Review Plan and guarded Upgrade All actions retain Helm's existing policy and confirmation flow.
-- [ ] Preserve the embedded native helper, strict signed-caller/Apple-operation allowlist, and release packaging checks as inactive infrastructure; do not claim native authorization until registration, approval-state handling, runtime activation, and signed installed-build QA are complete.
+- [ ] Carry the reviewed post-RC4 stabilization delta through PRs `#419`-`#430`, including the embedded native helper and explicit Developer ID-only registration/approval UX.
+- [ ] Preserve the embedded native helper, strict signed-caller/Apple-operation allowlist, and release packaging checks as inactive infrastructure; do not claim native authorization until installed RC5 registration/approval QA and a later executor-activation slice are complete.
 - [ ] Keep Issue `#388` and the Environment Brief outside production routing.
 
 ### Required Validation
@@ -97,6 +98,8 @@ This checklist is required before creating a release tag on `main`.
 
 - [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.5` from the signed `v0.19.0-rc.4` installation.
 - [ ] Confirm the actionable-notification preference and Plan deep links persist after the installed update.
+- [ ] Complete the Native Helper Installed-Candidate QA section in `docs/validation/v0.19.0-rc.5-readiness.md`, including registration, approval routing, relaunch persistence, unregister, and confirmation that askpass remains active.
+- [ ] Do not begin native executor activation until the installed-helper checks pass; reserve update-replacement validation for the next signed candidate after registration is established.
 - [ ] Complete a short installed-candidate soak before deciding whether to prepare `v0.19.0` stable.
 
 ## v0.19.0-rc.4 (Updater Plan and Wayfinder Stabilization RC, Published)

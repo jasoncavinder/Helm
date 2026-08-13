@@ -18,7 +18,7 @@ See:
 Active milestone:
 - latest stable release currently published on `main`: **0.18.2**
 - published opt-in prerelease: **0.19.0-rc.4**, represented by a published GitHub prerelease with signed/notarized GUI artifacts and direct CLI artifacts; GitHub `releases/latest` remains stable-only on `v0.18.2`
-- planned stabilization candidate: **0.19.0-rc.5**; no tag or release mutation is authorized by this documentation checkpoint
+- planned stabilization candidate: **0.19.0-rc.5**; no tag or release mutation is authorized by this documentation checkpoint. The release pipeline has no private signed/notarized candidate mode, so RC5 publication is the first valid installed-build registration test vehicle; native executor activation remains deferred until that post-publication evidence passes.
 - `v0.19.0-rc.2` publication completed from final `main` revision `2ef4b692a9850494e8d48e93156838b9831c02a8`; generated CLI and appcast/release-notes PRs `#397` and `#398` are merged, and post-publication release/drift verification is green
 - `v0.19.0-rc.3` publication completed on 2026-08-11; generated CLI and appcast/release-notes PRs `#402` and `#403` are merged, and the opt-in RC metadata now points to the published release
 - `v0.19.0-rc.4` publication completed on 2026-08-11 from tagged `main` revision `c1c5e2a72dce37f196963d646f4935d1042444f6`; generated CLI and appcast/release-notes PRs `#417` and `#418` are merged, and post-publication metadata points the beta appcast and RC CLI channel to RC4 while stable metadata remains on `v0.18.2`
