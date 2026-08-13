@@ -243,6 +243,30 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         )
     }
 
+    func testRiskSummaryTreatsOtherPrivilegedUpdateManagersAsElevated() {
+        let macPorts = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "macports",
+            packageName: "ripgrep"
+        )
+        let xcode = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "xcode_command_line_tools",
+            packageName: "Command Line Tools for Xcode-16.4"
+        )
+
+        XCTAssertTrue(
+            UpgradePreviewPlanner.riskSummary(
+                for: [macPorts],
+                restartRequiredCandidates: []
+            ).requiresElevatedPrivileges
+        )
+        XCTAssertTrue(
+            UpgradePreviewPlanner.riskSummary(
+                for: [xcode],
+                restartRequiredCandidates: []
+            ).requiresElevatedPrivileges
+        )
+    }
+
     func testRiskSummaryMatchesRestartRequirementByManagerAndPackage() {
         let selected = UpgradePreviewPlanner.RiskCandidate(managerId: "npm", packageName: "example")
         let otherManager = UpgradePreviewPlanner.RiskCandidate(
