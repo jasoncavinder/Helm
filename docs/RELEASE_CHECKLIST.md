@@ -62,30 +62,31 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.5 (Focused Post-RC4 Stabilization, Planned)
+## v0.19.0-rc.5 (Focused Post-RC4 Stabilization, Source Candidate Prepared)
 
 ### Candidate Scope
 
-- [ ] Carry only the reviewed post-RC4 stabilization delta plus release-blocking fixes discovered by the focused readiness pass.
-- [ ] Preserve Dashboard-aware status-item routing: with Dashboard closed either click opens the popover; with Dashboard open primary click focuses Dashboard and secondary click opens the popover.
-- [ ] Preserve third-party Sparkle updates as explicit interactive Plan steps with vendor update and Open App actions rather than falsely counting them as automatic work.
-- [ ] Preserve npm's two-character remote-search minimum without surfacing an error for a one-character query.
-- [ ] Replace routine task-completion alerts with default-on, deduplicated update notifications whose Review Plan and guarded Upgrade All actions retain Helm's existing policy and confirmation flow.
-- [ ] Carry the reviewed post-RC4 stabilization delta through PRs `#419`-`#430`, including the embedded native helper and explicit Developer ID-only registration/approval UX.
-- [ ] Preserve the embedded native helper, strict signed-caller/Apple-operation allowlist, and release packaging checks as inactive infrastructure; do not claim native authorization until installed RC5 registration/approval QA and a later executor-activation slice are complete.
-- [ ] Keep Issue `#388` and the Environment Brief outside production routing.
+- [x] Carry only the reviewed post-RC4 stabilization delta plus release-blocking fixes discovered by the focused readiness pass.
+- [x] Preserve Dashboard-aware status-item routing: with Dashboard closed either click opens the popover; with Dashboard open primary click focuses Dashboard and secondary click opens the popover.
+- [x] Preserve third-party Sparkle updates as explicit interactive Plan steps with vendor update and Open App actions rather than falsely counting them as automatic work.
+- [x] Preserve npm's two-character remote-search minimum without surfacing an error for a one-character query.
+- [x] Replace routine task-completion alerts with default-on, deduplicated update notifications whose Review Plan and guarded Upgrade All actions retain Helm's existing policy and confirmation flow.
+- [x] Carry the reviewed post-RC4 stabilization delta through PRs `#419`-`#431`, including the embedded native helper and explicit Developer ID-only registration/approval UX.
+- [x] Identify the workspace and local Rust packages as `0.19.0-rc.5` while preserving stable `v0.18.2` and published prerelease `v0.19.0-rc.4` metadata.
+- [x] Preserve the embedded native helper, strict signed-caller/Apple-operation allowlist, and release packaging checks as inactive runtime infrastructure; do not claim native authorization until installed RC5 registration/approval QA and a later executor-activation slice are complete.
+- [x] Keep Issue `#388` and the Environment Brief outside production routing.
 
 ### Required Validation
 
 - [ ] Complete `docs/validation/v0.19.0-rc.5-readiness.md` and record any release-blocking finding before version preparation.
-- [ ] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the final candidate revision.
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the prepared candidate revision.
 - [ ] Confirm Settings opens from Command-Comma, the popover, and Dashboard without duplicate windows or the macOS “Please use SettingsLink” runtime warning.
 - [ ] Confirm notification actions revalidate current eligibility and never begin update work without Helm's confirmation sheet.
 - [ ] Confirm no routine “all tasks complete” notification is delivered.
-- [ ] Re-audit dependency/license scope if the dependency graph changes; otherwise retain the RC4 audit record.
-- [ ] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.5` before any tag or publication mutation.
+- [x] Re-audit dependency/license scope if the dependency graph changes; otherwise retain the RC4 audit record.
+- [x] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.5` before any tag or publication mutation.
 - [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
-- [ ] No known release-critical regression remains open; Issue `#388` remains non-production behind the retained first-run gate.
+- [x] No known release-critical regression remains open; Issue `#388` remains non-production behind the retained first-run gate.
 
 ### Publication
 

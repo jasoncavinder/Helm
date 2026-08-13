@@ -11,16 +11,16 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.5 readiness and v0.19.0 stabilization
+v0.19.0-rc.5 source-candidate integration and v0.19.0 stabilization
 ```
 
 Focus:
 - preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.4`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
 - validate the installed `v0.19.0-rc.3` to signed/notarized `v0.19.0-rc.4` Sparkle update path if that owner check has not already been completed; do not infer installed-candidate evidence from publication success
-- run the focused RC5 matrix in `docs/validation/v0.19.0-rc.5-readiness.md` for the full post-RC4 stabilization delta, including PRs `#419` through `#430`
+- preserve the completed automated RC5 matrix in `docs/validation/v0.19.0-rc.5-readiness.md` for the full post-RC4 stabilization delta through PR `#431`; retain its owner and installed-candidate checks without overstating uncollected evidence
 - continue the native privileged-helper sequence from `docs/architecture/PRIVILEGED_EXECUTION.md`: preserve the embedded `developer_id` helper target, launch-daemon metadata, non-direct-channel stripping, exact signed-caller checks, fixed Apple-operation allowlist, release packaging verification, and explicit all-state `SMAppService` registration/approval UX; the release workflows have no private signed/notarized candidate mode, so use the installed signed/notarized RC5 artifact to validate registration, approval routing, persistence, and unregister behavior before activating the executor in a later reviewed slice, then resolve MAS and MacPorts without granting a root daemon broad access to unsigned or dynamic command surfaces
-- fix only release-blocking findings before preparing `v0.19.0-rc.5`; defer unrelated feature work and Issue `#388`
-- keep `v0.19.0-rc.5` untagged and unpublished until protected `dev` and `main` integration, final clean-`main` gates, and explicit release authorization are complete
+- fix only release-blocking findings before integrating and tagging `v0.19.0-rc.5`; defer unrelated feature work and Issue `#388`
+- keep the prepared `v0.19.0-rc.5` source candidate untagged and unpublished until protected `dev` and `main` integration, final clean-`main` gates, and explicit release authorization are complete
 - preserve the completed installed `v0.19.0-rc.2` to signed/notarized `v0.19.0-rc.3` Sparkle update validation: Sparkle checked at the installed bundle replacement time, installed and relaunched RC3, migrated the ambiguous legacy English sentinel to the versioned `system` preference, and followed the current `en-US` macOS application language; retain one owner relaunch check for a newly selected explicit language before declaring language-persistence closeout complete
 - preserve the completed owner validation of the installed `v0.19.0-rc.1` to signed/notarized `v0.19.0-rc.2` Sparkle update path; Sparkle detected, installed, and relaunched RC2 successfully, with the language-default regression discovered only after relaunch
 - keep the Environment Brief development-gated in RC5 because Issue #388 remains unresolved, and disclose the limitation without implying that the production first-run route changed
@@ -414,7 +414,7 @@ Current checkpoint:
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
 - latest stable release on `main`: `v0.18.2`
 - latest published prerelease on `main`: `v0.19.0-rc.4`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
-- planned stabilization candidate: `v0.19.0-rc.5`; it is not tagged or published, and public prerelease metadata remains on `v0.19.0-rc.4`
+- prepared source candidate: `v0.19.0-rc.5`; it is not tagged or published, and public prerelease metadata remains on `v0.19.0-rc.4`
 - `v0.19.0-rc.3` was published on 2026-08-11; publication PRs `#402` and `#403` merged the RC CLI metadata and beta appcast/release notes into `main`
 - owner installation validation confirms successive signed Developer ID updates from `0.19.0-rc.1` to RC2 and from RC2 to RC3 through Sparkle; broader participant feedback should not be inferred from these owner installation checks
 - `v0.19.0-rc.4` was published on 2026-08-11 from tagged `main` revision `c1c5e2a72dce37f196963d646f4935d1042444f6`; publication PRs `#417` and `#418` merged RC CLI metadata and the beta appcast/release notes into `main`
