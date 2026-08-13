@@ -62,7 +62,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.5 (Focused Post-RC4 Stabilization, Source Candidate Prepared)
+## v0.19.0-rc.5 (Focused Post-RC4 Stabilization, Published)
 
 ### Candidate Scope
 
@@ -91,9 +91,15 @@ This checklist is required before creating a release tag on `main`.
 ### Publication
 
 - [x] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.5` or publishing artifacts.
-- [ ] Publish `v0.19.0-rc.5` as a GitHub prerelease that does not become latest.
-- [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.5`.
-- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+- [x] Publish `v0.19.0-rc.5` as a GitHub prerelease that does not become latest.
+- [x] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.5`.
+- [x] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
+Publication evidence:
+- Tag `v0.19.0-rc.5` identifies `main` revision `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`; the published GitHub release is a non-draft prerelease and `releases/latest` remains `v0.18.2`.
+- Release macOS DMG run `31690897042` and Release CLI Direct Installer run `31690897034` completed successfully; generated publication PRs `#441` and `#442` merged the RC CLI pointer and beta appcast/release notes into `main`.
+- `scripts/release/runbook.sh verify --tag v0.19.0-rc.5`, Release Publish Verify run `31693130289`, Appcast Drift Guard run `31693130136`, and CLI Update Metadata Drift Guard run `31693303806` passed after metadata convergence. The expected intermediate Release Publish Verify failure after only the CLI PR merged was superseded by the final green convergence run.
+- Installed-candidate checks below remain open; artifact publication and metadata convergence do not substitute for owner validation of the installed app and helper boundary.
 
 ### Installed-Candidate Validation
 
