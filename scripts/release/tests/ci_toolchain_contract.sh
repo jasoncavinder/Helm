@@ -6,8 +6,11 @@ WORKFLOWS_DIR="${ROOT_DIR}/.github/workflows"
 EXPECTED_RUST_TOOLCHAIN="1.97.1"
 EXPECTED_SWIFTLINT_VERSION="0.59.1"
 EXPECTED_SWIFTLINT_SHA256="58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1"
-EXPECTED_CHECKOUT_SHA="fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"
-EXPECTED_UPLOAD_ARTIFACT_SHA="330a01c490aca151604b8cf639adc76d48f6c5d4"
+EXPECTED_CHECKOUT_SHA="3d3c42e5aac5ba805825da76410c181273ba90b1"
+EXPECTED_SETUP_NODE_SHA="a0853c24544627f65ddf259abe73b1d18a591444"
+EXPECTED_CACHE_SHA="caa296126883cff596d87d8935842f9db880ef25"
+EXPECTED_UPLOAD_ARTIFACT_SHA="b7c566a772e6b6bfb58ed0dc250532a479d7789f"
+EXPECTED_DEPENDENCY_REVIEW_SHA="a1d282b36b6f3519aa1f3fc636f609c47dddb294"
 
 has_pattern() {
   local pattern="$1"
@@ -65,27 +68,34 @@ has_pattern "releases/download/\\$\\{SWIFTLINT_VERSION\\}/portable_swiftlint.zip
   exit 1
 }
 
-for workflow in \
-  "${WORKFLOWS_DIR}/release-macos-dmg.yml" \
-  "${WORKFLOWS_DIR}/release-cli-direct.yml" \
-  "${WORKFLOWS_DIR}/release-all-variants.yml" \
-  "${WORKFLOWS_DIR}/release-contract-checks.yml" \
-  "${WORKFLOWS_DIR}/release-macos-canary.yml"; do
-  has_pattern "actions/checkout@${EXPECTED_CHECKOUT_SHA}" "${workflow}" || {
-    echo "error: ${workflow} must pin actions/checkout v5." >&2
-    exit 1
-  }
-done
+validate_action_pin() {
+  local action="$1"
+  local expected_sha="$2"
+  local expected_version="$3"
+  local found=0
 
-for workflow in \
-  "${WORKFLOWS_DIR}/release-macos-dmg.yml" \
-  "${WORKFLOWS_DIR}/release-cli-direct.yml" \
-  "${WORKFLOWS_DIR}/release-all-variants.yml" \
-  "${WORKFLOWS_DIR}/release-contract-checks.yml"; do
-  has_pattern "actions/upload-artifact@${EXPECTED_UPLOAD_ARTIFACT_SHA}" "${workflow}" || {
-    echo "error: ${workflow} must pin actions/upload-artifact v5." >&2
+  while IFS= read -r workflow; do
+    [ -n "${workflow}" ] || continue
+    found=1
+    has_pattern "${action}@${expected_sha}" "${workflow}" || {
+      echo "error: ${workflow} must pin ${action} ${expected_version}." >&2
+      exit 1
+    }
+  done < <(list_files_with_pattern "${action}@" "${WORKFLOWS_DIR}"/*.yml)
+
+  if [ "${found}" -ne 1 ]; then
+    echo "error: expected at least one ${action} workflow reference." >&2
     exit 1
-  }
-done
+  fi
+}
+
+validate_action_pin "actions/checkout" "${EXPECTED_CHECKOUT_SHA}" "v7.0.1"
+validate_action_pin "actions/setup-node" "${EXPECTED_SETUP_NODE_SHA}" "v5.0.0"
+validate_action_pin "actions/cache" "${EXPECTED_CACHE_SHA}" "v5.1.0"
+validate_action_pin "actions/upload-artifact" "${EXPECTED_UPLOAD_ARTIFACT_SHA}" "v6.0.0"
+validate_action_pin \
+  "actions/dependency-review-action" \
+  "${EXPECTED_DEPENDENCY_REVIEW_SHA}" \
+  "v5.0.0"
 
 echo "CI toolchain contracts validated."
