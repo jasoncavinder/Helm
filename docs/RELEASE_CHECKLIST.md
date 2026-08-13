@@ -78,19 +78,19 @@ This checklist is required before creating a release tag on `main`.
 
 ### Required Validation
 
-- [ ] Complete `docs/validation/v0.19.0-rc.5-readiness.md` and record any release-blocking finding before version preparation.
+- [x] Complete `docs/validation/v0.19.0-rc.5-readiness.md` and record any release-blocking finding before version preparation.
 - [x] Full repository quality gate, documentation sync, locale integrity/parity, and arm64 macOS tests pass on the prepared candidate revision.
-- [ ] Confirm Settings opens from Command-Comma, the popover, and Dashboard without duplicate windows or the macOS “Please use SettingsLink” runtime warning.
-- [ ] Confirm notification actions revalidate current eligibility and never begin update work without Helm's confirmation sheet.
-- [ ] Confirm no routine “all tasks complete” notification is delivered.
+- [x] Confirm Settings opens from Command-Comma, the popover, and Dashboard without duplicate windows or the macOS “Please use SettingsLink” runtime warning.
+- [x] Confirm notification actions revalidate current eligibility and never begin update work without Helm's confirmation sheet.
+- [x] Confirm no routine “all tasks complete” notification is delivered.
 - [x] Re-audit dependency/license scope if the dependency graph changes; otherwise retain the RC4 audit record.
 - [x] Non-mutating rehearsal and preflight pass for `v0.19.0-rc.5` before any tag or publication mutation.
-- [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
+- [x] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
 - [x] No known release-critical regression remains open; Issue `#388` remains non-production behind the retained first-run gate.
 
 ### Publication
 
-- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.5` or publishing artifacts.
+- [x] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.5` or publishing artifacts.
 - [ ] Publish `v0.19.0-rc.5` as a GitHub prerelease that does not become latest.
 - [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.5`.
 - [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
