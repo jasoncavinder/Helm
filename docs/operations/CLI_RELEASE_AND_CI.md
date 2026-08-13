@@ -102,7 +102,9 @@ Policy:
 
 - release/security workflows must stay pinned to immutable action SHAs.
 - official Node-based Actions must remain on the immutable Node.js 24 pins
-  enforced repository-wide by `scripts/release/tests/ci_toolchain_contract.sh`.
+  enforced for every individual reference repository-wide by
+  `scripts/release/tests/ci_toolchain_contract.sh`; negative regression coverage
+  rejects workflows that mix a correct pin with a stale or floating reference.
 - new workflows must use immutable SHA pins when introduced.
 
 ---

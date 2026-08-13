@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-WORKFLOWS_DIR="${ROOT_DIR}/.github/workflows"
+WORKFLOWS_DIR="${HELM_CI_WORKFLOWS_DIR:-${ROOT_DIR}/.github/workflows}"
 EXPECTED_RUST_TOOLCHAIN="1.97.1"
 EXPECTED_SWIFTLINT_VERSION="0.59.1"
 EXPECTED_SWIFTLINT_SHA256="58f9be8a4677900c945e2c618168223f4dd620a0cc65c9ccc5ea0f70433e89c1"
@@ -30,6 +30,16 @@ list_files_with_pattern() {
     rg -l "$pattern" "$@"
   else
     grep -lE "$pattern" "$@" || true
+  fi
+}
+
+list_lines_with_pattern() {
+  local pattern="$1"
+  shift
+  if command -v rg >/dev/null 2>&1; then
+    rg -n "$pattern" "$@"
+  else
+    grep -nE "$pattern" "$@" || true
   fi
 }
 
@@ -73,16 +83,18 @@ validate_action_pin() {
   local action="$1"
   local expected_sha="$2"
   local expected_version="$3"
+  local expected_reference="${action}@${expected_sha}([[:space:]]*(#.*)?)?$"
   local found=0
 
-  while IFS= read -r workflow; do
-    [ -n "${workflow}" ] || continue
+  while IFS= read -r reference; do
+    [ -n "${reference}" ] || continue
     found=1
-    has_pattern "${action}@${expected_sha}" "${workflow}" || {
-      echo "error: ${workflow} must pin ${action} ${expected_version}." >&2
+    if ! [[ "${reference}" =~ ${expected_reference} ]]; then
+      echo "error: every ${action} reference must pin ${expected_version} (${expected_sha})." >&2
+      echo "error: invalid reference: ${reference}" >&2
       exit 1
-    }
-  done < <(list_files_with_pattern "${action}@" "${WORKFLOWS_DIR}"/*.yml)
+    fi
+  done < <(list_lines_with_pattern "${action}@" "${WORKFLOWS_DIR}"/*.yml)
 
   if [ "${found}" -ne 1 ]; then
     echo "error: expected at least one ${action} workflow reference." >&2

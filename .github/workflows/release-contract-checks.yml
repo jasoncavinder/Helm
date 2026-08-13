@@ -56,6 +56,9 @@ jobs:
       - name: Validate CI toolchain pin contracts
         run: scripts/release/tests/ci_toolchain_contract.sh
 
+      - name: Validate CI toolchain pin regression coverage
+        run: scripts/release/tests/ci_toolchain_contract_regression.sh
+
       - name: Validate release workflow safety contracts
         run: scripts/release/tests/release_workflow_contract.sh
 
