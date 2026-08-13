@@ -109,17 +109,7 @@ extension HelmCore {
         }
 
         if package.managerId == "sparkle" {
-            guard let bundlePath = package.packageIdentifier,
-                  ExternalSparkleUpdateCoordinator.shared.checkForUpdates(bundlePath: bundlePath) else {
-                logger.error("upgradePackage(sparkle:\(package.name)) failed to start external updater")
-                recordLastError(
-                    source: "core.actions",
-                    action: "upgradePackage.external_sparkle_failed",
-                    managerId: package.managerId,
-                    taskType: "upgrade"
-                )
-                return
-            }
+            _ = startExternalSparkleUpdate(for: package)
             return
         }
 
@@ -182,6 +172,55 @@ extension HelmCore {
         }
     }
 
+    @discardableResult
+    func startExternalSparkleUpdate(for step: CoreUpgradePlanStep) -> Bool {
+        guard let packageId = UpgradePreviewPlanner.externalSparklePackageId(stepId: step.id),
+              let package = knownPackage(withId: packageId) else {
+            logger.error("External Sparkle Plan step has no matching package: \(step.id)")
+            recordLastError(
+                source: "core.actions",
+                action: "upgradePlan.external_sparkle_package_missing",
+                managerId: step.managerId,
+                taskType: "upgrade"
+            )
+            return false
+        }
+        return startExternalSparkleUpdate(for: package)
+    }
+
+    @discardableResult
+    func openExternalSparkleApplication(for step: CoreUpgradePlanStep) -> Bool {
+        guard let packageId = UpgradePreviewPlanner.externalSparklePackageId(stepId: step.id),
+              let package = knownPackage(withId: packageId),
+              let bundlePath = package.packageIdentifier,
+              ExternalSparkleUpdateCoordinator.shared.openApplication(bundlePath: bundlePath) else {
+            logger.error("Failed to open application for external Sparkle Plan step: \(step.id)")
+            recordLastError(
+                source: "core.actions",
+                action: "upgradePlan.external_sparkle_open_failed",
+                managerId: step.managerId,
+                taskType: "upgrade"
+            )
+            return false
+        }
+        return true
+    }
+
+    private func startExternalSparkleUpdate(for package: PackageItem) -> Bool {
+        guard let bundlePath = package.packageIdentifier,
+              ExternalSparkleUpdateCoordinator.shared.checkForUpdates(bundlePath: bundlePath) else {
+            logger.error("upgradePackage(sparkle:\(package.name)) failed to start external updater")
+            recordLastError(
+                source: "core.actions",
+                action: "upgradePackage.external_sparkle_failed",
+                managerId: package.managerId,
+                taskType: "upgrade"
+            )
+            return false
+        }
+        return true
+    }
+
     func retryFailedUpgradePlanSteps() {
         let failedStepIds = upgradePlanSteps
             .filter { projectedUpgradePlanStatus(for: $0).lowercased() == "failed" }
@@ -203,14 +242,24 @@ extension HelmCore {
         }
     }
 
-    func runUpgradePlanScoped(managerScopeId: String, packageFilter: String) {
+    func runUpgradePlanScoped(
+        managerScopeId: String,
+        packageFilter: String,
+        selectedStepIds: Set<String>? = nil
+    ) {
         let scopedSteps = HelmCore.scopedUpgradePlanSteps(
             from: upgradePlanSteps,
             managerScopeId: managerScopeId,
             packageFilter: packageFilter
         )
-        let backendSteps = scopedSteps.filter(Self.isBackendManagedUpgradePlanStep)
-        let includeHelmSelfUpdate = scopedSteps.contains(where: Self.isHelmSelfUpdatePlanStep)
+        let includedSteps = selectedStepIds.map { selectedStepIds in
+            scopedSteps.filter { selectedStepIds.contains($0.id) }
+        } ?? scopedSteps
+        let backendSteps = includedSteps.filter(Self.isBackendManagedUpgradePlanStep)
+        let externalSparkleStepIds = includedSteps
+            .filter(Self.isExternalSparklePlanStep)
+            .map(\.id)
+        let includeHelmSelfUpdate = includedSteps.contains(where: Self.isHelmSelfUpdatePlanStep)
             && AppUpdateCoordinator.shared.includeHelmInUpgradeAll
         guard !backendSteps.isEmpty || includeHelmSelfUpdate else { return }
 
@@ -226,7 +275,9 @@ extension HelmCore {
             packageFilter: packageFilter,
             source: "core.actions",
             action: "runUpgradePlanScoped",
-            includeHelmSelfUpdate: includeHelmSelfUpdate
+            includeHelmSelfUpdate: includeHelmSelfUpdate,
+            externalSparkleStepIds: externalSparkleStepIds,
+            selectedBackendStepIds: selectedStepIds == nil ? nil : backendSteps.map(\.id)
         )
     }
 
@@ -237,7 +288,9 @@ extension HelmCore {
         packageFilter: String,
         source: String,
         action: String,
-        includeHelmSelfUpdate: Bool = false
+        includeHelmSelfUpdate: Bool = false,
+        externalSparkleStepIds: [String] = [],
+        selectedBackendStepIds: [String]? = nil
     ) {
         guard scopedUpgradeWorkflowId == nil,
               !scopedUpgradeWorkflowStartState.isInFlight,
@@ -251,7 +304,24 @@ extension HelmCore {
             return
         }
 
+        let selectedStepIdsJSON: String?
+        if let selectedBackendStepIds {
+            guard let data = try? JSONEncoder().encode(selectedBackendStepIds.sorted()),
+                  let encoded = String(data: data, encoding: .utf8) else {
+                recordLastError(source: source, action: "\(action).encode_selection", taskType: "upgrade")
+                return
+            }
+            selectedStepIdsJSON = encoded
+        } else {
+            selectedStepIdsJSON = nil
+        }
+
         let workflowId = "upgrade-workflow-\(UUID().uuidString.lowercased())"
+        upgradePlanCompletion = nil
+        upgradePlanCompletionTracker.begin(
+            workflowId: workflowId,
+            externalSparkleStepIds: externalSparkleStepIds
+        )
         scopedUpgradeWorkflowId = workflowId
         scopedUpgradePlanRunInProgress = true
         scopedUpgradeWorkflowStartState.begin(workflowId: workflowId)
@@ -262,13 +332,24 @@ extension HelmCore {
             action: "\(action).start",
             taskType: "upgrade",
             operation: { completion in
-                service.startScopedUpgradeWorkflowWithId(
-                    workflowId: workflowId,
-                    includePinned: includePinned,
-                    allowOsUpdates: allowOsUpdates,
-                    managerScopeId: managerScopeId,
-                    packageFilter: packageFilter
-                ) { completion($0) }
+                if let selectedStepIdsJSON {
+                    service.startSelectedUpgradeWorkflowWithId(
+                        workflowId: workflowId,
+                        includePinned: includePinned,
+                        allowOsUpdates: allowOsUpdates,
+                        managerScopeId: managerScopeId,
+                        packageFilter: packageFilter,
+                        selectedStepIdsJSON: selectedStepIdsJSON
+                    ) { completion($0) }
+                } else {
+                    service.startScopedUpgradeWorkflowWithId(
+                        workflowId: workflowId,
+                        includePinned: includePinned,
+                        allowOsUpdates: allowOsUpdates,
+                        managerScopeId: managerScopeId,
+                        packageFilter: packageFilter
+                    ) { completion($0) }
+                }
             },
             fallback: false
         ) { [weak self] accepted in
@@ -283,6 +364,7 @@ extension HelmCore {
                     self.refreshScopedUpgradeWorkflowStatus()
                     return
                 }
+                self.upgradePlanCompletionTracker.markAccepted(workflowId: workflowId)
                 if cancellationPending {
                     self.cancelScopedUpgradeWorkflow(workflowId)
                 } else {
@@ -298,6 +380,7 @@ extension HelmCore {
     func cancelRemainingUpgradePlanSteps(managerScopeId: String, packageFilter: String) {
         scopedUpgradeWorkflowStartState.requestCancellation()
         if let workflowId = scopedUpgradeWorkflowId {
+            upgradePlanCompletionTracker.markCancelled(workflowId: workflowId)
             if pendingHelmSelfUpdateWorkflowId == workflowId {
                 pendingHelmSelfUpdateWorkflowId = nil
             }

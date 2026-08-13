@@ -187,6 +187,83 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         XCTAssertEqual(packageScoped.map(\.id), ["pip:requests"])
     }
 
+    func testPlanSelectionDefaultsNewStepsOnAndPreservesDeselection() {
+        let initial = UpgradePreviewPlanner.reconcileSelection(
+            selectedStepIds: [],
+            knownStepIds: [],
+            availableStepIds: ["mas:Pages", "npm:typescript"]
+        )
+        XCTAssertEqual(initial.selectedStepIds, ["mas:Pages", "npm:typescript"])
+
+        let refreshed = UpgradePreviewPlanner.reconcileSelection(
+            selectedStepIds: ["npm:typescript"],
+            knownStepIds: initial.knownStepIds,
+            availableStepIds: ["mas:Pages", "mas:Numbers", "npm:typescript"]
+        )
+
+        XCTAssertEqual(refreshed.selectedStepIds, ["mas:Numbers", "npm:typescript"])
+        XCTAssertEqual(refreshed.knownStepIds, ["mas:Pages", "mas:Numbers", "npm:typescript"])
+    }
+
+    func testPlanSelectionDropsStepsNoLongerAvailable() {
+        let refreshed = UpgradePreviewPlanner.reconcileSelection(
+            selectedStepIds: ["mas:Pages", "npm:typescript"],
+            knownStepIds: ["mas:Pages", "npm:typescript"],
+            availableStepIds: ["npm:typescript"]
+        )
+
+        XCTAssertEqual(refreshed.selectedStepIds, ["npm:typescript"])
+        XCTAssertEqual(refreshed.knownStepIds, ["npm:typescript"])
+    }
+
+    func testRiskSummaryUsesOnlySelectedCandidates() {
+        let appStore = UpgradePreviewPlanner.RiskCandidate(managerId: "mas", packageName: "Pages")
+        let homebrew = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "homebrew_formula",
+            packageName: "ripgrep"
+        )
+        let macOS = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "softwareupdate",
+            packageName: "macOS"
+        )
+
+        XCTAssertEqual(
+            UpgradePreviewPlanner.riskSummary(
+                for: [appStore, homebrew, macOS],
+                restartRequiredCandidates: []
+            ),
+            .init(requiresElevatedPrivileges: true, mayRequireReboot: true)
+        )
+        XCTAssertEqual(
+            UpgradePreviewPlanner.riskSummary(
+                for: [homebrew],
+                restartRequiredCandidates: [appStore]
+            ),
+            .init(requiresElevatedPrivileges: false, mayRequireReboot: false)
+        )
+    }
+
+    func testRiskSummaryMatchesRestartRequirementByManagerAndPackage() {
+        let selected = UpgradePreviewPlanner.RiskCandidate(managerId: "npm", packageName: "example")
+        let otherManager = UpgradePreviewPlanner.RiskCandidate(
+            managerId: "homebrew_formula",
+            packageName: "example"
+        )
+
+        XCTAssertTrue(
+            UpgradePreviewPlanner.riskSummary(
+                for: [selected],
+                restartRequiredCandidates: [selected]
+            ).mayRequireReboot
+        )
+        XCTAssertFalse(
+            UpgradePreviewPlanner.riskSummary(
+                for: [selected],
+                restartRequiredCandidates: [otherManager]
+            ).mayRequireReboot
+        )
+    }
+
     func testShouldRunScopedStepHonorsRuntimeProjectionAndSafeMode() {
         XCTAssertTrue(
             UpgradePreviewPlanner.shouldRunScopedStep(
@@ -594,5 +671,61 @@ final class PackageActionTrackingTests: XCTestCase {
         )
 
         XCTAssertEqual(names, ["zig"])
+    }
+}
+
+final class UpgradePlanCompletionTrackerTests: XCTestCase {
+    func testExternalSparklePackageIdPreservesPackageIdentity() {
+        XCTAssertEqual(
+            UpgradePreviewPlanner.externalSparklePackageId(
+                stepId: "sparkle-external:sparkle:/Applications/Example.app"
+            ),
+            "sparkle:/Applications/Example.app"
+        )
+        XCTAssertNil(UpgradePreviewPlanner.externalSparklePackageId(stepId: "npm:example"))
+    }
+
+    func testNormalCompletionKeepsOnlyStillAvailableInteractiveSteps() {
+        var tracker = UpgradePlanCompletionTracker()
+        tracker.begin(
+            workflowId: "workflow",
+            externalSparkleStepIds: ["sparkle-external:one", "sparkle-external:two"]
+        )
+        tracker.markAccepted(workflowId: "workflow")
+
+        let completion = tracker.finish(
+            workflowId: "workflow",
+            currentExternalSparkleStepIds: ["sparkle-external:two", "sparkle-external:three"]
+        )
+
+        XCTAssertEqual(completion?.remainingExternalSparkleStepIds, ["sparkle-external:two"])
+        XCTAssertEqual(completion?.remainingInteractiveCount, 1)
+        XCTAssertEqual(completion?.completedNormally, true)
+    }
+
+    func testCancelledAndInterruptedWorkflowsDoNotCompleteNormally() {
+        var cancelledTracker = UpgradePlanCompletionTracker()
+        cancelledTracker.begin(workflowId: "cancelled", externalSparkleStepIds: [])
+        cancelledTracker.markAccepted(workflowId: "cancelled")
+        cancelledTracker.markCancelled(workflowId: "cancelled")
+        XCTAssertEqual(
+            cancelledTracker.finish(
+                workflowId: "cancelled",
+                currentExternalSparkleStepIds: []
+            )?.completedNormally,
+            false
+        )
+
+        var interruptedTracker = UpgradePlanCompletionTracker()
+        interruptedTracker.begin(workflowId: "interrupted", externalSparkleStepIds: [])
+        interruptedTracker.markObservedActive(workflowId: "interrupted")
+        XCTAssertEqual(
+            interruptedTracker.finish(
+                workflowId: "interrupted",
+                currentExternalSparkleStepIds: [],
+                forceInterrupted: true
+            )?.completedNormally,
+            false
+        )
     }
 }

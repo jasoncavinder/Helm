@@ -859,7 +859,7 @@ fn mise_source_path_is_default(
 
 #[derive(Debug, Deserialize)]
 struct MiseOutdatedEntry {
-    current: String,
+    current: Option<String>,
     latest: String,
 }
 
@@ -875,7 +875,7 @@ fn parse_mise_outdated(json: &str) -> AdapterResult<Vec<OutdatedPackage>> {
                 name: tool_name,
             },
             package_identifier: None,
-            installed_version: Some(entry.current),
+            installed_version: entry.current,
             candidate_version: entry.latest,
             pinned: false,
             restart_required: false,
@@ -1435,6 +1435,31 @@ mod tests {
     fn parses_empty_outdated_json() {
         let packages = parse_mise_outdated("{}").unwrap();
         assert!(packages.is_empty());
+    }
+
+    #[test]
+    fn parses_outdated_tool_that_is_not_installed() {
+        let packages = parse_mise_outdated(
+            r#"{
+                "sccache": {
+                    "name": "sccache",
+                    "requested": "latest",
+                    "current": null,
+                    "bump": null,
+                    "latest": "0.17.0",
+                    "source": {
+                        "type": "mise.toml",
+                        "path": "/Users/dev/project/.mise.toml"
+                    }
+                }
+            }"#,
+        )
+        .expect("configured tools without an installed version should parse");
+
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].package.name, "sccache");
+        assert_eq!(packages[0].installed_version, None);
+        assert_eq!(packages[0].candidate_version, "0.17.0");
     }
 
     #[test]

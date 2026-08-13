@@ -8,6 +8,7 @@ struct SettingsSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @ObservedObject private var localization = LocalizationManager.shared
+    @ObservedObject private var privilegedHelper = PrivilegedHelperRegistrationController.shared
     @EnvironmentObject private var context: ControlCenterContext
 
     let selectedPane: SettingsPane
@@ -44,6 +45,43 @@ struct SettingsSectionView: View {
         core.helmCliShimInstalled
             ? L10n.App.Settings.Action.removeCli.localized
             : L10n.App.Settings.Action.installCli.localized
+    }
+
+    private var privilegedHelperStatusLabel: String {
+        switch privilegedHelper.status {
+        case .notRegistered:
+            return L10n.App.Settings.NativeAuthorization.Status.notEnabled.localized
+        case .enabled:
+            return L10n.App.Settings.NativeAuthorization.Status.enabled.localized
+        case .requiresApproval:
+            return L10n.App.Settings.NativeAuthorization.Status.requiresApproval.localized
+        case .unavailable, .notFound:
+            return L10n.App.Settings.NativeAuthorization.Status.unavailable.localized
+        }
+    }
+
+    private var privilegedHelperDescription: String {
+        switch privilegedHelper.status {
+        case .notRegistered:
+            return L10n.App.Settings.NativeAuthorization.Description.notEnabled.localized
+        case .enabled:
+            return L10n.App.Settings.NativeAuthorization.Description.enabled.localized
+        case .requiresApproval:
+            return L10n.App.Settings.NativeAuthorization.Description.requiresApproval.localized
+        case .unavailable, .notFound:
+            return L10n.App.Settings.NativeAuthorization.Description.unavailable.localized
+        }
+    }
+
+    private var privilegedHelperErrorMessage: String? {
+        switch privilegedHelper.operationError {
+        case .registrationFailed:
+            return L10n.App.Settings.NativeAuthorization.Error.registrationFailed.localized
+        case .unregistrationFailed:
+            return L10n.App.Settings.NativeAuthorization.Error.unregistrationFailed.localized
+        case nil:
+            return nil
+        }
     }
 
     private var cardFill: Color {
@@ -115,10 +153,89 @@ struct SettingsSectionView: View {
                         ))
                         .toggleStyle(.switch)
                     }
+
+                    if privilegedHelper.shouldPresentSettings {
+                        SettingsCard(
+                            title: L10n.App.Settings.NativeAuthorization.section.localized,
+                            icon: "lock.shield",
+                            fill: cardFill
+                        ) {
+                            ServiceHealthStatusRow(
+                                title: L10n.App.Settings.NativeAuthorization.statusLabel.localized,
+                                value: privilegedHelperStatusLabel,
+                                emphasize: privilegedHelper.status != .enabled
+                            )
+
+                            Text(privilegedHelperDescription)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            if let privilegedHelperErrorMessage {
+                                Label(privilegedHelperErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            switch privilegedHelper.status {
+                            case .notRegistered:
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.NativeAuthorization.Action.enable.localized,
+                                    badges: [],
+                                    isProminent: true,
+                                    leadingSymbol: "lock.open",
+                                    alignLeading: true
+                                ) {
+                                    privilegedHelper.register()
+                                }
+                                .disabled(privilegedHelper.operationInProgress)
+                            case .enabled:
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.NativeAuthorization.Action.disable.localized,
+                                    badges: [],
+                                    isProminent: false,
+                                    useSystemStyle: true,
+                                    leadingSymbol: "lock",
+                                    alignLeading: true
+                                ) {
+                                    privilegedHelper.unregister()
+                                }
+                                .disabled(privilegedHelper.operationInProgress)
+                            case .requiresApproval:
+                                SettingsActionButton(
+                                    title: L10n.App.Settings.NativeAuthorization.Action.openLoginItems.localized,
+                                    badges: [],
+                                    isProminent: true,
+                                    leadingSymbol: "gearshape",
+                                    alignLeading: true
+                                ) {
+                                    privilegedHelper.openSystemSettingsLoginItems()
+                                }
+                                .disabled(privilegedHelper.operationInProgress)
+                            case .unavailable, .notFound:
+                                EmptyView()
+                            }
+                        }
+                    }
                 }
 
                 if showsPane(.updates) {
                     SettingsCard(title: L10n.App.Section.updates.localized, icon: "arrow.triangle.2.circlepath", fill: cardFill) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(L10n.App.Settings.Label.notifications.localized, isOn: Binding(
+                                get: { core.notificationsEnabled },
+                                set: { core.setNotificationsEnabled($0) }
+                            ))
+                            .toggleStyle(.switch)
+
+                            Text(L10n.App.Settings.Label.notificationsDescription.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Divider()
+
                         Toggle(L10n.App.Settings.Label.autoCheck.localized, isOn: Binding(
                             get: { appUpdate.autoCheckEnabled },
                             set: { appUpdate.setAutoCheckEnabled($0) }
@@ -416,6 +533,10 @@ struct SettingsSectionView: View {
             appUpdate.refreshState()
             core.refreshLaunchAtLogin()
             core.refreshHelmCliShimStatus()
+            privilegedHelper.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            privilegedHelper.refresh()
         }
     }
 }

@@ -56,6 +56,15 @@ import Foundation
         packageFilter: String,
         withReply reply: @escaping (Bool) -> Void
     )
+    func startSelectedUpgradeWorkflowWithId(
+        workflowId: String,
+        includePinned: Bool,
+        allowOsUpdates: Bool,
+        managerScopeId: String,
+        packageFilter: String,
+        selectedStepIdsJSON: String,
+        withReply reply: @escaping (Bool) -> Void
+    )
     func cancelUpgradeWorkflow(workflowId: String, withReply reply: @escaping (Bool) -> Void)
     func isUpgradeWorkflowActive(workflowId: String, withReply reply: @escaping (Bool) -> Void)
     func upgradePackage(managerId: String, packageName: String, packageTargetName: String?, version: String?, withReply reply: @escaping (Int64) -> Void)

@@ -44,9 +44,9 @@ Helm has exactly two operational interfaces:
 1. **Status-item popover** — ambient state, one next action, current work, and fast commands.
 2. **Dashboard** — inspection, planning, discovery, execution, history, and recovery.
 
-Left-click and right-click on the status item open the same popover. There is no separate context menu with a second information architecture. Standard macOS application menus, the Settings scene, confirmation sheets, and alerts remain system presentations rather than additional operational interfaces.
+Left-click and right-click on the status item use the same popover while Dashboard is closed. When Dashboard is open, left-click focuses it and right-click keeps the popover available alongside it. There is no separate context menu with a second information architecture. Standard macOS application menus, the Settings scene, confirmation sheets, and alerts remain system presentations rather than additional operational interfaces.
 
-Implementation checkpoint: the legacy AppKit right-click menu is removed. Both click types toggle the shared popover; Refresh is available in its footer, Check for Updates is available in About, and the existing contextual routes retain Dashboard, Upgrade All, Settings, Support, and Quit without adding another command list.
+Implementation checkpoint: the legacy AppKit right-click menu is removed. Both click types use the shared popover with the Dashboard-aware focus behavior above; Refresh is available in its footer, Check for Updates is available in About, and the existing contextual routes retain Dashboard, Upgrade All, Settings, Support, and Quit without adding another command list.
 
 ## Dashboard architecture
 

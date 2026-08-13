@@ -39,6 +39,11 @@ extension HelmCore {
         refreshLaunchAtLogin()
     }
 
+    func setNotificationsEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.notificationsEnabledKey)
+        notificationsEnabled = enabled
+    }
+
     // MARK: - Bundled CLI Shim
 
     static func defaultHelmCliShimURL() -> URL {
@@ -655,6 +660,9 @@ extension HelmCore {
         }
         let includeHelmSelfUpdate = AppUpdateCoordinator.shared.includeHelmInUpgradeAll
             && AppUpdateCoordinator.shared.availableUpdate != nil
+        let externalSparkleStepIds = upgradePlanSteps
+            .filter(Self.isExternalSparklePlanStep)
+            .map(\.id)
         if !hasBackendUpgradeCandidate(includePinned: includePinned, allowOsUpdates: allowOsUpdates),
            includeHelmSelfUpdate {
             AppUpdateCoordinator.shared.checkForUpdates()
@@ -667,7 +675,8 @@ extension HelmCore {
             packageFilter: "",
             source: "core.settings",
             action: "upgradeAll",
-            includeHelmSelfUpdate: includeHelmSelfUpdate
+            includeHelmSelfUpdate: includeHelmSelfUpdate,
+            externalSparkleStepIds: externalSparkleStepIds
         )
     }
 
@@ -718,6 +727,7 @@ extension HelmCore {
                     coreSteps: steps,
                     includePinned: includePinned
                 )
+                self.reconcileUpgradePlanCompletionWithCurrentSteps()
                 self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
             }
         }
@@ -844,7 +854,28 @@ extension HelmCore {
             coreSteps: backendSteps,
             includePinned: upgradePlanIncludePinned
         )
+        reconcileUpgradePlanCompletionWithCurrentSteps()
         syncUpgradePlanProjection(from: latestCoreTasksSnapshot)
+    }
+
+    func reconcileUpgradePlanCompletionWithCurrentSteps() {
+        guard let completion = upgradePlanCompletion else { return }
+        let currentExternalStepIds = Set(
+            upgradePlanSteps.filter(Self.isExternalSparklePlanStep).map(\.id)
+        )
+        let remainingStepIds = completion.remainingExternalSparkleStepIds.filter {
+            currentExternalStepIds.contains($0)
+        }
+        let reconciledCompletion: UpgradePlanCompletion? = remainingStepIds.isEmpty
+            ? nil
+            : UpgradePlanCompletion(
+                workflowId: completion.workflowId,
+                remainingExternalSparkleStepIds: remainingStepIds,
+                completedNormally: completion.completedNormally
+            )
+        if reconciledCompletion != completion {
+            upgradePlanCompletion = reconciledCompletion
+        }
     }
 
     static func isExternalSparklePlanStep(_ step: CoreUpgradePlanStep) -> Bool {

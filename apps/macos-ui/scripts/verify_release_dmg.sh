@@ -96,6 +96,9 @@ BACKGROUND_PATH="$MOUNT_PATH/.background/background.png"
 APP_INFO_PLIST="$APP_PATH/Contents/Info.plist"
 HELM_BIN="$APP_PATH/Contents/MacOS/Helm"
 SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
+PRIVILEGED_HELPER_BIN="$APP_PATH/Contents/Library/LaunchServices/HelmPrivilegedHelper"
+PRIVILEGED_HELPER_PLIST="$APP_PATH/Contents/Library/LaunchDaemons/com.jasoncavinder.Helm.PrivilegedHelper.plist"
+PRIVILEGED_HELPER_LABEL="com.jasoncavinder.Helm.PrivilegedHelper"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "error: missing app in DMG: $APP_PATH" >&2
@@ -170,6 +173,31 @@ if [[ ! -f "$HELM_BIN" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$PRIVILEGED_HELPER_BIN" ]]; then
+  echo "error: privileged helper executable missing from DMG app bundle" >&2
+  exit 1
+fi
+
+if [[ ! -f "$PRIVILEGED_HELPER_PLIST" ]]; then
+  echo "error: privileged helper launch-daemon plist missing from DMG app bundle" >&2
+  exit 1
+fi
+
+if [[ "$(plist_value "Label" "$PRIVILEGED_HELPER_PLIST")" != "$PRIVILEGED_HELPER_LABEL" ]]; then
+  echo "error: privileged helper launch-daemon label does not match its contract" >&2
+  exit 1
+fi
+
+if [[ "$(plist_value "BundleProgram" "$PRIVILEGED_HELPER_PLIST")" != "Contents/Library/LaunchServices/HelmPrivilegedHelper" ]]; then
+  echo "error: privileged helper BundleProgram does not match its embedded path" >&2
+  exit 1
+fi
+
+if [[ "$(plist_value "MachServices:$PRIVILEGED_HELPER_LABEL" "$PRIVILEGED_HELPER_PLIST")" != "true" ]]; then
+  echo "error: privileged helper Mach service is missing or disabled" >&2
+  exit 1
+fi
+
 if ! otool -L "$HELM_BIN" | grep -q "Sparkle.framework"; then
   echo "error: Helm binary in DMG is not linked against Sparkle.framework" >&2
   exit 1
@@ -203,5 +231,11 @@ if ! /usr/libexec/PlistBuddy -c "Print :com.apple.security.temporary-exception.s
 fi
 
 codesign --verify --deep --strict --verbose=2 "$APP_PATH" >/dev/null
+codesign --verify --strict --verbose=2 "$PRIVILEGED_HELPER_BIN" >/dev/null
+
+if ! codesign -dv --verbose=4 "$PRIVILEGED_HELPER_BIN" 2>&1 | grep -q "Identifier=$PRIVILEGED_HELPER_LABEL"; then
+  echo "error: privileged helper code-signing identifier does not match its contract" >&2
+  exit 1
+fi
 
 echo "DMG verification passed: $DMG_PATH"

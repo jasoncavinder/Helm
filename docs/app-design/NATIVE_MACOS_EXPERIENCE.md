@@ -122,7 +122,7 @@ Required direction:
 - show cached health immediately and update progressively
 - prioritize one current condition over a grid of competing metrics
 - expose the most likely action and active work without reproducing the Dashboard
-- use one predictable popover for left- and right-click status-item activation, with predictable dismissal and focus behavior
+- use one predictable popover for both status-item click types: either click toggles it while Dashboard is closed, primary click focuses an open Dashboard, and secondary click keeps the popover available alongside Dashboard
 - keep utility commands consistent with application-menu commands
 - avoid embedding full settings, long diagnostics, or deep package management in the popover
 

@@ -423,6 +423,7 @@ final class HelmCore: ObservableObject {
     private static let acceptedLicenseTermsVersionKey = "acceptedLicenseTermsVersion"
     private static let acceptedLicenseTermsAcceptedAtUnixKey = "acceptedLicenseTermsAcceptedAtUnix"
     static let launchAtLoginEnabledKey = "launchAtLoginEnabled"
+    static let notificationsEnabledKey = "notificationsEnabled"
     static let managerPriorityOverridesKey = "managerPriorityOverrides"
 
     @Published var isInitialized = false
@@ -464,6 +465,7 @@ final class HelmCore: ObservableObject {
     @Published var upgradePlanSteps: [CoreUpgradePlanStep] = []
     @Published var upgradePlanTaskProjectionByStepId: [String: UpgradePlanTaskProjection] = [:]
     @Published var upgradePlanFailureGroups: [UpgradePlanFailureGroup] = []
+    @Published var upgradePlanCompletion: UpgradePlanCompletion?
     @Published var upgradePlanAllowOsUpdates: Bool = false
     @Published var upgradePlanIncludePinned: Bool = false
     @Published var scopedUpgradePlanRunInProgress: Bool = false
@@ -527,6 +529,11 @@ final class HelmCore: ObservableObject {
     @Published var launchAtLoginEnabled: Bool = UserDefaults.standard.bool(
         forKey: HelmCore.launchAtLoginEnabledKey
     )
+    @Published var notificationsEnabled: Bool = {
+        AppNotificationPreference.resolvedEnabled(
+            storedValue: UserDefaults.standard.object(forKey: HelmCore.notificationsEnabledKey)
+        )
+    }()
     @Published var helmCliShimInstalled: Bool = false
     @Published var helmCliBundledAvailable: Bool = false
     @Published var helmCliShimOperationInProgress: Bool = false
@@ -575,8 +582,12 @@ final class HelmCore: ObservableObject {
     var pendingHelmSelfUpdateWorkflowId: String?
     var scopedUpgradeWorkflowStartState = UpgradeWorkflowStartState()
     var scopedUpgradeWorkflowStatusReconciliationState = UpgradeWorkflowStatusReconciliationState()
+    var upgradePlanCompletionTracker = UpgradePlanCompletionTracker()
     var scopedUpgradeWorkflowStatusCheckInFlight = false
-    private var reconnectAttempt: Int = 0
+    private var connectionGeneration: UInt64 = 0
+    private var reconnectToken: UUID?
+    private var reconnectPolicy = ServiceConnectionRetryPolicy()
+    private var refreshRequestedWhileDisconnected = false
     private var lastTaskSnapshotRefreshAt: Date = .distantPast
     private var lastFullSnapshotRefreshAt: Date = .distantPast
     private var isPopoverVisibleForPolling = false
@@ -726,50 +737,122 @@ final class HelmCore: ObservableObject {
     }
 
     func setupConnection() {
-        let connection = NSXPCConnection(serviceName: "app.jasoncavinder.Helm.HelmService")
-        connection.remoteObjectInterface = NSXPCInterface(with: HelmServiceProtocol.self)
-        connection.invalidationHandler = { [weak self] in
+        guard connection == nil else { return }
+
+        reconnectToken = nil
+        reconnectPolicy.beginConnectionAttempt()
+        connectionGeneration &+= 1
+        let generation = connectionGeneration
+        let candidate = NSXPCConnection(serviceName: "app.jasoncavinder.Helm.HelmService")
+        candidate.remoteObjectInterface = NSXPCInterface(with: HelmServiceProtocol.self)
+        candidate.invalidationHandler = { [weak self] in
             logger.error("XPC connection invalidated")
             DispatchQueue.main.async {
-                self?.isConnected = false
-                self?.clearSearchState()
-                self?.scheduleReconnection()
+                self?.handleConnectionFailure(generation: generation)
             }
         }
-        connection.interruptionHandler = { [weak self] in
+        candidate.interruptionHandler = { [weak self] in
             logger.error("XPC connection interrupted")
             DispatchQueue.main.async {
-                self?.isConnected = false
-                self?.clearSearchState()
-                self?.scheduleReconnection()
+                self?.handleConnectionFailure(generation: generation)
             }
         }
-        connection.resume()
-        self.connection = connection
-
-        logger.info("XPC connection established")
-        isConnected = true
+        candidate.resume()
+        connection = candidate
         isInitialized = true
-        reconnectAttempt = 0
+
+        guard let service = candidate.remoteObjectProxyWithErrorHandler({ [weak self] error in
+            logger.error("XPC connection handshake failed: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self?.handleConnectionFailure(generation: generation)
+            }
+        }) as? HelmServiceProtocol else {
+            handleConnectionFailure(generation: generation)
+            return
+        }
+
+        withTimeout(
+            5,
+            source: "core.xpc",
+            action: "connectionHandshake",
+            taskType: "connection",
+            operation: { completion in
+                service.getSafeMode { enabled in
+                    completion(enabled)
+                }
+            },
+            fallback: nil
+        ) { [weak self] enabled in
+            guard let self else { return }
+            guard let enabled else {
+                logger.error("XPC connection handshake timed out")
+                self.handleConnectionFailure(generation: generation)
+                return
+            }
+            DispatchQueue.main.async {
+                self.completeConnectionHandshake(
+                    generation: generation,
+                    safeModeEnabled: enabled
+                )
+            }
+        }
+    }
+
+    private func completeConnectionHandshake(generation: UInt64, safeModeEnabled: Bool) {
+        guard generation == connectionGeneration, connection != nil else { return }
+
+        logger.info("XPC connection handshake succeeded")
+        reconnectToken = nil
+        reconnectPolicy.markConnected()
+        self.safeModeEnabled = safeModeEnabled
+        isConnected = true
 
         if timer == nil {
             startPolling()
         }
-        fetchSafeMode()
         fetchHomebrewKegAutoCleanup()
         fetchPackageKegPolicies()
         fetchPackageManagerPreferences()
         syncOnboardingStateWithSharedStore()
         scheduleDerivedViewStateRefresh()
+
+        if refreshRequestedWhileDisconnected {
+            refreshRequestedWhileDisconnected = false
+            triggerRefresh()
+        }
+    }
+
+    private func handleConnectionFailure(generation: UInt64) {
+        guard generation == connectionGeneration, let failedConnection = connection else {
+            return
+        }
+
+        failedConnection.invalidationHandler = nil
+        failedConnection.interruptionHandler = nil
+        failedConnection.invalidate()
+        connection = nil
+        if isConnected {
+            isConnected = false
+        }
+        clearSearchState()
+        scheduleReconnection()
     }
 
     func scheduleReconnection() {
-        let delay = min(2.0 * pow(2.0, Double(reconnectAttempt)), 60.0)
-        reconnectAttempt += 1
-        logger.info("Scheduling reconnection in \(delay)s (attempt \(self.reconnectAttempt))")
+        guard connection == nil, let delay = reconnectPolicy.scheduleReconnect() else {
+            return
+        }
+
+        let token = UUID()
+        reconnectToken = token
+        logger.info("Scheduling reconnection in \(delay)s (attempt \(self.reconnectPolicy.attempt))")
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.reconnectToken == token, self.connection == nil else {
+                return
+            }
+            self.reconnectToken = nil
             logger.info("Attempting to reconnect...")
-            self?.setupConnection()
+            self.setupConnection()
         }
     }
 
@@ -834,6 +917,7 @@ final class HelmCore: ObservableObject {
     }
 
     func service() -> HelmServiceProtocol? {
+        guard isConnected else { return nil }
         return connection?.remoteObjectProxy as? HelmServiceProtocol
     }
 
@@ -925,6 +1009,11 @@ final class HelmCore: ObservableObject {
     func triggerRefresh() {
         logger.info("triggerRefresh called")
         AppUpdateCoordinator.shared.refreshUpdateAvailability()
+        guard isConnected else {
+            logger.info("Deferring refresh until the service connection is verified")
+            refreshRequestedWhileDisconnected = true
+            return
+        }
         self.lastRefreshTrigger = Date()
         self.lastTaskSnapshotRefreshAt = .distantPast
         self.lastFullSnapshotRefreshAt = .distantPast

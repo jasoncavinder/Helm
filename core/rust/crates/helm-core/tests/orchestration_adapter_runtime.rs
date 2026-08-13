@@ -36,6 +36,43 @@ fn test_db_path(test_name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
 }
 
+async fn wait_until_for(
+    timeout: Duration,
+    poll_interval: Duration,
+    mut condition: impl FnMut() -> bool,
+) -> bool {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if condition() {
+                return;
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
+async fn wait_until(condition: impl FnMut() -> bool) -> bool {
+    wait_until_for(Duration::from_secs(1), Duration::from_millis(10), condition).await
+}
+
+#[tokio::test]
+async fn wait_until_for_does_not_poll_condition_after_timeout() {
+    let mut checks = 0;
+    let completed = wait_until_for(Duration::from_millis(10), Duration::from_millis(20), || {
+        checks += 1;
+        checks > 1
+    })
+    .await;
+
+    assert!(
+        !completed,
+        "condition should not be polled after the timeout budget expires"
+    );
+    assert_eq!(checks, 1, "condition should only be checked before timeout");
+}
+
 #[derive(Clone)]
 enum AdapterBehavior {
     Succeeds(AdapterResponse),
@@ -768,16 +805,21 @@ async fn submit_with_task_store_persists_queued_then_terminal_status() {
     assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
 
     let mut persisted = None;
-    for _ in 0..20 {
+    let completed_persisted = wait_until(|| {
         if let Some(record) = task_store.get(task_id)
             && record.status == TaskStatus::Completed
         {
             persisted = Some(record);
-            break;
+            return true;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+        false
+    })
+    .await;
 
+    assert!(
+        completed_persisted,
+        "expected completed persisted task record"
+    );
     let record = persisted.expect("expected completed persisted task record");
     assert_eq!(record.id, task_id);
     assert_eq!(record.manager, ManagerId::Npm);
@@ -826,16 +868,21 @@ async fn submit_retries_initial_task_persistence_and_succeeds_after_transient_fa
     assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
 
     let mut persisted = None;
-    for _ in 0..20 {
+    let completed_persisted = wait_until(|| {
         if let Some(record) = task_store.get(task_id)
             && record.status == TaskStatus::Completed
         {
             persisted = Some(record);
-            break;
+            return true;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+        false
+    })
+    .await;
 
+    assert!(
+        completed_persisted,
+        "expected completed persisted task record"
+    );
     let record = persisted.expect("expected completed persisted task record");
     assert_eq!(record.id, task_id);
     assert_eq!(record.manager, ManagerId::Npm);
@@ -863,16 +910,21 @@ async fn submit_with_task_store_persists_terminal_status_via_atomic_transition()
     assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
 
     let mut persisted = None;
-    for _ in 0..20 {
+    let completed_persisted = wait_until(|| {
         if let Some(record) = task_store.get(task_id)
             && record.status == TaskStatus::Completed
         {
             persisted = Some(record);
-            break;
+            return true;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+        false
+    })
+    .await;
 
+    assert!(
+        completed_persisted,
+        "expected completed persisted task record through atomic path"
+    );
     let record = persisted.expect("expected completed persisted task record through atomic path");
     assert_eq!(record.id, task_id);
     assert_eq!(record.status, TaskStatus::Completed);
@@ -941,18 +993,13 @@ async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence
         "expected search cache persistence to start"
     );
 
-    let mut persisted_completed = false;
-    for _ in 0..20 {
+    let persisted_completed = wait_until(|| {
         let records = store.list_recent_tasks(10).unwrap();
-        if records
+        records
             .iter()
             .any(|record| record.id == task_id && record.status == TaskStatus::Completed)
-        {
-            persisted_completed = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 
     search_cache_store.release();
 
@@ -1313,22 +1360,17 @@ async fn detect_persists_install_instances_alongside_detection_rows() {
         .await
         .unwrap();
 
-    let mut persisted = false;
-    for _ in 0..20 {
+    let persisted = wait_until(|| {
         let detections = store.list_detections().unwrap();
         let instances = store
             .list_install_instances(Some(ManagerId::Rustup))
             .unwrap();
-        if detections
+        detections
             .iter()
             .any(|(manager, info)| *manager == ManagerId::Rustup && info.installed)
             && !instances.is_empty()
-        {
-            persisted = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 
     assert!(
         persisted,
@@ -1392,19 +1434,14 @@ async fn install_mutation_updates_cached_snapshots_without_manual_refresh() {
         .await
         .unwrap();
 
-    let mut persisted = false;
-    for _ in 0..20 {
+    let persisted = wait_until(|| {
         let installed = store.list_installed().unwrap();
         let outdated = store.list_outdated().unwrap();
         let installed_entry = installed.iter().find(|entry| entry.package == package);
-        if installed_entry.and_then(|entry| entry.installed_version.as_deref()) == Some("9.25.0")
+        installed_entry.and_then(|entry| entry.installed_version.as_deref()) == Some("9.25.0")
             && outdated.iter().all(|entry| entry.package != package)
-        {
-            persisted = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 
     assert!(
         persisted,
@@ -1475,18 +1512,13 @@ async fn uninstall_mutation_removes_cached_snapshots_without_manual_refresh() {
         .await
         .unwrap();
 
-    let mut persisted = false;
-    for _ in 0..20 {
+    let persisted = wait_until(|| {
         let installed = store.list_installed().unwrap();
         let outdated = store.list_outdated().unwrap();
-        if installed.iter().all(|entry| entry.package != package)
+        installed.iter().all(|entry| entry.package != package)
             && outdated.iter().all(|entry| entry.package != package)
-        {
-            persisted = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 
     assert!(
         persisted,
@@ -1535,18 +1567,13 @@ async fn installed_snapshot_refresh_replaces_stale_rows_for_manager() {
         .await
         .unwrap();
 
-    let mut cleared = false;
-    for _ in 0..20 {
+    let cleared = wait_until(|| {
         let installed = store.list_installed().unwrap();
-        if installed
+        installed
             .iter()
             .all(|entry| entry.package.manager != ManagerId::Npm)
-        {
-            cleared = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 
     assert!(
         cleared,

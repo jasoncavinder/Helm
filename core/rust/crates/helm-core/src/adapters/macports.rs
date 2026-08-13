@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::adapters::manager::{AdapterRequest, AdapterResponse, AdapterResult, ManagerAdapter};
-use crate::execution::{CommandSpec, ProcessSpawnRequest};
+use crate::execution::{CommandSpec, PrivilegedOperation, ProcessSpawnRequest};
 use crate::models::{
     ActionSafety, CachedSearchResult, Capability, CoreError, CoreErrorKind, DetectionInfo,
     InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
@@ -714,7 +714,7 @@ pub fn macports_install_request(
         macports_command("install", Some(port_name), version, variants),
         MUTATION_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::MacPortsInstall)
 }
 
 pub fn macports_uninstall_request(
@@ -730,7 +730,7 @@ pub fn macports_uninstall_request(
         macports_command("uninstall", Some(port_name), version, variants),
         MUTATION_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::MacPortsUninstall)
 }
 
 pub fn macports_upgrade_request(
@@ -752,7 +752,7 @@ pub fn macports_upgrade_request(
         command,
         MUTATION_TIMEOUT,
     )
-    .requires_elevation(true)
+    .privileged_operation(PrivilegedOperation::MacPortsUpgrade)
 }
 
 fn macports_request(
@@ -1261,6 +1261,7 @@ mod tests {
         ListInstalledRequest, ListOutdatedRequest, ManagerAdapter, SearchRequest, UninstallRequest,
         UpgradeRequest,
     };
+    use crate::execution::PrivilegedOperation;
     use crate::models::{ManagerAction, ManagerId, PackageRef, SearchQuery, TaskType};
 
     const VERSION_FIXTURE: &str = include_str!("../../tests/fixtures/macports/version.txt");
@@ -1374,6 +1375,10 @@ mod tests {
         );
         assert!(install.requires_elevation);
         assert_eq!(
+            install.privileged_operation,
+            Some(PrivilegedOperation::MacPortsInstall)
+        );
+        assert_eq!(
             install.command.args,
             vec!["install", "git", "@2.49.0_0", "+credential_osxkeychain"]
         );
@@ -1385,6 +1390,10 @@ mod tests {
             &["credential_osxkeychain".to_string()],
         );
         assert!(uninstall.requires_elevation);
+        assert_eq!(
+            uninstall.privileged_operation,
+            Some(PrivilegedOperation::MacPortsUninstall)
+        );
         assert_eq!(
             uninstall.command.args,
             vec!["uninstall", "git", "@2.49.0_0", "+credential_osxkeychain"]
@@ -1398,12 +1407,20 @@ mod tests {
         );
         assert!(upgrade_one.requires_elevation);
         assert_eq!(
+            upgrade_one.privileged_operation,
+            Some(PrivilegedOperation::MacPortsUpgrade)
+        );
+        assert_eq!(
             upgrade_one.command.args,
             vec!["upgrade", "git", "@2.49.0_0", "+credential_osxkeychain"]
         );
 
         let upgrade_all = macports_upgrade_request(None, None, None, &[]);
         assert_eq!(upgrade_all.command.args, vec!["upgrade", "outdated"]);
+        assert_eq!(
+            upgrade_all.privileged_operation,
+            Some(PrivilegedOperation::MacPortsUpgrade)
+        );
     }
 
     #[test]

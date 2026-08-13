@@ -291,6 +291,35 @@ extension L10n {
                 static let managers = "app.settings.section.managers"
                 static let advanced = "app.settings.section.advanced"
             }
+            struct NativeAuthorization {
+                static let section = "app.settings.native_authorization.section"
+                static let statusLabel = "app.settings.native_authorization.status_label"
+
+                struct Status {
+                    static let notEnabled = "app.settings.native_authorization.status.not_enabled"
+                    static let enabled = "app.settings.native_authorization.status.enabled"
+                    static let requiresApproval = "app.settings.native_authorization.status.requires_approval"
+                    static let unavailable = "app.settings.native_authorization.status.unavailable"
+                }
+
+                struct Description {
+                    static let notEnabled = "app.settings.native_authorization.description.not_enabled"
+                    static let enabled = "app.settings.native_authorization.description.enabled"
+                    static let requiresApproval = "app.settings.native_authorization.description.requires_approval"
+                    static let unavailable = "app.settings.native_authorization.description.unavailable"
+                }
+
+                struct Action {
+                    static let enable = "app.settings.native_authorization.action.enable"
+                    static let disable = "app.settings.native_authorization.action.disable"
+                    static let openLoginItems = "app.settings.native_authorization.action.open_login_items"
+                }
+
+                struct Error {
+                    static let registrationFailed = "app.settings.native_authorization.error.registration_failed"
+                    static let unregistrationFailed = "app.settings.native_authorization.error.unregistration_failed"
+                }
+            }
             struct Label {
                 static let language = "app.settings.label.language"
                 static let systemDefault = "app.settings.label.language.system_default"
@@ -303,6 +332,8 @@ extension L10n {
                 static let japanese = "app.settings.label.language.japanese"
                 static let hungarian = "app.settings.label.language.hungarian"
                 static let launchAtLogin = "app.settings.label.launch_at_login"
+                static let notifications = "app.settings.label.notifications"
+                static let notificationsDescription = "app.settings.label.notifications_description"
                 static let autoCheck = "app.settings.label.auto_check"
                 static let checkFrequency = "app.settings.label.check_frequency"
                 static let prereleaseUpdates = "app.settings.label.prerelease_updates"
@@ -421,6 +452,7 @@ extension L10n {
         }
         struct Health {
             static let healthy = "app.health.healthy"
+            static let updatesAvailable = "app.health.updates_available"
             static let attention = "app.health.attention"
             static let error = "app.health.error"
             static let running = "app.health.running"
@@ -459,6 +491,8 @@ extension L10n {
             static let executionPlan = "app.updates.execution_plan"
             static let includeOs = "app.updates.include_os"
             static let interactiveSparkleNotice = "app.updates.interactive_sparkle_notice"
+            static let openApp = "app.updates.action.open_app"
+            static let sparkleStartFailed = "app.updates.sparkle_start_failed"
             static let helmSelfUpdateManager = "app.updates.helm_self_update.manager"
             static let helmSelfUpdateSummary = "app.updates.helm_self_update.summary"
             static let managers = "app.updates.managers"
@@ -482,6 +516,16 @@ extension L10n {
                 static let requiresInteraction = "app.updates.status.requires_interaction"
                 static let runsLast = "app.updates.status.runs_last"
                 static let notIncluded = "app.updates.status.not_included"
+            }
+            struct Completion {
+                static let title = "app.updates.completion.interactive_remaining.title"
+                static let message = "app.updates.completion.interactive_remaining.message"
+            }
+            struct Notification {
+                static let availableTitle = "app.updates.notification.available.title"
+                static let availableMessage = "app.updates.notification.available.message"
+                static let reviewPlan = "app.updates.notification.action.review_plan"
+                static let upgradeAll = "app.updates.notification.action.upgrade_all"
             }
         }
         struct DryRun {
@@ -729,8 +773,6 @@ extension L10n.App {
         }
 
         struct Notification {
-            static let allCompleteTitle = "app.tasks.notification.all_complete.title"
-            static let allCompleteMessage = "app.tasks.notification.all_complete.message"
             static let timeoutPromptTitle = "app.tasks.notification.timeout_prompt.title"
             static let timeoutPromptMessage = "app.tasks.notification.timeout_prompt.message"
             static let timeoutPromptActionWait = "app.tasks.notification.timeout_prompt.action_wait"
