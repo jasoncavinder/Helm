@@ -15,6 +15,12 @@ struct UpgradePreviewPlanner {
     static let externalSparkleStepPrefix = "sparkle-external:"
     static let helmSelfUpdateAction = "helm_self_update"
     static let helmSelfUpdateManagerId = "helm_self_update"
+    private static let elevatedManagerIds: Set<String> = [
+        "mas",
+        "macports",
+        "softwareupdate",
+        "xcode_command_line_tools",
+    ]
 
     struct Entry: Equatable {
         let manager: String
@@ -254,7 +260,7 @@ struct UpgradePreviewPlanner {
         let restartRequiredKeys = Set(restartRequiredCandidates.map(riskKey))
         return RiskSummary(
             requiresElevatedPrivileges: selectedCandidates.contains {
-                $0.managerId == "softwareupdate" || $0.managerId == "mas"
+                elevatedManagerIds.contains($0.managerId)
             },
             mayRequireReboot: selectedCandidates.contains {
                 $0.managerId == "softwareupdate" || restartRequiredKeys.contains(riskKey($0))
