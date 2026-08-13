@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Fixed
+- Native Settings now joins the active macOS Space and can appear alongside full-screen apps, matching Helm's menu-bar Dashboard workflow instead of opening invisibly on another desktop.
+
 ## [0.19.0-rc.5] - 2026-08-12
 
 ### Added

@@ -1,6 +1,29 @@
 import XCTest
 
 final class HelmSettingsOpenRouterTests: XCTestCase {
+    func testSettingsWindowPolicyJoinsAllSpacesAsFullScreenAuxiliary() {
+        let normalized = HelmSettingsWindowSpacePolicy.normalizedCollectionBehavior([])
+
+        XCTAssertTrue(normalized.contains(.canJoinAllSpaces))
+        XCTAssertTrue(normalized.contains(.fullScreenAuxiliary))
+    }
+
+    func testSettingsWindowPolicyRemovesConflictingBehaviorAndPreservesCompatibleFlags() {
+        let normalized = HelmSettingsWindowSpacePolicy.normalizedCollectionBehavior([
+            .moveToActiveSpace,
+            .fullScreenPrimary,
+            .fullScreenNone,
+            .transient
+        ])
+
+        XCTAssertFalse(normalized.contains(.moveToActiveSpace))
+        XCTAssertFalse(normalized.contains(.fullScreenPrimary))
+        XCTAssertFalse(normalized.contains(.fullScreenNone))
+        XCTAssertTrue(normalized.contains(.transient))
+        XCTAssertTrue(normalized.contains(.canJoinAllSpaces))
+        XCTAssertTrue(normalized.contains(.fullScreenAuxiliary))
+    }
+
     func testRegisteredOpenUsesMostRecentLiveBridge() {
         let router = HelmSettingsOpenRouter()
         var firstOpenCount = 0

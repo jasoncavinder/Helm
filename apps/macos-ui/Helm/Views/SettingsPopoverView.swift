@@ -583,6 +583,7 @@ struct SettingsWindowView: View {
             idealHeight: 500,
             maxHeight: 600
         )
+        .background(HelmSettingsWindowSpaceBridge())
     }
 }
 

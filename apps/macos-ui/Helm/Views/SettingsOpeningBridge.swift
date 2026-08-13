@@ -1,6 +1,54 @@
 import AppKit
 import SwiftUI
 
+enum HelmSettingsWindowSpacePolicy {
+    static let requiredCollectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces,
+        .fullScreenAuxiliary
+    ]
+
+    static func normalizedCollectionBehavior(
+        _ current: NSWindow.CollectionBehavior
+    ) -> NSWindow.CollectionBehavior {
+        var normalized = current
+        normalized.remove(.moveToActiveSpace)
+        normalized.remove(.fullScreenPrimary)
+        normalized.remove(.fullScreenNone)
+        normalized.formUnion(requiredCollectionBehavior)
+        return normalized
+    }
+
+    @MainActor
+    static func apply(to window: NSWindow) {
+        let normalized = normalizedCollectionBehavior(window.collectionBehavior)
+        guard normalized != window.collectionBehavior else { return }
+        window.collectionBehavior = normalized
+        window.makeKeyAndOrderFront(nil)
+    }
+}
+
+struct HelmSettingsWindowSpaceBridge: NSViewRepresentable {
+    func makeNSView(context: Context) -> SettingsWindowSpaceView {
+        SettingsWindowSpaceView(frame: .zero)
+    }
+
+    func updateNSView(_ view: SettingsWindowSpaceView, context: Context) {
+        view.applyPolicyToAttachedWindow()
+    }
+}
+
+final class SettingsWindowSpaceView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyPolicyToAttachedWindow()
+    }
+
+    func applyPolicyToAttachedWindow() {
+        guard let window else { return }
+        HelmSettingsWindowSpacePolicy.apply(to: window)
+    }
+}
+
 final class HelmSettingsOpenRouter {
     typealias ActivateAction = () -> Void
     typealias VenturaOpenAction = () -> Void
