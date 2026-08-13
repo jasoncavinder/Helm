@@ -211,7 +211,7 @@ struct ControlCenterWindowView: View {
     }
 
     private func completeFirstRun() {
-        context.dismissedFirstRunPreview = true
+        context.dismissFirstRunPreview()
         if !core.hasCompletedOnboarding {
             core.completeOnboarding()
             core.triggerRefresh()

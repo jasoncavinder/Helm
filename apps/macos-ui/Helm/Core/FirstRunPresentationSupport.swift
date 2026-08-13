@@ -220,6 +220,25 @@ enum EnvironmentBriefFirstRunConfiguration {
     }
 }
 
+struct EnvironmentBriefFirstRunSession: Equatable {
+    private(set) var dismissedPreview = false
+
+    mutating func dismissPreview() {
+        dismissedPreview = true
+    }
+
+    func shouldPresent(
+        mode: EnvironmentBriefFirstRunMode,
+        hasCompletedOnboarding: Bool
+    ) -> Bool {
+        EnvironmentBriefFirstRunConfiguration.shouldPresent(
+            mode: mode,
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            dismissedPreview: dismissedPreview
+        )
+    }
+}
+
 enum EnvironmentBriefPresentationKind: Equatable {
     case mapping
     case current
