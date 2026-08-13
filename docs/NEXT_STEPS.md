@@ -11,21 +11,20 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.5 source-candidate integration and v0.19.0 stabilization
+v0.19.0-rc.5 installed-candidate validation and v0.19.0 stabilization
 ```
 
 Focus:
-- preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.4`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
-- validate the installed `v0.19.0-rc.3` to signed/notarized `v0.19.0-rc.4` Sparkle update path if that owner check has not already been completed; do not infer installed-candidate evidence from publication success
+- preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.5`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
+- validate the installed `v0.19.0-rc.4` to signed/notarized `v0.19.0-rc.5` Sparkle update path, retained notification preference and Plan deep links, native-helper registration/approval/persistence/unregister behavior, and continued askpass execution; do not infer installed-candidate evidence from publication success
 - preserve the completed automated and owner-assisted ordinary-UI RC5 matrix in `docs/validation/v0.19.0-rc.5-readiness.md` for the full post-RC4 stabilization delta through PR `#431`; retain the post-publication installed-candidate checks without overstating uncollected evidence
 - continue the native privileged-helper sequence from `docs/architecture/PRIVILEGED_EXECUTION.md`: preserve the embedded `developer_id` helper target, launch-daemon metadata, non-direct-channel stripping, exact signed-caller checks, fixed Apple-operation allowlist, release packaging verification, and explicit all-state `SMAppService` registration/approval UX; the release workflows have no private signed/notarized candidate mode, so use the installed signed/notarized RC5 artifact to validate registration, approval routing, persistence, and unregister behavior before activating the executor in a later reviewed slice, then resolve MAS and MacPorts without granting a root daemon broad access to unsigned or dynamic command surfaces
-- fix only release-blocking findings before integrating and tagging `v0.19.0-rc.5`; defer unrelated feature work and Issue `#388`
-- continue the authorized `v0.19.0-rc.5` publication sequence after protected `dev`/`main` integration, clean-`main` rehearsal/preflight, fresh release canary, publication-auth write probe, and owner ordinary-UI QA all passed; keep installed-helper and Sparkle replacement evidence explicitly post-publication
+- preserve the completed `v0.19.0-rc.5` publication record: tag source `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`, signed/notarized GUI and direct CLI workflows `31690897042` and `31690897034`, publication PRs `#441` and `#442`, and green release/appcast/CLI verification on converged `main`; keep installed-helper and Sparkle replacement evidence explicitly post-publication
 - preserve the completed installed `v0.19.0-rc.2` to signed/notarized `v0.19.0-rc.3` Sparkle update validation: Sparkle checked at the installed bundle replacement time, installed and relaunched RC3, migrated the ambiguous legacy English sentinel to the versioned `system` preference, and followed the current `en-US` macOS application language; retain one owner relaunch check for a newly selected explicit language before declaring language-persistence closeout complete
 - preserve the completed owner validation of the installed `v0.19.0-rc.1` to signed/notarized `v0.19.0-rc.2` Sparkle update path; Sparkle detected, installed, and relaunched RC2 successfully, with the language-default regression discovered only after relaunch
 - keep the Environment Brief development-gated in RC5 because Issue #388 remains unresolved, and disclose the limitation without implying that the production first-run route changed
 - continue from the Original Wayfinder foundation checkpoints: shared revisioned Dashboard/popover/status projection, semantic Course Indicator modes, stable destination/deep-link bridge, Dashboard naming, restored/resizable native window hosting, native Dashboard/Plan/Library/Activity sidebar composition, persistent Environment access, rendered Course Indicator, native Dashboard toolbar/app commands, one shared native Settings scene with General, Updates, Sources, CLI, and Support panes, one shared status-item popover for primary and secondary clicks, Dashboard-owned Service Health, and removal of the legacy in-window Settings destination are implemented; destination content migration, contextual inspector behavior, and v0.22 multi-display validation continue
-- maintain release-process hardening guardrails while RC5 moves through readiness validation and protected integration
+- maintain release-process hardening guardrails while RC5 moves through installed-candidate validation and short soak
 - do not treat registered helper state as active native authorization; the existing `sudo -A` askpass path remains the runtime implementation until signed installed-build registration/approval QA and executor activation pass together
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
