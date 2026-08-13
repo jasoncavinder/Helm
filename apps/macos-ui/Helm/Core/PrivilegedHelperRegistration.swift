@@ -22,7 +22,7 @@ enum PrivilegedHelperRegistrationStatus: Equatable {
     case notFound
 }
 
-enum PrivilegedHelperRegistrationOperationError: Equatable {
+enum PrivilegedHelperOperationError: Equatable {
     case registrationFailed
     case unregistrationFailed
 }
@@ -51,7 +51,7 @@ protocol PrivilegedHelperRegistrationServicing: AnyObject {
     func openSystemSettingsLoginItems()
 }
 
-final class SMAppServicePrivilegedHelperRegistrationService: PrivilegedHelperRegistrationServicing {
+final class SMPrivilegedHelperService: PrivilegedHelperRegistrationServicing {
     private let service: SMAppService
 
     init(plistName: String) {
@@ -96,7 +96,7 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
 
     @Published private(set) var status: PrivilegedHelperRegistrationStatus
     @Published private(set) var operationInProgress = false
-    @Published private(set) var operationError: PrivilegedHelperRegistrationOperationError?
+    @Published private(set) var operationError: PrivilegedHelperOperationError?
 
     let availability: PrivilegedHelperRegistrationAvailability
 
@@ -131,7 +131,7 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
             launchDaemonPlistExists: fileManager.fileExists(atPath: plistURL.path)
         )
         let service: PrivilegedHelperRegistrationServicing? = availability == .available
-            ? SMAppServicePrivilegedHelperRegistrationService(plistName: launchDaemonPlistName)
+            ? SMPrivilegedHelperService(plistName: launchDaemonPlistName)
             : nil
         return PrivilegedHelperRegistrationController(
             availability: availability,
