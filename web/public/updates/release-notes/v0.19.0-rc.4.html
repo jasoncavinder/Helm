@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Helm 0.19.0-rc.4 Release Notes</title>
+  <link rel="canonical" href="https://helmapp.dev/updates/release-notes/v0.19.0-rc.4.html">
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      line-height: 1.55;
+      background: #f7f8fa;
+      color: #111827;
+    }
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    article {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 24px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 1.6rem;
+      line-height: 1.3;
+    }
+    h2 {
+      margin: 24px 0 8px;
+      font-size: 1.1rem;
+    }
+    p, ul {
+      margin: 8px 0;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    .meta {
+      color: #4b5563;
+      font-size: 0.95rem;
+      margin: 0 0 12px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.92em;
+    }
+    footer {
+      margin-top: 16px;
+      color: #6b7280;
+      font-size: 0.9rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #0b1220;
+        color: #e5e7eb;
+      }
+      article {
+        background: #0f172a;
+        border-color: #1f2937;
+      }
+      .meta {
+        color: #9ca3af;
+      }
+      code {
+        background: #111827;
+      }
+      footer {
+        color: #9ca3af;
+      }
+      a {
+        color: #93c5fd;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Helm 0.19.0-rc.4 Release Notes</h1>
+      <p class="meta">Release date: August 11, 2026</p>
+    <h2>Added</h2>
+    <ul>
+      <li>Helm self-updates and discovered third-party Sparkle updates now appear in the reviewed update plan. A default-off preference may include Helm in Upgrade All, where it runs only after backend-owned manager work reaches a terminal state; third-party Sparkle updates remain explicitly interactive.</li>
+      <li>The development-gated Environment Brief now includes a Management Readiness summary and keeps completion actions anchored while only the software-source list scrolls.</li>
+    </ul>
+    <h2>Changed</h2>
+    <ul>
+      <li>Primary and secondary menu-bar clicks now open the same live-localized popover, replacing the separate AppKit right-click menu while retaining Dashboard, Upgrade All, Settings, Support, Refresh, update-check, and Quit routes without duplicating controls.</li>
+      <li>Service Health and diagnostics now live on Dashboard, manager coverage uses one neutral detected/available metric, Settings uses a smaller bounded window, and the legacy in-window Settings destination and obsolete Replay Walkthrough action are removed.</li>
+      <li>Wayfinder polish uses Helm&#x27;s real app icon in the Dashboard sidebar, keeps the selected Plan badge legible, and restores the intended Support Helm action proportions.</li>
+    </ul>
+    <h2>Fixed</h2>
+    <ul>
+      <li>Helm and third-party Sparkle update rows are rebuilt independently of the backend preview so Library/sidebar availability cannot coexist with an empty Plan.</li>
+      <li>Dismissing the debug-only Environment Brief preview now persists for the app session across both the Dashboard and status-item entry paths.</li>
+    </ul>
+    <p>This candidate preserves stable <code>v0.18.2</code>, advances only the opt-in RC line after publication, and retains the existing production onboarding while Issue #388 remains open.</p>
+    <p class="meta">Need full context? <a href="https://github.com/jasoncavinder/Helm/releases/tag/v0.19.0-rc.4" rel="noopener noreferrer">View this release on GitHub</a>.</p>
+    </article>
+    <footer>Generated from <code>CHANGELOG.md</code>.</footer>
+  </main>
+</body>
+</html>
