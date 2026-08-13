@@ -3,7 +3,8 @@ import SwiftUI
 
 enum HelmSettingsWindowSpacePolicy {
     static let requiredCollectionBehavior: NSWindow.CollectionBehavior = [
-        .canJoinAllSpaces,
+        .moveToActiveSpace,
+        .auxiliary,
         .fullScreenAuxiliary
     ]
 

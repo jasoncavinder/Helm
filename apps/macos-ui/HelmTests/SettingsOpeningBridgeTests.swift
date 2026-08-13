@@ -1,27 +1,29 @@
 import XCTest
 
 final class HelmSettingsOpenRouterTests: XCTestCase {
-    func testSettingsWindowPolicyJoinsAllSpacesAsFullScreenAuxiliary() {
+    func testSettingsWindowPolicyMovesToActiveSpaceAsFullScreenAuxiliary() {
         let normalized = HelmSettingsWindowSpacePolicy.normalizedCollectionBehavior([])
 
-        XCTAssertTrue(normalized.contains(.canJoinAllSpaces))
+        XCTAssertTrue(normalized.contains(.moveToActiveSpace))
+        XCTAssertTrue(normalized.contains(.auxiliary))
         XCTAssertTrue(normalized.contains(.fullScreenAuxiliary))
+        XCTAssertFalse(normalized.contains(.canJoinAllSpaces))
     }
 
     func testSettingsWindowPolicyRemovesConflictingBehaviorAndPreservesCompatibleFlags() {
         let normalized = HelmSettingsWindowSpacePolicy.normalizedCollectionBehavior([
-            .moveToActiveSpace,
             .fullScreenPrimary,
             .fullScreenNone,
             .transient
         ])
 
-        XCTAssertFalse(normalized.contains(.moveToActiveSpace))
         XCTAssertFalse(normalized.contains(.fullScreenPrimary))
         XCTAssertFalse(normalized.contains(.fullScreenNone))
         XCTAssertTrue(normalized.contains(.transient))
-        XCTAssertTrue(normalized.contains(.canJoinAllSpaces))
+        XCTAssertTrue(normalized.contains(.moveToActiveSpace))
+        XCTAssertTrue(normalized.contains(.auxiliary))
         XCTAssertTrue(normalized.contains(.fullScreenAuxiliary))
+        XCTAssertFalse(normalized.contains(.canJoinAllSpaces))
     }
 
     func testRegisteredOpenUsesMostRecentLiveBridge() {
