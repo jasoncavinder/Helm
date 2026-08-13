@@ -18,7 +18,7 @@ The Helm project license (`LICENSE`) does not replace third-party license obliga
 
 ---
 
-## Snapshot (Audited 2026-08-12)
+## Snapshot (Audited 2026-08-11; release context updated 2026-08-12)
 
 Release context:
 
