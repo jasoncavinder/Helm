@@ -153,21 +153,32 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
 
         operationInProgress = true
         operationError = nil
+        var shouldOpenLoginItems = false
         do {
             try service.register()
         } catch {
             refreshStatus()
-            if status != .requiresApproval, status != .enabled {
+            if status == .requiresApproval {
+                shouldOpenLoginItems = true
+            } else if status != .enabled, isApprovalRequiredError(error) {
+                status = .requiresApproval
+                shouldOpenLoginItems = true
+            } else if status != .enabled {
                 operationError = .registrationFailed
                 privilegedHelperRegistrationLogger.error(
                     "Privileged helper registration failed: \(error.localizedDescription, privacy: .public)"
                 )
             }
         }
-        refreshStatus()
+
+        if operationError == nil, !shouldOpenLoginItems {
+            refreshStatus()
+            shouldOpenLoginItems = status == .requiresApproval
+        }
+
         operationInProgress = false
 
-        if status == .requiresApproval {
+        if shouldOpenLoginItems {
             service.openSystemSettingsLoginItems()
         }
     }
@@ -207,5 +218,10 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
             return
         }
         status = service?.registrationStatus ?? .notFound
+    }
+
+    private func isApprovalRequiredError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.code == Int(kSMErrorLaunchDeniedByUser)
     }
 }

@@ -1,4 +1,5 @@
 import XCTest
+import ServiceManagement
 
 final class PrivilegedHelperRegistrationTests: XCTestCase {
     func testAvailabilityRequiresDeveloperIdChannelAndBothArtifacts() {
@@ -93,6 +94,22 @@ final class PrivilegedHelperRegistrationTests: XCTestCase {
         controller.register()
 
         XCTAssertEqual(controller.status, .requiresApproval)
+        XCTAssertEqual(service.openSystemSettingsCallCount, 1)
+        XCTAssertNil(controller.operationError)
+    }
+
+    func testApprovalDeniedErrorUsesApprovalFlowBeforeStatusRefreshCatchesUp() {
+        let service = FakePrivilegedHelperRegistrationService(status: .notRegistered)
+        service.registerError = NSError(
+            domain: "ServiceManagement",
+            code: Int(kSMErrorLaunchDeniedByUser)
+        )
+        let controller = makeController(service: service)
+
+        controller.register()
+
+        XCTAssertEqual(controller.status, .requiresApproval)
+        XCTAssertEqual(service.registerCallCount, 1)
         XCTAssertEqual(service.openSystemSettingsCallCount, 1)
         XCTAssertNil(controller.operationError)
     }
