@@ -11,6 +11,7 @@ EXPECTED_SETUP_NODE_SHA="a0853c24544627f65ddf259abe73b1d18a591444"
 EXPECTED_CACHE_SHA="caa296126883cff596d87d8935842f9db880ef25"
 EXPECTED_UPLOAD_ARTIFACT_SHA="b7c566a772e6b6bfb58ed0dc250532a479d7789f"
 EXPECTED_DEPENDENCY_REVIEW_SHA="a1d282b36b6f3519aa1f3fc636f609c47dddb294"
+EXPECTED_CODEQL_ACTION_SHA="e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81"
 
 has_pattern() {
   local pattern="$1"
@@ -97,5 +98,9 @@ validate_action_pin \
   "actions/dependency-review-action" \
   "${EXPECTED_DEPENDENCY_REVIEW_SHA}" \
   "v5.0.0"
+validate_action_pin \
+  "github/codeql-action/(init|analyze|autobuild|upload-sarif)" \
+  "${EXPECTED_CODEQL_ACTION_SHA}" \
+  "v4.37.3"
 
 echo "CI toolchain contracts validated."

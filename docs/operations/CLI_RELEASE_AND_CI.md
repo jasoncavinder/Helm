@@ -80,13 +80,15 @@ scripts/release/tests/ci_toolchain_contract.sh
 ### 1.2 Immutable GitHub Action Pinning (Criticality-Phased)
 
 Immutable pinning is complete for the repository's official Node-based GitHub
-Actions. They run on Node.js 24 and require Actions Runner `2.327.1` or newer:
+Actions. The `actions/*` upgrades run on Node.js 24 and require Actions Runner
+`2.327.1` or newer:
 
 - `actions/checkout` `v7.0.1`
 - `actions/setup-node` `v5.0.0`
 - `actions/cache` `v5.1.0`
 - `actions/upload-artifact` `v6.0.0`
 - `actions/dependency-review-action` `v5.0.0`
+- `github/codeql-action` `v4.37.3`
 
 Release/security workflow coverage includes:
 
@@ -100,7 +102,7 @@ Policy:
 
 - release/security workflows must stay pinned to immutable action SHAs.
 - official Node-based Actions must remain on the immutable Node.js 24 pins
-  enforced by `scripts/release/tests/ci_toolchain_contract.sh`.
+  enforced repository-wide by `scripts/release/tests/ci_toolchain_contract.sh`.
 - new workflows must use immutable SHA pins when introduced.
 
 ---
