@@ -6,23 +6,32 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0-rc.5] - 2026-08-12
+
 ### Added
 - Interactive third-party Sparkle steps in Plan now offer direct vendor update and Open App actions in both the row and inspector. When automatic Plan work finishes with those steps remaining, Helm shows an in-app handoff and, while its interfaces are hidden, a system notification that opens Plan.
 - A default-on Notifications setting now controls actionable Helm alerts. Newly observed updates can notify while Helm's interfaces are hidden, with Review Plan and, when eligible automatic work exists, Upgrade All actions that preserve the existing confirmation and safety flow.
 - Plan updates are now checked by default and may be individually included or excluded before execution; the service validates and runs only the exact selected backend steps.
-- Developer ID builds now contain an inactive native privileged-helper foundation with exact signed-caller validation, a fail-closed allowlist limited to fixed Apple `softwareupdate` operations, and release checks for helper embedding, signing, and launch-daemon metadata. Runtime registration remains disabled, so this checkpoint does not replace the existing askpass flow.
+- Developer ID builds now contain a native privileged-helper foundation with exact signed-caller validation, a fail-closed allowlist limited to fixed Apple `softwareupdate` operations, and release checks for helper embedding, signing, and launch-daemon metadata. General Settings provides explicit registration, approval routing, and unregister controls, but registration does not activate native execution and the existing askpass flow remains authoritative.
 
 ### Fixed
 - npm searches shorter than two trimmed characters now return no results without invoking npm, avoiding npm's minimum-query-length error during incremental package search.
 - XPC availability now requires a verified service handshake, reconnect attempts use one bounded exponential-backoff timer, and refresh requests made while disconnected resume after reconnection instead of producing a rapidly changing popover or overlapping connection attempts.
 - mise outdated parsing now accepts configured tools whose current version is `null`, preserving their available candidate version instead of failing the entire manager refresh.
 - Plan privilege and restart risk flags now respond only to selected rows, and ordinary Homebrew work no longer incorrectly implies elevated privileges.
+- Settings routes once again open and focus the native Settings scene from cold launch, the popover, and Dashboard without creating duplicate windows.
 
 ### Changed
 - Status-item activation now keeps the popover available on secondary click while Dashboard is open; primary click focuses the open Dashboard, and either click toggles the popover while Dashboard is closed.
 - Routine “all tasks complete” alerts are removed; Helm reserves notifications for update availability, plans that still need interactive attention, and task timeout decisions.
 - Mac App Store updates appear as individual app rows in Plan, and each Plan row uses full-width inspector selection with balanced trailing padding.
 - The Dashboard footer distinguishes routine update availability from health attention and routes each actionable status to its relevant Plan, Activity, Environment, or Service Health context.
+- The Dashboard minimum size is now `1024x640`, giving dense Plan and Dashboard content more room while preserving window restoration and resizing.
+
+This candidate preserves stable `v0.18.2` and the published `v0.19.0-rc.4`
+prerelease until RC5 publication completes. The Environment Brief remains
+development-gated behind Issue #388, and native privileged execution remains
+inactive pending signed installed-candidate registration QA.
 
 ## [0.19.0-rc.4] - 2026-08-11
 
