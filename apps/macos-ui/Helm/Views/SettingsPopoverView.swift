@@ -545,6 +545,11 @@ struct SettingsWindowView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var localization = LocalizationManager.shared
     @State private var selectedPane: SettingsPane? = .general
+    var onDismiss: (() -> Void)?
+
+    init(onDismiss: (() -> Void)? = nil) {
+        self.onDismiss = onDismiss
+    }
 
     private var paneSelection: Binding<SettingsPane?> {
         Binding(
@@ -571,7 +576,13 @@ struct SettingsWindowView: View {
             let pane = selectedPane ?? .general
             SettingsSectionView(
                 selectedPane: pane,
-                onResetCompleted: { dismiss() }
+                onResetCompleted: {
+                    if let onDismiss {
+                        onDismiss()
+                    } else {
+                        dismiss()
+                    }
+                }
             )
             .navigationTitle(pane.title)
         }
@@ -583,7 +594,6 @@ struct SettingsWindowView: View {
             idealHeight: 500,
             maxHeight: 600
         )
-        .background(HelmSettingsWindowSpaceBridge())
     }
 }
 

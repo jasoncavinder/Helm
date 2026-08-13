@@ -92,9 +92,6 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
-        .background(
-            HelmSettingsOpeningBridge(router: context.settingsOpenRouter)
-        )
         .toolbar {
             if !presentsFirstRun {
                 ToolbarItem(placement: .navigation) {
