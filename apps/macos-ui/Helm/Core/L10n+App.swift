@@ -291,6 +291,35 @@ extension L10n {
                 static let managers = "app.settings.section.managers"
                 static let advanced = "app.settings.section.advanced"
             }
+            struct NativeAuthorization {
+                static let section = "app.settings.native_authorization.section"
+                static let statusLabel = "app.settings.native_authorization.status_label"
+
+                struct Status {
+                    static let notEnabled = "app.settings.native_authorization.status.not_enabled"
+                    static let enabled = "app.settings.native_authorization.status.enabled"
+                    static let requiresApproval = "app.settings.native_authorization.status.requires_approval"
+                    static let unavailable = "app.settings.native_authorization.status.unavailable"
+                }
+
+                struct Description {
+                    static let notEnabled = "app.settings.native_authorization.description.not_enabled"
+                    static let enabled = "app.settings.native_authorization.description.enabled"
+                    static let requiresApproval = "app.settings.native_authorization.description.requires_approval"
+                    static let unavailable = "app.settings.native_authorization.description.unavailable"
+                }
+
+                struct Action {
+                    static let enable = "app.settings.native_authorization.action.enable"
+                    static let disable = "app.settings.native_authorization.action.disable"
+                    static let openLoginItems = "app.settings.native_authorization.action.open_login_items"
+                }
+
+                struct Error {
+                    static let registrationFailed = "app.settings.native_authorization.error.registration_failed"
+                    static let unregistrationFailed = "app.settings.native_authorization.error.unregistration_failed"
+                }
+            }
             struct Label {
                 static let language = "app.settings.label.language"
                 static let systemDefault = "app.settings.label.language.system_default"

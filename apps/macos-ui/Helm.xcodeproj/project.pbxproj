@@ -124,6 +124,9 @@
 		R4281000000000000000000A /* PrivilegedHelperModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000021 /* PrivilegedHelperModels.swift */; };
 		R4281000000000000000000B /* PrivilegedOperationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000022 /* PrivilegedOperationPolicy.swift */; };
 		R4281000000000000000000C /* PrivilegedOperationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R42810000000000000000029 /* PrivilegedOperationPolicyTests.swift */; };
+		R43000000000000000000001 /* PrivilegedHelperRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = R43000000000000000000011 /* PrivilegedHelperRegistration.swift */; };
+		R43000000000000000000002 /* PrivilegedHelperRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = R43000000000000000000011 /* PrivilegedHelperRegistration.swift */; };
+		R43000000000000000000003 /* PrivilegedHelperRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R43000000000000000000012 /* PrivilegedHelperRegistrationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -202,6 +205,8 @@
 		R42810000000000000000027 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		R42810000000000000000028 /* com.jasoncavinder.Helm.PrivilegedHelper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = com.jasoncavinder.Helm.PrivilegedHelper.plist; sourceTree = "<group>"; };
 		R42810000000000000000029 /* PrivilegedOperationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedOperationPolicyTests.swift; sourceTree = "<group>"; };
+		R43000000000000000000011 /* PrivilegedHelperRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedHelperRegistration.swift; sourceTree = "<group>"; };
+		R43000000000000000000012 /* PrivilegedHelperRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedHelperRegistrationTests.swift; sourceTree = "<group>"; };
 		8CE1FDE02F3D3410000A3945 /* HelmService-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "HelmService-Bridging-Header.h"; path = "../../../service/macos-service/HelmService-Bridging-Header.h"; sourceTree = "<group>"; };
 		8CFB6D482F3D1B24002372B8 /* libhelm_ffi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libhelm_ffi.a; path = Generated/libhelm_ffi.a; sourceTree = "<group>"; };
 		8CFB6D4B2F3D1D1D002372B8 /* HelmCore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HelmCore.swift; sourceTree = "<group>"; };
@@ -360,6 +365,7 @@
 		8CFB6D4A2F3D1D1D002372B8 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				R43000000000000000000011 /* PrivilegedHelperRegistration.swift */,
 				N42200000000000000000011 /* AppNotificationPolicy.swift */,
 				C41900000000000000000011 /* StatusItemActivationPolicy.swift */,
 				C42400000000000000000011 /* ServiceConnectionRetryPolicy.swift */,
@@ -543,6 +549,7 @@
 		C10000000000000000000006 /* HelmTests */ = {
 			isa = PBXGroup;
 			children = (
+				R43000000000000000000012 /* PrivilegedHelperRegistrationTests.swift */,
 				R42810000000000000000029 /* PrivilegedOperationPolicyTests.swift */,
 				N42200000000000000000012 /* AppNotificationPolicyTests.swift */,
 				C41900000000000000000012 /* StatusItemActivationPolicyTests.swift */,
@@ -793,6 +800,7 @@
 		A10000060000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				R43000000000000000000001 /* PrivilegedHelperRegistration.swift in Sources */,
 				N42200000000000000000001 /* AppNotificationPolicy.swift in Sources */,
 				C41900000000000000000001 /* StatusItemActivationPolicy.swift in Sources */,
 				C42400000000000000000001 /* ServiceConnectionRetryPolicy.swift in Sources */,
@@ -862,6 +870,8 @@
 		C10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				R43000000000000000000002 /* PrivilegedHelperRegistration.swift in Sources */,
+				R43000000000000000000003 /* PrivilegedHelperRegistrationTests.swift in Sources */,
 				R4281000000000000000000A /* PrivilegedHelperModels.swift in Sources */,
 				R4281000000000000000000B /* PrivilegedOperationPolicy.swift in Sources */,
 				R4281000000000000000000C /* PrivilegedOperationPolicyTests.swift in Sources */,

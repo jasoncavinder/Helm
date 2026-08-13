@@ -15,7 +15,9 @@ The core process request carries both:
 
 Validation fails closed when those fields disagree. A first-class `HelmPrivilegedHelper` executable and launch-daemon plist are now embedded only in `developer_id` app bundles. Developer ID packaging signs the helper independently and verifies its exact identifier and metadata before accepting a DMG.
 
-The embedded executable is intentionally inactive at this checkpoint: Helm does not register it through Service Management or configure it as the trusted executor. The current `sudo -A` askpass path therefore remains the runtime implementation. Mac App Store and all MacPorts mutations remain on askpass even if a trusted privileged executor is configured, because their bounded helper designs are unresolved.
+The Developer ID app now exposes explicit Service Management registration in General Settings. The controller is gated by distribution channel and embedded-artifact presence, never registers automatically, handles every `SMAppService.Status`, routes approval-required users through Apple's Login Items pane, and reports registration/unregistration failures without silently falling back. App Store, Setapp, and Fleet builds do not present this control because their bundles do not contain the helper.
+
+Registration remains separate from execution activation. Helm does not yet configure the registered helper as the trusted executor, so the current `sudo -A` askpass path remains the runtime implementation. Mac App Store and all MacPorts mutations remain on askpass even if a trusted privileged executor is configured, because their bounded helper designs are unresolved.
 
 The helper's current root-side policy accepts only these fixed Apple command shapes:
 
@@ -90,17 +92,17 @@ The helper must not solve this constraint by broadly allowlisting Homebrew paths
 
 ## Distribution And Release Rules
 
-- Developer ID: the launch daemon is embedded only in the direct-channel bundle, and release automation signs and verifies its executable and plist independently. Runtime activation still requires Service Management registration, user approval where required, and signed/notarized installed-build QA.
+- Developer ID: the launch daemon is embedded only in the direct-channel bundle, and release automation signs and verifies its executable and plist independently. General Settings can explicitly register/unregister it, presents all Service Management states, and opens Login Items when approval is required. Runtime activation still requires signed/notarized installed-build QA and explicit executor configuration.
 - Mac App Store: helper availability and entitlement policy require a separate channel decision; Developer ID assumptions must not leak into the MAS profile.
 - Setapp and Fleet: registration and update authority remain channel-specific. Fleet may later manage helper approval through deployment policy, but cannot weaken the operation allowlist.
 - Unsigned development builds may test request validation and helper protocol behavior, but cannot be treated as evidence that launch-daemon registration, approval, signing, or notarization works.
 
 ## Completion Gates
 
-The helper target, launch-daemon plist, app embedding, fixed Apple-operation policy tests, and release packaging contract are implemented. Native privileged execution is not complete until all of the following pass:
+The helper target, launch-daemon plist, app embedding, fixed Apple-operation policy tests, release packaging contract, and channel-gated registration/approval UX are implemented. Native privileged execution is not complete until all of the following pass:
 
 - caller validation and operation allowlist tests pass
-- app registration/approval UX handles every `SMAppService.Status`
+- signed/notarized installed-build QA confirms registration, every `SMAppService.Status`, approval routing, and unregister behavior
 - elevated output, cancellation, timeout, and relaunch behavior pass
 - MAS has a bounded execution design rather than a broad user-writable executable exception
 - release packaging verifies the nested helper signature and launch-daemon plist
