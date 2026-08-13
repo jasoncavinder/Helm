@@ -4,7 +4,7 @@ import SwiftUI
 enum HelmSettingsWindowSpacePolicy {
     static let requiredCollectionBehavior: NSWindow.CollectionBehavior = [
         .moveToActiveSpace,
-        .auxiliary,
+        .canJoinAllApplications,
         .fullScreenAuxiliary
     ]
 
@@ -12,7 +12,10 @@ enum HelmSettingsWindowSpacePolicy {
         _ current: NSWindow.CollectionBehavior
     ) -> NSWindow.CollectionBehavior {
         var normalized = current
+        normalized.remove(.canJoinAllSpaces)
         normalized.remove(.moveToActiveSpace)
+        normalized.remove(.primary)
+        normalized.remove(.auxiliary)
         normalized.remove(.fullScreenPrimary)
         normalized.remove(.fullScreenNone)
         normalized.formUnion(requiredCollectionBehavior)
