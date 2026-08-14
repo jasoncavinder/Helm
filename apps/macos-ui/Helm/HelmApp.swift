@@ -27,6 +27,13 @@ private struct HelmApplicationCommands: Commands {
     @ObservedObject var core: HelmCore
 
     var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button(L10n.App.Settings.Tab.title.localized) {
+                context.settingsOpenRouter.requestOpen()
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+
         CommandGroup(replacing: .newItem) {
             Button(L10n.App.Action.openControlCenter.localized) {
                 appDelegate.openDashboardFromApplicationMenu()
