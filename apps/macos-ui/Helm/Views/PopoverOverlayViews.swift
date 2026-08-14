@@ -240,9 +240,14 @@ struct PopoverSearchOverlayContent: View {
             }
 
             if core.canUpgradeIndividually(package) {
+                let isExternalSparkle = ExternalSparkleUpdatePolicy.primaryAction(
+                    forManagerId: package.managerId
+                ) == .openApplication
                 iconActionButton(
-                    symbol: "arrow.up.circle",
-                    tooltip: L10n.Common.update.localized,
+                    symbol: isExternalSparkle ? "arrow.up.forward.app" : "arrow.up.circle",
+                    tooltip: isExternalSparkle
+                        ? L10n.App.Updates.openAppToUpdate.localized
+                        : L10n.Common.update.localized,
                     enabled: !core.upgradeActionPackageIds.contains(package.id)
                 ) {
                     core.upgradePackage(package)

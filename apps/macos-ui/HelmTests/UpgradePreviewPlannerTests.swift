@@ -753,3 +753,19 @@ final class UpgradePlanCompletionTrackerTests: XCTestCase {
         )
     }
 }
+
+final class ExternalSparkleUpdatePolicyTests: XCTestCase {
+    func testThirdPartySparkleUpdatesOpenVendorApplication() {
+        XCTAssertEqual(
+            ExternalSparkleUpdatePolicy.primaryAction(forManagerId: "sparkle"),
+            .openApplication
+        )
+        XCTAssertEqual(
+            ExternalSparkleUpdatePolicy.primaryAction(forManagerId: "Sparkle"),
+            .openApplication
+        )
+        XCTAssertNil(
+            ExternalSparkleUpdatePolicy.primaryAction(forManagerId: "homebrew_cask")
+        )
+    }
+}
