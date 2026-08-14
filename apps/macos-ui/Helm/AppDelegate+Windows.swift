@@ -47,7 +47,7 @@ final class FloatingPanel: NSPanel {
         hasShadow = true
         isMovableByWindowBackground = false
         isReleasedWhenClosed = false
-        hidesOnDeactivate = true
+        hidesOnDeactivate = HelmPanelDeactivationPolicy.popoverHidesOnDeactivate
         // Enable Tab traversal for SwiftUI controls within this borderless panel
         autorecalculatesKeyViewLoop = true
     }
@@ -129,7 +129,7 @@ final class SettingsPanel: NSPanel {
         isFloatingPanel = true
         level = .floating
         collectionBehavior = HelmSettingsPanelPolicy.collectionBehavior
-        hidesOnDeactivate = false
+        hidesOnDeactivate = HelmPanelDeactivationPolicy.settingsHidesOnDeactivate
         becomesKeyOnlyIfNeeded = false
         isReleasedWhenClosed = false
         animationBehavior = .utilityWindow
