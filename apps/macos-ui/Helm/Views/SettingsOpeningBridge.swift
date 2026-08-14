@@ -1,5 +1,10 @@
 import AppKit
 
+enum HelmPanelDeactivationPolicy {
+    static let popoverHidesOnDeactivate = false
+    static let settingsHidesOnDeactivate = true
+}
+
 enum HelmSettingsPanelPolicy {
     static let collectionBehavior: NSWindow.CollectionBehavior = [
         .moveToActiveSpace,
