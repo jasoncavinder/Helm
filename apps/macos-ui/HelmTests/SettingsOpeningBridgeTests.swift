@@ -1,6 +1,14 @@
 import XCTest
 
 final class HelmSettingsOpenRouterTests: XCTestCase {
+    func testPopoverRemainsVisibleWhenHelmDeactivates() {
+        XCTAssertFalse(HelmPanelDeactivationPolicy.popoverHidesOnDeactivate)
+    }
+
+    func testSettingsPanelHidesWhenHelmDeactivates() {
+        XCTAssertTrue(HelmPanelDeactivationPolicy.settingsHidesOnDeactivate)
+    }
+
     func testSettingsPanelPolicyCanJoinExternalFullScreenWithoutFollowingEverySpace() {
         let behavior = HelmSettingsPanelPolicy.collectionBehavior
 
