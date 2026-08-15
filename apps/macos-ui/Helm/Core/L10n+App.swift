@@ -280,6 +280,8 @@ extension L10n {
         }
 
         struct Settings {
+            static let windowTitle = "app.settings.window.title"
+
             struct Tab {
                 static let title = "app.settings.tab.title"
             }

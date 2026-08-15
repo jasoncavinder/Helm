@@ -121,13 +121,17 @@ final class SettingsPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
-            styleMask: [.titled, .closable, .resizable],
+            styleMask: HelmSettingsPanelPolicy.styleMask,
             backing: .buffered,
             defer: false
         )
 
         isFloatingPanel = true
         level = .floating
+        toolbarStyle = .unifiedCompact
+        titleVisibility = HelmSettingsPanelPolicy.titleVisibility
+        titlebarAppearsTransparent = true
+        titlebarSeparatorStyle = .none
         collectionBehavior = HelmSettingsPanelPolicy.collectionBehavior
         hidesOnDeactivate = HelmPanelDeactivationPolicy.settingsHidesOnDeactivate
         becomesKeyOnlyIfNeeded = false

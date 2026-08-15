@@ -543,8 +543,11 @@ struct SettingsSectionView: View {
 
 struct SettingsWindowView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var localization = LocalizationManager.shared
     @State private var selectedPane: SettingsPane? = .general
+    @State private var isSidebarVisible = true
     var onDismiss: (() -> Void)?
 
     init(onDismiss: (() -> Void)? = nil) {
@@ -563,16 +566,22 @@ struct SettingsWindowView: View {
         )
     }
 
-    var body: some View {
-        NavigationSplitView {
-            List(SettingsPane.allCases, selection: paneSelection) { pane in
-                Label(pane.title, systemImage: pane.icon)
-                    .tag(pane)
+    private var settingsContent: some View {
+        HStack(spacing: 0) {
+            if isSidebarVisible {
+                List(SettingsPane.allCases, selection: paneSelection) { pane in
+                    Label(pane.title, systemImage: pane.icon)
+                        .tag(pane)
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .frame(width: 180)
+                .background(SettingsSidebarSurface(colorScheme: colorScheme))
+                .id(localization.currentLocale)
+
+                Divider()
             }
-            .navigationTitle(L10n.App.Settings.Tab.title.localized)
-            .navigationSplitViewColumnWidth(min: 150, ideal: 180, max: 220)
-            .id(localization.currentLocale)
-        } detail: {
+
             let pane = selectedPane ?? .general
             SettingsSectionView(
                 selectedPane: pane,
@@ -584,8 +593,15 @@ struct SettingsWindowView: View {
                     }
                 }
             )
-            .navigationTitle(pane.title)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                SettingsDetailSurface(
+                    colorScheme: colorScheme,
+                    reduceTransparency: reduceTransparency
+                )
+            )
         }
+        .background(HelmTheme.surfaceBase)
         .frame(
             minWidth: 600,
             idealWidth: 680,
@@ -595,9 +611,109 @@ struct SettingsWindowView: View {
             maxHeight: 600
         )
     }
+
+    private var sidebarToggle: some View {
+        Button {
+            isSidebarVisible.toggle()
+        } label: {
+            Image(systemName: "sidebar.leading")
+        }
+        .help(
+            isSidebarVisible
+                ? "app.command.hide_sidebar".localized
+                : "app.command.show_sidebar".localized
+        )
+        .accessibilityLabel(
+            isSidebarVisible
+                ? "app.command.hide_sidebar".localized
+                : "app.command.show_sidebar".localized
+        )
+    }
+
+    private var toolbarTitle: some View {
+        Text(L10n.App.Settings.windowTitle.localized)
+            .font(.headline)
+            .fixedSize()
+            .allowsHitTesting(false)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    var body: some View {
+        settingsContent
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    sidebarToggle
+                }
+                if #available(macOS 26.0, *) {
+                    ToolbarItem(placement: .principal) {
+                        toolbarTitle
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .principal) {
+                        toolbarTitle
+                    }
+                }
+            }
+    }
+}
+
+private struct SettingsSidebarSurface: View {
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(HelmTheme.surfacePanel)
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [
+                        HelmTheme.blue900.opacity(0.3),
+                        HelmTheme.surfaceBase.opacity(0.18),
+                        HelmTheme.surfacePanel.opacity(0.96)
+                    ]
+                    : [
+                        HelmTheme.blue700.opacity(0.1),
+                        HelmTheme.seaGlass.opacity(0.035),
+                        HelmTheme.surfacePanel.opacity(0.98)
+                    ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+}
+
+private struct SettingsDetailSurface: View {
+    let colorScheme: ColorScheme
+    let reduceTransparency: Bool
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [HelmTheme.surfaceBase, HelmTheme.surfaceElevated.opacity(0.94)]
+                    : [HelmTheme.surfaceBase, HelmTheme.surfacePanel],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            if !reduceTransparency {
+                RadialGradient(
+                    colors: [
+                        HelmTheme.horizon.opacity(colorScheme == .dark ? 0.12 : 0.08),
+                        Color.clear
+                    ],
+                    center: .topTrailing,
+                    startRadius: 0,
+                    endRadius: 420
+                )
+            }
+        }
+    }
 }
 
 private struct SettingsCard<Content: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let icon: String
     let fill: Color
@@ -605,8 +721,14 @@ private struct SettingsCard<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon)
-                .font(.headline)
+            Label {
+                Text(title)
+                    .foregroundColor(HelmTheme.textPrimary)
+            } icon: {
+                Image(systemName: icon)
+                    .foregroundColor(HelmTheme.blue500)
+            }
+            .font(.headline)
 
             content
                 .font(.subheadline)
@@ -614,10 +736,35 @@ private struct SettingsCard<Content: View>: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(fill)
+                .fill(
+                    LinearGradient(
+                        colors: colorScheme == .dark
+                            ? [
+                                HelmTheme.surfaceElevated,
+                                fill,
+                                HelmTheme.blue900.opacity(0.15)
+                            ]
+                            : [
+                                fill,
+                                HelmTheme.blue500.opacity(0.035),
+                                HelmTheme.seaGlass.opacity(0.025)
+                            ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(HelmTheme.borderSubtle.opacity(0.95), lineWidth: 0.8)
+                        .strokeBorder(
+                            HelmTheme.blue500.opacity(colorScheme == .dark ? 0.24 : 0.14),
+                            lineWidth: 0.9
+                        )
+                )
+                .shadow(
+                    color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.07),
+                    radius: 8,
+                    x: 0,
+                    y: 4
                 )
         )
     }
