@@ -255,6 +255,8 @@
   "app.wayfinder.course.refreshing.explanation": "Les résultats actuels restent visibles pendant la nouvelle vérification.",
   "app.wayfinder.course.unavailable.title": "Helm se reconnecte",
   "app.wayfinder.course.unavailable.explanation": "Le dernier état connu reste affiché jusqu’à la reconnexion du service.",
+  "app.wayfinder.course.offline.title": "Vous êtes hors ligne",
+  "app.wayfinder.course.offline.explanation": "Les informations en cache restent disponibles. Les actions réseau reprendront au retour de la connexion.",
   "app.wayfinder.course.healthy.title": "Vous gardez le cap",
   "app.wayfinder.course.healthy.explanation": "Aucune action n’est nécessaire dans l’environnement couvert.",
   "app.wayfinder.action.review_activity": "Examiner l’activité",

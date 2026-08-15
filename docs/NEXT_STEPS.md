@@ -11,10 +11,11 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.6 installed-candidate validation and v0.19.0 stabilization
+v0.19.0-rc.7 development and v0.19.0 stabilization
 ```
 
 Focus:
+- complete the RC7 connectivity slice: validate offline launch and manual refresh without failed-task fan-out, confirm cached Library/Plan usability and disabled network actions, restore connectivity, and verify exactly one resumed refresh plus one deferred Helm information check
 - preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.6`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
 - preserve the completed post-RC5 RC6 candidate evidence in `docs/validation/v0.19.0-rc.6-readiness.md`: the full repository and updater-specific gates passed from merged `dev`, the corrected Settings window behavior passed owner QA, and a real Arc candidate confirmed the truthful vendor-owned `Open App to Update` flow through completion and refresh
 - preserve the completed `v0.19.0-rc.6` publication record and collect the four explicitly open installed-candidate checks: RC5-to-RC6 Sparkle replacement, accepted Settings behavior, vendor-owned third-party Sparkle completion/refresh, and preference persistence

@@ -9,6 +9,7 @@ pub enum CoreErrorKind {
     UnsupportedCapability,
     InvalidInput,
     ParseFailure,
+    NetworkUnavailable,
     Timeout,
     Cancelled,
     ProcessFailure,

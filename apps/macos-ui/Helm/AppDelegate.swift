@@ -381,7 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let anchorTint = menuBaseTint(for: button)
         let badge: StatusBadge?
         switch projection.condition {
-        case .approvalRequired, .actionableFinding, .serviceUnavailable:
+        case .approvalRequired, .actionableFinding, .offline, .serviceUnavailable:
             badge = .symbol("!", .systemOrange)
         case .failedOrInterrupted:
             badge = .symbol("!", .systemRed)

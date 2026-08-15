@@ -1270,6 +1270,119 @@ async fn submit_refresh_request_response_does_not_retry_parse_failure() {
 }
 
 #[tokio::test]
+async fn offline_network_request_is_deferred_before_task_creation() {
+    let path = test_db_path("orchestration-runtime-offline-request");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::new(
+        ManagerId::Npm,
+        vec![Ok(AdapterResponse::SearchResults(vec![]))],
+        call_count.clone(),
+    ));
+    let runtime = AdapterRuntime::with_task_store([adapter], store.clone()).unwrap();
+    runtime.set_network_available(false);
+
+    let error = runtime
+        .submit_refresh_request_response(
+            ManagerId::Npm,
+            AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: "offline".to_string(),
+                    issued_at: SystemTime::now(),
+                },
+            }),
+        )
+        .await
+        .expect_err("offline search should be deferred");
+
+    assert_eq!(error.kind, CoreErrorKind::NetworkUnavailable);
+    assert_eq!(call_count.load(Ordering::SeqCst), 0);
+    assert!(store.list_recent_tasks(10).unwrap().is_empty());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn offline_refresh_preserves_local_inventory_without_outdated_task() {
+    let path = test_db_path("orchestration-runtime-offline-refresh");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
+        ManagerId::Npm,
+        &[Capability::ListInstalled, Capability::ListOutdated],
+        vec![Ok(AdapterResponse::InstalledPackages(vec![]))],
+        call_count.clone(),
+    ));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+    runtime.set_network_available(false);
+
+    let results = runtime.refresh_all_ordered().await;
+
+    assert_eq!(results.len(), 1);
+    assert!(results[0].1.is_ok());
+    assert_eq!(call_count.load(Ordering::SeqCst), 1);
+    assert!(
+        wait_until(|| {
+            store
+                .list_recent_tasks(10)
+                .ok()
+                .and_then(|tasks| tasks.first().map(|task| task.status))
+                == Some(TaskStatus::Completed)
+        })
+        .await,
+        "local inventory task should reach its persisted terminal state"
+    );
+    let tasks = store.list_recent_tasks(10).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].task_type, TaskType::Refresh);
+    assert_eq!(tasks[0].status, TaskStatus::Completed);
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn reconnect_allows_deferred_network_request() {
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::new(
+        ManagerId::Npm,
+        vec![Ok(AdapterResponse::SearchResults(vec![]))],
+        call_count.clone(),
+    ));
+    let runtime = AdapterRuntime::new([adapter]).unwrap();
+    runtime.set_network_available(false);
+    let request = AdapterRequest::Search(SearchRequest {
+        query: SearchQuery {
+            text: "reconnected".to_string(),
+            issued_at: SystemTime::now(),
+        },
+    });
+
+    let offline_error = runtime
+        .submit_refresh_request_response(ManagerId::Npm, request.clone())
+        .await
+        .expect_err("offline search should be deferred");
+    assert_eq!(offline_error.kind, CoreErrorKind::NetworkUnavailable);
+
+    runtime.set_network_available(true);
+    let response = runtime
+        .submit_refresh_request_response(ManagerId::Npm, request)
+        .await
+        .expect("search should run after reconnection");
+
+    assert_eq!(response, AdapterResponse::SearchResults(vec![]));
+    assert_eq!(call_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn refresh_all_ordered_recomputes_enablement_after_preference_update() {
     let path = test_db_path("orchestration-runtime-enablement-refresh-invalidation");
     let store = Arc::new(SqliteStore::new(&path));

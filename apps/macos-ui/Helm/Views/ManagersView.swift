@@ -410,8 +410,8 @@ private struct ManagerSectionRow: View {
                     Button(L10n.App.Settings.Action.upgradeAll.localized) {
                         core.upgradeAllPackages(forManagerId: manager.id)
                     }
-                    .disabled(isManagerUninstalling)
-                    .helmPointer(enabled: !isManagerUninstalling)
+                    .disabled(isManagerUninstalling || !core.networkOperationsAvailable)
+                    .helmPointer(enabled: !isManagerUninstalling && core.networkOperationsAvailable)
                 }
 
                 Spacer()
@@ -428,7 +428,7 @@ private struct ManagerSectionRow: View {
                     managerCardActionButton(
                         symbol: "arrow.down.circle",
                         tooltip: L10n.Common.install.localized,
-                        enabled: !isManagerUninstalling
+                        enabled: !isManagerUninstalling && core.networkOperationsAvailable
                     ) {
                         onInstallManager()
                     }

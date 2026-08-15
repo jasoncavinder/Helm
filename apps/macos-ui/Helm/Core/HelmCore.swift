@@ -1,7 +1,14 @@
 import AppKit
 import Combine
 import Foundation
+import Network
 import os.log
+
+enum HelmNetworkAvailability: Equatable {
+    case unknown
+    case available
+    case unavailable
+}
 
 private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core")
 
@@ -430,6 +437,9 @@ final class HelmCore: ObservableObject {
     @Published var isConnected = false {
         didSet { scheduleDerivedViewStateRefresh() }
     }
+    @Published private(set) var networkAvailability: HelmNetworkAvailability = .unknown {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     @Published var isRefreshing = false {
         didSet { scheduleDerivedViewStateRefresh() }
     }
@@ -588,6 +598,9 @@ final class HelmCore: ObservableObject {
     private var reconnectToken: UUID?
     private var reconnectPolicy = ServiceConnectionRetryPolicy()
     private var refreshRequestedWhileDisconnected = false
+    private var refreshRequestedWhileOffline = false
+    private let networkMonitor = NWPathMonitor()
+    private let networkMonitorQueue = DispatchQueue(label: "com.jasoncavinder.Helm.network-monitor")
     private var lastTaskSnapshotRefreshAt: Date = .distantPast
     private var lastFullSnapshotRefreshAt: Date = .distantPast
     private var isPopoverVisibleForPolling = false
@@ -613,7 +626,91 @@ final class HelmCore: ObservableObject {
                 self?.syncHelmSelfUpdateAvailability(availability)
             }
         refreshHelmCliShimStatus()
+        startNetworkMonitoring()
         setupConnection()
+    }
+
+    var networkOperationsAvailable: Bool {
+        networkAvailability == .available
+    }
+
+    private func startNetworkMonitoring() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            let availability: HelmNetworkAvailability = path.status == .satisfied
+                ? .available
+                : .unavailable
+            DispatchQueue.main.async {
+                self?.applyNetworkAvailability(availability)
+            }
+        }
+        networkMonitor.start(queue: networkMonitorQueue)
+    }
+
+    private func applyNetworkAvailability(_ availability: HelmNetworkAvailability) {
+        guard networkAvailability != availability else { return }
+        let previous = networkAvailability
+        networkAvailability = availability
+        AppUpdateCoordinator.shared.setNetworkAvailable(availability == .available)
+        syncNetworkAvailabilityToService()
+
+        if availability == .available {
+            switch DeferredOfflineRefreshPolicy.disposition(
+                networkIsAvailable: true,
+                refreshRequestedWhileOffline: refreshRequestedWhileOffline,
+                refreshIsInFlight: deferredOfflineRefreshIsInFlight
+            ) {
+            case .resumeNow:
+                resumeDeferredOfflineRefreshIfReady()
+            case .waitForCurrentRefresh:
+                logger.info(
+                    "Connectivity restored during an in-flight refresh; waiting to resume deferred network work"
+                )
+            case .none:
+                break
+            }
+        } else if previous == .unknown, availability == .unavailable,
+                  refreshRequestedWhileOffline {
+            // Complete the local half of an initial refresh once the path is known.
+            triggerRefresh()
+        }
+    }
+
+    private func syncNetworkAvailabilityToService(_ completion: (() -> Void)? = nil) {
+        guard networkAvailability != .unknown, let service = service() else {
+            completion?()
+            return
+        }
+        service.setNetworkAvailable(available: networkAvailability == .available) { success in
+            if !success {
+                logger.warning("Failed to synchronize network availability with HelmService")
+            }
+            DispatchQueue.main.async {
+                completion?()
+            }
+        }
+    }
+
+    func resumeDeferredOfflineRefreshIfReady() {
+        guard DeferredOfflineRefreshPolicy.disposition(
+            networkIsAvailable: networkAvailability == .available,
+            refreshRequestedWhileOffline: refreshRequestedWhileOffline,
+            refreshIsInFlight: deferredOfflineRefreshIsInFlight
+        ) == .resumeNow else {
+            return
+        }
+
+        refreshRequestedWhileOffline = false
+        logger.info("Connectivity restored; resuming one deferred refresh")
+        triggerRefresh()
+    }
+
+    private var deferredOfflineRefreshIsInFlight: Bool {
+        DeferredOfflineRefreshPolicy.refreshIsInFlight(
+            presentationIsRefreshing: isRefreshing,
+            tasks: latestCoreTasksSnapshot.map {
+                DeferredOfflineRefreshTaskState(taskType: $0.taskType, status: $0.status)
+            }
+        )
     }
 
     private static func loadManagerPriorityOverrides() -> [String: Int] {
@@ -814,6 +911,7 @@ final class HelmCore: ObservableObject {
         fetchPackageKegPolicies()
         fetchPackageManagerPreferences()
         syncOnboardingStateWithSharedStore()
+        syncNetworkAvailabilityToService()
         scheduleDerivedViewStateRefresh()
 
         if refreshRequestedWhileDisconnected {
@@ -1008,7 +1106,16 @@ final class HelmCore: ObservableObject {
 
     func triggerRefresh() {
         logger.info("triggerRefresh called")
-        AppUpdateCoordinator.shared.refreshUpdateAvailability()
+        if networkAvailability == .unknown {
+            logger.info("Deferring refresh until the initial network path is known")
+            refreshRequestedWhileOffline = true
+            return
+        }
+        if networkAvailability == .unavailable {
+            refreshRequestedWhileOffline = true
+        } else {
+            AppUpdateCoordinator.shared.refreshUpdateAvailability()
+        }
         guard isConnected else {
             logger.info("Deferring refresh until the service connection is verified")
             refreshRequestedWhileDisconnected = true
@@ -1027,13 +1134,16 @@ final class HelmCore: ObservableObject {
             completeFailedRefresh(action: "triggerRefresh.service_unavailable")
             return
         }
-        service.triggerRefresh { success in
-            if !success {
-                logger.error("triggerRefresh failed")
-                self.completeFailedRefresh(action: "triggerRefresh")
-            } else {
-                DispatchQueue.main.async {
-                    self.triggerFullSnapshotRefresh()
+        syncNetworkAvailabilityToService { [weak self] in
+            guard let self else { return }
+            service.triggerRefresh { success in
+                if !success {
+                    logger.error("triggerRefresh failed")
+                    self.completeFailedRefresh(action: "triggerRefresh")
+                } else {
+                    DispatchQueue.main.async {
+                        self.triggerFullSnapshotRefresh()
+                    }
                 }
             }
         }
@@ -1355,6 +1465,7 @@ final class HelmCore: ObservableObject {
         let runningTaskCount = runningTasks.count
         let wayfinderInput = WayfinderProjectionInput(
             serviceAvailable: isConnected,
+            networkAvailable: networkAvailability != .unavailable,
             approvalTaskIDs: taskTimeoutPrompts.map { String($0.taskId) },
             failedTaskIDs: failedTasks.map(\.id),
             interruptedTaskIDs: interruptedTasks.map(\.id),

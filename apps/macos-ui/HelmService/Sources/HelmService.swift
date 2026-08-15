@@ -227,6 +227,12 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func setNetworkAvailable(available: Bool, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_set_network_available(available)
+        logger.info("helm_set_network_available(\(available)) result: \(result)")
+        reply(result)
+    }
+
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void) {
         let result = helm_trigger_refresh()
         logger.info("helm_trigger_refresh result: \(result)")
