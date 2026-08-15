@@ -146,12 +146,16 @@ private struct DashboardServiceHealthCard: View {
             : L10n.App.Settings.ServiceHealth.Status.idle.localized
     }
 
-    private var managerCounts: (detected: Int, available: Int) {
-        let trackedStatuses = core.managerStatuses.values
-            .filter { $0.isImplemented && $0.enabled }
-        let enabled = trackedStatuses.count
-        let detected = trackedStatuses.filter(\.detected).count
-        return (detected, max(enabled - detected, 0))
+    private var managerCounts: DashboardManagerCounts {
+        DashboardManagerCounts(
+            statuses: core.managerStatuses.values.map {
+                (
+                    detected: $0.detected,
+                    enabled: $0.enabled,
+                    isImplemented: $0.isImplemented
+                )
+            }
+        )
     }
 
     var body: some View {
@@ -184,6 +188,12 @@ private struct DashboardServiceHealthCard: View {
                     title: L10n.App.Settings.ServiceHealth.managerCoverage.localized,
                     value: L10n.App.Settings.ServiceHealth.managerCoverageValue.localized(with: [
                         "detected": managerCounts.detected,
+                        "disabled": managerCounts.disabled,
+                    ])
+                )
+                DashboardServiceHealthMetric(
+                    title: L10n.App.Settings.ServiceHealth.otherManagers.localized,
+                    value: L10n.App.Settings.ServiceHealth.otherManagersValue.localized(with: [
                         "available": managerCounts.available,
                     ])
                 )
