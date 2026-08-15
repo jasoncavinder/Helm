@@ -789,6 +789,10 @@ extension AppDelegate {
             return
         }
         guard window == controlCenterWindowController?.window else { return }
+        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+            settingsWindow: settingsWindowController?.window,
+            dashboardWindow: window
+        )
         core.setInteractiveSurfaceVisibility(popoverVisible: panel.isVisible, controlCenterVisible: false)
     }
 

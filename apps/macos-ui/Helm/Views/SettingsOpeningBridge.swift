@@ -19,6 +19,21 @@ enum HelmSettingsPanelPolicy {
         .canJoinAllApplications,
         .fullScreenAuxiliary
     ]
+
+    static func detachSettingsWindowFromClosingDashboard(
+        settingsWindow: NSWindow?,
+        dashboardWindow: NSWindow?
+    ) {
+        guard let settingsWindow,
+              let dashboardWindow,
+              settingsWindow.parent == dashboardWindow else {
+            return
+        }
+        dashboardWindow.removeChildWindow(settingsWindow)
+        if settingsWindow.isVisible {
+            settingsWindow.orderFront(nil)
+        }
+    }
 }
 
 final class HelmSettingsOpenRouter {
