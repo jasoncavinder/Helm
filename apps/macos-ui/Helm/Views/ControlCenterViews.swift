@@ -169,6 +169,7 @@ struct ControlCenterWindowView: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.regular)
                         .fixedSize()
+                        .disabled(!core.networkOperationsAvailable)
                     }
                 }
             }

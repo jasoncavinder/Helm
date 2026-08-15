@@ -647,6 +647,7 @@ extension HelmCore {
     // MARK: - Upgrade All
 
     func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        guard networkOperationsAvailable else { return }
         guard scopedUpgradeWorkflowId == nil,
               !scopedUpgradeWorkflowStartState.isInFlight,
               !scopedUpgradePlanRunInProgress else { return }

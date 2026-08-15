@@ -229,6 +229,8 @@ final class AppUpdateCoordinator: ObservableObject {
 
     private let driver: AppUpdateDriver
     private var automaticCheckTimer: Timer?
+    private var networkAvailable = false
+    private var pendingCheckKind: AppUpdateCheckKind?
 
     private init() {
         let configuration = AppUpdateConfiguration.from()
@@ -315,6 +317,11 @@ final class AppUpdateCoordinator: ObservableObject {
             updateLogger.info("Ignoring manual update check request because a check is already in progress.")
             return
         }
+        guard networkAvailable else {
+            pendingCheckKind = .userInitiated
+            updateLogger.info("Deferring manual Helm update check until connectivity returns.")
+            return
+        }
 
         updateLogger.info("Manual update check requested.")
         isCheckingForUpdates = true
@@ -323,6 +330,13 @@ final class AppUpdateCoordinator: ObservableObject {
 
     func refreshUpdateAvailability() {
         guard canCheckForUpdates, !isCheckingForUpdates, driver.canCheckForUpdates else { return }
+        guard networkAvailable else {
+            if pendingCheckKind != .userInitiated {
+                pendingCheckKind = .information
+            }
+            updateLogger.info("Deferring information-only Helm update check until connectivity returns.")
+            return
+        }
         updateLogger.info("Information-only Helm update check requested.")
         isCheckingForUpdates = true
         driver.checkForUpdateInformation()
@@ -370,6 +384,27 @@ final class AppUpdateCoordinator: ObservableObject {
         scheduleAutomaticCheck()
     }
 
+    func setNetworkAvailable(_ available: Bool) {
+        guard networkAvailable != available else { return }
+        networkAvailable = available
+        if !available {
+            automaticCheckTimer?.invalidate()
+            automaticCheckTimer = nil
+            return
+        }
+
+        let pending = pendingCheckKind
+        pendingCheckKind = nil
+        switch pending {
+        case .userInitiated:
+            checkForUpdates()
+        case .background, .information:
+            refreshUpdateAvailability()
+        case nil:
+            scheduleAutomaticCheck()
+        }
+    }
+
     private func finishCheck(checkKind: AppUpdateCheckKind, error: Error?) {
         isCheckingForUpdates = false
         let checkDate = Date()
@@ -386,7 +421,7 @@ final class AppUpdateCoordinator: ObservableObject {
     private func scheduleAutomaticCheck() {
         automaticCheckTimer?.invalidate()
         automaticCheckTimer = nil
-        guard let delay = AppUpdateSchedulePolicy.nextCheckDelay(
+        guard networkAvailable, let delay = AppUpdateSchedulePolicy.nextCheckDelay(
             canCheckForUpdates: canCheckForUpdates,
             autoCheckEnabled: autoCheckEnabled,
             lastCheckDate: lastCheckDate,

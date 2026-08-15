@@ -294,6 +294,7 @@ extension HelmCore {
     }
 
     func upgradeAllPackages(forManagerId managerId: String) {
+        guard networkOperationsAvailable else { return }
         startScopedUpgradeWorkflow(
             includePinned: false,
             allowOsUpdates: false,
@@ -347,6 +348,7 @@ extension HelmCore {
     }
 
     func canUpgradeIndividually(_ package: PackageItem) -> Bool {
+        guard networkOperationsAvailable else { return false }
         if package.managerId == Self.helmSelfUpdateManagerId {
             return package.status == .upgradable
                 && AppUpdateCoordinator.shared.availableUpdate != nil
@@ -1285,7 +1287,8 @@ extension HelmCore {
     }
 
     private func canInstallPackageDirect(_ package: PackageItem) -> Bool {
-        package.status == .available
+        networkOperationsAvailable
+            && package.status == .available
             && (managerStatuses[package.managerId]?.supportsPackageInstall ?? false)
             && isManagerEnabled(package.managerId)
             && !isManagerUninstalling(package.managerId)

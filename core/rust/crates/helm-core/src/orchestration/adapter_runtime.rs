@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
@@ -41,6 +42,9 @@ const FAILURE_DIAGNOSTIC_SCHEMA: &str = "helm.task.failure_diagnostic";
 const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 const FAILURE_DIAGNOSTIC_COMMAND_MAX_CHARS: usize = 240;
 const FAILURE_DIAGNOSTIC_EXCERPT_MAX_CHARS: usize = 320;
+const NETWORK_AVAILABILITY_UNKNOWN: u8 = 0;
+const NETWORK_AVAILABILITY_AVAILABLE: u8 = 1;
+const NETWORK_AVAILABILITY_UNAVAILABLE: u8 = 2;
 
 #[derive(Clone)]
 pub struct AdapterRuntime {
@@ -51,6 +55,7 @@ pub struct AdapterRuntime {
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     detection_store: Option<Arc<dyn DetectionStore>>,
     persistence_ordering: Arc<ResponsePersistenceOrdering>,
+    network_availability: Arc<AtomicU8>,
 }
 
 #[derive(Default)]
@@ -288,7 +293,23 @@ impl AdapterRuntime {
             search_cache_store,
             detection_store,
             persistence_ordering: Arc::new(ResponsePersistenceOrdering::default()),
+            network_availability: Arc::new(AtomicU8::new(NETWORK_AVAILABILITY_UNKNOWN)),
         })
+    }
+
+    /// Records the host's current network path state. Unknown intentionally permits work so
+    /// non-GUI clients retain their historical behavior until they provide an explicit signal.
+    pub fn set_network_available(&self, available: bool) {
+        let value = if available {
+            NETWORK_AVAILABILITY_AVAILABLE
+        } else {
+            NETWORK_AVAILABILITY_UNAVAILABLE
+        };
+        self.network_availability.store(value, Ordering::Release);
+    }
+
+    pub fn network_work_allowed(&self) -> bool {
+        self.network_availability.load(Ordering::Acquire) != NETWORK_AVAILABILITY_UNAVAILABLE
     }
 
     pub fn has_manager(&self, manager: ManagerId) -> bool {
@@ -495,6 +516,7 @@ impl AdapterRuntime {
                     }
 
                     if capability_plan.list_outdated
+                        && runtime.network_work_allowed()
                         && let Err(e) = runtime
                             .submit_refresh_request_with_enablement(
                                 manager,
@@ -720,6 +742,7 @@ impl AdapterRuntime {
                 Ok(response) => return Ok(response),
                 Err(error)
                     if attempt < 2
+                        && self.network_work_allowed()
                         && should_retry_transient_refresh_error(task_type, action, &error) =>
                 {
                     tracing::warn!(
@@ -756,6 +779,17 @@ impl AdapterRuntime {
     ) -> OrchestrationResult<TaskId> {
         let action = request.action();
         let task_type = task_type_for_request(&request);
+
+        if request_requires_network(&request) && !self.network_work_allowed() {
+            return Err(CoreError {
+                manager: Some(manager),
+                task: Some(task_type),
+                action: Some(action),
+                kind: CoreErrorKind::NetworkUnavailable,
+                message: "network-dependent work is deferred until connectivity returns"
+                    .to_string(),
+            });
+        }
 
         let allow_when_disabled = action == ManagerAction::Uninstall;
         if !allow_when_disabled
@@ -1560,6 +1594,7 @@ fn core_error_kind_code(kind: CoreErrorKind) -> &'static str {
         CoreErrorKind::UnsupportedCapability => "unsupported_capability",
         CoreErrorKind::InvalidInput => "invalid_input",
         CoreErrorKind::ParseFailure => "parse_failure",
+        CoreErrorKind::NetworkUnavailable => "network_unavailable",
         CoreErrorKind::Timeout => "timeout",
         CoreErrorKind::Cancelled => "cancelled",
         CoreErrorKind::ProcessFailure => "process_failure",
@@ -2229,6 +2264,7 @@ fn should_retry_transient_refresh_error(
             | CoreErrorKind::UnsupportedCapability
             | CoreErrorKind::InvalidInput
             | CoreErrorKind::ParseFailure
+            | CoreErrorKind::NetworkUnavailable
     ) {
         return false;
     }
@@ -2247,6 +2283,17 @@ fn should_retry_transient_refresh_error(
         || normalized.contains("connection timed out")
         || normalized.contains("operation timed out")
         || normalized.contains("timed out")
+}
+
+fn request_requires_network(request: &AdapterRequest) -> bool {
+    matches!(
+        request,
+        AdapterRequest::Refresh(_)
+            | AdapterRequest::ListOutdated(_)
+            | AdapterRequest::Search(_)
+            | AdapterRequest::Install(_)
+            | AdapterRequest::Upgrade(_)
+    )
 }
 
 fn default_refresh_wait_policy_timeout(task_type: TaskType) -> Duration {
