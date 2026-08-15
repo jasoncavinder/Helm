@@ -11,12 +11,13 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.7 development and v0.19.0 stabilization
+v0.19.0-rc.7 version preparation and v0.19.0 stabilization
 ```
 
 Focus:
-- preserve the completed RC7 connectivity slice and focused owner QA: offline launch and manual refresh avoid failed-task fan-out, cached Library/Plan data and local actions remain usable, network work defers truthfully, and reconnection resumes exactly one refresh plus one deferred Helm information check; detailed evidence is recorded in `docs/validation/v0.19.0-rc.7-readiness.md`
+- preserve the accepted RC7 candidate evidence in `docs/validation/v0.19.0-rc.7-readiness.md`: offline launch and manual refresh avoid failed-task fan-out, cached Library/Plan data and local actions remain usable, network work defers truthfully, reconnection resumes exactly one refresh plus one deferred Helm information check, and the full repository quality gate passed from merged `dev` revision `16127dfff2050a2ba2d8b0b3502e110ab4460080`
 - preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.6`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
+- prepare `v0.19.0-rc.7` in a separately reviewed version PR, integrate through protected `dev` and `main`, then repeat the mandatory clean-`main` rehearsal, preflight, canary, and publication-authorization gates; candidate readiness is not tag or publication approval
 - preserve the completed post-RC5 RC6 candidate evidence in `docs/validation/v0.19.0-rc.6-readiness.md`: the full repository and updater-specific gates passed from merged `dev`, the corrected Settings window behavior passed owner QA, and a real Arc candidate confirmed the truthful vendor-owned `Open App to Update` flow through completion and refresh
 - preserve the completed `v0.19.0-rc.6` publication record and collect the four explicitly open installed-candidate checks: RC5-to-RC6 Sparkle replacement, accepted Settings behavior, vendor-owned third-party Sparkle completion/refresh, and preference persistence
 - retain the post-publication native-helper registration/approval/persistence/unregister checks without overstating uncollected evidence; these remain evidence for the later executor-activation sequence rather than publication evidence
