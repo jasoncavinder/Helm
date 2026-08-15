@@ -199,6 +199,7 @@
   "app.settings.native_authorization.error.unregistration_failed": "ヘルパーの登録を解除できませんでした。ログイン項目を確認して、もう一度お試しください。",
   "app.settings.section.managers": "マネージャー",
   "app.settings.tab.title": "設定",
+  "app.settings.window.title": "Helm の設定",
   "app.settings.pane.sources": "ソース",
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "キャンセルはまだ利用できません",

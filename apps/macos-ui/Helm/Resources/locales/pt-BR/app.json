@@ -199,6 +199,7 @@
   "app.settings.native_authorization.error.unregistration_failed": "Falha ao cancelar o registro. Verifique os Itens de Início de Sessão e tente novamente.",
   "app.settings.section.managers": "Gerenciadores",
   "app.settings.tab.title": "Configurações",
+  "app.settings.window.title": "Configurações do Helm",
   "app.settings.pane.sources": "Fontes",
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "Cancelamento ainda não implementado",

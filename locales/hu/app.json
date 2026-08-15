@@ -15,6 +15,7 @@
   "app.packages.filter.all_managers": "All Managers",
   "app.managers.tab.title": "Managers",
   "app.settings.tab.title": "Settings",
+  "app.settings.window.title": "Helm beállításai",
   "app.settings.pane.sources": "Források",
   "app.settings.section.general": "General",
   "app.settings.native_authorization.section": "Rendszerengedélyezés",

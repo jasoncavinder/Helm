@@ -2,10 +2,17 @@ import AppKit
 
 enum HelmPanelDeactivationPolicy {
     static let popoverHidesOnDeactivate = false
-    static let settingsHidesOnDeactivate = true
+    static let settingsHidesOnDeactivate = false
 }
 
 enum HelmSettingsPanelPolicy {
+    static let titleVisibility: NSWindow.TitleVisibility = .hidden
+    static let styleMask: NSWindow.StyleMask = [
+        .titled,
+        .closable,
+        .resizable,
+        .fullSizeContentView
+    ]
     static let collectionBehavior: NSWindow.CollectionBehavior = [
         .moveToActiveSpace,
         .transient,

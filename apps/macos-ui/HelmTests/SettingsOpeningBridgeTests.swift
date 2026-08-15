@@ -5,8 +5,8 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertFalse(HelmPanelDeactivationPolicy.popoverHidesOnDeactivate)
     }
 
-    func testSettingsPanelHidesWhenHelmDeactivates() {
-        XCTAssertTrue(HelmPanelDeactivationPolicy.settingsHidesOnDeactivate)
+    func testSettingsPanelRemainsVisibleWhenHelmDeactivates() {
+        XCTAssertFalse(HelmPanelDeactivationPolicy.settingsHidesOnDeactivate)
     }
 
     func testSettingsPanelPolicyCanJoinExternalFullScreenWithoutFollowingEverySpace() {
@@ -19,6 +19,11 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertFalse(behavior.contains(.canJoinAllSpaces))
         XCTAssertFalse(behavior.contains(.primary))
         XCTAssertFalse(behavior.contains(.auxiliary))
+    }
+
+    func testSettingsPanelUsesToolbarTitleInsteadOfDuplicateWindowTitle() {
+        XCTAssertEqual(HelmSettingsPanelPolicy.titleVisibility, .hidden)
+        XCTAssertTrue(HelmSettingsPanelPolicy.styleMask.contains(.fullSizeContentView))
     }
 
     func testRequestOpenUsesConfiguredAppKitWindowAction() {

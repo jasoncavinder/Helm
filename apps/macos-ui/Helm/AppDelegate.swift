@@ -205,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             let window = SettingsPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 680, height: 500)
             )
-            window.title = L10n.App.Settings.Tab.title.localized
+            window.title = L10n.App.Settings.windowTitle.localized
             window.contentViewController = hostingController
             window.delegate = self
             window.minSize = NSSize(width: 600, height: 420)

@@ -199,6 +199,7 @@
   "app.settings.native_authorization.error.unregistration_failed": "Échec du désenregistrement. Vérifiez les éléments de connexion et réessayez.",
   "app.settings.section.managers": "Gestionnaires",
   "app.settings.tab.title": "Réglages",
+  "app.settings.window.title": "Réglages de Helm",
   "app.settings.pane.sources": "Sources",
   "app.tasks.fallback.description": "{task_type} {manager}",
   "app.tasks.help.cancel_unavailable": "Annulation pas encore disponible",
