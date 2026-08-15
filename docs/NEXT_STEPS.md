@@ -415,13 +415,13 @@ Current checkpoint:
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
 - latest stable release on `main`: `v0.18.2`
-- latest published prerelease on `main`: `v0.19.0-rc.4`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
-- prepared source candidate: `v0.19.0-rc.5`; it is not tagged or published, and public prerelease metadata remains on `v0.19.0-rc.4`
-- `v0.19.0-rc.3` was published on 2026-08-11; publication PRs `#402` and `#403` merged the RC CLI metadata and beta appcast/release notes into `main`
+- latest published prerelease on `main`: `v0.19.0-rc.5`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
+- accepted source candidate on `dev`: `v0.19.0-rc.6`; candidate readiness is complete, but version preparation, protected integration, clean-`main` rehearsal/preflight/canary, tagging, and publication remain pending
+- `v0.19.0-rc.5` was published on 2026-08-13 from tagged `main` revision `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`; publication PRs `#441` and `#442` merged the RC CLI metadata and beta appcast/release notes into `main`
+- RC6 candidate readiness completed on 2026-08-14 from merged `dev` revision `d8a029a5e3bdc65c56d71056be2f192b3d7cbbc1`; the quality gate, updater checklist, corrected Settings full-screen behavior, and real Arc vendor-update handoff all passed
 - owner installation validation confirms successive signed Developer ID updates from `0.19.0-rc.1` to RC2 and from RC2 to RC3 through Sparkle; broader participant feedback should not be inferred from these owner installation checks
-- `v0.19.0-rc.4` was published on 2026-08-11 from tagged `main` revision `c1c5e2a72dce37f196963d646f4935d1042444f6`; publication PRs `#417` and `#418` merged RC CLI metadata and the beta appcast/release notes into `main`
-- post-publication release verification is green for the `v0.19.0-rc.4` GUI beta appcast, RC CLI metadata, GitHub prerelease state, and stable/RC coexistence contract
-- validation gates are green through the stable cut (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, release workflow smoke across `v0.17.0-rc.1` through `v0.17.0-rc.5`)
+- post-publication release verification is green for the `v0.19.0-rc.5` GUI beta appcast, RC CLI metadata, GitHub prerelease state, and stable/RC coexistence contract
+- validation gates are green through the current RC line (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, and release workflow smoke through `v0.19.0-rc.5`)
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
