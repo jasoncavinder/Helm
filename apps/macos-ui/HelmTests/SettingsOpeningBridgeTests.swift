@@ -26,6 +26,33 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertTrue(HelmSettingsPanelPolicy.styleMask.contains(.fullSizeContentView))
     }
 
+    func testClosingDashboardDetachesSettingsPanelFromParentWindow() {
+        let dashboardWindow = NSWindow()
+        let settingsWindow = NSWindow()
+        dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
+
+        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+            settingsWindow: settingsWindow,
+            dashboardWindow: dashboardWindow
+        )
+
+        XCTAssertNil(settingsWindow.parent)
+    }
+
+    func testClosingDifferentWindowDoesNotDetachSettingsPanel() {
+        let dashboardWindow = NSWindow()
+        let otherWindow = NSWindow()
+        let settingsWindow = NSWindow()
+        dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
+
+        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+            settingsWindow: settingsWindow,
+            dashboardWindow: otherWindow
+        )
+
+        XCTAssertTrue(settingsWindow.parent === dashboardWindow)
+    }
+
     func testRequestOpenUsesConfiguredAppKitWindowAction() {
         var firstOpenCount = 0
         var configuredOpenCount = 0
