@@ -125,14 +125,31 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         let running = project(WayfinderProjectionInput(activeTaskIDs: ["task-1"])).content
 
         XCTAssertEqual(updates.condition.footerStatus, .attention)
+        XCTAssertNil(updates.condition.sidebarFooterStatus)
         XCTAssertEqual(updates.primaryAction.destination, .plan)
         XCTAssertEqual(finding.condition.footerStatus, .attention)
+        XCTAssertEqual(finding.condition.sidebarFooterStatus, .attention)
         XCTAssertEqual(finding.primaryAction.destination, .environment)
         XCTAssertEqual(finding.primaryAction.entityID, "npm")
         XCTAssertEqual(running.condition.footerStatus, .running)
         XCTAssertEqual(running.primaryAction.destination, .activity)
         XCTAssertEqual(running.primaryAction.entityID, "task-1")
         XCTAssertFalse(WayfinderCondition.healthy.footerStatus.isActionable)
+        XCTAssertEqual(WayfinderCondition.healthy.sidebarFooterStatus, .healthy)
+    }
+
+    func testDashboardManagerCountsIncludeDisabledAndUndetectedManagers() {
+        let counts = DashboardManagerCounts(statuses: [
+            (detected: true, enabled: true, isImplemented: true),
+            (detected: true, enabled: false, isImplemented: true),
+            (detected: false, enabled: true, isImplemented: true),
+            (detected: false, enabled: false, isImplemented: true),
+            (detected: true, enabled: true, isImplemented: false),
+        ])
+
+        XCTAssertEqual(counts.detected, 2)
+        XCTAssertEqual(counts.disabled, 1)
+        XCTAssertEqual(counts.available, 2)
     }
 
     func testRevisionChangesOnlyWhenSemanticContentChanges() {

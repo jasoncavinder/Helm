@@ -398,6 +398,8 @@ extension L10n {
                 static let failedTasks = "app.settings.service_health.failed_tasks"
                 static let managerCoverage = "app.settings.service_health.manager_coverage"
                 static let managerCoverageValue = "app.settings.service_health.manager_coverage_value"
+                static let otherManagers = "app.settings.service_health.other_managers"
+                static let otherManagersValue = "app.settings.service_health.other_managers_value"
                 static let lastError = "app.settings.service_health.last_error"
                 static let copySnapshot = "app.settings.service_health.copy_snapshot"
 

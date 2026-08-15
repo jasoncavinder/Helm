@@ -41,6 +41,19 @@ struct WayfinderLocalizedText: Equatable {
     }
 }
 
+struct DashboardManagerCounts: Equatable {
+    let detected: Int
+    let disabled: Int
+    let available: Int
+
+    init(statuses: [(detected: Bool, enabled: Bool, isImplemented: Bool)]) {
+        let implemented = statuses.filter { $0.isImplemented }
+        detected = implemented.filter { $0.detected }.count
+        disabled = implemented.filter { $0.detected && !$0.enabled }.count
+        available = implemented.filter { !$0.detected }.count
+    }
+}
+
 struct WayfinderDeterminateProgress: Equatable {
     let completed: Int
     let total: Int
@@ -78,6 +91,15 @@ enum WayfinderCondition: Equatable {
             return .attention
         case .healthy:
             return .healthy
+        }
+    }
+
+    var sidebarFooterStatus: WayfinderFooterStatus? {
+        switch self {
+        case .updatesReady:
+            return nil
+        default:
+            return footerStatus
         }
     }
 }
