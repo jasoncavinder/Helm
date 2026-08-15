@@ -11,13 +11,13 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.6 version preparation and v0.19.0 stabilization
+v0.19.0-rc.6 source-candidate integration and v0.19.0 stabilization
 ```
 
 Focus:
 - preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.5`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
 - preserve the completed post-RC5 RC6 candidate evidence in `docs/validation/v0.19.0-rc.6-readiness.md`: the full repository and updater-specific gates passed from merged `dev`, the corrected Settings window behavior passed owner QA, and a real Arc candidate confirmed the truthful vendor-owned `Open App to Update` flow through completion and refresh
-- prepare `v0.19.0-rc.6` in a separately reviewed version PR, integrate through protected `dev` and `main`, then repeat the mandatory clean-`main` rehearsal, preflight, canary, and publication-authorization gates; candidate readiness is not tag or publication approval
+- preserve the prepared `v0.19.0-rc.6` source candidate in its separately reviewed version PR, integrate through protected `dev` and `main`, then repeat the mandatory clean-`main` rehearsal, preflight, canary, and publication-authorization gates; source preparation is not tag or publication approval
 - retain the post-publication RC5 native-helper registration/approval/persistence/unregister checks without overstating uncollected evidence; these remain evidence for the later executor-activation sequence rather than a blocker to the scoped RC6 UI/updater correction
 - continue the native privileged-helper sequence from `docs/architecture/PRIVILEGED_EXECUTION.md`: preserve the embedded `developer_id` helper target, launch-daemon metadata, non-direct-channel stripping, exact signed-caller checks, fixed Apple-operation allowlist, release packaging verification, and explicit all-state `SMAppService` registration/approval UX; the release workflows have no private signed/notarized candidate mode, so use the installed signed/notarized RC5 artifact to validate registration, approval routing, persistence, and unregister behavior before activating the executor in a later reviewed slice, then resolve MAS and MacPorts without granting a root daemon broad access to unsigned or dynamic command surfaces
 - preserve the completed `v0.19.0-rc.5` publication record: tag source `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`, signed/notarized GUI and direct CLI workflows `31690897042` and `31690897034`, publication PRs `#441` and `#442`, and green release/appcast/CLI verification on converged `main`; keep installed-helper and Sparkle replacement evidence explicitly post-publication
@@ -416,7 +416,7 @@ Current checkpoint:
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
 - latest stable release on `main`: `v0.18.2`
 - latest published prerelease on `main`: `v0.19.0-rc.5`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
-- accepted source candidate on `dev`: `v0.19.0-rc.6`; candidate readiness is complete, but version preparation, protected integration, clean-`main` rehearsal/preflight/canary, tagging, and publication remain pending
+- prepared source candidate on `dev`: `v0.19.0-rc.6`; candidate readiness and workspace version preparation are complete, but protected integration, clean-`main` rehearsal/preflight/canary, tagging, and publication remain pending
 - `v0.19.0-rc.5` was published on 2026-08-13 from tagged `main` revision `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`; publication PRs `#441` and `#442` merged the RC CLI metadata and beta appcast/release notes into `main`
 - RC6 candidate readiness completed on 2026-08-14 from merged `dev` revision `d8a029a5e3bdc65c56d71056be2f192b3d7cbbc1`; the quality gate, updater checklist, corrected Settings full-screen behavior, and real Arc vendor-update handoff all passed
 - owner installation validation confirms successive signed Developer ID updates from `0.19.0-rc.1` to RC2 and from RC2 to RC3 through Sparkle; broader participant feedback should not be inferred from these owner installation checks

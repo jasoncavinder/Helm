@@ -62,6 +62,41 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.19.0-rc.6 (Settings and Sparkle Handoff Stabilization, Source Candidate Prepared)
+
+### Candidate Scope
+
+- [x] Carry only the reviewed post-RC5 stabilization delta through PRs `#446`, `#447`, `#449`, `#450`, `#451`, and `#452`.
+- [x] Identify the workspace and local Rust packages as `0.19.0-rc.6` while preserving stable `v0.18.2` and published prerelease `v0.19.0-rc.5` metadata.
+- [x] Preserve the approved single-toggle, centered-title Settings toolbar and keep Settings visible above another app's full-screen Space even when Dashboard is closed.
+- [x] Route every third-party Sparkle update action through the vendor app rather than offering the sandboxed external-installer path that cannot complete arbitrary app-specific installation handoffs.
+- [x] Keep third-party Sparkle updates interactive and excluded from automatic Upgrade All work; defer true direct updating to the planned signed/notarized `0.20.x` updater boundary.
+- [x] Move pinned GitHub Actions to Node 24-compatible revisions and validate all pinned action references through release contracts.
+- [x] Keep Issue `#388` and the Environment Brief outside production routing, and keep native privileged execution on the existing askpass path.
+
+### Required Validation
+
+- [x] Complete `docs/validation/v0.19.0-rc.6-readiness.md` and record every release-blocking finding before version preparation.
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, and all 144 arm64 macOS tests pass on the prepared candidate revision.
+- [x] Confirm the dependency graph is unchanged and retain the 2026-08-11 third-party license audit with an updated RC6 release context.
+- [x] Non-mutating Sparkle/appcast checklist, rehearsal, and preflight pass for `v0.19.0-rc.6` before any tag or publication mutation.
+- [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
+- [x] No known release-critical regression remains open; Issue `#388` remains non-production behind the retained first-run gate.
+
+### Publication
+
+- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.6` or publishing artifacts.
+- [ ] Publish `v0.19.0-rc.6` as a GitHub prerelease that does not become latest.
+- [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.6`.
+- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
+### Installed-Candidate Validation
+
+- [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.6` from the signed `v0.19.0-rc.5` installation.
+- [ ] Confirm Settings retains the accepted toolbar and full-screen Space behavior in the installed Developer ID build.
+- [ ] Confirm a discovered third-party Sparkle update opens the correct vendor app, completes through the vendor-owned updater, and clears from Helm after refresh.
+- [ ] Confirm the RC5 notification, Plan-selection, self-update-channel, language, and askpass preferences remain intact after replacement.
+
 ## v0.19.0-rc.5 (Focused Post-RC4 Stabilization, Published)
 
 ### Candidate Scope
