@@ -322,6 +322,17 @@ struct RedesignUpdatesSectionView: View {
         scopedPlanSteps.filter { selectedPlanStepIds.contains($0.id) }
     }
 
+    private var visiblePlanStepIds: Set<String> {
+        Set(visiblePlanSteps.map(\.id))
+    }
+
+    private var visibleSelectionState: UpgradePreviewPlanner.VisibleSelectionState {
+        UpgradePreviewPlanner.visibleSelectionState(
+            selectedStepIds: selectedPlanStepIds,
+            visibleStepIds: visiblePlanStepIds
+        )
+    }
+
     private var scopedInFlightStepCount: Int {
         scopedPlanSteps.filter { step in
             let hasProjectedTask = core.upgradePlanTaskProjectionByStepId[step.id] != nil
@@ -401,6 +412,14 @@ struct RedesignUpdatesSectionView: View {
         )
         selectedPlanStepIds = selection.selectedStepIds
         knownPlanStepIds = selection.knownStepIds
+    }
+
+    private func toggleVisiblePlanSelection() {
+        selectedPlanStepIds = UpgradePreviewPlanner.settingVisibleSelection(
+            selectedStepIds: selectedPlanStepIds,
+            visibleStepIds: visiblePlanStepIds,
+            included: visibleSelectionState != .all
+        )
     }
 
     private func projectedStatus(_ step: CoreUpgradePlanStep) -> String {
@@ -560,6 +579,22 @@ struct RedesignUpdatesSectionView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 } else {
+                    HStack {
+                        Spacer()
+                        Button(action: toggleVisiblePlanSelection) {
+                            Label(
+                                visibleSelectionState == .all
+                                    ? L10n.App.Updates.deselectAll.localized
+                                    : L10n.App.Updates.selectAll.localized,
+                                systemImage: visibleSelectionState == .all
+                                    ? "checkmark.square.fill"
+                                    : (visibleSelectionState == .partial ? "minus.square.fill" : "square")
+                            )
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle())
+                        .disabled(core.scopedUpgradePlanRunInProgress)
+                    }
+
                     LazyVStack(spacing: 0) {
                         ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
                             HStack(spacing: 8) {

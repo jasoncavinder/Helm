@@ -501,6 +501,8 @@ extension L10n {
             static let helmSelfUpdateSummary = "app.updates.helm_self_update.summary"
             static let managers = "app.updates.managers"
             static let packages = "app.updates.packages"
+            static let selectAll = "app.updates.selection.select_all"
+            static let deselectAll = "app.updates.selection.deselect_all"
             static let riskFlags = "app.updates.risk_flags"
             struct Authority {
                 static let authoritative = "app.updates.authority.authoritative"

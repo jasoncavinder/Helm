@@ -50,6 +50,9 @@ struct ManagersSectionView: View {
                                 .padding(.horizontal, 20)
 
                             ForEach(group.managers) { manager in
+                                let canReorder = ManagerPriorityDragPolicy.canInitiateDrag(
+                                    isDetected: core.isManagerDetected(manager.id)
+                                )
                                 ManagerSectionRow(
                                     manager: manager,
                                     status: managersState.managerStatusesById[manager.id],
@@ -59,6 +62,7 @@ struct ManagersSectionView: View {
                                     operationStatus: managersState.managerOperationsById[manager.id],
                                     isManagerUninstalling: core.isManagerUninstalling(manager.id),
                                     isSelected: context.selectedManagerId == manager.id,
+                                    canReorder: canReorder,
                                     onSelect: {
                                         context.selectedManagerId = manager.id
                                         context.selectedPackageId = nil
@@ -93,11 +97,14 @@ struct ManagersSectionView: View {
                                         handleManagerToggle(managerId: manager.id, enable: enabled)
                                     }
                                 )
-                                .onDrag {
-                                    draggedManagerId = manager.id
-                                    context.suppressWindowBackgroundDragging = true
-                                    return NSItemProvider(object: manager.id as NSString)
-                                }
+                                .modifier(
+                                    ManagerPriorityDragModifier(
+                                        managerId: manager.id,
+                                        canInitiateDrag: canReorder,
+                                        draggedManagerId: $draggedManagerId,
+                                        suppressWindowBackgroundDragging: $context.suppressWindowBackgroundDragging
+                                    )
+                                )
                                 .onDrop(
                                     of: [UTType.text.identifier],
                                     delegate: ManagerPriorityDropDelegate(
@@ -231,6 +238,7 @@ private struct ManagerSectionRow: View {
     let operationStatus: String?
     let isManagerUninstalling: Bool
     let isSelected: Bool
+    let canReorder: Bool
     let onSelect: () -> Void
     let onViewPackages: () -> Void
     let onDetectManager: () -> Void
@@ -340,6 +348,7 @@ private struct ManagerSectionRow: View {
                 Image(systemName: "line.3.horizontal")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(HelmTheme.textSecondary)
+                    .opacity(canReorder ? 1 : 0)
                     .frame(width: 12)
                     .accessibilityHidden(true)
 
@@ -491,6 +500,26 @@ struct ManagersView: View {
 
     var body: some View {
         ManagersSectionView()
+    }
+}
+
+private struct ManagerPriorityDragModifier: ViewModifier {
+    let managerId: String
+    let canInitiateDrag: Bool
+    @Binding var draggedManagerId: String?
+    @Binding var suppressWindowBackgroundDragging: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if canInitiateDrag {
+            content.onDrag {
+                draggedManagerId = managerId
+                suppressWindowBackgroundDragging = true
+                return NSItemProvider(object: managerId as NSString)
+            }
+        } else {
+            content
+        }
     }
 }
 

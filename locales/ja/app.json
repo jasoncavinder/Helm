@@ -303,6 +303,8 @@
   "app.updates.authority.interactive": "対話式",
   "app.updates.managers": "マネージャー",
   "app.updates.packages": "パッケージ",
+  "app.updates.selection.select_all": "すべて選択",
+  "app.updates.selection.deselect_all": "すべての選択を解除",
   "app.updates.include_os": "macOSソフトウェアアップデートを含める",
   "app.updates.risk_flags": "リスク項目",
   "app.updates.risk.privileged": "昇格した権限が必要",

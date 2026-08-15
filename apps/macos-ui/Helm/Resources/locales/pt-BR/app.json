@@ -303,6 +303,8 @@
   "app.updates.authority.interactive": "Interativo",
   "app.updates.managers": "gerenciadores",
   "app.updates.packages": "pacotes",
+  "app.updates.selection.select_all": "Selecionar tudo",
+  "app.updates.selection.deselect_all": "Desmarcar tudo",
   "app.updates.include_os": "Incluir atualizações de software do macOS",
   "app.updates.risk_flags": "Indicadores de risco",
   "app.updates.risk.privileged": "Requer privilégios elevados",

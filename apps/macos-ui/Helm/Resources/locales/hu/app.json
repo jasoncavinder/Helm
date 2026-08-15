@@ -303,6 +303,8 @@
   "app.updates.authority.interactive": "Interaktív",
   "app.updates.managers": "managers",
   "app.updates.packages": "packages",
+  "app.updates.selection.select_all": "Összes kijelölése",
+  "app.updates.selection.deselect_all": "Összes kijelölés törlése",
   "app.updates.include_os": "Include macOS software updates",
   "app.updates.risk_flags": "Risk Flags",
   "app.updates.risk.privileged": "Requires elevated privileges",
