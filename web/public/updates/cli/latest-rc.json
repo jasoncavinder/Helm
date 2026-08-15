@@ -1,19 +1,19 @@
 {
-  "version": "0.19.0-rc.5",
+  "version": "0.19.0-rc.6",
   "channel": "rc",
-  "published_at": "2026-08-13T10:28:20Z",
+  "published_at": "2026-08-15T03:31:06Z",
   "downloads": {
     "universal": {
-      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.5/helm-cli-v0.19.0-rc.5-darwin-universal",
-      "sha256": "495a50245f944f0203220afef500303131f2ac2a44ced75260666c2cafbb0834"
+      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.6/helm-cli-v0.19.0-rc.6-darwin-universal",
+      "sha256": "f672128750ffd694f522e4d909f5502cd11df7217efad3b7569c56b379f377db"
     },
     "arm64": {
-      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.5/helm-cli-v0.19.0-rc.5-darwin-arm64",
-      "sha256": "d4ee20d010cd212d78d253dbf183b3ab11b0080b3ad10d6ce125e1c3967cc9f8"
+      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.6/helm-cli-v0.19.0-rc.6-darwin-arm64",
+      "sha256": "4728b752f0c6388675fe17a7f97317d0059ce150d4c5ddb2f53df13b1a4ed05d"
     },
     "x86_64": {
-      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.5/helm-cli-v0.19.0-rc.5-darwin-x86_64",
-      "sha256": "6b8860bfa98b95dc9de24386b926013ee83641920488929d1a07ec6d4545e958"
+      "url": "https://github.com/jasoncavinder/Helm/releases/download/v0.19.0-rc.6/helm-cli-v0.19.0-rc.6-darwin-x86_64",
+      "sha256": "42c3c9843f952ff0e960b8daec0a7e13f36eed1f679eea9dc1fca4612d978a28"
     }
   }
 }
