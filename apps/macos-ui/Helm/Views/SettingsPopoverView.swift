@@ -543,7 +543,6 @@ struct SettingsSectionView: View {
 
 struct SettingsWindowView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var localization = LocalizationManager.shared
     @State private var selectedPane: SettingsPane? = .general
@@ -594,12 +593,7 @@ struct SettingsWindowView: View {
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
-                SettingsDetailSurface(
-                    colorScheme: colorScheme,
-                    reduceTransparency: reduceTransparency
-                )
-            )
+            .background(HelmTheme.surfaceBase)
         }
         .background(HelmTheme.surfaceBase)
         .frame(
@@ -679,35 +673,6 @@ private struct SettingsSidebarSurface: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-        }
-    }
-}
-
-private struct SettingsDetailSurface: View {
-    let colorScheme: ColorScheme
-    let reduceTransparency: Bool
-
-    var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: colorScheme == .dark
-                    ? [HelmTheme.surfaceBase, HelmTheme.surfaceElevated.opacity(0.94)]
-                    : [HelmTheme.surfaceBase, HelmTheme.surfacePanel],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            if !reduceTransparency {
-                RadialGradient(
-                    colors: [
-                        HelmTheme.horizon.opacity(colorScheme == .dark ? 0.12 : 0.08),
-                        Color.clear
-                    ],
-                    center: .topTrailing,
-                    startRadius: 0,
-                    endRadius: 420
-                )
-            }
         }
     }
 }
