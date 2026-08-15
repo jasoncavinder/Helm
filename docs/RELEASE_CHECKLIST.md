@@ -62,7 +62,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.0-rc.6 (Settings and Sparkle Handoff Stabilization, Source Candidate Prepared)
+## v0.19.0-rc.6 (Settings and Sparkle Handoff Stabilization, Published)
 
 ### Candidate Scope
 
@@ -80,15 +80,22 @@ This checklist is required before creating a release tag on `main`.
 - [x] Full repository quality gate, documentation sync, locale integrity/parity, and all 144 arm64 macOS tests pass on the prepared candidate revision.
 - [x] Confirm the dependency graph is unchanged and retain the 2026-08-11 third-party license audit with an updated RC6 release context.
 - [x] Non-mutating Sparkle/appcast checklist, rehearsal, and preflight pass for `v0.19.0-rc.6` before any tag or publication mutation.
-- [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
+- [x] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
 - [x] No known release-critical regression remains open; Issue `#388` remains non-production behind the retained first-run gate.
 
 ### Publication
 
-- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.6` or publishing artifacts.
-- [ ] Publish `v0.19.0-rc.6` as a GitHub prerelease that does not become latest.
-- [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.6`.
-- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+- [x] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.6` or publishing artifacts.
+- [x] Publish `v0.19.0-rc.6` as a GitHub prerelease that does not become latest.
+- [x] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.6`.
+- [x] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
+Publication evidence:
+- Tag `v0.19.0-rc.6` identifies `main` revision `968d0e400acc1a02a7e0a9a3d1a55917325189e8`; the published GitHub release is a non-draft prerelease and `releases/latest` remains `v0.18.2`.
+- Release macOS Canary run `31861074375` and Release Publish Auth Check run `31861074433` passed before tagging.
+- Release macOS DMG run `31861811608` and Release CLI Direct Installer run `31861811594` completed successfully; generated publication PRs `#458` and `#459` merged the RC CLI pointer and beta appcast/release notes into `main`.
+- `scripts/release/runbook.sh verify --tag v0.19.0-rc.6`, Release Publish Verify run `31862590510`, Appcast Drift Guard run `31862590503`, and CLI Update Metadata Drift Guard run `31862670232` passed after metadata convergence at `9214c3ea430ea7d3cf8a422d2f7399e5df026dd5`.
+- Installed-candidate checks below remain open; artifact publication and metadata convergence do not substitute for owner validation of the installed app.
 
 ### Installed-Candidate Validation
 

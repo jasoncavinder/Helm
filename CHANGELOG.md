@@ -15,10 +15,11 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 ### Fixed
 - Native Settings now joins the active macOS Space, remains visible when another full-screen app takes focus even if Dashboard is closed, and restores its approved single-toggle, centered-title Wayfinder toolbar instead of reverting to duplicate navigation titles.
 
-This candidate preserves stable `v0.18.2` and the published `v0.19.0-rc.5`
-prerelease until RC6 publication completes. The Environment Brief remains
-development-gated behind Issue #388, and native privileged execution remains
-on the existing askpass path pending its separate installed-candidate sequence.
+RC6 is published on the opt-in prerelease channel while stable `v0.18.2`
+remains the default GitHub/latest, appcast, and CLI line. The Environment Brief
+remains development-gated behind Issue #388, and native privileged execution
+remains on the existing askpass path pending its separate installed-candidate
+sequence.
 
 ## [0.19.0-rc.5] - 2026-08-12
 
