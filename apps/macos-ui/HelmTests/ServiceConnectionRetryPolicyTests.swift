@@ -32,4 +32,39 @@ final class ServiceConnectionRetryPolicyTests: XCTestCase {
         XCTAssertFalse(policy.isReconnectScheduled)
         XCTAssertEqual(policy.scheduleReconnect(), 2)
     }
+
+    func testDeferredOfflineRefreshPolicyWaitsForCurrentRefreshBeforeResuming() {
+        XCTAssertEqual(
+            DeferredOfflineRefreshPolicy.disposition(
+                networkIsAvailable: true,
+                refreshRequestedWhileOffline: true,
+                isRefreshing: true
+            ),
+            .waitForCurrentRefresh
+        )
+        XCTAssertEqual(
+            DeferredOfflineRefreshPolicy.disposition(
+                networkIsAvailable: true,
+                refreshRequestedWhileOffline: true,
+                isRefreshing: false
+            ),
+            .resumeNow
+        )
+        XCTAssertEqual(
+            DeferredOfflineRefreshPolicy.disposition(
+                networkIsAvailable: false,
+                refreshRequestedWhileOffline: true,
+                isRefreshing: false
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            DeferredOfflineRefreshPolicy.disposition(
+                networkIsAvailable: true,
+                refreshRequestedWhileOffline: false,
+                isRefreshing: false
+            ),
+            .none
+        )
+    }
 }

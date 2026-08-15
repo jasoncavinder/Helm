@@ -653,10 +653,21 @@ final class HelmCore: ObservableObject {
         AppUpdateCoordinator.shared.setNetworkAvailable(availability == .available)
         syncNetworkAvailabilityToService()
 
-        if availability == .available, refreshRequestedWhileOffline {
-            refreshRequestedWhileOffline = false
-            logger.info("Connectivity restored; resuming one deferred refresh")
-            triggerRefresh()
+        if availability == .available {
+            switch DeferredOfflineRefreshPolicy.disposition(
+                networkIsAvailable: true,
+                refreshRequestedWhileOffline: refreshRequestedWhileOffline,
+                isRefreshing: isRefreshing
+            ) {
+            case .resumeNow:
+                resumeDeferredOfflineRefreshIfReady()
+            case .waitForCurrentRefresh:
+                logger.info(
+                    "Connectivity restored during an in-flight refresh; waiting to resume deferred network work"
+                )
+            case .none:
+                break
+            }
         } else if previous == .unknown, availability == .unavailable,
                   refreshRequestedWhileOffline {
             // Complete the local half of an initial refresh once the path is known.
@@ -677,6 +688,20 @@ final class HelmCore: ObservableObject {
                 completion?()
             }
         }
+    }
+
+    func resumeDeferredOfflineRefreshIfReady() {
+        guard DeferredOfflineRefreshPolicy.disposition(
+            networkIsAvailable: networkAvailability == .available,
+            refreshRequestedWhileOffline: refreshRequestedWhileOffline,
+            isRefreshing: isRefreshing
+        ) == .resumeNow else {
+            return
+        }
+
+        refreshRequestedWhileOffline = false
+        logger.info("Connectivity restored; resuming one deferred refresh")
+        triggerRefresh()
     }
 
     private static func loadManagerPriorityOverrides() -> [String: Int] {
