@@ -41,6 +41,7 @@ Focus:
 - keep Project WOW as internal design terminology only; allocate resulting features among the existing Helm, Helm Pro, and Helm Fleet plans
 - keep first-run value/safety/transparency/recovery in base Helm; allocate advanced personal intelligence to Helm Pro and organization policy/deployment/drift/audit to Helm Fleet
 - deliver the approved Original Wayfinder Dashboard/popover foundation and Course Indicator state projection in `0.19.x`, redesign core workflows in `0.20.x`, close accessibility/system-integration gaps in `0.21.x`, and complete design validation/hardening in `0.22.x`
+- preserve Wayfinder as the canonical default while making its semantic presentation layer theme-ready in `0.22.x`; defer the Settings selector, Corporate theme, and a research-selected third theme to the post-1.0 `1.1.x` globalization/theme milestone
 - run the owner-moderated protocol in `docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md` before treating v0.20 workflow design or v0.22 UI lock as validated; the v0.18 artifact closure includes expert review but no human participant result
 - treat the earlier visual-only app redesign proposal and `docs/ui/` artifacts as the current baseline and research input, not constraints that prohibit information-architecture, layout, or interaction changes
 - prefer native macOS windows, menus, toolbars, Settings, navigation, lists/tables, focus, selection, and commands before custom controls while preserving the presentation-only SwiftUI boundary
@@ -70,8 +71,9 @@ Native Mac Experience planning source:
 - `0.19.x`: Original Wayfinder native app shell, shared Course Indicator projection, menu/toolbar/Settings/selection/focus foundations, window behavior, component semantics, and Project WOW Environment Brief foundation
 - `0.20.x`: Dashboard, Plan, Library, Activity, Environment, command-based search, contextual detail/diagnostics, content, unified popover workflow redesign, and secure true direct updating for eligible third-party Sparkle apps
 - `0.21.x`: keyboard, VoiceOver, system accessibility preferences, localization/text expansion, notifications, offline/interruption/recovery, and Project WOW Action Receipt integration
-- `0.22.x`: perceived performance, motion/transition polish, consistency audits, state/screenshot fixtures, multi-display/failure validation, moderated usability, and UI lock
+- `0.22.x`: perceived performance, motion/transition polish, consistency audits, theme-ready semantic presentation tokens, state/screenshot fixtures, multi-display/failure validation, moderated usability, and UI lock
 - `1.0.0`: native experience and Project WOW release gates must both pass on the production app
+- `1.1.x`: Settings-selectable Wayfinder, Corporate, and research-selected third themes, with Wayfinder fallback and full appearance/accessibility parity
 
 Current checkpoint:
 - `0.18.x` internal groundwork and migration-safety hardening are released on `main` through final-containment `v0.18.2`; `v0.18.0` remains withdrawn because of its critical SQLite migration defect.
