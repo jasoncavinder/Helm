@@ -1,5 +1,15 @@
 import Foundation
 
+enum ExternalSparkleUpdatePolicy {
+    enum PrimaryAction: Equatable {
+        case openApplication
+    }
+
+    static func primaryAction(forManagerId managerId: String) -> PrimaryAction? {
+        managerId.lowercased() == "sparkle" ? .openApplication : nil
+    }
+}
+
 struct PackageRuntimeStateProjection: Codable, Hashable {
     var isActive: Bool = false
     var isDefault: Bool = false

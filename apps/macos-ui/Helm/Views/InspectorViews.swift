@@ -115,21 +115,13 @@ private struct InspectorTaskDetailView: View {
             .accessibilityValue(task.localizedStatus)
 
             if let step = externalSparkleStep {
-                HStack(spacing: 8) {
-                    Button(L10n.App.Packages.Action.update.localized) {
-                        if !core.startExternalSparkleUpdate(for: step) {
-                            failedExternalSparkleStep = step
-                        }
+                Button(L10n.App.Updates.openAppToUpdate.localized) {
+                    if !core.openExternalSparkleApplication(for: step) {
+                        failedExternalSparkleStep = step
                     }
-                    .buttonStyle(HelmPrimaryButtonStyle())
-                    .helmPointer()
-
-                    Button(L10n.App.Updates.openApp.localized) {
-                        core.openExternalSparkleApplication(for: step)
-                    }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .helmPointer()
                 }
+                .buttonStyle(HelmPrimaryButtonStyle())
+                .helmPointer()
             }
 
             InspectorField(label: L10n.App.Inspector.taskId.localized) {
@@ -229,14 +221,11 @@ private struct InspectorTaskDetailView: View {
             )
             .frame(minWidth: 700, minHeight: 420)
         }
-        .alert(item: $failedExternalSparkleStep) { step in
+        .alert(item: $failedExternalSparkleStep) { _ in
             Alert(
                 title: Text(L10n.Common.error.localized),
-                message: Text(L10n.App.Updates.sparkleStartFailed.localized),
-                primaryButton: .default(Text(L10n.App.Updates.openApp.localized)) {
-                    core.openExternalSparkleApplication(for: step)
-                },
-                secondaryButton: .cancel()
+                message: Text(L10n.App.Updates.sparkleOpenFailed.localized),
+                dismissButton: .default(Text(L10n.Common.ok.localized))
             )
         }
     }
@@ -1506,9 +1495,14 @@ private struct InspectorPackageDetailView: View {
             }
 
             if activePackage.status == .upgradable {
+                let isExternalSparkle = ExternalSparkleUpdatePolicy.primaryAction(
+                    forManagerId: activePackage.managerId
+                ) == .openApplication
                 packageActionButton(
-                    symbol: "arrow.up.circle",
-                    tooltip: L10n.App.Packages.Action.update.localized,
+                    symbol: isExternalSparkle ? "arrow.up.forward.app" : "arrow.up.circle",
+                    tooltip: isExternalSparkle
+                        ? L10n.App.Updates.openAppToUpdate.localized
+                        : L10n.App.Packages.Action.update.localized,
                     enabled: core.canUpgradeIndividually(activePackage)
                         && !core.upgradeActionPackageIds.contains(activePackage.id)
                 ) {

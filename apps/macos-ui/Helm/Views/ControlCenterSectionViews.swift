@@ -584,23 +584,14 @@ struct RedesignUpdatesSectionView: View {
                                     )
 
                                 if HelmCore.isExternalSparklePlanStep(step) {
-                                    HStack(spacing: 6) {
-                                        Button(L10n.App.Packages.Action.update.localized) {
-                                            if !core.startExternalSparkleUpdate(for: step) {
-                                                failedExternalSparkleStep = step
-                                            }
+                                    Button(L10n.App.Updates.openAppToUpdate.localized) {
+                                        if !core.openExternalSparkleApplication(for: step) {
+                                            failedExternalSparkleStep = step
                                         }
-                                        .buttonStyle(HelmSecondaryButtonStyle())
-                                        .font(.caption)
-                                        .helmPointer()
-
-                                        Button(L10n.App.Updates.openApp.localized) {
-                                            core.openExternalSparkleApplication(for: step)
-                                        }
-                                        .buttonStyle(HelmSecondaryButtonStyle())
-                                        .font(.caption)
-                                        .helmPointer()
                                     }
+                                    .buttonStyle(HelmSecondaryButtonStyle())
+                                    .font(.caption)
+                                    .helmPointer()
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -719,14 +710,11 @@ struct RedesignUpdatesSectionView: View {
         .onChange(of: appUpdate.includeHelmInUpgradeAll) { _ in
             core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
         }
-        .alert(item: $failedExternalSparkleStep) { step in
+        .alert(item: $failedExternalSparkleStep) { _ in
             Alert(
                 title: Text(L10n.Common.error.localized),
-                message: Text(L10n.App.Updates.sparkleStartFailed.localized),
-                primaryButton: .default(Text(L10n.App.Updates.openApp.localized)) {
-                    core.openExternalSparkleApplication(for: step)
-                },
-                secondaryButton: .cancel()
+                message: Text(L10n.App.Updates.sparkleOpenFailed.localized),
+                dismissButton: .default(Text(L10n.Common.ok.localized))
             )
         }
     }

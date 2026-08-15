@@ -684,7 +684,7 @@ Goal:
 - Complete the manager/updater modernization slice:
   - inventory Sparkle apps in standard application roots while excluding Helm by bundle identifier
   - surface bounded static-HTTPS-appcast update visibility with per-feed failure isolation
-  - delegate individual GUI update checks to Sparkle's external-bundle updater and keep Sparkle out of bulk/lifecycle automation
+  - keep third-party Sparkle updates as truthful vendor-authoritative interactive steps, with Open App as the reliable fallback when Helm cannot safely complete an external installation
   - expose scheduled Sparkle checks for eligible direct-channel Helm builds
   - harden npm multi-install normalization and MAS refresh outcomes
   - adopt macOS 13 Ventura as the minimum supported release
@@ -730,6 +730,7 @@ Goal:
 - Complete content-design passes for labels, empty states, errors, policy blocks, provenance, authority, and recovery.
 - Implement the unified Wayfinder status-item popover so it remains glanceable and routes cleanly into Dashboard context.
 - Continue Project WOW through personalized plan preview and one supported safe, verified improvement.
+- Deliver true direct updating for eligible third-party Sparkle apps through a dedicated, uniquely identified, Developer ID-signed and notarized external-updater boundary (or an equivalently reviewed architecture) that preserves Helm's app sandbox, accepts only structured validated requests, and fails safely to Open App when compatibility cannot be established.
 
 Exit Criteria:
 
@@ -738,6 +739,7 @@ Exit Criteria:
 - Each release-critical domain covers loading, success, empty, partial, failure, offline, blocked, cancellation, and recovery states.
 - Dashboard remains responsive and preserves selection/context while tasks and snapshot updates arrive.
 - Presentation changes do not move business or orchestration logic out of service/core boundaries.
+- Signed installed-candidate QA proves download, installation, relaunch, version verification, cancellation/failure recovery, and unsupported-app fallback across representative third-party Sparkle apps and framework versions without weakening Helm's sandbox or claiming completion before the target version is observed.
 
 ---
 
