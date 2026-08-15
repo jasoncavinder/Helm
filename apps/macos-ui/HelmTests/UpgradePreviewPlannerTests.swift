@@ -216,6 +216,56 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         XCTAssertEqual(refreshed.knownStepIds, ["npm:typescript"])
     }
 
+    func testVisiblePlanSelectionStateDistinguishesNonePartialAndAll() {
+        let visibleStepIds: Set<String> = ["mas:Pages", "npm:typescript"]
+
+        XCTAssertEqual(
+            UpgradePreviewPlanner.visibleSelectionState(
+                selectedStepIds: [],
+                visibleStepIds: visibleStepIds
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            UpgradePreviewPlanner.visibleSelectionState(
+                selectedStepIds: ["npm:typescript", "hidden:step"],
+                visibleStepIds: visibleStepIds
+            ),
+            .partial
+        )
+        XCTAssertEqual(
+            UpgradePreviewPlanner.visibleSelectionState(
+                selectedStepIds: visibleStepIds.union(["hidden:step"]),
+                visibleStepIds: visibleStepIds
+            ),
+            .all
+        )
+    }
+
+    func testBulkPlanSelectionPreservesHiddenSelections() {
+        let visibleStepIds: Set<String> = ["mas:Pages", "npm:typescript"]
+        let selectedStepIds: Set<String> = ["npm:typescript", "pip:hidden"]
+
+        let selectedAllVisible = UpgradePreviewPlanner.settingVisibleSelection(
+            selectedStepIds: selectedStepIds,
+            visibleStepIds: visibleStepIds,
+            included: true
+        )
+        XCTAssertEqual(selectedAllVisible, ["mas:Pages", "npm:typescript", "pip:hidden"])
+
+        let deselectedVisible = UpgradePreviewPlanner.settingVisibleSelection(
+            selectedStepIds: selectedAllVisible,
+            visibleStepIds: visibleStepIds,
+            included: false
+        )
+        XCTAssertEqual(deselectedVisible, ["pip:hidden"])
+    }
+
+    func testManagerPriorityDragRequiresDetectedManager() {
+        XCTAssertTrue(ManagerPriorityDragPolicy.canInitiateDrag(isDetected: true))
+        XCTAssertFalse(ManagerPriorityDragPolicy.canInitiateDrag(isDetected: false))
+    }
+
     func testRiskSummaryUsesOnlySelectedCandidates() {
         let appStore = UpgradePreviewPlanner.RiskCandidate(managerId: "mas", packageName: "Pages")
         let homebrew = UpgradePreviewPlanner.RiskCandidate(
