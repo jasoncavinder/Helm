@@ -108,8 +108,8 @@ extension HelmCore {
             return
         }
 
-        if package.managerId == "sparkle" {
-            _ = startExternalSparkleUpdate(for: package)
+        if ExternalSparkleUpdatePolicy.primaryAction(forManagerId: package.managerId) == .openApplication {
+            _ = openExternalSparkleApplication(for: package)
             return
         }
 
@@ -173,7 +173,7 @@ extension HelmCore {
     }
 
     @discardableResult
-    func startExternalSparkleUpdate(for step: CoreUpgradePlanStep) -> Bool {
+    func openExternalSparkleApplication(for step: CoreUpgradePlanStep) -> Bool {
         guard let packageId = UpgradePreviewPlanner.externalSparklePackageId(stepId: step.id),
               let package = knownPackage(withId: packageId) else {
             logger.error("External Sparkle Plan step has no matching package: \(step.id)")
@@ -185,34 +185,17 @@ extension HelmCore {
             )
             return false
         }
-        return startExternalSparkleUpdate(for: package)
+        return openExternalSparkleApplication(for: package)
     }
 
-    @discardableResult
-    func openExternalSparkleApplication(for step: CoreUpgradePlanStep) -> Bool {
-        guard let packageId = UpgradePreviewPlanner.externalSparklePackageId(stepId: step.id),
-              let package = knownPackage(withId: packageId),
+    private func openExternalSparkleApplication(for package: PackageItem) -> Bool {
+        guard ExternalSparkleUpdatePolicy.primaryAction(forManagerId: package.managerId) == .openApplication,
               let bundlePath = package.packageIdentifier,
-              ExternalSparkleUpdateCoordinator.shared.openApplication(bundlePath: bundlePath) else {
-            logger.error("Failed to open application for external Sparkle Plan step: \(step.id)")
+              ExternalSparkleApplicationCoordinator.shared.openApplication(bundlePath: bundlePath) else {
+            logger.error("Failed to open application for external Sparkle package: \(package.id)")
             recordLastError(
                 source: "core.actions",
-                action: "upgradePlan.external_sparkle_open_failed",
-                managerId: step.managerId,
-                taskType: "upgrade"
-            )
-            return false
-        }
-        return true
-    }
-
-    private func startExternalSparkleUpdate(for package: PackageItem) -> Bool {
-        guard let bundlePath = package.packageIdentifier,
-              ExternalSparkleUpdateCoordinator.shared.checkForUpdates(bundlePath: bundlePath) else {
-            logger.error("upgradePackage(sparkle:\(package.name)) failed to start external updater")
-            recordLastError(
-                source: "core.actions",
-                action: "upgradePackage.external_sparkle_failed",
+                action: "externalSparkle.open_application_failed",
                 managerId: package.managerId,
                 taskType: "upgrade"
             )

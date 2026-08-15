@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0-rc.6] - 2026-08-14
+
+### Changed
+- Third-party Sparkle update actions in Plan, Library, the popover, and inspectors now open the vendor app so its own updater retains installation authority. The unsafe sandboxed external-installer path is no longer offered; true direct updating remains planned behind a dedicated signed and notarized updater boundary.
+- GitHub Actions workflows now use Node 24-compatible action revisions, with release-contract coverage ensuring every pinned action reference remains in the supported toolchain set.
+
+### Fixed
+- Native Settings now joins the active macOS Space, remains visible when another full-screen app takes focus even if Dashboard is closed, and restores its approved single-toggle, centered-title Wayfinder toolbar instead of reverting to duplicate navigation titles.
+
+This candidate preserves stable `v0.18.2` and the published `v0.19.0-rc.5`
+prerelease until RC6 publication completes. The Environment Brief remains
+development-gated behind Issue #388, and native privileged execution remains
+on the existing askpass path pending its separate installed-candidate sequence.
+
 ## [0.19.0-rc.5] - 2026-08-12
 
 ### Added

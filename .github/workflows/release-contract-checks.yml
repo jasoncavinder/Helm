@@ -16,7 +16,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install actionlint
         run: |
@@ -55,6 +55,9 @@ jobs:
 
       - name: Validate CI toolchain pin contracts
         run: scripts/release/tests/ci_toolchain_contract.sh
+
+      - name: Validate CI toolchain pin regression coverage
+        run: scripts/release/tests/ci_toolchain_contract_regression.sh
 
       - name: Validate release workflow safety contracts
         run: scripts/release/tests/release_workflow_contract.sh
@@ -125,7 +128,7 @@ jobs:
           PY
 
       - name: Upload release rehearsal report artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: release-rehearsal-report
           path: ${{ runner.temp }}/release-rehearsal-report.json

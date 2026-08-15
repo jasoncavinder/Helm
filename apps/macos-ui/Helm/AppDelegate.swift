@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private var panel: FloatingPanel!
     private var eventMonitor: EventMonitor?
     private var controlCenterWindowController: NSWindowController?
+    private var settingsWindowController: NSWindowController?
     private var cancellables: Set<AnyCancellable> = []
 
     private let core = HelmCore.shared
@@ -39,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        controlCenterContext.settingsOpenRouter.configure { [weak self] in
+            self?.openSettingsWindow()
+        }
 
         let contentView = RedesignPopoverView(onOpenControlCenter: { [weak self] in
             self?.openControlCenter()
@@ -187,6 +191,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         if !clickInPanel && !clickInStatusItem {
             closePanel()
         }
+    }
+
+    private func openSettingsWindow() {
+        closePanel()
+
+        if settingsWindowController == nil {
+            let rootView = SettingsWindowView(onDismiss: { [weak self] in
+                self?.settingsWindowController?.close()
+            })
+            .environmentObject(controlCenterContext)
+            let hostingController = NSHostingController(rootView: rootView)
+            let window = SettingsPanel(
+                contentRect: NSRect(x: 0, y: 0, width: 680, height: 500)
+            )
+            window.title = L10n.App.Settings.windowTitle.localized
+            window.contentViewController = hostingController
+            window.delegate = self
+            window.minSize = NSSize(width: 600, height: 420)
+            window.maxSize = NSSize(width: 760, height: 600)
+            window.center()
+            settingsWindowController = NSWindowController(window: window)
+        }
+
+        guard let settingsWindow = settingsWindowController?.window else { return }
+        settingsWindow.parent?.removeChildWindow(settingsWindow)
+        if let dashboardWindow = controlCenterWindowController?.window,
+           dashboardWindow.isVisible {
+            dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
+        }
+        settingsWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func togglePanel(_ sender: AnyObject?) {
@@ -746,10 +781,18 @@ private extension AppDelegate {
 
 extension AppDelegate {
     func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow,
-              window == controlCenterWindowController?.window else {
+        guard let window = notification.object as? NSWindow else {
             return
         }
+        if window == settingsWindowController?.window {
+            window.parent?.removeChildWindow(window)
+            return
+        }
+        guard window == controlCenterWindowController?.window else { return }
+        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+            settingsWindow: settingsWindowController?.window,
+            dashboardWindow: window
+        )
         core.setInteractiveSurfaceVisibility(popoverVisible: panel.isVisible, controlCenterVisible: false)
     }
 

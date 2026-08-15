@@ -310,9 +310,14 @@ struct PackagesSectionView: View {
 
         let inFlight = core.upgradeActionPackageIds.contains(package.id)
         let canUpgrade = core.canUpgradeIndividually(package)
+        let isExternalSparkle = ExternalSparkleUpdatePolicy.primaryAction(
+            forManagerId: package.managerId
+        ) == .openApplication
         return PrimaryPackageAction(
-            symbol: "arrow.up.circle",
-            tooltip: L10n.App.Packages.Action.upgradePackage.localized,
+            symbol: isExternalSparkle ? "arrow.up.forward.app" : "arrow.up.circle",
+            tooltip: isExternalSparkle
+                ? L10n.App.Updates.openAppToUpdate.localized
+                : L10n.App.Packages.Action.upgradePackage.localized,
             enabled: canUpgrade && !inFlight,
             inFlight: inFlight,
             action: { core.upgradePackage(package) }

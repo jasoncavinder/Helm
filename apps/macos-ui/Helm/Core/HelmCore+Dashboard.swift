@@ -352,7 +352,7 @@ extension HelmCore {
                 && AppUpdateCoordinator.shared.availableUpdate != nil
                 && AppUpdateCoordinator.shared.canCheckForUpdates
         }
-        if package.managerId == "sparkle" {
+        if ExternalSparkleUpdatePolicy.primaryAction(forManagerId: package.managerId) == .openApplication {
             return package.status == .upgradable
                 && package.packageIdentifier?.hasSuffix(".app") == true
                 && !package.pinned

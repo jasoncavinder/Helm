@@ -47,7 +47,7 @@ final class FloatingPanel: NSPanel {
         hasShadow = true
         isMovableByWindowBackground = false
         isReleasedWhenClosed = false
-        hidesOnDeactivate = false
+        hidesOnDeactivate = HelmPanelDeactivationPolicy.popoverHidesOnDeactivate
         // Enable Tab traversal for SwiftUI controls within this borderless panel
         autorecalculatesKeyViewLoop = true
     }
@@ -113,6 +113,35 @@ final class ControlCenterWindow: NSWindow {
 
         return super.performKeyEquivalent(with: event)
     }
+}
+
+// MARK: - SettingsPanel
+
+final class SettingsPanel: NSPanel {
+    init(contentRect: NSRect) {
+        super.init(
+            contentRect: contentRect,
+            styleMask: HelmSettingsPanelPolicy.styleMask,
+            backing: .buffered,
+            defer: false
+        )
+
+        isFloatingPanel = true
+        level = .floating
+        toolbarStyle = .unifiedCompact
+        titleVisibility = HelmSettingsPanelPolicy.titleVisibility
+        titlebarAppearsTransparent = true
+        titlebarSeparatorStyle = .none
+        collectionBehavior = HelmSettingsPanelPolicy.collectionBehavior
+        hidesOnDeactivate = HelmPanelDeactivationPolicy.settingsHidesOnDeactivate
+        becomesKeyOnlyIfNeeded = false
+        isReleasedWhenClosed = false
+        animationBehavior = .utilityWindow
+        autorecalculatesKeyViewLoop = true
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 }
 
 // MARK: - VisualEffect
