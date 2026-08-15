@@ -728,7 +728,11 @@ struct RedesignUpdatesSectionView: View {
                         )
                     }
                     .buttonStyle(HelmPrimaryButtonStyle())
-                    .disabled(runnableCount == 0 || core.scopedUpgradePlanRunInProgress)
+                    .disabled(
+                        runnableCount == 0
+                            || core.scopedUpgradePlanRunInProgress
+                            || !core.networkOperationsAvailable
+                    )
 
                     Spacer()
                 }
@@ -821,7 +825,10 @@ struct RedesignUpgradeSheetView: View {
                     presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled((includeOsUpdates ? withOsCount : noOsCount) == 0)
+                .disabled(
+                    (includeOsUpdates ? withOsCount : noOsCount) == 0
+                        || !core.networkOperationsAvailable
+                )
             }
         }
         .padding(20)

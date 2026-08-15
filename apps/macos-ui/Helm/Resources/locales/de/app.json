@@ -255,6 +255,8 @@
   "app.wayfinder.course.refreshing.explanation": "Aktuelle Ergebnisse bleiben sichtbar, während Helm erneut prüft.",
   "app.wayfinder.course.unavailable.title": "Helm stellt die Verbindung wieder her",
   "app.wayfinder.course.unavailable.explanation": "Der letzte bekannte Stand wird angezeigt, bis der Dienst wieder verbunden ist.",
+  "app.wayfinder.course.offline.title": "Du bist offline",
+  "app.wayfinder.course.offline.explanation": "Gespeicherte Informationen bleiben verfügbar. Netzwerkaktionen werden fortgesetzt, sobald die Verbindung wiederhergestellt ist.",
   "app.wayfinder.course.healthy.title": "Du bist auf Kurs",
   "app.wayfinder.course.healthy.explanation": "Im abgedeckten Bereich ist keine Aktion erforderlich.",
   "app.wayfinder.action.review_activity": "Aktivität prüfen",

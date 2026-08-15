@@ -108,6 +108,25 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(unavailable.content.primaryActionTitle.key, "app.inspector.view_diagnostics")
     }
 
+    func testOfflineIsDistinctFromServiceUnavailableAndPrecedesCachedUpdates() {
+        let offline = project(
+            WayfinderProjectionInput(networkAvailable: false, updateCount: 3)
+        )
+        let unavailable = project(
+            WayfinderProjectionInput(serviceAvailable: false)
+        )
+
+        XCTAssertEqual(offline.content.mode, .cachedPartialOffline)
+        XCTAssertEqual(offline.content.condition, .offline)
+        XCTAssertEqual(offline.content.primaryAction.destination, .dashboard)
+        XCTAssertEqual(offline.content.primaryAction.focus, .serviceHealth)
+        XCTAssertEqual(
+            offline.content.title.key,
+            "app.wayfinder.course.offline.title"
+        )
+        XCTAssertEqual(unavailable.content.condition, .serviceUnavailable)
+    }
+
     func testHealthyProjectionRoutesToDashboard() {
         let projection = project(.healthy)
 

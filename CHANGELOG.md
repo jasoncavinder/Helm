@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Added
+- Helm now monitors the macOS network path and projects a localized offline Wayfinder state that is distinct from a service connection failure.
+
+### Changed
+- Offline refreshes continue local installed-package inventory while deferring remote outdated checks, catalog synchronization, package search, installs, upgrades, manager downloads, and Helm update checks until connectivity returns.
+- Network-dependent actions are disabled while offline, cached Library and Plan information remains visible, and reconnecting coalesces deferred work into one refresh.
+
+### Fixed
+- Starting a refresh while already offline no longer creates one failed task per network-backed manager or retries failures that became non-actionable after connectivity was lost.
+
 ## [0.19.0-rc.6] - 2026-08-14
 
 ### Changed

@@ -69,7 +69,7 @@ final class HelmOverviewState: ObservableObject {
             return .running
         case .failedOrInterrupted:
             return .error
-        case .approvalRequired, .actionableFinding, .serviceUnavailable:
+        case .approvalRequired, .actionableFinding, .offline, .serviceUnavailable:
             return .attention
         }
     }

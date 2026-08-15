@@ -57,6 +57,11 @@ char *helm_list_task_timeout_prompts(void);
  */
 bool helm_respond_task_timeout_prompt(int64_t task_id, bool wait_for_completion);
 
+/**
+ * Update the network path state used to defer network-dependent work.
+ */
+bool helm_set_network_available(bool available);
+
 bool helm_trigger_refresh(void);
 
 bool helm_trigger_detection(void);

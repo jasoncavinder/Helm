@@ -255,6 +255,8 @@
   "app.wayfinder.course.refreshing.explanation": "Los resultados actuales seguirán visibles mientras Helm vuelve a comprobarlos.",
   "app.wayfinder.course.unavailable.title": "Helm se está reconectando",
   "app.wayfinder.course.unavailable.explanation": "Se muestra el último estado conocido hasta que el servicio vuelva a conectarse.",
+  "app.wayfinder.course.offline.title": "Estás sin conexión",
+  "app.wayfinder.course.offline.explanation": "La información en caché sigue disponible. Las acciones de red se reanudarán cuando vuelva la conexión.",
   "app.wayfinder.course.healthy.title": "Vas por buen rumbo",
   "app.wayfinder.course.healthy.explanation": "No se necesita ninguna acción en el entorno cubierto.",
   "app.wayfinder.action.review_activity": "Revisar actividad",

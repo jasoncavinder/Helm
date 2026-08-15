@@ -30,6 +30,7 @@
 //! | `helm_get_task_output` | Task management |
 //! | `helm_list_task_logs` | Task management |
 //! | `helm_trigger_refresh` | Task management |
+//! | `helm_set_network_available` | Runtime state |
 //! | `helm_trigger_detection` | Task management |
 //! | `helm_trigger_detection_for_manager` | Task management |
 //! | `helm_cancel_task` | Task management |
@@ -330,6 +331,7 @@ fn core_error_service_key(error: &helm_core::models::CoreError) -> &'static str 
         helm_core::models::CoreErrorKind::Internal => SERVICE_ERROR_INTERNAL,
         helm_core::models::CoreErrorKind::NotInstalled
         | helm_core::models::CoreErrorKind::ParseFailure
+        | helm_core::models::CoreErrorKind::NetworkUnavailable
         | helm_core::models::CoreErrorKind::Timeout
         | helm_core::models::CoreErrorKind::Cancelled
         | helm_core::models::CoreErrorKind::ProcessFailure => SERVICE_ERROR_PROCESS_FAILURE,
@@ -3040,6 +3042,9 @@ fn schedule_catalog_sync_for_managers(
     managers: impl IntoIterator<Item = ManagerId>,
     force_managers: &std::collections::HashSet<ManagerId>,
 ) -> usize {
+    if !runtime.network_work_allowed() {
+        return 0;
+    }
     let now_unix = now_unix_seconds_i64();
     managers
         .into_iter()
@@ -6261,6 +6266,18 @@ fn task_log_level_str(level: TaskLogLevel) -> &'static str {
         TaskLogLevel::Warn => "warn",
         TaskLogLevel::Error => "error",
     }
+}
+
+/// Update the network path state used to defer network-dependent work.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_set_network_available(available: bool) -> bool {
+    clear_last_error_key();
+    let guard = lock_or_recover(&STATE, "state");
+    let Some(state) = guard.as_ref() else {
+        return return_error_bool(SERVICE_ERROR_INTERNAL);
+    };
+    state.runtime.set_network_available(available);
+    true
 }
 
 #[unsafe(no_mangle)]

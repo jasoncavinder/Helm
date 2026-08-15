@@ -1887,6 +1887,8 @@ private extension InspectorManagerDetailView {
             if let repairOptions = issue.repairOptions, !repairOptions.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(repairOptions, id: \.optionId) { option in
+                        let networkActionAvailable = option.optionId != "reinstall_manager_via_homebrew"
+                            || core.networkOperationsAvailable
                         Button {
                             if option.requiresConfirmation {
                                 confirmAction = .repair(issue: issue, option: option)
@@ -1908,8 +1910,8 @@ private extension InspectorManagerDetailView {
                             }
                         }
                         .buttonStyle(HelmSecondaryButtonStyle())
-                        .disabled(managerIsUninstalling)
-                        .helmPointer(enabled: !managerIsUninstalling)
+                        .disabled(managerIsUninstalling || !networkActionAvailable)
+                        .helmPointer(enabled: !managerIsUninstalling && networkActionAvailable)
                     }
                     Spacer(minLength: 0)
                 }
@@ -2775,7 +2777,9 @@ private struct InspectorManagerDetailView: View {
                                             managerActionButton(
                                                 symbol: "arrow.up.circle",
                                                 tooltip: L10n.Common.update.localized,
-                                                enabled: !managerIsUninstalling && !anyInstanceSwitchInFlight
+                                                enabled: !managerIsUninstalling
+                                                    && !anyInstanceSwitchInFlight
+                                                    && core.networkOperationsAvailable
                                             ) {
                                                 performWithManagedInstance(instance, followUp: .update)
                                             }
@@ -2992,6 +2996,7 @@ private struct InspectorManagerDetailView: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(
                         installSubmissionInFlight
+                            || !core.networkOperationsAvailable
                             || pendingInstallMethodRawValue?.isEmpty != false
                             || !selectedPendingInstallMethodIsAllowed
                             || !rustupInstallSourceSelectionValid
@@ -3176,8 +3181,16 @@ extension InspectorManagerDetailView {
                     repairMetadataOnlyInstallIssue()
                 }
                 .buttonStyle(HelmSecondaryButtonStyle())
-                .disabled(managerIsUninstalling || !metadataOnlyIssueCanRepairInstall)
-                .helmPointer(enabled: !managerIsUninstalling && metadataOnlyIssueCanRepairInstall)
+                .disabled(
+                    managerIsUninstalling
+                        || !metadataOnlyIssueCanRepairInstall
+                        || !core.networkOperationsAvailable
+                )
+                .helmPointer(
+                    enabled: !managerIsUninstalling
+                        && metadataOnlyIssueCanRepairInstall
+                        && core.networkOperationsAvailable
+                )
 
                 Button(
                     L10n.App.Inspector.PackageStateIssue.MetadataOnly.removeStaleAction.localized
@@ -3627,6 +3640,7 @@ extension InspectorManagerDetailView {
     private func consumePendingInstallSheetRequestIfNeeded() {
         guard context.managerInstallSheetRequestManagerId == manager.id else { return }
         context.managerInstallSheetRequestManagerId = nil
+        guard core.networkOperationsAvailable else { return }
         guard managerCanInstall && !detected else { return }
         guard !managerIsUninstalling else { return }
         guard !installSubmissionInFlight else { return }
@@ -3685,6 +3699,7 @@ extension InspectorManagerDetailView {
     }
 
     private func prepareInstallMethodSelection() {
+        guard core.networkOperationsAvailable else { return }
         let supportedOptions = sortedHelmSupportedInstallMethodOptions
         guard !supportedOptions.isEmpty else {
             core.installManager(manager.id)

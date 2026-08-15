@@ -75,6 +75,7 @@ enum WayfinderCondition: Equatable {
     case activeWork(count: Int)
     case actionableFinding(count: Int)
     case updatesReady(count: Int)
+    case offline
     case refreshing
     case serviceUnavailable
     case healthy
@@ -87,7 +88,7 @@ enum WayfinderCondition: Equatable {
             return .running
         case .failedOrInterrupted:
             return .error
-        case .approvalRequired, .actionableFinding, .serviceUnavailable:
+        case .approvalRequired, .actionableFinding, .offline, .serviceUnavailable:
             return .attention
         case .healthy:
             return .healthy
@@ -177,6 +178,7 @@ struct WayfinderPresentationProjection: Equatable {
 
 struct WayfinderProjectionInput: Equatable {
     var serviceAvailable = true
+    var networkAvailable = true
     var approvalTaskIDs: [String] = []
     var failedTaskIDs: [String] = []
     var interruptedTaskIDs: [String] = []
@@ -251,6 +253,16 @@ enum WayfinderProjectionProjector {
                 destination: .environment,
                 entityID: input.actionableFindingIDs.first
             )
+        } else if !input.networkAvailable {
+            base = ProjectionBase(
+                mode: .cachedPartialOffline,
+                condition: .offline,
+                titleKey: "app.wayfinder.course.offline.title",
+                explanationKey: "app.wayfinder.course.offline.explanation",
+                actionTitleKey: "app.wayfinder.action.open_dashboard",
+                destination: .dashboard,
+                entityID: nil
+            )
         } else if input.updateCount > 0 {
             base = ProjectionBase(
                 mode: .updatesReady,
@@ -303,7 +315,7 @@ enum WayfinderProjectionProjector {
             primaryAction: WayfinderDeepLink(
                 destination: base.destination,
                 entityID: base.entityID,
-                focus: base.condition == .serviceUnavailable
+                focus: base.condition == .serviceUnavailable || base.condition == .offline
                     ? .serviceHealth
                     : (base.entityID == nil ? .primaryContent : .selectedEntity)
             ),
