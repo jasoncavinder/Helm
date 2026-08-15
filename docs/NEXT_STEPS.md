@@ -11,13 +11,13 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.7 version preparation and v0.19.0 stabilization
+v0.19.0-rc.7 source-candidate integration and v0.19.0 stabilization
 ```
 
 Focus:
 - preserve the accepted RC7 candidate evidence in `docs/validation/v0.19.0-rc.7-readiness.md`: offline launch and manual refresh avoid failed-task fan-out, cached Library/Plan data and local actions remain usable, network work defers truthfully, reconnection resumes exactly one refresh plus one deferred Helm information check, and the full repository quality gate passed from merged `dev` revision `16127dfff2050a2ba2d8b0b3502e110ab4460080`
 - preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.6`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
-- prepare `v0.19.0-rc.7` in a separately reviewed version PR, integrate through protected `dev` and `main`, then repeat the mandatory clean-`main` rehearsal, preflight, canary, and publication-authorization gates; candidate readiness is not tag or publication approval
+- preserve the prepared `v0.19.0-rc.7` source candidate in its separately reviewed version PR, integrate through protected `dev` and `main`, then repeat the mandatory clean-`main` rehearsal, preflight, canary, and publication-authorization gates; source preparation is not tag or publication approval
 - preserve the completed post-RC5 RC6 candidate evidence in `docs/validation/v0.19.0-rc.6-readiness.md`: the full repository and updater-specific gates passed from merged `dev`, the corrected Settings window behavior passed owner QA, and a real Arc candidate confirmed the truthful vendor-owned `Open App to Update` flow through completion and refresh
 - preserve the completed `v0.19.0-rc.6` publication record and collect the four explicitly open installed-candidate checks: RC5-to-RC6 Sparkle replacement, accepted Settings behavior, vendor-owned third-party Sparkle completion/refresh, and preference persistence
 - retain the post-publication native-helper registration/approval/persistence/unregister checks without overstating uncollected evidence; these remain evidence for the later executor-activation sequence rather than publication evidence
@@ -26,7 +26,7 @@ Focus:
 - preserve the completed `v0.19.0-rc.5` publication record: tag source `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`, signed/notarized GUI and direct CLI workflows `31690897042` and `31690897034`, publication PRs `#441` and `#442`, and green release/appcast/CLI verification on converged `main`; keep installed-helper and Sparkle replacement evidence explicitly post-publication
 - preserve the completed installed `v0.19.0-rc.2` to signed/notarized `v0.19.0-rc.3` Sparkle update validation: Sparkle checked at the installed bundle replacement time, installed and relaunched RC3, migrated the ambiguous legacy English sentinel to the versioned `system` preference, and followed the current `en-US` macOS application language; retain one owner relaunch check for a newly selected explicit language before declaring language-persistence closeout complete
 - preserve the completed owner validation of the installed `v0.19.0-rc.1` to signed/notarized `v0.19.0-rc.2` Sparkle update path; Sparkle detected, installed, and relaunched RC2 successfully, with the language-default regression discovered only after relaunch
-- keep the Environment Brief development-gated in RC6 because Issue #388 remains unresolved, and disclose the limitation without implying that the production first-run route changed
+- keep the Environment Brief development-gated in the prepared RC7 source candidate and the published RC6 line because Issue #388 remains unresolved, and disclose the limitation without implying that the production first-run route changed
 - continue from the Original Wayfinder foundation checkpoints: shared revisioned Dashboard/popover/status projection, semantic Course Indicator modes, stable destination/deep-link bridge, Dashboard naming, restored/resizable native window hosting, native Dashboard/Plan/Library/Activity sidebar composition, persistent Environment access, rendered Course Indicator, native Dashboard toolbar/app commands, one shared native Settings scene with General, Updates, Sources, CLI, and Support panes that follows the active Space beside full-screen apps, remains visible after Helm deactivates without depending on Dashboard, preserves its single-toggle centered-title Wayfinder toolbar, and uses the Wayfinder gradient only in its sidebar while keeping the detail pane on a solid base surface; one shared status-item popover for primary and secondary clicks, Dashboard-owned Service Health, and removal of the legacy in-window Settings destination are implemented; destination content migration, contextual inspector behavior, and v0.22 multi-display validation continue
 - maintain release-process hardening guardrails while RC6 moves through installed-candidate validation and short soak
 - do not treat registered helper state as active native authorization; the existing `sudo -A` askpass path remains the runtime implementation until signed installed-build registration/approval QA and executor activation pass together
@@ -421,12 +421,14 @@ Current checkpoint:
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
 - latest stable release on `main`: `v0.18.2`
 - latest published prerelease on `main`: `v0.19.0-rc.6`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
+- prepared source candidate on `dev`: `v0.19.0-rc.7`; candidate readiness and workspace version preparation are complete, but protected integration, clean-`main` rehearsal/preflight/canary, tagging, and publication remain pending
 - `v0.19.0-rc.6` was published from tagged `main` revision `968d0e400acc1a02a7e0a9a3d1a55917325189e8`; publication PRs `#458` and `#459` merged the RC CLI metadata and beta appcast/release notes into `main`
 - `v0.19.0-rc.5` was published on 2026-08-13 from tagged `main` revision `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`; publication PRs `#441` and `#442` merged the RC CLI metadata and beta appcast/release notes into `main`
 - RC6 candidate readiness completed on 2026-08-14 from merged `dev` revision `d8a029a5e3bdc65c56d71056be2f192b3d7cbbc1`; the quality gate, updater checklist, corrected Settings full-screen behavior, and real Arc vendor-update handoff all passed
+- RC7 candidate readiness completed on 2026-08-15 from merged `dev` revision `16127dfff2050a2ba2d8b0b3502e110ab4460080`; focused connectivity QA, the full quality gate, 153 arm64 macOS tests, release/appcast contracts, and non-mutating release checks passed
 - owner installation validation confirms successive signed Developer ID updates from `0.19.0-rc.1` to RC2 and from RC2 to RC3 through Sparkle; broader participant feedback should not be inferred from these owner installation checks
 - post-publication release verification is green for the `v0.19.0-rc.6` GUI beta appcast, RC CLI metadata, GitHub prerelease state, and stable/RC coexistence contract
-- validation gates are green through the current RC line (`cargo test`, macOS `xcodebuild` tests, locale integrity/length audits, and release workflow smoke through `v0.19.0-rc.6`)
+- validation gates are green through the prepared RC7 source candidate (`cargo test`, 153 arm64 macOS `xcodebuild` tests, locale integrity/length audits, and release-contract checks), while published release workflow verification remains on `v0.19.0-rc.6`
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
