@@ -677,7 +677,7 @@ Exit Criteria:
 
 ## 0.19.x — Native Experience Foundation & First-Run Value (rc)
 
-Status: published `v0.19.0-rc.4` provides integrated updater-plan visibility, one live-localized status-item popover, completed Dashboard/Settings cleanup, and approved Wayfinder polish. The prepared `v0.19.0-rc.5` source candidate adds Dashboard-aware status-item routing, explicit third-party Sparkle Plan actions, npm short-query handling, actionable update notifications, selective Plan execution, XPC recovery hardening, and the inactive native-helper registration foundation. The Environment Brief remains debug-gated pending Issue #388, native privileged execution remains on askpass pending signed installed-candidate QA, and public stable/RC metadata remains isolated on `v0.18.2`/`v0.19.0-rc.4` until RC5 publication.
+Status: published `v0.19.0-rc.5` provides Dashboard-aware status-item routing, actionable update notifications, selective Plan execution, XPC recovery hardening, and the inactive native-helper registration foundation. The prepared `v0.19.0-rc.6` source candidate corrects Settings behavior in external full-screen Spaces, replaces the unsafe sandboxed third-party Sparkle installer handoff with truthful vendor-app routing, and updates CI actions for Node 24. The Environment Brief remains debug-gated pending Issue #388, native privileged execution remains on askpass pending signed installed-candidate QA, and public stable/RC metadata remains isolated on `v0.18.2`/`v0.19.0-rc.5` until RC6 publication.
 
 Goal:
 
