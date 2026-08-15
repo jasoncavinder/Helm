@@ -43,14 +43,14 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines (`v0.19.0-rc.4` published; RC5 stabilization in progress) |
 | 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, action hierarchy, and continuous plan-to-recovery presentation |
 | 0.21.x | Accessibility, System Integration & Resilience — keyboard and VoiceOver parity, system integration, offline/partial-state recovery, and first-run receipts |
-| 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, visual/state validation, moderated usability, and UI lock |
+| 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, theme-ready semantic styling, visual/state validation, moderated usability, and UI lock |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set |
 
 ## Post-1.0
 
 | Version | Milestone |
 |---|---|
-| 1.1.x | Globalization Expansion — additional locales (zh-Hans, ko, it, nl), website localization |
+| 1.1.x | Globalization & Theme Expansion — additional locales, website localization, and Settings-selectable built-in themes with Wayfinder fallback |
 | 1.2.x | Editions and Entitlement Foundations — channel-aware build matrix and entitlement boundaries for consumer and fleet products |
 | 1.3.x | Security Advisory System (Pro) — local-first CVE scanning, optional public advisory API queries, local TTL cache |
 | 1.4.x | Shared Brain — fingerprint sharing, known-fix lookup, Postgres system-of-record, provider-portable API layer (Cloudflare Workers optional), App Attest auth |

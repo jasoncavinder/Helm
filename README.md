@@ -195,10 +195,12 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines | Active (`v0.19.0-rc.4` published; RC5 stabilization in progress) |
 | 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, continuous plan-to-recovery presentation, and secure direct third-party Sparkle updating | Planned |
 | 0.21.x | Accessibility, System Integration & Resilience — keyboard and VoiceOver parity, system integration, offline/partial-state recovery, and first-run receipts | Planned |
-| 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, visual/state validation, moderated usability, and UI lock | Planned |
+| 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, theme-ready semantic styling, visual/state validation, moderated usability, and UI lock | Planned |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
+
+Post-1.0, the `1.1.x` Globalization & Theme Expansion milestone plans a Settings-selectable theme system with Wayfinder as the default, Corporate as the second named theme, and a third direction chosen after prototype and usability review.
 
 ## Security Rollout (Planned)
 

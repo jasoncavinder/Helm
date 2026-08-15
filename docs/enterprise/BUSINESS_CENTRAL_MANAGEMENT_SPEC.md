@@ -177,4 +177,4 @@ Business central management features are delivered across three post-1.0 milesto
 2. **1.5.x** (Business Policy and Drift Management): scoped policy evaluation + drift detection + compliance reporting
 3. **1.6.x** (Enterprise Rollout, Approvals, and Audit): rollout rings + approvals + audit export integrations
 
-Note: Milestones 1.1.x (Globalization Expansion), 1.3.x (Security Advisory System, Pro tier), and 1.4.x (Shared Brain infrastructure) are interleaved between these but are not part of the business central management scope.
+Note: Milestones 1.1.x (Globalization & Theme Expansion), 1.3.x (Security Advisory System, Pro tier), and 1.4.x (Shared Brain infrastructure) are interleaved between these but are not part of the business central management scope.
