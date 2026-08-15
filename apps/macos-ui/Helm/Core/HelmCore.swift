@@ -657,7 +657,7 @@ final class HelmCore: ObservableObject {
             switch DeferredOfflineRefreshPolicy.disposition(
                 networkIsAvailable: true,
                 refreshRequestedWhileOffline: refreshRequestedWhileOffline,
-                isRefreshing: isRefreshing
+                refreshIsInFlight: deferredOfflineRefreshIsInFlight
             ) {
             case .resumeNow:
                 resumeDeferredOfflineRefreshIfReady()
@@ -694,7 +694,7 @@ final class HelmCore: ObservableObject {
         guard DeferredOfflineRefreshPolicy.disposition(
             networkIsAvailable: networkAvailability == .available,
             refreshRequestedWhileOffline: refreshRequestedWhileOffline,
-            isRefreshing: isRefreshing
+            refreshIsInFlight: deferredOfflineRefreshIsInFlight
         ) == .resumeNow else {
             return
         }
@@ -702,6 +702,15 @@ final class HelmCore: ObservableObject {
         refreshRequestedWhileOffline = false
         logger.info("Connectivity restored; resuming one deferred refresh")
         triggerRefresh()
+    }
+
+    private var deferredOfflineRefreshIsInFlight: Bool {
+        DeferredOfflineRefreshPolicy.refreshIsInFlight(
+            presentationIsRefreshing: isRefreshing,
+            tasks: latestCoreTasksSnapshot.map {
+                DeferredOfflineRefreshTaskState(taskType: $0.taskType, status: $0.status)
+            }
+        )
     }
 
     private static func loadManagerPriorityOverrides() -> [String: Int] {

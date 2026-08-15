@@ -6,16 +6,33 @@ enum DeferredOfflineRefreshDisposition: Equatable {
     case resumeNow
 }
 
+struct DeferredOfflineRefreshTaskState: Equatable {
+    let taskType: String
+    let status: String
+}
+
 enum DeferredOfflineRefreshPolicy {
     static func disposition(
         networkIsAvailable: Bool,
         refreshRequestedWhileOffline: Bool,
-        isRefreshing: Bool
+        refreshIsInFlight: Bool
     ) -> DeferredOfflineRefreshDisposition {
         guard refreshRequestedWhileOffline, networkIsAvailable else {
             return .none
         }
-        return isRefreshing ? .waitForCurrentRefresh : .resumeNow
+        return refreshIsInFlight ? .waitForCurrentRefresh : .resumeNow
+    }
+
+    static func refreshIsInFlight(
+        presentationIsRefreshing: Bool,
+        tasks: [DeferredOfflineRefreshTaskState]
+    ) -> Bool {
+        presentationIsRefreshing || tasks.contains { task in
+            let taskType = task.taskType.lowercased()
+            let status = task.status.lowercased()
+            return (taskType == "refresh" || taskType == "detection")
+                && (status == "queued" || status == "running")
+        }
     }
 }
 

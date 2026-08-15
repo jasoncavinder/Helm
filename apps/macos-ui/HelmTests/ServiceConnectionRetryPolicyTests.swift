@@ -38,7 +38,7 @@ final class ServiceConnectionRetryPolicyTests: XCTestCase {
             DeferredOfflineRefreshPolicy.disposition(
                 networkIsAvailable: true,
                 refreshRequestedWhileOffline: true,
-                isRefreshing: true
+                refreshIsInFlight: true
             ),
             .waitForCurrentRefresh
         )
@@ -46,7 +46,7 @@ final class ServiceConnectionRetryPolicyTests: XCTestCase {
             DeferredOfflineRefreshPolicy.disposition(
                 networkIsAvailable: true,
                 refreshRequestedWhileOffline: true,
-                isRefreshing: false
+                refreshIsInFlight: false
             ),
             .resumeNow
         )
@@ -54,7 +54,7 @@ final class ServiceConnectionRetryPolicyTests: XCTestCase {
             DeferredOfflineRefreshPolicy.disposition(
                 networkIsAvailable: false,
                 refreshRequestedWhileOffline: true,
-                isRefreshing: false
+                refreshIsInFlight: false
             ),
             .none
         )
@@ -62,9 +62,34 @@ final class ServiceConnectionRetryPolicyTests: XCTestCase {
             DeferredOfflineRefreshPolicy.disposition(
                 networkIsAvailable: true,
                 refreshRequestedWhileOffline: false,
-                isRefreshing: false
+                refreshIsInFlight: false
             ),
             .none
+        )
+    }
+
+    func testDeferredOfflineRefreshUsesCoreTaskTruthAfterPresentationTimeout() {
+        let runningRefresh = DeferredOfflineRefreshTaskState(
+            taskType: "refresh",
+            status: "running"
+        )
+        let completedRefresh = DeferredOfflineRefreshTaskState(
+            taskType: "refresh",
+            status: "completed"
+        )
+
+        XCTAssertTrue(
+            DeferredOfflineRefreshPolicy.refreshIsInFlight(
+                presentationIsRefreshing: false,
+                tasks: [runningRefresh]
+            ),
+            "a service refresh must remain authoritative after the UI safety timeout"
+        )
+        XCTAssertFalse(
+            DeferredOfflineRefreshPolicy.refreshIsInFlight(
+                presentationIsRefreshing: false,
+                tasks: [completedRefresh]
+            )
         )
     }
 }
