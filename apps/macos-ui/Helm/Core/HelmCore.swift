@@ -1491,6 +1491,18 @@ final class HelmCore: ObservableObject {
         let wayfinderRelatedRouteStages = WayfinderPopoverRouteStage.allCases.filter(
             affectedRouteStages.contains
         )
+        let wayfinderRelatedManagerIDsByStage = wayfinderRelatedManagerIDs.reduce(
+            into: [WayfinderPopoverRouteStage: String]()
+        ) { result, managerID in
+            guard let manager = ManagerInfo.find(byId: managerID),
+                  let stage = WayfinderPopoverRouteStage.stage(
+                      forManagerCategory: manager.category
+                  ),
+                  result[stage] == nil else {
+                return
+            }
+            result[stage] = managerID
+        }
         let wayfinderFindingContext = actionableFindingManagerIds.first.flatMap {
             makeWayfinderPopoverFindingContext(for: $0)
         }
@@ -1525,6 +1537,7 @@ final class HelmCore: ObservableObject {
             visibleManagers: visibleManagers,
             wayfinderPopoverState: WayfinderPopoverDerivedState(
                 relatedRouteStages: wayfinderRelatedRouteStages,
+                relatedManagerIDsByStage: wayfinderRelatedManagerIDsByStage,
                 detectedManagerCount: detectedManagerCount,
                 findingContext: wayfinderFindingContext
             ),

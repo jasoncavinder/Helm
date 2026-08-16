@@ -182,6 +182,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var managerInstallSheetRequestToken: Int = 0
     @Published private var firstRunSession = EnvironmentBriefFirstRunSession()
     @Published private(set) var dashboardFocusRequestToken: Int = 0
+    @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
 
     func presentUpgradeSheet(in host: UpgradeSheetHost) {
@@ -211,6 +212,7 @@ final class ControlCenterContext: ObservableObject {
     }
 
     func navigate(to deepLink: WayfinderDeepLink) {
+        wayfinderNavigationState.record(deepLink)
         clearInspectorSelection()
 
         selectedSection = deepLink.destination.legacyControlCenterSection

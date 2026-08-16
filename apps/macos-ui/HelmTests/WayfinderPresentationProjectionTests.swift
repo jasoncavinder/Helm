@@ -159,6 +159,20 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(WayfinderCondition.healthy.sidebarFooterStatus, .healthy)
     }
 
+    func testNavigationStatePreservesCompleteDeepLink() {
+        let deepLink = WayfinderDeepLink(
+            destination: .environment,
+            entityID: "pnpm",
+            focus: .selectedEntity,
+            originatingCondition: .actionableFinding
+        )
+        var navigationState = WayfinderNavigationState()
+
+        navigationState.record(deepLink)
+
+        XCTAssertEqual(navigationState.deepLink, deepLink)
+    }
+
     func testOfflineAndUnavailableUseNeutralFooterStatus() {
         XCTAssertEqual(WayfinderCondition.offline.footerStatus, .unavailable)
         XCTAssertEqual(WayfinderCondition.serviceUnavailable.footerStatus, .unavailable)
@@ -228,7 +242,7 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         let findingContext = WayfinderPopoverFindingContext(
             title: WayfinderLocalizedText(
                 key: "app.popover.wayfinder.context.manager_needs_decision",
-                arguments: ["manager": "mise"]
+                arguments: ["manager": "pnpm"]
             ),
             detail: WayfinderLocalizedText(
                 key: "app.inspector.multi_instance.attention_title"
@@ -236,17 +250,22 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         )
         let presentation = popover(
             projection: project(
-                WayfinderProjectionInput(actionableFindingIDs: ["mise"])
+                WayfinderProjectionInput(actionableFindingIDs: ["pnpm"])
             ).content,
-            relatedRouteStages: [.tools],
+            relatedRouteStages: [.packages],
+            relatedManagerIDsByStage: [.packages: "pnpm"],
             findingContext: findingContext
         )
 
         XCTAssertEqual(presentation.contextTitle, findingContext.title)
         XCTAssertEqual(presentation.contextDetail, findingContext.detail)
         XCTAssertEqual(
-            presentation.routeItems.first(where: { $0.stage == .tools })?.tone,
+            presentation.routeItems.first(where: { $0.stage == .packages })?.tone,
             .review
+        )
+        XCTAssertEqual(
+            presentation.routeItems.first(where: { $0.stage == .packages })?.managerID,
+            "pnpm"
         )
     }
 
@@ -320,6 +339,7 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
     private func popover(
         projection: WayfinderProjectionContent,
         relatedRouteStages: [WayfinderPopoverRouteStage] = [],
+        relatedManagerIDsByStage: [WayfinderPopoverRouteStage: String] = [:],
         detectedManagerCount: Int = 0,
         findingContext: WayfinderPopoverFindingContext? = nil
     ) -> WayfinderPopoverPresentation {
@@ -327,6 +347,7 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
             for: WayfinderPopoverPresentationInput(
                 projection: projection,
                 relatedRouteStages: relatedRouteStages,
+                relatedManagerIDsByStage: relatedManagerIDsByStage,
                 detectedManagerCount: detectedManagerCount,
                 findingContext: findingContext
             )

@@ -20,6 +20,7 @@ struct WayfinderPopoverView: View {
             for: WayfinderPopoverPresentationInput(
                 projection: overviewState.wayfinderProjection.content,
                 relatedRouteStages: overviewState.wayfinderRelatedRouteStages,
+                relatedManagerIDsByStage: overviewState.wayfinderRelatedManagerIDsByStage,
                 detectedManagerCount: overviewState.detectedManagerCount,
                 findingContext: overviewState.wayfinderFindingContext
             )
@@ -240,14 +241,11 @@ struct WayfinderPopoverView: View {
 
     private func routeStage(_ item: WayfinderPopoverRouteItem) -> some View {
         Button {
-            let managerID = overviewState.visibleManagers.first {
-                WayfinderPopoverRouteStage.stage(forManagerCategory: $0.category) == item.stage
-            }?.id
             navigate(
                 to: WayfinderDeepLink(
                     destination: .environment,
-                    entityID: managerID,
-                    focus: managerID == nil ? .primaryContent : .selectedEntity,
+                    entityID: item.managerID,
+                    focus: item.managerID == nil ? .primaryContent : .selectedEntity,
                     originatingCondition: presentation.projection.condition.kind
                 )
             )

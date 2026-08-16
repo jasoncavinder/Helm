@@ -2,6 +2,7 @@ import Combine
 
 struct WayfinderPopoverDerivedState: Equatable {
     let relatedRouteStages: [WayfinderPopoverRouteStage]
+    let relatedManagerIDsByStage: [WayfinderPopoverRouteStage: String]
     let detectedManagerCount: Int
     let findingContext: WayfinderPopoverFindingContext?
 }
@@ -18,6 +19,9 @@ final class HelmOverviewState: ObservableObject {
     @Published private(set) var isRefreshing: Bool = false
     @Published private(set) var visibleManagers: [ManagerInfo] = []
     @Published private(set) var wayfinderRelatedRouteStages: [WayfinderPopoverRouteStage] = []
+    @Published private(set) var wayfinderRelatedManagerIDsByStage: [
+        WayfinderPopoverRouteStage: String
+    ] = [:]
     @Published private(set) var detectedManagerCount: Int = 0
     @Published private(set) var wayfinderFindingContext: WayfinderPopoverFindingContext?
     @Published private(set) var outdatedCountByManager: [String: Int] = [:]
@@ -59,6 +63,7 @@ final class HelmOverviewState: ObservableObject {
         self.isRefreshing = isRefreshing
         self.visibleManagers = visibleManagers
         self.wayfinderRelatedRouteStages = wayfinderPopoverState.relatedRouteStages
+        self.wayfinderRelatedManagerIDsByStage = wayfinderPopoverState.relatedManagerIDsByStage
         self.detectedManagerCount = wayfinderPopoverState.detectedManagerCount
         self.wayfinderFindingContext = wayfinderPopoverState.findingContext
         self.outdatedCountByManager = outdatedCountByManager

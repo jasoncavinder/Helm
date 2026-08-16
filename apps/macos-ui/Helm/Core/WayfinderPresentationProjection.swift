@@ -52,6 +52,14 @@ struct WayfinderDeepLink: Codable, Equatable {
     }
 }
 
+struct WayfinderNavigationState: Equatable {
+    private(set) var deepLink: WayfinderDeepLink?
+
+    mutating func record(_ deepLink: WayfinderDeepLink) {
+        self.deepLink = deepLink
+    }
+}
+
 enum WayfinderCourseMode: String, Codable, Equatable {
     case healthy
     case updatesReady
@@ -294,6 +302,17 @@ enum WayfinderPopoverRouteTone: Equatable {
 struct WayfinderPopoverRouteItem: Equatable {
     let stage: WayfinderPopoverRouteStage
     let tone: WayfinderPopoverRouteTone
+    let managerID: String?
+
+    init(
+        stage: WayfinderPopoverRouteStage,
+        tone: WayfinderPopoverRouteTone,
+        managerID: String? = nil
+    ) {
+        self.stage = stage
+        self.tone = tone
+        self.managerID = managerID
+    }
 }
 
 struct WayfinderPopoverFindingContext: Equatable {
@@ -315,6 +334,7 @@ struct WayfinderPopoverPresentation: Equatable {
 struct WayfinderPopoverPresentationInput: Equatable {
     let projection: WayfinderProjectionContent
     var relatedRouteStages: [WayfinderPopoverRouteStage] = []
+    var relatedManagerIDsByStage: [WayfinderPopoverRouteStage: String] = [:]
     var detectedManagerCount = 0
     var findingContext: WayfinderPopoverFindingContext?
 }
@@ -332,7 +352,8 @@ enum WayfinderPopoverPresentationProjector {
                     for: stage,
                     condition: condition,
                     affectedStages: affectedStages
-                )
+                ),
+                managerID: input.relatedManagerIDsByStage[stage]
             )
         }
 
