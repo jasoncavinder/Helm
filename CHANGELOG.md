@@ -50,8 +50,8 @@ This stable release consolidates the seven `0.19.0` release candidates. The Envi
 ### Fixed
 - Starting a refresh while already offline no longer creates one failed task per network-backed manager or retries failures that became non-actionable after connectivity was lost.
 
-This source candidate preserves stable `v0.18.2` and the published
-`v0.19.0-rc.6` prerelease until RC7 publication completes. The Environment
+RC7 is published on the opt-in prerelease channel while stable `v0.18.2`
+remains the default GitHub/latest, appcast, and CLI line. The Environment
 Brief remains development-gated behind Issue #388, native privileged execution
 remains on the existing askpass path, and the documented multi-theme system
 remains future work rather than RC7 behavior.
