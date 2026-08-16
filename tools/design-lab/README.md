@@ -11,6 +11,14 @@ swift run --package-path tools/design-lab HelmDesignLab \
 
 The renderer uses native SwiftUI and SF Symbols on the repository's macOS 13 minimum. Generated PNGs are committed with the proposal so GitHub review does not require a local build.
 
+To render only a comma-separated proposal subset, pass the artifacts' filename stems:
+
+```sh
+swift run --package-path tools/design-lab HelmDesignLab \
+  --output docs/app-design/proposals/v020-wayfinder-popover/renders \
+  --only v020-wayfinder-popover-healthy,v020-wayfinder-popover-updates-ready
+```
+
 ## Review lifecycle
 
 1. A proposal PR defines the experience question and the common jobs it must support.

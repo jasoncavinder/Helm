@@ -243,6 +243,8 @@ Rollback/incremental strategy:
 
 ### Slice 20.1: Dashboard state and popover triage
 
+Owner-review artifact: `docs/app-design/proposals/v020-wayfinder-popover/README.md`. The rendered state suite is non-shipping design input and does not authorize production replacement until its review gate is explicitly resolved.
+
 Affected files/components:
 
 - `DashboardView.swift`, `PopoverHelpers.swift`, `PopoverOverlayViews.swift`
