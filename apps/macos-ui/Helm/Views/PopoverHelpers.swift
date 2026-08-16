@@ -40,10 +40,9 @@ struct PopoverOverlayCard<Content: View>: View {
     }
 }
 
-struct PopoverAttentionBanner: View {
+struct PopoverStatusBanner: View {
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @EnvironmentObject private var context: ControlCenterContext
-    @Environment(\.colorScheme) private var colorScheme
     let onOpenControlCenter: () -> Void
 
     private var projection: WayfinderProjectionContent {
@@ -51,36 +50,40 @@ struct PopoverAttentionBanner: View {
     }
 
     private var bannerSymbol: String {
-        switch projection.mode {
+        switch projection.condition {
         case .healthy:
             return "checkmark.circle.fill"
         case .updatesReady:
             return "arrow.up.circle.fill"
-        case .determinateWork, .indeterminateWork:
+        case .activeWork, .refreshing:
             return "arrow.triangle.2.circlepath"
-        case .approval:
+        case .approvalRequired:
             return "hand.raised.circle.fill"
-        case .failedInterrupted:
+        case .failedOrInterrupted:
             return "exclamationmark.octagon.fill"
-        case .cachedPartialOffline:
+        case .actionableFinding:
+            return "exclamationmark.triangle.fill"
+        case .offline:
+            return "wifi.slash"
+        case .serviceUnavailable:
             return "bolt.horizontal.circle.fill"
         }
     }
 
     private var bannerTint: Color {
-        switch projection.mode {
-        case .failedInterrupted:
-            return colorScheme == .dark
-                ? Color(red: 1.0, green: 120.0 / 255.0, blue: 120.0 / 255.0)
-                : Color(red: 224.0 / 255.0, green: 58.0 / 255.0, blue: 58.0 / 255.0)
-        case .determinateWork, .indeterminateWork:
-            return HelmTheme.blue500
+        switch projection.condition {
         case .healthy:
             return HelmTheme.stateHealthy
-        case .updatesReady, .approval, .cachedPartialOffline:
-            return colorScheme == .dark
-                ? Color(red: 244.0 / 255.0, green: 203.0 / 255.0, blue: 92.0 / 255.0)
-                : Color(red: 204.0 / 255.0, green: 152.0 / 255.0, blue: 36.0 / 255.0)
+        case .updatesReady:
+            return HelmTheme.stateUpdatesReady
+        case .activeWork, .refreshing:
+            return HelmTheme.stateRunning
+        case .approvalRequired, .actionableFinding:
+            return HelmTheme.stateNeedsReview
+        case .failedOrInterrupted:
+            return HelmTheme.stateError
+        case .offline, .serviceUnavailable:
+            return HelmTheme.stateUnavailable
         }
     }
 

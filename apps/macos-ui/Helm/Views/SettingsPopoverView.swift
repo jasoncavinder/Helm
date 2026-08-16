@@ -759,7 +759,7 @@ private struct ServiceHealthStatusRow: View {
                 .foregroundColor(HelmTheme.textSecondary)
             Spacer(minLength: 8)
             Text(value)
-                .foregroundColor(emphasize ? .orange : HelmTheme.textPrimary)
+                .foregroundColor(emphasize ? HelmTheme.stateNeedsReview : HelmTheme.textPrimary)
                 .font(multiline ? .caption : .subheadline.monospacedDigit())
                 .multilineTextAlignment(.trailing)
                 .lineLimit(multiline ? 3 : 1)

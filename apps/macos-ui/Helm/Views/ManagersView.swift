@@ -331,15 +331,29 @@ private struct ManagerSectionRow: View {
         return manager.canInstall
     }
 
-    private var metadataMismatchIssueSummary: String? {
-        guard let issue = status?.packageStateIssues?.first(where: { issue in
-            issue.issueCode == "metadata_only_install"
-        }) else {
-            return nil
+    private var reviewFindingSummary: String? {
+        if status?.multiInstanceState == "attention_needed" {
+            return L10n.App.Inspector.MultiInstance.attentionTitle.localized
         }
-        return L10n.App.Managers.State.metadataMismatch.localized(with: [
-            "package": issue.packageName
-        ])
+        if status?.packageStateIssues?.contains(where: { issue in
+            issue.issueCode == "post_install_setup_required"
+        }) == true {
+            return "app.inspector.package_state_issue.setup_required.title".localized
+        }
+        if let issue = status?.packageStateIssues?.first(where: { issue in
+            issue.issueCode == "metadata_only_install"
+        }) {
+            return L10n.App.Managers.State.metadataMismatch.localized(with: [
+                "package": issue.packageName
+            ])
+        }
+        if let issue = status?.packageStateIssues?.first {
+            if issue.issueCode == "homebrew_cellar_lock_conflict" {
+                return "app.inspector.package_state_issue.homebrew_lock.title".localized
+            }
+            return issue.summary ?? L10n.App.Health.needsReview.localized
+        }
+        return ineligibleReason
     }
 
     var body: some View {
@@ -366,12 +380,17 @@ private struct ManagerSectionRow: View {
                             .foregroundColor(.secondary)
                         Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                             .font(.caption)
-                            .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
+                            .foregroundColor(
+                                outdatedCount == 0
+                                    ? HelmTheme.textSecondary
+                                    : HelmTheme.stateUpdatesReady
+                            )
                     }
-                    if let metadataMismatchIssueSummary {
-                        Text(metadataMismatchIssueSummary)
+                    if let reviewFindingSummary {
+                        Label(reviewFindingSummary, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption2)
-                            .foregroundColor(HelmTheme.stateAttention)
+                            .foregroundColor(HelmTheme.stateNeedsReview)
+                            .lineLimit(2)
                     }
                 }
 
@@ -454,10 +473,23 @@ private struct ManagerSectionRow: View {
         .helmCardSurface(cornerRadius: 12)
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? HelmTheme.selectionFill : Color.clear)
+                .fill(
+                    isSelected
+                        ? HelmTheme.selectionFill
+                        : (health == .needsReview ? HelmTheme.stateNeedsReview.opacity(0.045) : Color.clear)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(isSelected ? HelmTheme.selectionStroke : Color.clear, lineWidth: 0.9)
+                        .strokeBorder(
+                            isSelected
+                                ? HelmTheme.selectionStroke
+                                : (
+                                    health == .needsReview
+                                        ? HelmTheme.stateNeedsReview.opacity(0.48)
+                                        : Color.clear
+                                ),
+                            lineWidth: 0.9
+                        )
                 )
                 .allowsHitTesting(false)
         )
@@ -471,9 +503,10 @@ private struct ManagerSectionRow: View {
         .accessibilityLabel(localizedManagerDisplayName(manager.id))
         .accessibilityValue([
             health.key.localized,
+            reviewFindingSummary,
             detected ? (enabled ? L10n.App.Managers.State.enabled.localized : L10n.App.Managers.State.disabled.localized) : L10n.App.Managers.State.notInstalled.localized,
             L10n.App.Managers.Label.packageCount.localized(with: ["count": packageCount])
-        ].joined(separator: ", "))
+        ].compactMap { $0 }.joined(separator: ", "))
     }
 
     private func managerCardActionButton(

@@ -26,12 +26,15 @@ enum HelmTheme {
     static let actionSecondaryText = Color.helmDynamic(light: 0x2A5DA8, dark: 0x6CA6E8)
     static let actionSecondaryBorder = Color.helmDynamic(light: 0x3C7DD9, dark: 0x6CA6E8)
 
-    static let stateHealthy = Color.helmDynamic(light: 0x2F855A, dark: 0x4FB382)
-    static let stateAttention = Color.helmDynamic(light: 0x8C691F, dark: 0xC89C3D)
-    static let stateError = Color.helmDynamic(light: 0xD64545, dark: 0xF06A6A)
-    static let stateRunning = blue500
     static let seaGlass = Color.helmDynamic(light: 0x149E99, dark: 0x4FC7C0)
     static let horizon = Color.helmDynamic(light: 0x31A9D1, dark: 0x68C7E8)
+
+    static let stateHealthy = Color.helmDynamic(light: 0x2F855A, dark: 0x4FB382)
+    static let stateUpdatesReady = seaGlass
+    static let stateNeedsReview = Color.helmDynamic(light: 0xA65300, dark: 0xF0A04B)
+    static let stateError = Color.helmDynamic(light: 0xD64545, dark: 0xF06A6A)
+    static let stateRunning = blue500
+    static let stateUnavailable = textSecondary
 
     static let selectionFill = Color.helmDynamic(
         light: 0x3C7DD9,

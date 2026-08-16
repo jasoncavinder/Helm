@@ -456,10 +456,11 @@ extension L10n {
         }
         struct Health {
             static let healthy = "app.health.healthy"
-            static let updatesAvailable = "app.health.updates_available"
-            static let attention = "app.health.attention"
+            static let updatesReady = "app.health.updates_ready"
+            static let needsReview = "app.health.needs_review"
             static let error = "app.health.error"
             static let running = "app.health.running"
+            static let unavailable = "app.health.unavailable"
             static let notInstalled = "app.health.not_installed"
         }
         struct Popover {
@@ -528,8 +529,8 @@ extension L10n {
                 static let message = "app.updates.completion.interactive_remaining.message"
             }
             struct Notification {
-                static let availableTitle = "app.updates.notification.available.title"
-                static let availableMessage = "app.updates.notification.available.message"
+                static let readyTitle = "app.updates.notification.ready.title"
+                static let readyMessage = "app.updates.notification.ready.message"
                 static let reviewPlan = "app.updates.notification.action.review_plan"
                 static let upgradeAll = "app.updates.notification.action.upgrade_all"
             }

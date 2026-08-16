@@ -315,7 +315,7 @@ extension HelmCore {
         }
         if let status = managerStatuses[managerId], status.detected == false {
             if packageStateIssuePresent {
-                return .attention
+                return .needsReview
             }
             return .notInstalled
         }
@@ -336,13 +336,13 @@ extension HelmCore {
             return .running
         }
         if packageStateIssuePresent {
-            return .attention
+            return .needsReview
         }
         if managerStatuses[managerId]?.multiInstanceState == "attention_needed" {
-            return .attention
+            return .needsReview
         }
         if outdatedPackages.contains(where: { $0.managerId == managerId }) {
-            return .attention
+            return .updatesReady
         }
         return .healthy
     }

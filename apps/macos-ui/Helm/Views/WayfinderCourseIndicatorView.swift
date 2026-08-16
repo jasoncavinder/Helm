@@ -127,7 +127,7 @@ struct WayfinderCourseIndicatorView: View {
     @Environment(\.colorSchemeContrast) private var contrast
 
     private var style: WayfinderCourseStyle {
-        WayfinderCourseStyle(mode: projection.mode)
+        WayfinderCourseStyle(mode: projection.mode, condition: projection.condition)
     }
 
     private var accessibilityValue: String {
@@ -239,7 +239,7 @@ private struct WayfinderCourseStyle {
     let dash: [CGFloat]
     let rotates: Bool
 
-    init(mode: WayfinderCourseMode) {
+    init(mode: WayfinderCourseMode, condition: WayfinderCondition) {
         switch mode {
         case .healthy:
             tint = HelmTheme.stateHealthy
@@ -249,7 +249,7 @@ private struct WayfinderCourseStyle {
             dash = []
             rotates = false
         case .updatesReady:
-            tint = HelmTheme.stateAttention
+            tint = HelmTheme.stateUpdatesReady
             symbol = "arrow.up"
             arcStart = 0.03
             arcEnd = 0.76
@@ -270,7 +270,7 @@ private struct WayfinderCourseStyle {
             dash = []
             rotates = true
         case .approval:
-            tint = HelmTheme.stateAttention
+            tint = HelmTheme.stateNeedsReview
             symbol = "hand.raised.fill"
             arcStart = 0.08
             arcEnd = 0.68
@@ -284,8 +284,20 @@ private struct WayfinderCourseStyle {
             dash = [4, 3]
             rotates = false
         case .cachedPartialOffline:
-            tint = HelmTheme.stateAttention
-            symbol = "bolt.horizontal.fill"
+            switch condition {
+            case .actionableFinding:
+                tint = HelmTheme.stateNeedsReview
+                symbol = "exclamationmark.triangle.fill"
+            case .offline:
+                tint = HelmTheme.stateUnavailable
+                symbol = "wifi.slash"
+            case .serviceUnavailable:
+                tint = HelmTheme.stateUnavailable
+                symbol = "bolt.horizontal.fill"
+            default:
+                tint = HelmTheme.stateUnavailable
+                symbol = "minus"
+            }
             arcStart = 0.1
             arcEnd = 0.62
             dash = [3, 5]

@@ -50,7 +50,7 @@ struct PackageRowView: View {
                     if package.pinned {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
-                            .foregroundColor(HelmTheme.stateAttention)
+                            .foregroundColor(HelmTheme.actionSecondaryText)
                             .help(L10n.App.Packages.Label.pinned.localized)
                             .accessibilityHidden(true)
                     }
@@ -76,11 +76,11 @@ struct PackageRowView: View {
                     HStack(spacing: 4) {
                         Text(latest)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(HelmTheme.stateAttention)
+                            .foregroundColor(HelmTheme.stateUpdatesReady)
                         if package.restartRequired {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.caption2)
-                                .foregroundColor(HelmTheme.stateAttention)
+                                .foregroundColor(HelmTheme.stateNeedsReview)
                                 .help(L10n.App.Packages.Label.restartRequired.localized)
                         }
                     }

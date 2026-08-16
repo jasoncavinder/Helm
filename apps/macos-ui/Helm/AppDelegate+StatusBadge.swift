@@ -8,6 +8,20 @@ enum StatusBadge {
     case dot(NSColor)
 }
 
+extension NSColor {
+    static let helmUpdatesReady = NSColor(name: NSColor.Name("HelmUpdatesReady")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 79.0 / 255.0, green: 199.0 / 255.0, blue: 192.0 / 255.0, alpha: 1)
+            : NSColor(red: 20.0 / 255.0, green: 158.0 / 255.0, blue: 153.0 / 255.0, alpha: 1)
+    }
+
+    static let helmNeedsReview = NSColor(name: NSColor.Name("HelmNeedsReview")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 240.0 / 255.0, green: 160.0 / 255.0, blue: 75.0 / 255.0, alpha: 1)
+            : NSColor(red: 166.0 / 255.0, green: 83.0 / 255.0, blue: 0, alpha: 1)
+    }
+}
+
 func drawBadge(_ badge: StatusBadge, in bounds: NSRect) {
     switch badge {
     case let .count(value, color):

@@ -136,18 +136,18 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(projection.content.primaryAction.focus, .primaryContent)
     }
 
-    func testFooterAttentionRoutesToTheRelevantAction() {
+    func testFooterStatusesKeepUpdatesDistinctFromReviewFindings() {
         let updates = project(WayfinderProjectionInput(updateCount: 2)).content
         let finding = project(
             WayfinderProjectionInput(actionableFindingIDs: ["npm"])
         ).content
         let running = project(WayfinderProjectionInput(activeTaskIDs: ["task-1"])).content
 
-        XCTAssertEqual(updates.condition.footerStatus, .attention)
+        XCTAssertEqual(updates.condition.footerStatus, .updatesReady)
         XCTAssertNil(updates.condition.sidebarFooterStatus)
         XCTAssertEqual(updates.primaryAction.destination, .plan)
-        XCTAssertEqual(finding.condition.footerStatus, .attention)
-        XCTAssertEqual(finding.condition.sidebarFooterStatus, .attention)
+        XCTAssertEqual(finding.condition.footerStatus, .needsReview)
+        XCTAssertEqual(finding.condition.sidebarFooterStatus, .needsReview)
         XCTAssertEqual(finding.primaryAction.destination, .environment)
         XCTAssertEqual(finding.primaryAction.entityID, "npm")
         XCTAssertEqual(running.condition.footerStatus, .running)
@@ -155,6 +155,13 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(running.primaryAction.entityID, "task-1")
         XCTAssertFalse(WayfinderCondition.healthy.footerStatus.isActionable)
         XCTAssertEqual(WayfinderCondition.healthy.sidebarFooterStatus, .healthy)
+    }
+
+    func testOfflineAndUnavailableUseNeutralFooterStatus() {
+        XCTAssertEqual(WayfinderCondition.offline.footerStatus, .unavailable)
+        XCTAssertEqual(WayfinderCondition.serviceUnavailable.footerStatus, .unavailable)
+        XCTAssertEqual(WayfinderCondition.offline.sidebarFooterStatus, .unavailable)
+        XCTAssertEqual(WayfinderCondition.serviceUnavailable.sidebarFooterStatus, .unavailable)
     }
 
     func testDashboardManagerCountsIncludeDisabledAndUndetectedManagers() {
