@@ -1,5 +1,11 @@
 import Combine
 
+struct WayfinderPopoverDerivedState: Equatable {
+    let relatedRouteStages: [WayfinderPopoverRouteStage]
+    let detectedManagerCount: Int
+    let findingContext: WayfinderPopoverFindingContext?
+}
+
 final class HelmOverviewState: ObservableObject {
     private let environmentBriefFixture = EnvironmentBriefFixtureProvider.active()?.brief
 
@@ -26,9 +32,7 @@ final class HelmOverviewState: ObservableObject {
         outdatedPackagesCount: Int,
         isRefreshing: Bool,
         visibleManagers: [ManagerInfo],
-        wayfinderRelatedRouteStages: [WayfinderPopoverRouteStage],
-        detectedManagerCount: Int,
-        wayfinderFindingContext: WayfinderPopoverFindingContext?,
+        wayfinderPopoverState: WayfinderPopoverDerivedState,
         outdatedCountByManager: [String: Int],
         managerHealthById: [String: OperationalHealth],
         recentTasksTop10: [TaskItem]
@@ -54,9 +58,9 @@ final class HelmOverviewState: ObservableObject {
         self.outdatedPackagesCount = outdatedPackagesCount
         self.isRefreshing = isRefreshing
         self.visibleManagers = visibleManagers
-        self.wayfinderRelatedRouteStages = wayfinderRelatedRouteStages
-        self.detectedManagerCount = detectedManagerCount
-        self.wayfinderFindingContext = wayfinderFindingContext
+        self.wayfinderRelatedRouteStages = wayfinderPopoverState.relatedRouteStages
+        self.detectedManagerCount = wayfinderPopoverState.detectedManagerCount
+        self.wayfinderFindingContext = wayfinderPopoverState.findingContext
         self.outdatedCountByManager = outdatedCountByManager
         self.managerHealthById = managerHealthById
         self.recentTasksTop10 = recentTasksTop10

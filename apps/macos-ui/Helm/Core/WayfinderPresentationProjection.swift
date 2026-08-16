@@ -316,7 +316,7 @@ struct WayfinderPopoverPresentationInput: Equatable {
     let projection: WayfinderProjectionContent
     var relatedRouteStages: [WayfinderPopoverRouteStage] = []
     var detectedManagerCount = 0
-    var findingContext: WayfinderPopoverFindingContext? = nil
+    var findingContext: WayfinderPopoverFindingContext?
 }
 
 enum WayfinderPopoverPresentationProjector {

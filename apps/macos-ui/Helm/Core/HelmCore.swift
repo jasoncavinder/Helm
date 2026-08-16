@@ -1523,9 +1523,11 @@ final class HelmCore: ObservableObject {
             outdatedPackagesCount: outdatedPackages.count,
             isRefreshing: isRefreshing,
             visibleManagers: visibleManagers,
-            wayfinderRelatedRouteStages: wayfinderRelatedRouteStages,
-            detectedManagerCount: detectedManagerCount,
-            wayfinderFindingContext: wayfinderFindingContext,
+            wayfinderPopoverState: WayfinderPopoverDerivedState(
+                relatedRouteStages: wayfinderRelatedRouteStages,
+                detectedManagerCount: detectedManagerCount,
+                findingContext: wayfinderFindingContext
+            ),
             outdatedCountByManager: outdatedCountByManager,
             managerHealthById: managerHealthById,
             recentTasksTop10: Array(activeTasks.prefix(10))
