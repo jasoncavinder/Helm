@@ -6,6 +6,35 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-15
+
+### Added
+- Original Wayfinder now provides a native Dashboard, Plan, Library, Activity, Environment, Settings, and unified menu-bar popover foundation with shared semantic health, work, update, review, failure, and offline states.
+- Scheduled Helm update checks, stable/RC channel selection, actionable update notifications, selective Plan execution, and optional self-update participation integrate Helm's own update availability with the rest of the control plane.
+- Sparkle-based applications are discovered across standard application roots, report vendor appcast updates, and offer a truthful Open App to Update handoff while direct third-party updating remains deferred to a dedicated trusted boundary.
+- Network-path awareness keeps cached and local inventory useful offline, defers network-dependent work without failed-task fan-out, and coalesces recovery into one refresh after reconnection.
+- The inactive native privileged-helper registration foundation establishes a future system-owned authorization path without replacing the current askpass executor before installed-build validation is complete.
+
+### Changed
+- The minimum supported platform is macOS 13 Ventura, enabling the modern Swift and service-management APIs used by Helm.
+- Manager and package dependency versions are modernized, including the current `rusqlite` line and Node 24-compatible GitHub Actions.
+- Plan rows support item-wide selection, filtered Select All and Deselect All, per-update Mac App Store entries, selected-step risk flags, and interactive vendor-owned Sparkle steps.
+- Dashboard manager counts distinguish detected, disabled, and other available managers; Environment priority ordering is limited to detected managers.
+- Settings uses the native scene and corrected full-screen Space behavior, while status-item clicks keep the popover available alongside an open Dashboard.
+- Semantic status presentation consistently separates Healthy, Running, Updates Ready, Needs Review, Error, and unavailable/deferred states across Dashboard, Environment, Plan, popover, and menu-bar indicators.
+
+### Fixed
+- npm discovery no longer treats runtime shims as separate installations and short single-character searches return cleanly without invoking npm's invalid query path.
+- Mac App Store refresh and Plan behavior handle manager availability, metadata, per-app updates, and authorization requirements without collapsing distinct updates into one opaque step.
+- Helm now follows the current macOS application language by default after installation or update while preserving an explicit language selected in Settings.
+- XPC reconnects, refresh scheduling, workspace selection, Settings routing, toolbar layout, window behavior, and SwiftUI state publication avoid the major warning, flicker, and stale-state failures found during the RC cycle.
+
+### Security
+- Stable and RC GitHub release state, appcast routing, CLI metadata, and `releases/latest` semantics are contract-validated so prerelease artifacts cannot replace the stable update line.
+- Privileged Plan operations retain structured validation, exact selected-step risk reporting, and the existing authorization boundary until the native helper executor completes its separate activation gates.
+
+This stable release consolidates the seven `0.19.0` release candidates. The Environment Brief replacement for first-run onboarding remains development-gated pending Issue #388, true direct third-party Sparkle updating remains planned for `0.20.x`, and selectable themes remain post-1.0 work.
+
 ## [0.19.0-rc.7] - 2026-08-15
 
 ### Added
