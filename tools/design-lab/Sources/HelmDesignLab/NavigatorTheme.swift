@@ -72,11 +72,19 @@ enum ProposalArtifact: String, CaseIterable {
   case wayfinderQuieterPopover = "wayfinder-quieter-popover"
   case wayfinderFocusedDashboard = "wayfinder-focused-dashboard"
   case wayfinderFocusedPopover = "wayfinder-focused-popover"
+  case v020PopoverHealthy = "v020-wayfinder-popover-healthy"
+  case v020PopoverUpdatesReady = "v020-wayfinder-popover-updates-ready"
+  case v020PopoverRunning = "v020-wayfinder-popover-running"
+  case v020PopoverNeedsReview = "v020-wayfinder-popover-needs-review"
+  case v020PopoverError = "v020-wayfinder-popover-error"
+  case v020PopoverOffline = "v020-wayfinder-popover-offline"
 
   var schemes: [ColorScheme] {
     switch self {
     case .dashboardOverview, .popoverAttention, .wayfinderQuieterDashboard,
-      .wayfinderQuieterPopover, .wayfinderFocusedDashboard, .wayfinderFocusedPopover:
+      .wayfinderQuieterPopover, .wayfinderFocusedDashboard, .wayfinderFocusedPopover,
+      .v020PopoverHealthy, .v020PopoverUpdatesReady, .v020PopoverRunning,
+      .v020PopoverNeedsReview, .v020PopoverError, .v020PopoverOffline:
       [.light, .dark]
     case .dashboardPlan, .dashboardLibrary, .briefingDashboard, .briefingPopover, .atlasDashboard:
       [.light]
