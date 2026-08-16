@@ -6,10 +6,10 @@
     <description>Helm direct-channel updates</description>
     <language>en</language>
     <item>
-      <title>Helm 0.18.2</title>
-      <pubDate>Wed, 05 Aug 2026 05:29:50 +0000</pubDate>
-      <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.18.2.html</sparkle:releaseNotesLink>
-      <enclosure url="https://github.com/jasoncavinder/Helm/releases/download/v0.18.2/Helm-v0.18.2-macos-universal.dmg" sparkle:version="18002900" sparkle:shortVersionString="0.18.2" sparkle:edSignature="PkshXlXe/7UOSpaSZXn+rs1D6tSxX88abqdoWogSZTPkN2IfhOGP9h6g/fun4jGhJg//s8YZ4gmglapUNj1GAg==" sparkle:minimumSystemVersion="11.0" length="31297100" type="application/octet-stream" />
+      <title>Helm 0.19.0</title>
+      <pubDate>Sun, 16 Aug 2026 09:16:00 +0000</pubDate>
+      <sparkle:releaseNotesLink>https://helmapp.dev/updates/release-notes/v0.19.0.html</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/jasoncavinder/Helm/releases/download/v0.19.0/Helm-v0.19.0-macos-universal.dmg" sparkle:version="19000900" sparkle:shortVersionString="0.19.0" sparkle:edSignature="3bHA2REReB5ci6imTh0Ul0fmwrYU/nbajowTbnr+WwYi4yaxN+J4NwReKtoz+34fYpqQEdFsm0LmzpKYcLC+Aw==" sparkle:minimumSystemVersion="13.0" length="32040059" type="application/octet-stream" />
     </item>
     <item>
       <title>Helm 0.19.0-rc.7</title>
