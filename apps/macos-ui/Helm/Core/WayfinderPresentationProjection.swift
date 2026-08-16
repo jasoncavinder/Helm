@@ -1,5 +1,11 @@
 import Foundation
 
+enum WayfinderPopoverLayout {
+    static let width: CGFloat = 400
+    static let ordinaryHeight: CGFloat = 458
+    static let onboardingHeight: CGFloat = 620
+}
+
 enum WayfinderDestination: String, Codable, Equatable {
     case dashboard
     case plan
@@ -15,10 +21,35 @@ enum WayfinderFocusTarget: String, Codable, Equatable {
     case serviceHealth
 }
 
+enum WayfinderConditionKind: String, Codable, Equatable {
+    case approvalRequired
+    case failedOrInterrupted
+    case activeWork
+    case actionableFinding
+    case updatesReady
+    case offline
+    case refreshing
+    case serviceUnavailable
+    case healthy
+}
+
 struct WayfinderDeepLink: Codable, Equatable {
     let destination: WayfinderDestination
     let entityID: String?
     let focus: WayfinderFocusTarget
+    let originatingCondition: WayfinderConditionKind?
+
+    init(
+        destination: WayfinderDestination,
+        entityID: String?,
+        focus: WayfinderFocusTarget,
+        originatingCondition: WayfinderConditionKind? = nil
+    ) {
+        self.destination = destination
+        self.entityID = entityID
+        self.focus = focus
+        self.originatingCondition = originatingCondition
+    }
 }
 
 enum WayfinderCourseMode: String, Codable, Equatable {
@@ -79,6 +110,29 @@ enum WayfinderCondition: Equatable {
     case refreshing
     case serviceUnavailable
     case healthy
+
+    var kind: WayfinderConditionKind {
+        switch self {
+        case .approvalRequired:
+            return .approvalRequired
+        case .failedOrInterrupted:
+            return .failedOrInterrupted
+        case .activeWork:
+            return .activeWork
+        case .actionableFinding:
+            return .actionableFinding
+        case .updatesReady:
+            return .updatesReady
+        case .offline:
+            return .offline
+        case .refreshing:
+            return .refreshing
+        case .serviceUnavailable:
+            return .serviceUnavailable
+        case .healthy:
+            return .healthy
+        }
+    }
 
     var footerStatus: WayfinderFooterStatus {
         switch self {
@@ -186,6 +240,233 @@ struct WayfinderPresentationProjection: Equatable {
         revision: 0,
         content: WayfinderProjectionProjector.content(for: .healthy)
     )
+}
+
+enum WayfinderPopoverRouteStage: String, CaseIterable, Hashable {
+    case system
+    case tools
+    case apps
+    case packages
+
+    var titleKey: String {
+        "app.popover.wayfinder.route.\(rawValue)"
+    }
+
+    var symbol: String {
+        switch self {
+        case .system:
+            return "desktopcomputer"
+        case .tools:
+            return "hammer"
+        case .apps:
+            return "app.dashed"
+        case .packages:
+            return "shippingbox"
+        }
+    }
+
+    static func stage(forManagerCategory category: String) -> WayfinderPopoverRouteStage? {
+        switch category {
+        case "Toolchain":
+            return .tools
+        case "System/OS", "Security/Firmware":
+            return .system
+        case "App Store", "Container/VM":
+            return .apps
+        case "Language":
+            return .packages
+        default:
+            return nil
+        }
+    }
+}
+
+enum WayfinderPopoverRouteTone: Equatable {
+    case current
+    case updates
+    case active
+    case review
+    case error
+    case pending
+    case cached
+}
+
+struct WayfinderPopoverRouteItem: Equatable {
+    let stage: WayfinderPopoverRouteStage
+    let tone: WayfinderPopoverRouteTone
+}
+
+struct WayfinderPopoverFindingContext: Equatable {
+    let title: WayfinderLocalizedText
+    let detail: WayfinderLocalizedText
+}
+
+struct WayfinderPopoverPresentation: Equatable {
+    let projection: WayfinderProjectionContent
+    let routeItems: [WayfinderPopoverRouteItem]
+    let contextTitle: WayfinderLocalizedText
+    let contextDetail: WayfinderLocalizedText
+    let contextSymbol: String
+    let showsPrimaryAction: Bool
+    let primaryActionTitle: WayfinderLocalizedText
+    let allowsRefresh: Bool
+}
+
+struct WayfinderPopoverPresentationInput: Equatable {
+    let projection: WayfinderProjectionContent
+    var relatedRouteStages: [WayfinderPopoverRouteStage] = []
+    var detectedManagerCount = 0
+    var findingContext: WayfinderPopoverFindingContext? = nil
+}
+
+enum WayfinderPopoverPresentationProjector {
+    static func content(
+        for input: WayfinderPopoverPresentationInput
+    ) -> WayfinderPopoverPresentation {
+        let condition = input.projection.condition
+        let affectedStages = Set(input.relatedRouteStages)
+        let routeItems = WayfinderPopoverRouteStage.allCases.map { stage in
+            WayfinderPopoverRouteItem(
+                stage: stage,
+                tone: routeTone(
+                    for: stage,
+                    condition: condition,
+                    affectedStages: affectedStages
+                )
+            )
+        }
+
+        let context = contextContent(
+            for: condition,
+            detectedManagerCount: input.detectedManagerCount,
+            projection: input.projection,
+            findingContext: input.findingContext
+        )
+
+        return WayfinderPopoverPresentation(
+            projection: input.projection,
+            routeItems: routeItems,
+            contextTitle: context.title,
+            contextDetail: context.detail,
+            contextSymbol: context.symbol,
+            showsPrimaryAction: condition != .healthy && condition != .refreshing,
+            primaryActionTitle: primaryActionTitle(
+                for: condition,
+                fallback: input.projection.primaryActionTitle
+            ),
+            allowsRefresh: condition != .offline && condition != .serviceUnavailable
+        )
+    }
+
+    private static func routeTone(
+        for stage: WayfinderPopoverRouteStage,
+        condition: WayfinderCondition,
+        affectedStages: Set<WayfinderPopoverRouteStage>
+    ) -> WayfinderPopoverRouteTone {
+        switch condition {
+        case .offline, .serviceUnavailable:
+            return .cached
+        case .refreshing:
+            return .pending
+        case .healthy:
+            return .current
+        case .updatesReady:
+            return affectedStages.contains(stage) ? .updates : .current
+        case .activeWork:
+            return affectedStages.contains(stage) ? .active : .current
+        case .approvalRequired, .actionableFinding:
+            return affectedStages.contains(stage) ? .review : .current
+        case .failedOrInterrupted:
+            return affectedStages.contains(stage) ? .error : .current
+        }
+    }
+
+    private static func primaryActionTitle(
+        for condition: WayfinderCondition,
+        fallback: WayfinderLocalizedText
+    ) -> WayfinderLocalizedText {
+        switch condition {
+        case .offline:
+            return WayfinderLocalizedText(key: "app.popover.wayfinder.action.view_saved_state")
+        case .failedOrInterrupted:
+            return WayfinderLocalizedText(key: "app.popover.wayfinder.action.review_recovery")
+        default:
+            return fallback
+        }
+    }
+
+    private static func contextContent(
+        for condition: WayfinderCondition,
+        detectedManagerCount: Int,
+        projection: WayfinderProjectionContent,
+        findingContext: WayfinderPopoverFindingContext?
+    ) -> (title: WayfinderLocalizedText, detail: WayfinderLocalizedText, symbol: String) {
+        switch condition {
+        case .healthy:
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.environment_covered"),
+                WayfinderLocalizedText(
+                    key: "app.wayfinder.sidebar.sources_monitored",
+                    arguments: ["count": String(detectedManagerCount)]
+                ),
+                "checkmark.shield"
+            )
+        case let .updatesReady(count):
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.plan_ready"),
+                WayfinderLocalizedText(
+                    key: "app.popover.wayfinder.context.updates_in_plan",
+                    arguments: ["count": String(count)]
+                ),
+                "list.bullet.clipboard"
+            )
+        case .activeWork:
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.work_in_progress"),
+                projection.explanation,
+                "arrow.triangle.2.circlepath"
+            )
+        case .approvalRequired:
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.decision_required"),
+                projection.explanation,
+                "hand.raised.fill"
+            )
+        case .failedOrInterrupted:
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.recovery_available"),
+                projection.explanation,
+                "arrow.uturn.backward.circle"
+            )
+        case .actionableFinding:
+            return (
+                findingContext?.title
+                    ?? WayfinderLocalizedText(
+                        key: "app.popover.wayfinder.context.environment_needs_review"
+                    ),
+                findingContext?.detail ?? projection.explanation,
+                "point.3.connected.trianglepath.dotted"
+            )
+        case .offline:
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.local_views_available"),
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.local_views_detail"),
+                "internaldrive"
+            )
+        case .refreshing:
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.checking_environment"),
+                projection.explanation,
+                "arrow.clockwise"
+            )
+        case .serviceUnavailable:
+            return (
+                WayfinderLocalizedText(key: "app.popover.wayfinder.context.last_known_state"),
+                projection.explanation,
+                "bolt.horizontal.circle"
+            )
+        }
+    }
 }
 
 struct WayfinderProjectionInput: Equatable {
@@ -329,7 +610,8 @@ enum WayfinderProjectionProjector {
                 entityID: base.entityID,
                 focus: base.condition == .serviceUnavailable || base.condition == .offline
                     ? .serviceHealth
-                    : (base.entityID == nil ? .primaryContent : .selectedEntity)
+                    : (base.entityID == nil ? .primaryContent : .selectedEntity),
+                originatingCondition: base.condition.kind
             ),
             progress: base.mode == .determinateWork ? input.activeProgress : nil,
             currentAuthorityStage: base.mode == .determinateWork || base.mode == .indeterminateWork

@@ -146,10 +146,12 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(updates.condition.footerStatus, .updatesReady)
         XCTAssertNil(updates.condition.sidebarFooterStatus)
         XCTAssertEqual(updates.primaryAction.destination, .plan)
+        XCTAssertEqual(updates.primaryAction.originatingCondition, .updatesReady)
         XCTAssertEqual(finding.condition.footerStatus, .needsReview)
         XCTAssertEqual(finding.condition.sidebarFooterStatus, .needsReview)
         XCTAssertEqual(finding.primaryAction.destination, .environment)
         XCTAssertEqual(finding.primaryAction.entityID, "npm")
+        XCTAssertEqual(finding.primaryAction.originatingCondition, .actionableFinding)
         XCTAssertEqual(running.condition.footerStatus, .running)
         XCTAssertEqual(running.primaryAction.destination, .activity)
         XCTAssertEqual(running.primaryAction.entityID, "task-1")
@@ -197,9 +199,137 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(changed.revision, first.revision + 1)
     }
 
+    func testPopoverRouteStagesMapManagerCategoriesWithoutTreatingRouteAsProgress() {
+        XCTAssertEqual(WayfinderPopoverRouteStage.stage(forManagerCategory: "System/OS"), .system)
+        XCTAssertEqual(WayfinderPopoverRouteStage.stage(forManagerCategory: "Toolchain"), .tools)
+        XCTAssertEqual(WayfinderPopoverRouteStage.stage(forManagerCategory: "App Store"), .apps)
+        XCTAssertEqual(WayfinderPopoverRouteStage.stage(forManagerCategory: "Language"), .packages)
+    }
+
+    func testHealthyPopoverHasReassuranceInsteadOfInventedAction() {
+        let presentation = popover(
+            projection: project(.healthy).content,
+            detectedManagerCount: 7
+        )
+
+        XCTAssertFalse(presentation.showsPrimaryAction)
+        XCTAssertTrue(presentation.allowsRefresh)
+        XCTAssertEqual(
+            presentation.routeItems.map(\.tone),
+            Array(repeating: .current, count: 4)
+        )
+        XCTAssertEqual(
+            presentation.contextDetail.arguments,
+            ["count": "7"]
+        )
+    }
+
+    func testActionableFindingPopoverNamesTheSpecificFindingContext() {
+        let findingContext = WayfinderPopoverFindingContext(
+            title: WayfinderLocalizedText(
+                key: "app.popover.wayfinder.context.manager_needs_decision",
+                arguments: ["manager": "mise"]
+            ),
+            detail: WayfinderLocalizedText(
+                key: "app.inspector.multi_instance.attention_title"
+            )
+        )
+        let presentation = popover(
+            projection: project(
+                WayfinderProjectionInput(actionableFindingIDs: ["mise"])
+            ).content,
+            relatedRouteStages: [.tools],
+            findingContext: findingContext
+        )
+
+        XCTAssertEqual(presentation.contextTitle, findingContext.title)
+        XCTAssertEqual(presentation.contextDetail, findingContext.detail)
+        XCTAssertEqual(
+            presentation.routeItems.first(where: { $0.stage == .tools })?.tone,
+            .review
+        )
+    }
+
+    func testUpdatesMarkOnlyAffectedEnvironmentDomains() {
+        let presentation = popover(
+            projection: project(WayfinderProjectionInput(updateCount: 3)).content,
+            relatedRouteStages: [.apps, .packages]
+        )
+
+        XCTAssertTrue(presentation.showsPrimaryAction)
+        XCTAssertEqual(presentation.primaryActionTitle.key, "app.wayfinder.action.review_plan")
+        XCTAssertEqual(
+            presentation.routeItems,
+            [
+                WayfinderPopoverRouteItem(stage: .system, tone: .current),
+                WayfinderPopoverRouteItem(stage: .tools, tone: .current),
+                WayfinderPopoverRouteItem(stage: .apps, tone: .updates),
+                WayfinderPopoverRouteItem(stage: .packages, tone: .updates),
+            ]
+        )
+    }
+
+    func testOfflinePopoverUsesCachedRouteAndDisablesRefresh() {
+        let presentation = popover(
+            projection: project(WayfinderProjectionInput(networkAvailable: false)).content,
+            relatedRouteStages: [.tools]
+        )
+
+        XCTAssertFalse(presentation.allowsRefresh)
+        XCTAssertEqual(
+            presentation.primaryActionTitle.key,
+            "app.popover.wayfinder.action.view_saved_state"
+        )
+        XCTAssertEqual(
+            presentation.routeItems.map(\.tone),
+            Array(repeating: .cached, count: 4)
+        )
+    }
+
+    func testFailureMarksAffectedDomainAndUsesRecoveryAction() {
+        let presentation = popover(
+            projection: project(WayfinderProjectionInput(failedTaskIDs: ["task"])).content,
+            relatedRouteStages: [.apps]
+        )
+
+        XCTAssertEqual(
+            presentation.primaryActionTitle.key,
+            "app.popover.wayfinder.action.review_recovery"
+        )
+        XCTAssertEqual(
+            presentation.routeItems.first(where: { $0.stage == .apps })?.tone,
+            .error
+        )
+    }
+
+    func testOrdinaryPopoverFootprintRemainsFixedAcrossStates() {
+        XCTAssertEqual(WayfinderPopoverLayout.width, 400)
+        XCTAssertEqual(WayfinderPopoverLayout.ordinaryHeight, 458)
+        XCTAssertGreaterThan(
+            WayfinderPopoverLayout.onboardingHeight,
+            WayfinderPopoverLayout.ordinaryHeight
+        )
+    }
+
     private func project(
         _ input: WayfinderProjectionInput
     ) -> WayfinderPresentationProjection {
         WayfinderProjectionProjector.project(input, replacing: .initial)
+    }
+
+    private func popover(
+        projection: WayfinderProjectionContent,
+        relatedRouteStages: [WayfinderPopoverRouteStage] = [],
+        detectedManagerCount: Int = 0,
+        findingContext: WayfinderPopoverFindingContext? = nil
+    ) -> WayfinderPopoverPresentation {
+        WayfinderPopoverPresentationProjector.content(
+            for: WayfinderPopoverPresentationInput(
+                projection: projection,
+                relatedRouteStages: relatedRouteStages,
+                detectedManagerCount: detectedManagerCount,
+                findingContext: findingContext
+            )
+        )
     }
 }

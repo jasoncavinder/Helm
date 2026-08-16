@@ -42,4 +42,49 @@ final class SettingsPaneTests: XCTestCase {
             }
         }
     }
+
+    func testWayfinderPopoverKeysResolveAcrossLocales() throws {
+        let keys = [
+            "app.popover.wayfinder.utilities",
+            "app.popover.wayfinder.no_action_needed",
+            "app.popover.wayfinder.route.hint",
+            "app.popover.wayfinder.route.state.cached",
+            "app.popover.wayfinder.context.environment_covered",
+            "app.popover.wayfinder.context.plan_ready",
+            "app.popover.wayfinder.context.updates_in_plan",
+            "app.popover.wayfinder.context.work_in_progress",
+            "app.popover.wayfinder.context.decision_required",
+            "app.popover.wayfinder.context.recovery_available",
+            "app.popover.wayfinder.context.environment_needs_review",
+            "app.popover.wayfinder.context.manager_needs_decision",
+            "app.popover.wayfinder.context.manager_needs_review",
+            "app.popover.wayfinder.context.package_state_needs_review",
+            "app.popover.wayfinder.context.local_views_available",
+            "app.popover.wayfinder.context.local_views_detail",
+            "app.popover.wayfinder.context.checking_environment",
+            "app.popover.wayfinder.context.last_known_state",
+            "app.popover.wayfinder.action.view_saved_state",
+            "app.popover.wayfinder.action.review_recovery",
+            "app.popover.wayfinder.check_again",
+            "app.popover.wayfinder.check_when_online",
+            "app.popover.wayfinder.freshness.working_now",
+            "app.popover.wayfinder.freshness.not_checked",
+            "app.popover.wayfinder.freshness.saved",
+            "app.popover.wayfinder.freshness.checked",
+            "app.popover.wayfinder.ready",
+        ] + WayfinderPopoverRouteStage.allCases.map(\.titleKey)
+
+        for locale in locales {
+            let catalogURL = repoRootURL
+                .appendingPathComponent("locales")
+                .appendingPathComponent(locale)
+                .appendingPathComponent("app.json")
+            let data = try Data(contentsOf: catalogURL)
+            let strings = try JSONDecoder().decode([String: String].self, from: data)
+
+            for key in keys {
+                XCTAssertNotNil(strings[key], "Missing popover key \(key) in locale \(locale)")
+            }
+        }
+    }
 }

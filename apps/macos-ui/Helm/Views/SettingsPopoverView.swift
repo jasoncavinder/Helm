@@ -544,6 +544,7 @@ struct SettingsSectionView: View {
 struct SettingsWindowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var localization = LocalizationManager.shared
     @State private var selectedPane: SettingsPane? = .general
     @State private var isSidebarVisible = true
@@ -649,6 +650,19 @@ struct SettingsWindowView: View {
                     }
                 }
             }
+            .onAppear {
+                applyRequestedPane()
+            }
+            .onReceive(context.settingsOpenRouter.$paneRequestToken) { _ in
+                applyRequestedPane()
+            }
+    }
+
+    private func applyRequestedPane() {
+        guard let requestedPane = context.settingsOpenRouter.requestedPane else { return }
+        DispatchQueue.main.async {
+            selectedPane = requestedPane
+        }
     }
 }
 

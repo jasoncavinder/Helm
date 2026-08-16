@@ -69,4 +69,23 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertEqual(firstOpenCount, 1)
         XCTAssertEqual(configuredOpenCount, 1)
     }
+
+    func testRequestOpenCanRouteDirectlyToSupportPane() {
+        var openCount = 0
+        let router = HelmSettingsOpenRouter {
+            openCount += 1
+        }
+
+        router.requestOpen(pane: .support)
+
+        XCTAssertEqual(openCount, 1)
+        XCTAssertEqual(router.requestedPane, .support)
+        XCTAssertEqual(router.paneRequestToken, 1)
+
+        router.requestOpen()
+
+        XCTAssertEqual(openCount, 2)
+        XCTAssertNil(router.requestedPane)
+        XCTAssertEqual(router.paneRequestToken, 2)
+    }
 }
