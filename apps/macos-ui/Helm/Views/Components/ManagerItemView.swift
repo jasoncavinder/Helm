@@ -12,7 +12,8 @@ struct ManagerItemView: View {
 
     private var indicatorColor: Color {
         if hasFailedTasks { return HelmTheme.stateError }
-        if hasOutdatedPackages || !versionAvailable { return HelmTheme.stateAttention }
+        if !versionAvailable { return HelmTheme.stateNeedsReview }
+        if hasOutdatedPackages { return HelmTheme.stateUpdatesReady }
         return HelmTheme.stateHealthy
     }
 

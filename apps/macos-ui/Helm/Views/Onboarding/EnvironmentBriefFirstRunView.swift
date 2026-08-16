@@ -334,7 +334,7 @@ private struct EnvironmentBriefContentView: View {
                     title: L10n.App.FirstRun.Readiness.attention.localized,
                     count: readiness.attentionCount,
                     symbol: "exclamationmark.triangle.fill",
-                    tint: HelmTheme.stateAttention
+                    tint: HelmTheme.stateNeedsReview
                 )
                 Divider()
                 EnvironmentBriefReadinessRow(
@@ -403,7 +403,7 @@ private struct EnvironmentBriefCourseIndicator: View {
         switch summary.kind {
         case .mapping: return HelmTheme.stateRunning
         case .current: return HelmTheme.stateHealthy
-        case .cached, .partial: return HelmTheme.stateAttention
+        case .cached, .partial: return HelmTheme.stateUnavailable
         case .serviceFailure: return HelmTheme.stateError
         }
     }
@@ -525,19 +525,19 @@ private struct EnvironmentBriefManagerRow: View {
 
     private var status: (title: String, symbol: String, tint: Color) {
         if observation.eligibility != .eligible {
-            return (L10n.App.FirstRun.Status.protected.localized, "lock.shield", HelmTheme.stateAttention)
+            return (L10n.App.FirstRun.Status.protected.localized, "lock.shield", HelmTheme.stateNeedsReview)
         }
         switch observation.managementState {
         case .ready where observation.freshness == .cached:
-            return (L10n.App.FirstRun.Status.cached.localized, "clock", HelmTheme.stateAttention)
+            return (L10n.App.FirstRun.Status.cached.localized, "clock", HelmTheme.stateUnavailable)
         case .ready:
             return (L10n.App.FirstRun.Status.ready.localized, "checkmark.circle.fill", HelmTheme.stateHealthy)
         case .setupRequired:
-            return (L10n.App.FirstRun.Status.setupRequired.localized, "wrench.and.screwdriver", HelmTheme.stateAttention)
+            return (L10n.App.FirstRun.Status.setupRequired.localized, "wrench.and.screwdriver", HelmTheme.stateNeedsReview)
         case .multipleInstancesAttention:
-            return (L10n.App.FirstRun.Status.multipleInstances.localized, "square.stack.3d.up", HelmTheme.stateAttention)
+            return (L10n.App.FirstRun.Status.multipleInstances.localized, "square.stack.3d.up", HelmTheme.stateNeedsReview)
         case .detectedUnmanageable:
-            return (L10n.App.FirstRun.Status.protected.localized, "lock.shield", HelmTheme.stateAttention)
+            return (L10n.App.FirstRun.Status.protected.localized, "lock.shield", HelmTheme.stateNeedsReview)
         case .notInstalled, .unknown:
             return (L10n.App.FirstRun.Status.reviewing.localized, "ellipsis.circle", HelmTheme.textSecondary)
         }
@@ -587,14 +587,14 @@ private struct EnvironmentBriefCoverageRows: View {
         ForEach(managers, id: \.self) { manager in
             HStack(spacing: 12) {
                 Image(systemName: symbol)
-                    .foregroundColor(HelmTheme.stateAttention)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
                     .frame(width: 20)
                 Text(localizedManagerDisplayName(manager))
                     .font(.body.weight(.medium))
                 Spacer()
                 Text(statusKey.localized)
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(HelmTheme.stateAttention)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
             }
             .padding(.vertical, 10)
             .accessibilityElement(children: .combine)

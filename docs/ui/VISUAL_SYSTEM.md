@@ -46,15 +46,21 @@ Semantic tokens (light/dark adaptive):
 - `text.primary`
 - `text.secondary`
 - `state.healthy`
-- `state.attention`
+- `state.updatesReady`
+- `state.needsReview`
 - `state.error`
 - `state.running`
+- `state.unavailable`
 - `state.notInstalled`
 
 Rules:
 - Color communicates state, not decoration.
 - Never rely on color alone; pair with icon/text.
 - Warning/error backgrounds use subtle tint and high-contrast text.
+- Keep compact state badges to one line. The canonical update label is `Updates Ready`.
+- Updates use sea-glass teal and never inherit the amber review treatment.
+- Actionable nonfailure findings use amber/orange and the label `Needs Review`.
+- Offline, unavailable, and deferred states use neutral gray unless a separate failure exists.
 
 ## Iconography
 
@@ -62,9 +68,11 @@ Rules:
 - Manager icons optional in list rows; symbols remain canonical fallback.
 - Status symbols are fixed across surfaces:
 - healthy: checkmark.circle.fill
-- attention: exclamationmark.triangle.fill
+- updatesReady: arrow.up.circle.fill
+- needsReview: exclamationmark.triangle.fill
 - error: xmark.octagon.fill
 - running: arrow.triangle.2.circlepath
+- unavailable: minus.circle.fill
 - notInstalled: minus.circle.fill
 
 ## Motion and Animation

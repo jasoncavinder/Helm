@@ -21,7 +21,7 @@ Helm should not feel like a package-manager dashboard or a grid of manager statu
 At every entry point, Helm should answer three questions in order:
 
 1. **Am I on course?** State one dominant truth about the environment.
-2. **What needs me?** Separate attention, approval, and active work from background detail.
+2. **What needs me?** Separate updates ready, findings needing review, approval, and active work from background detail.
 3. **What is the safest next move?** Offer one clear action backed by Helm's authority ordering and verification model.
 
 The product character is **quiet confidence**: professional and macOS-native, but recognizable through Helm's compass/route language rather than custom control chrome or a loud theme.

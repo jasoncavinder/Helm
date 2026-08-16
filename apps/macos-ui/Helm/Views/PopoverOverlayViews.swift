@@ -105,7 +105,7 @@ struct PopoverSearchOverlayContent: View {
                                         if let latest = package.latestVersion {
                                             Text(latest)
                                                 .font(.caption.monospacedDigit())
-                                                .foregroundColor(HelmTheme.stateAttention)
+                                                .foregroundColor(HelmTheme.stateUpdatesReady)
                                         } else {
                                             Text(package.version)
                                                 .font(.caption.monospacedDigit())
@@ -546,7 +546,7 @@ struct PopoverAboutOverlayContent: View {
             if helmUpdateDetected {
                 Text(L10n.App.Overlay.About.updateDetected.localized)
                     .font(.caption)
-                    .foregroundColor(HelmTheme.stateAttention)
+                    .foregroundColor(HelmTheme.stateUpdatesReady)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

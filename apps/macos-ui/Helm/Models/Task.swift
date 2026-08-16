@@ -51,7 +51,7 @@ struct TaskItem: Identifiable {
         case "queued":    return .secondary
         case "completed": return .green
         case "failed":    return .red
-        case "cancelled": return .orange
+        case "cancelled": return HelmTheme.stateUnavailable
         default:          return .secondary
         }
     }

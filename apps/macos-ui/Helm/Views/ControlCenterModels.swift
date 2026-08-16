@@ -73,24 +73,28 @@ enum ManagerAuthority: CaseIterable {
     }
 }
 
-enum OperationalHealth {
+enum OperationalHealth: Equatable {
     case healthy
-    case attention
+    case updatesReady
+    case needsReview
     case error
     case running
+    case unavailable
     case notInstalled
 
     var icon: String {
         switch self {
         case .healthy:
             return "checkmark.circle.fill"
-        case .attention:
+        case .updatesReady:
+            return "arrow.up.circle.fill"
+        case .needsReview:
             return "exclamationmark.triangle.fill"
         case .error:
             return "xmark.octagon.fill"
         case .running:
             return "arrow.triangle.2.circlepath"
-        case .notInstalled:
+        case .unavailable, .notInstalled:
             return "minus.circle.fill"
         }
     }
@@ -98,15 +102,17 @@ enum OperationalHealth {
     var color: Color {
         switch self {
         case .healthy:
-            return .green
-        case .attention:
-            return .orange
+            return HelmTheme.stateHealthy
+        case .updatesReady:
+            return HelmTheme.stateUpdatesReady
+        case .needsReview:
+            return HelmTheme.stateNeedsReview
         case .error:
-            return .red
+            return HelmTheme.stateError
         case .running:
-            return .blue
-        case .notInstalled:
-            return .gray
+            return HelmTheme.stateRunning
+        case .unavailable, .notInstalled:
+            return HelmTheme.stateUnavailable
         }
     }
 
@@ -114,12 +120,16 @@ enum OperationalHealth {
         switch self {
         case .healthy:
             return L10n.App.Health.healthy
-        case .attention:
-            return L10n.App.Health.attention
+        case .updatesReady:
+            return L10n.App.Health.updatesReady
+        case .needsReview:
+            return L10n.App.Health.needsReview
         case .error:
             return L10n.App.Health.error
         case .running:
             return L10n.App.Health.running
+        case .unavailable:
+            return L10n.App.Health.unavailable
         case .notInstalled:
             return L10n.App.Health.notInstalled
         }
@@ -288,6 +298,7 @@ struct HealthBadgeView: View {
     var body: some View {
         Label(status.key.localized, systemImage: status.icon)
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .foregroundColor(status.color)
@@ -306,18 +317,23 @@ struct WayfinderFooterStatusBadge: View {
         switch status {
         case .healthy:
             return HelmTheme.stateHealthy
+        case .updatesReady:
+            return HelmTheme.stateUpdatesReady
         case .running:
             return HelmTheme.stateRunning
-        case .attention:
-            return HelmTheme.stateAttention
+        case .needsReview:
+            return HelmTheme.stateNeedsReview
         case .error:
             return HelmTheme.stateError
+        case .unavailable:
+            return HelmTheme.stateUnavailable
         }
     }
 
     var body: some View {
         Label(status.titleKey.localized, systemImage: status.icon)
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .foregroundColor(color)

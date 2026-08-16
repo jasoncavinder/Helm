@@ -381,14 +381,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let anchorTint = menuBaseTint(for: button)
         let badge: StatusBadge?
         switch projection.condition {
-        case .approvalRequired, .actionableFinding, .offline, .serviceUnavailable:
-            badge = .symbol("!", .systemOrange)
+        case .approvalRequired, .actionableFinding:
+            badge = .symbol("!", .helmNeedsReview)
         case .failedOrInterrupted:
             badge = .symbol("!", .systemRed)
         case .activeWork, .refreshing:
             badge = .dot(.systemBlue)
         case let .updatesReady(count):
-            badge = .count(min(99, count), .systemOrange)
+            badge = .count(min(99, count), .helmUpdatesReady)
+        case .offline, .serviceUnavailable:
+            badge = .symbol("-", .systemGray)
         case .healthy:
             badge = nil
         }
@@ -624,7 +626,7 @@ private extension AppDelegate {
         }
 
         guard evaluation.shouldNotify else { return }
-        postUpdatesAvailableNotification(
+        postUpdatesReadyNotification(
             count: packages.count,
             allowsUpgradeAll: automaticUpdateCount > 0
         )
@@ -664,12 +666,12 @@ private extension AppDelegate {
         }
     }
 
-    func postUpdatesAvailableNotification(count: Int, allowsUpgradeAll: Bool) {
+    func postUpdatesReadyNotification(count: Int, allowsUpgradeAll: Bool) {
         let content = UNMutableNotificationContent()
-        content.title = L10n.App.Updates.Notification.availableTitle.localized(with: [
+        content.title = L10n.App.Updates.Notification.readyTitle.localized(with: [
             "count": count
         ])
-        content.body = L10n.App.Updates.Notification.availableMessage.localized
+        content.body = L10n.App.Updates.Notification.readyMessage.localized
         content.sound = .default
         content.categoryIdentifier = allowsUpgradeAll
             ? Self.updatesAvailableUpgradeCategoryId
@@ -683,7 +685,7 @@ private extension AppDelegate {
         notificationCenter.add(request) { error in
             if let error {
                 appDelegateLogger.warning(
-                    "failed to post updates-available notification: \(error.localizedDescription, privacy: .public)"
+                    "failed to post updates-ready notification: \(error.localizedDescription, privacy: .public)"
                 )
             }
         }

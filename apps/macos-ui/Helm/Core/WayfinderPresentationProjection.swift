@@ -83,13 +83,15 @@ enum WayfinderCondition: Equatable {
     var footerStatus: WayfinderFooterStatus {
         switch self {
         case .updatesReady:
-            return .attention
+            return .updatesReady
         case .activeWork, .refreshing:
             return .running
         case .failedOrInterrupted:
             return .error
-        case .approvalRequired, .actionableFinding, .offline, .serviceUnavailable:
-            return .attention
+        case .approvalRequired, .actionableFinding:
+            return .needsReview
+        case .offline, .serviceUnavailable:
+            return .unavailable
         case .healthy:
             return .healthy
         }
@@ -107,20 +109,26 @@ enum WayfinderCondition: Equatable {
 
 enum WayfinderFooterStatus: Equatable {
     case healthy
+    case updatesReady
     case running
-    case attention
+    case needsReview
     case error
+    case unavailable
 
     var titleKey: String {
         switch self {
         case .healthy:
             return "app.health.healthy"
+        case .updatesReady:
+            return "app.health.updates_ready"
         case .running:
             return "app.health.running"
-        case .attention:
-            return "app.health.attention"
+        case .needsReview:
+            return "app.health.needs_review"
         case .error:
             return "app.health.error"
+        case .unavailable:
+            return "app.health.unavailable"
         }
     }
 
@@ -128,12 +136,16 @@ enum WayfinderFooterStatus: Equatable {
         switch self {
         case .healthy:
             return "checkmark.circle.fill"
+        case .updatesReady:
+            return "arrow.up.circle.fill"
         case .running:
             return "arrow.triangle.2.circlepath"
-        case .attention:
+        case .needsReview:
             return "exclamationmark.triangle.fill"
         case .error:
             return "xmark.octagon.fill"
+        case .unavailable:
+            return "minus.circle.fill"
         }
     }
 

@@ -63,14 +63,18 @@ final class HelmOverviewState: ObservableObject {
         for condition: WayfinderCondition
     ) -> OperationalHealth {
         switch condition {
-        case .healthy, .updatesReady:
+        case .healthy:
             return .healthy
+        case .updatesReady:
+            return .updatesReady
         case .activeWork, .refreshing:
             return .running
         case .failedOrInterrupted:
             return .error
-        case .approvalRequired, .actionableFinding, .offline, .serviceUnavailable:
-            return .attention
+        case .approvalRequired, .actionableFinding:
+            return .needsReview
+        case .offline, .serviceUnavailable:
+            return .unavailable
         }
     }
 }

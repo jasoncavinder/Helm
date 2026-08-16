@@ -203,7 +203,7 @@ private struct DashboardServiceHealthCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(L10n.App.Settings.ServiceHealth.lastError.localized)
                         .font(.caption.weight(.semibold))
-                        .foregroundColor(HelmTheme.stateAttention)
+                        .foregroundColor(HelmTheme.stateError)
                     Text(lastError)
                         .font(.caption)
                         .foregroundColor(HelmTheme.textSecondary)
@@ -212,7 +212,7 @@ private struct DashboardServiceHealthCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
-                .background(HelmTheme.stateAttention.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .background(HelmTheme.stateError.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             }
 
             HStack(spacing: 10) {
@@ -624,7 +624,7 @@ struct RedesignUpdatesSectionView: View {
                                             : (
                                                 core.upgradePlanStepRunsAutomatically(step)
                                                     ? Color.secondary
-                                                    : HelmTheme.stateAttention
+                                                    : HelmTheme.stateNeedsReview
                                             )
                                     )
 
@@ -771,7 +771,7 @@ struct RedesignUpdatesSectionView: View {
     private func riskRow(flag: String, active: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: active ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(active ? HelmTheme.stateAttention : HelmTheme.textSecondary)
+                .foregroundColor(active ? HelmTheme.stateNeedsReview : HelmTheme.textSecondary)
             Text(flag)
                 .font(.subheadline)
                 .foregroundColor(active ? HelmTheme.textPrimary : HelmTheme.textSecondary)
