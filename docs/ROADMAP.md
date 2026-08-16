@@ -675,9 +675,9 @@ Exit Criteria:
 
 ---
 
-## 0.19.x — Native Experience Foundation & First-Run Value (rc)
+## 0.19.x — Native Experience Foundation & First-Run Value (stable)
 
-Status: `v0.19.0-rc.7` is published and the `v0.19.0` stable source candidate is in final preparation. The line delivers Dashboard-aware status-item routing, actionable update notifications, selective Plan execution, XPC recovery hardening, corrected Settings behavior in external full-screen Spaces, truthful vendor-app routing for third-party Sparkle updates, Node 24-compatible CI actions, clarified manager and status semantics, and first-class offline detection, local-only refresh, network-action deferral, and coalesced reconnection recovery. The Environment Brief remains debug-gated pending Issue #388, native privileged execution remains on askpass pending its separate activation gates, selectable themes remain post-1.0 work, and public stable/RC metadata remains isolated on `v0.18.2`/`v0.19.0-rc.7` until stable publication.
+Status: `v0.19.0` stable is published, and `v0.19.0-rc.7` remains available on the isolated beta/RC channel. The line delivers Dashboard-aware status-item routing, actionable update notifications, selective Plan execution, XPC recovery hardening, corrected Settings behavior in external full-screen Spaces, truthful vendor-app routing for third-party Sparkle updates, Node 24-compatible CI actions, clarified manager and status semantics, and first-class offline detection, local-only refresh, network-action deferral, and coalesced reconnection recovery. The Environment Brief remains debug-gated pending Issue #388, native privileged execution remains on askpass pending its separate activation gates, and selectable themes remain post-1.0 work.
 
 Goal:
 
