@@ -279,6 +279,11 @@ extension HelmCore {
                     )
                 }
                 self.previousRefreshState = nowRefreshing
+                if !nowRefreshing {
+                    DispatchQueue.main.async {
+                        self.resumeDeferredOfflineRefreshIfReady()
+                    }
+                }
 
                 let inFlightSearchTaskIds = Set(
                     coreTasks.compactMap { task -> Int64? in

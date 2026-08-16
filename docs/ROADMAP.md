@@ -677,7 +677,7 @@ Exit Criteria:
 
 ## 0.19.x — Native Experience Foundation & First-Run Value (rc)
 
-Status: published `v0.19.0-rc.6` provides Dashboard-aware status-item routing, actionable update notifications, selective Plan execution, XPC recovery hardening, corrected Settings behavior in external full-screen Spaces, truthful vendor-app routing for third-party Sparkle updates, Node 24-compatible CI actions, and the inactive native-helper registration foundation. The Environment Brief remains debug-gated pending Issue #388, native privileged execution remains on askpass pending signed installed-candidate QA, and public stable/RC metadata remains isolated on `v0.18.2`/`v0.19.0-rc.6`.
+Status: published `v0.19.0-rc.6` provides Dashboard-aware status-item routing, actionable update notifications, selective Plan execution, XPC recovery hardening, corrected Settings behavior in external full-screen Spaces, truthful vendor-app routing for third-party Sparkle updates, Node 24-compatible CI actions, and the inactive native-helper registration foundation. The prepared `v0.19.0-rc.7` source candidate clarifies Dashboard manager and footer semantics, adds filtered Plan bulk selection, limits priority dragging to detected managers, simplifies the Settings detail surface, and adds first-class offline detection, local-only refresh, network-action deferral, and coalesced reconnection recovery. The Environment Brief remains debug-gated pending Issue #388, native privileged execution remains on askpass pending signed installed-candidate QA, future selectable themes remain planned for `0.24.x`, and public stable/RC metadata remains isolated on `v0.18.2`/`v0.19.0-rc.6` until RC7 publication.
 
 Goal:
 
@@ -774,6 +774,7 @@ Goal:
 - Validate i18n key/placeholder/ICU correctness, localization fallback, and UI text expansion.
 - Optimize first useful render, window open, section switching, search response, scrolling, progress updates, and idle resource use against documented experience budgets.
 - Complete motion, progress, inactive-window, menu, focus, selection, and transition polish.
+- Make the presentation layer theme-ready by replacing hard-coded Wayfinder styling with semantic visual tokens, while retaining Wayfinder as the only required 1.0 theme.
 - Run final custom-component exception, visual consistency, state-fixture, screenshot-regression, multi-display, appearance, localization, and failure-injection audits.
 - Complete final moderated usability and first-run validation before UI lock.
 
@@ -783,6 +784,7 @@ Exit Criteria:
 - Stable FFI boundary and deterministic execution verified.
 - Users can identify current state, next action, action consequence, and recovery path on release-critical surfaces.
 - Design sign-off covers behavior and all state variants rather than only static ideal-state screenshots.
+- Wayfinder renders entirely through the semantic theme contract, falls back safely when theme data is unavailable, and remains unchanged as Helm's canonical default.
 - Product screenshots and end-user design documentation are updated only after UI lock.
 
 ---
@@ -815,7 +817,7 @@ Exit Criteria:
 
 ---
 
-## 1.1.x — Globalization Expansion
+## 1.1.x — Globalization & Theme Expansion
 
 Goal:
 
@@ -824,6 +826,10 @@ Goal:
 - Localization coverage for all UI surfaces
 - Website localization
 - Documentation localization (partial)
+- Add a durable theme preference in Settings with at least three built-in themes: Wayfinder as the default, Corporate, and a third direction selected after prototype and usability review.
+- Keep theme selection independent from system light/dark appearance; every theme must support both appearances plus increased contrast and reduced transparency.
+- Limit themes to semantic presentation tokens and theme-owned decorative assets. Themes must not change information architecture, layout behavior, command availability, safety semantics, status meaning, or accessibility structure.
+- Persist the selected theme locally and fail safely to Wayfinder if a stored theme identifier is missing or no longer supported.
 - Reassess SwiftUI state ownership after 1.0 operational data is available. A reducer/store rewrite is not a pre-1.0 goal; any change must be incremental and preserve the presentation-only boundary.
 
 Exit Criteria:
@@ -831,6 +837,8 @@ Exit Criteria:
 - Additional locales meet UX and QA standards
 - Website supports locale routing
 - Translation coverage >80% for supported locales
+- Wayfinder, Corporate, and the approved third theme pass the same representative screenshot, localization, contrast, keyboard, VoiceOver, reduced-transparency, and light/dark validation matrix.
+- Switching themes updates all active Helm surfaces coherently without restarting, resetting navigation, or changing operational state.
 
 ---
 

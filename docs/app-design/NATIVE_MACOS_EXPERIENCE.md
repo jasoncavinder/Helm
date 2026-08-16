@@ -1,8 +1,8 @@
 # Native Mac Experience Initiative
 
-Status: approved Original Wayfinder direction; incremental runtime migration staged for v0.19-v0.22
-Scope: Pre-1.0 product, interaction, and visual design maturation for the macOS app
-Last updated: 2026-08-07
+Status: approved Original Wayfinder direction; incremental runtime migration staged for v0.19-v0.22 with post-1.0 theme expansion planned for v1.1
+Scope: Pre-1.0 product, interaction, and visual design maturation for the macOS app, plus the presentation contract for future themes
+Last updated: 2026-08-14
 
 ## 1. Objective
 
@@ -111,6 +111,12 @@ No workflow is complete until it covers:
 - cancellation and interruption
 - verification, recovery, and rollback limits
 
+### 4.8 Themes vary expression, not meaning
+
+Wayfinder is Helm's canonical visual language and default theme. A future Settings preference will add Corporate and at least one additional theme selected after prototype and usability review. This expansion must reuse one application structure and semantic component system rather than fork screens into theme-specific implementations.
+
+Themes may vary semantic palette values, materials, typography accents, illustration, texture, and other decorative expression. They must not alter information architecture, layout behavior, commands, action availability, safety hierarchy, status meaning, content, focus order, or accessibility structure. System light/dark appearance is independent from theme selection, and every theme must support light, dark, increased-contrast, and reduced-transparency configurations. Unknown or retired theme identifiers fall back to Wayfinder.
+
 ## 5. Experience Architecture
 
 ### 5.1 Menu bar surface
@@ -197,6 +203,7 @@ Notifications are reserved for meaningful state changes when Helm is not frontmo
 - Audit every custom control against an equivalent native component.
 - Reduce container, radius, shadow, gradient, and material variation.
 - Define semantic typography, spacing, selection, focus, state, destructive-action, and Pro tokens.
+- Keep semantic tokens independent from Wayfinder-specific values so future themes can change expression without changing component or workflow semantics.
 - Validate light, dark, increased-contrast, inactive-window, and reduced-transparency appearances.
 
 ### Content design
@@ -315,6 +322,7 @@ Deliverables:
 - perceived-performance and scrolling optimization against documented budgets
 - motion, progress, inactive-window, menu, focus, selection, and transition polish
 - final visual consistency and custom-component exception audit
+- theme-readiness audit that routes Wayfinder through the semantic presentation-token contract without requiring multiple themes to ship in 1.0
 - state-fixture and screenshot-regression coverage for stable representative surfaces
 - multi-display, resolution, appearance, localization, long-running-task, and failure-injection validation
 - final moderated usability and first-run studies
@@ -325,6 +333,7 @@ Exit gate:
 - no high-severity design-system, accessibility, workflow, or perceived-performance defects
 - users can identify current state, next action, action consequence, and recovery path on release-critical surfaces
 - design sign-off covers behavior and all state variants, not only static screenshots
+- Wayfinder remains visually stable and is the tested fallback for missing or unsupported theme identifiers
 
 ### 1.0.0 — Native experience release gate
 
@@ -338,6 +347,14 @@ Required evidence:
 - window, selection, focus, inspector, and task state survive expected lifecycle transitions
 - custom components have documented product value and complete native interaction/accessibility behavior
 - no known high-severity mismatch between visible UI state and core/service authority
+
+Multiple selectable themes are not a 1.0 release requirement. Version 1.0 establishes Wayfinder as the canonical default and leaves the presentation system ready for the validated post-1.0 expansion.
+
+### 1.1.x — Theme and globalization expansion
+
+Deliver a durable Settings preference with at least three built-in themes: Wayfinder, Corporate, and a third direction chosen after prototype and usability review. Theme switching must update the Dashboard, popover, Settings, first-run surfaces, sheets, and supporting windows coherently without changing navigation or operational state.
+
+All themes must pass the same light/dark, increased-contrast, reduced-transparency, localization, text-expansion, keyboard, VoiceOver, and representative screenshot matrix. Theme selection is a presentation preference, not a product entitlement or alternate workflow model unless a later product decision explicitly changes that allocation.
 
 ## 8. Success Measures
 

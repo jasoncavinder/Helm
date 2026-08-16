@@ -10,6 +10,12 @@ enum ExternalSparkleUpdatePolicy {
     }
 }
 
+enum ManagerPriorityDragPolicy {
+    static func canInitiateDrag(isDetected: Bool) -> Bool {
+        isDetected
+    }
+}
+
 struct PackageRuntimeStateProjection: Codable, Hashable {
     var isActive: Bool = false
     var isDefault: Bool = false
@@ -73,6 +79,12 @@ struct UpgradePreviewPlanner {
     struct SelectionState: Equatable {
         let selectedStepIds: Set<String>
         let knownStepIds: Set<String>
+    }
+
+    enum VisibleSelectionState: Equatable {
+        case none
+        case partial
+        case all
     }
 
     struct RiskCandidate: Equatable {
@@ -261,6 +273,32 @@ struct UpgradePreviewPlanner {
                 .union(newlyAvailableStepIds),
             knownStepIds: availableStepIds
         )
+    }
+
+    static func visibleSelectionState(
+        selectedStepIds: Set<String>,
+        visibleStepIds: Set<String>
+    ) -> VisibleSelectionState {
+        guard !visibleStepIds.isEmpty else { return .none }
+        let selectedVisibleCount = selectedStepIds.intersection(visibleStepIds).count
+        if selectedVisibleCount == 0 {
+            return .none
+        }
+        if selectedVisibleCount == visibleStepIds.count {
+            return .all
+        }
+        return .partial
+    }
+
+    static func settingVisibleSelection(
+        selectedStepIds: Set<String>,
+        visibleStepIds: Set<String>,
+        included: Bool
+    ) -> Set<String> {
+        if included {
+            return selectedStepIds.union(visibleStepIds)
+        }
+        return selectedStepIds.subtracting(visibleStepIds)
     }
 
     static func riskSummary(

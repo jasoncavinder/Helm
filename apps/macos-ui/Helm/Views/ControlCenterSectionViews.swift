@@ -146,12 +146,16 @@ private struct DashboardServiceHealthCard: View {
             : L10n.App.Settings.ServiceHealth.Status.idle.localized
     }
 
-    private var managerCounts: (detected: Int, available: Int) {
-        let trackedStatuses = core.managerStatuses.values
-            .filter { $0.isImplemented && $0.enabled }
-        let enabled = trackedStatuses.count
-        let detected = trackedStatuses.filter(\.detected).count
-        return (detected, max(enabled - detected, 0))
+    private var managerCounts: DashboardManagerCounts {
+        DashboardManagerCounts(
+            statuses: core.managerStatuses.values.map {
+                (
+                    detected: $0.detected,
+                    enabled: $0.enabled,
+                    isImplemented: $0.isImplemented
+                )
+            }
+        )
     }
 
     var body: some View {
@@ -184,6 +188,12 @@ private struct DashboardServiceHealthCard: View {
                     title: L10n.App.Settings.ServiceHealth.managerCoverage.localized,
                     value: L10n.App.Settings.ServiceHealth.managerCoverageValue.localized(with: [
                         "detected": managerCounts.detected,
+                        "disabled": managerCounts.disabled,
+                    ])
+                )
+                DashboardServiceHealthMetric(
+                    title: L10n.App.Settings.ServiceHealth.otherManagers.localized,
+                    value: L10n.App.Settings.ServiceHealth.otherManagersValue.localized(with: [
                         "available": managerCounts.available,
                     ])
                 )
@@ -312,6 +322,17 @@ struct RedesignUpdatesSectionView: View {
         scopedPlanSteps.filter { selectedPlanStepIds.contains($0.id) }
     }
 
+    private var visiblePlanStepIds: Set<String> {
+        Set(visiblePlanSteps.map(\.id))
+    }
+
+    private var visibleSelectionState: UpgradePreviewPlanner.VisibleSelectionState {
+        UpgradePreviewPlanner.visibleSelectionState(
+            selectedStepIds: selectedPlanStepIds,
+            visibleStepIds: visiblePlanStepIds
+        )
+    }
+
     private var scopedInFlightStepCount: Int {
         scopedPlanSteps.filter { step in
             let hasProjectedTask = core.upgradePlanTaskProjectionByStepId[step.id] != nil
@@ -391,6 +412,14 @@ struct RedesignUpdatesSectionView: View {
         )
         selectedPlanStepIds = selection.selectedStepIds
         knownPlanStepIds = selection.knownStepIds
+    }
+
+    private func toggleVisiblePlanSelection() {
+        selectedPlanStepIds = UpgradePreviewPlanner.settingVisibleSelection(
+            selectedStepIds: selectedPlanStepIds,
+            visibleStepIds: visiblePlanStepIds,
+            included: visibleSelectionState != .all
+        )
     }
 
     private func projectedStatus(_ step: CoreUpgradePlanStep) -> String {
@@ -550,6 +579,22 @@ struct RedesignUpdatesSectionView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 } else {
+                    HStack {
+                        Spacer()
+                        Button(action: toggleVisiblePlanSelection) {
+                            Label(
+                                visibleSelectionState == .all
+                                    ? L10n.App.Updates.deselectAll.localized
+                                    : L10n.App.Updates.selectAll.localized,
+                                systemImage: visibleSelectionState == .all
+                                    ? "checkmark.square.fill"
+                                    : (visibleSelectionState == .partial ? "minus.square.fill" : "square")
+                            )
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle())
+                        .disabled(core.scopedUpgradePlanRunInProgress)
+                    }
+
                     LazyVStack(spacing: 0) {
                         ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
                             HStack(spacing: 8) {
@@ -683,7 +728,11 @@ struct RedesignUpdatesSectionView: View {
                         )
                     }
                     .buttonStyle(HelmPrimaryButtonStyle())
-                    .disabled(runnableCount == 0 || core.scopedUpgradePlanRunInProgress)
+                    .disabled(
+                        runnableCount == 0
+                            || core.scopedUpgradePlanRunInProgress
+                            || !core.networkOperationsAvailable
+                    )
 
                     Spacer()
                 }
@@ -776,7 +825,10 @@ struct RedesignUpgradeSheetView: View {
                     presentationMode.wrappedValue.dismiss()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
-                .disabled((includeOsUpdates ? withOsCount : noOsCount) == 0)
+                .disabled(
+                    (includeOsUpdates ? withOsCount : noOsCount) == 0
+                        || !core.networkOperationsAvailable
+                )
             }
         }
         .padding(20)

@@ -62,6 +62,43 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.19.0-rc.7 (Offline Resilience and Wayfinder Polish, Source Candidate Prepared)
+
+### Candidate Scope
+
+- [x] Carry only the reviewed post-RC6 delta through PRs `#462`, `#465`-`#468`, `#470`, and `#471`.
+- [x] Identify the workspace and local Rust packages as `0.19.0-rc.7` while preserving stable `v0.18.2` and published prerelease `v0.19.0-rc.6` metadata.
+- [x] Count every detected supported manager on Dashboard, identify disabled managers separately, and keep other available managers as a distinct Service Health metric.
+- [x] Keep routine update availability in Plan without duplicating an Attention footer state.
+- [x] Provide filtered Plan Select All/Deselect All behavior that preserves hidden selections, and prevent Not Installed managers from initiating priority dragging.
+- [x] Retain the Wayfinder gradient in the Settings sidebar while using a solid detail surface.
+- [x] Detect offline state before network work, preserve cached and local-only behavior, defer network actions without failed-task fan-out, and coalesce reconnection recovery.
+- [x] Keep selectable multi-theme support as documented future `0.24.x` work rather than RC7 behavior.
+- [x] Keep Issue `#388` and the Environment Brief outside production routing, and keep native privileged execution on the existing askpass path.
+
+### Required Validation
+
+- [x] Complete `docs/validation/v0.19.0-rc.7-readiness.md` and record every release-blocking finding before version preparation.
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, and all 153 arm64 macOS tests pass on the prepared candidate revision.
+- [x] Confirm the dependency graph is unchanged and retain the 2026-08-11 third-party license audit with an updated RC7 release context.
+- [x] Non-mutating release rehearsal, preflight, prepare, and release-contract checks pass for `v0.19.0-rc.7` before any tag or publication mutation.
+- [ ] Final release gates pass from a clean `main` revision that exactly matches freshly fetched `origin/main`.
+- [x] No known release-critical regression remains open; Issue `#388` remains non-production behind the retained first-run gate.
+
+### Publication
+
+- [ ] Obtain explicit maintainer approval before creating or pushing `v0.19.0-rc.7` or publishing artifacts.
+- [ ] Publish `v0.19.0-rc.7` as a GitHub prerelease that does not become latest.
+- [ ] Confirm stable appcast/CLI metadata remains on `v0.18.2` and only beta/RC metadata advances to `v0.19.0-rc.7`.
+- [ ] Complete signed/notarized GUI and direct CLI prerelease publication plus post-publication verification.
+
+### Installed-Candidate Validation
+
+- [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.7` from the signed `v0.19.0-rc.6` installation.
+- [ ] Confirm the installed build retains accepted Dashboard, Plan, Environment, and Settings behavior.
+- [ ] Confirm online-to-offline transition, offline relaunch, local-only refresh, and one coalesced reconnection refresh in the installed Developer ID build.
+- [ ] Confirm notification, Plan-selection, self-update-channel, language, helper-registration, and askpass preferences remain intact after replacement.
+
 ## v0.19.0-rc.6 (Settings and Sparkle Handoff Stabilization, Published)
 
 ### Candidate Scope

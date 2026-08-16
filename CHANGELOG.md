@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+## [0.19.0-rc.7] - 2026-08-15
+
+### Added
+- Helm now monitors the macOS network path and projects a localized offline Wayfinder state that is distinct from a service connection failure.
+
+### Changed
+- Offline refreshes continue local installed-package inventory while deferring remote outdated checks, catalog synchronization, package search, installs, upgrades, manager downloads, and Helm update checks until connectivity returns.
+- Network-dependent actions are disabled while offline, cached Library and Plan information remains visible, and reconnecting coalesces deferred work into one refresh.
+- Dashboard manager coverage now counts every detected supported manager, identifies disabled managers separately, and presents additional available managers as their own Service Health metric. Routine update availability remains visible through Plan without duplicating an Attention footer state.
+- Plan now provides Select All and Deselect All controls for the visible update set while preserving filtered selections, and the Environment view limits priority dragging to detected managers.
+- Settings retains the Wayfinder gradient in its sidebar while using a quieter solid detail surface.
+
+### Fixed
+- Starting a refresh while already offline no longer creates one failed task per network-backed manager or retries failures that became non-actionable after connectivity was lost.
+
+This source candidate preserves stable `v0.18.2` and the published
+`v0.19.0-rc.6` prerelease until RC7 publication completes. The Environment
+Brief remains development-gated behind Issue #388, native privileged execution
+remains on the existing askpass path, and the documented multi-theme system
+remains future work rather than RC7 behavior.
+
 ## [0.19.0-rc.6] - 2026-08-14
 
 ### Changed

@@ -398,6 +398,8 @@ extension L10n {
                 static let failedTasks = "app.settings.service_health.failed_tasks"
                 static let managerCoverage = "app.settings.service_health.manager_coverage"
                 static let managerCoverageValue = "app.settings.service_health.manager_coverage_value"
+                static let otherManagers = "app.settings.service_health.other_managers"
+                static let otherManagersValue = "app.settings.service_health.other_managers_value"
                 static let lastError = "app.settings.service_health.last_error"
                 static let copySnapshot = "app.settings.service_health.copy_snapshot"
 
@@ -499,6 +501,8 @@ extension L10n {
             static let helmSelfUpdateSummary = "app.updates.helm_self_update.summary"
             static let managers = "app.updates.managers"
             static let packages = "app.updates.packages"
+            static let selectAll = "app.updates.selection.select_all"
+            static let deselectAll = "app.updates.selection.deselect_all"
             static let riskFlags = "app.updates.risk_flags"
             struct Authority {
                 static let authoritative = "app.updates.authority.authoritative"

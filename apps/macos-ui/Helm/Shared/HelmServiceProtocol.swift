@@ -17,6 +17,7 @@ import Foundation
     func listTaskLogs(taskId: Int64, limit: Int64, withReply reply: @escaping (String?) -> Void)
     func listTaskTimeoutPrompts(withReply reply: @escaping (String?) -> Void)
     func respondTaskTimeoutPrompt(taskId: Int64, waitForCompletion: Bool, withReply reply: @escaping (Bool) -> Void)
+    func setNetworkAvailable(available: Bool, withReply reply: @escaping (Bool) -> Void)
     func triggerRefresh(withReply reply: @escaping (Bool) -> Void)
     func triggerDetection(withReply reply: @escaping (Bool) -> Void)
     func triggerDetectionForManager(managerId: String, withReply reply: @escaping (Bool) -> Void)

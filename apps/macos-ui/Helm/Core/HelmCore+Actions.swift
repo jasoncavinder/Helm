@@ -230,6 +230,7 @@ extension HelmCore {
         packageFilter: String,
         selectedStepIds: Set<String>? = nil
     ) {
+        guard networkOperationsAvailable else { return }
         let scopedSteps = HelmCore.scopedUpgradePlanSteps(
             from: upgradePlanSteps,
             managerScopeId: managerScopeId,
@@ -275,6 +276,7 @@ extension HelmCore {
         externalSparkleStepIds: [String] = [],
         selectedBackendStepIds: [String]? = nil
     ) {
+        guard networkOperationsAvailable else { return }
         guard scopedUpgradeWorkflowId == nil,
               !scopedUpgradeWorkflowStartState.isInFlight,
               !scopedUpgradePlanRunInProgress else { return }
@@ -1266,6 +1268,7 @@ extension HelmCore {
         _ managerId: String,
         options: ManagerInstallActionOptions? = nil
     ) {
+        guard networkOperationsAvailable else { return }
         if isManagerUninstalling(managerId) {
             return
         }
@@ -1362,6 +1365,9 @@ extension HelmCore {
         let isManagerInstallRepair = optionId == "reinstall_manager_via_homebrew"
         let isManagerSetupRepair = optionId == "apply_post_install_setup_defaults"
         let isExecutableOverrideRepair = optionId == "clear_selected_executable_override"
+        if isManagerInstallRepair, !networkOperationsAvailable {
+            return
+        }
         if isManagerInstallRepair {
             DispatchQueue.main.async {
                 self.managerOperations[managerId] = L10n.App.Managers.Operation.startingInstall.localized
@@ -1459,6 +1465,7 @@ extension HelmCore {
     }
 
     func updateManager(_ managerId: String) {
+        guard networkOperationsAvailable else { return }
         if isManagerUninstalling(managerId) {
             return
         }
@@ -1863,6 +1870,10 @@ extension HelmCore {
             isSearching = false
             return
         }
+        guard networkOperationsAvailable else {
+            isSearching = false
+            return
+        }
 
         let managerIds = remoteSearchManagerIds()
         guard !managerIds.isEmpty else {
@@ -1988,7 +1999,7 @@ extension HelmCore {
             return
         }
 
-        guard let service = service() else {
+        guard networkOperationsAvailable, let service = service() else {
             descriptionLookupTaskIdsByPackage.removeValue(forKey: package.id)
             descriptionLookupStartedAtByPackage.removeValue(forKey: package.id)
             packageDescriptionLoadingIds.remove(package.id)

@@ -169,6 +169,7 @@ struct ControlCenterWindowView: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.regular)
                         .fixedSize()
+                        .disabled(!core.networkOperationsAvailable)
                     }
                 }
             }
@@ -452,18 +453,19 @@ private struct ControlCenterSidebarView: View {
 
     @ViewBuilder
     private var footerStatusView: some View {
-        let status = footerProjection.condition.footerStatus
-        if status.isActionable {
-            Button {
-                context.navigate(to: footerProjection.primaryAction)
-            } label: {
+        if let status = footerProjection.condition.sidebarFooterStatus {
+            if status.isActionable {
+                Button {
+                    context.navigate(to: footerProjection.primaryAction)
+                } label: {
+                    WayfinderFooterStatusBadge(status: status)
+                }
+                .buttonStyle(.plain)
+                .helmPointer()
+                .accessibilityHint(footerProjection.primaryActionTitle.localized)
+            } else {
                 WayfinderFooterStatusBadge(status: status)
             }
-            .buttonStyle(.plain)
-            .helmPointer()
-            .accessibilityHint(footerProjection.primaryActionTitle.localized)
-        } else {
-            WayfinderFooterStatusBadge(status: status)
         }
     }
 

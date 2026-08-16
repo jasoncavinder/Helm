@@ -647,6 +647,7 @@ extension HelmCore {
     // MARK: - Upgrade All
 
     func upgradeAll(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        guard networkOperationsAvailable else { return }
         guard scopedUpgradeWorkflowId == nil,
               !scopedUpgradeWorkflowStartState.isInFlight,
               !scopedUpgradePlanRunInProgress else { return }
@@ -2156,12 +2157,16 @@ struct HelmSupport {
 
     private static func serviceHealthManagerCounts(
         core: HelmCore
-    ) -> (enabled: Int, detected: Int, available: Int) {
-        let trackedStatuses = core.managerStatuses.values
-            .filter { $0.isImplemented && $0.enabled }
-        let enabled = trackedStatuses.count
-        let detected = trackedStatuses.filter(\.detected).count
-        return (enabled, detected, max(enabled - detected, 0))
+    ) -> DashboardManagerCounts {
+        DashboardManagerCounts(
+            statuses: core.managerStatuses.values.map {
+                (
+                    detected: $0.detected,
+                    enabled: $0.enabled,
+                    isImplemented: $0.isImplemented
+                )
+            }
+        )
     }
 
     static func generateServiceHealthDiagnostics() -> String {
@@ -2180,7 +2185,8 @@ struct HelmSupport {
         info += "Running Tasks: \(core.runningTaskCount)\n"
         info += "Failed Tasks: \(core.failedTaskCount)\n"
         info += "Pending Updates: \(core.outdatedPackages.count)\n"
-        info += "Detected Managers: \(managerCounts.detected)/\(managerCounts.enabled)\n"
+        info += "Detected Managers: \(managerCounts.detected)\n"
+        info += "Disabled Detected Managers: \(managerCounts.disabled)\n"
         info += "Other Managers Available: \(managerCounts.available)\n"
         if let lastError = core.lastError, !lastError.isEmpty {
             info += "Last Error: \(lastError)\n"
