@@ -10,6 +10,8 @@ Production behavior is unchanged by this proposal. The SwiftUI in `tools/design-
 
 Does this composition give Helm one useful, recognizable, and stable menu-bar surface without recreating the Dashboard inside a transient panel?
 
+Review feedback may be left on the proposal PR, on this document, or against an individual render. The resulting decision and any requested revisions must be recorded here before production implementation begins.
+
 Original Wayfinder remains the approved visual direction. This proposal does not reopen that decision. It applies the approved environment-navigator thesis to the production popover gap left after v0.19:
 
 1. State one dominant truth.
