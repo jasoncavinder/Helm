@@ -191,10 +191,18 @@ struct V020WayfinderPopoverProposal: View {
 
       Spacer()
 
-      Image(systemName: "ellipsis.circle")
-        .font(.system(size: 16, weight: .medium))
-        .foregroundStyle(palette.secondaryText)
-        .accessibilityLabel("Utilities")
+      ZStack {
+        Circle()
+          .fill(palette.surface.opacity(0.82))
+        Circle()
+          .stroke(palette.line, lineWidth: 1)
+        Image(systemName: "ellipsis")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(palette.secondaryText)
+      }
+      .frame(width: 28, height: 28)
+      .accessibilityLabel("Utilities")
+      .accessibilityHint("Opens Settings, support, app updates, About, and Quit")
     }
     .padding(.horizontal, 17)
     .frame(height: 56)
@@ -230,6 +238,11 @@ struct V020WayfinderPopoverProposal: View {
               in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
             .padding(.top, 2)
+        } else {
+          Label("No action needed", systemImage: "checkmark")
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(NavigatorPalette.seaGlass)
+            .padding(.top, 3)
         }
       }
 
@@ -263,22 +276,22 @@ struct V020WayfinderPopoverProposal: View {
     }
     .padding(.horizontal, 17)
     .frame(height: 67)
-    .background(palette.surface.opacity(0.72))
+    .background(palette.surface.opacity(0.46))
   }
 
   private func routeStage(_ title: String, symbol: String, tone: V020StageTone) -> some View {
     VStack(spacing: 4) {
       ZStack {
-        Circle().fill(tone.color.opacity(0.15))
+        Circle().fill(tone.color.opacity(0.11))
         Image(systemName: symbol)
           .font(.system(size: 10, weight: .medium))
-          .foregroundStyle(tone.color)
+          .foregroundStyle(tone.color.opacity(0.86))
       }
       .frame(width: 27, height: 27)
 
       Text(title)
-        .font(.system(size: 8, weight: .semibold))
-        .foregroundStyle(tone == .cached ? palette.secondaryText : palette.primaryText.opacity(0.78))
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(tone == .cached ? palette.secondaryText : palette.primaryText.opacity(0.7))
     }
     .frame(width: 55)
   }
@@ -287,7 +300,7 @@ struct V020WayfinderPopoverProposal: View {
     Rectangle()
       .fill(connectorColor(after: index))
       .frame(maxWidth: .infinity)
-      .frame(height: 2)
+      .frame(height: 1.5)
       .offset(y: -8)
   }
 
@@ -306,7 +319,7 @@ struct V020WayfinderPopoverProposal: View {
         Text(state.contextTitle)
           .font(.system(size: 10.5, weight: .semibold))
         Text(state.contextDetail)
-          .font(.system(size: 9, weight: .medium))
+          .font(.system(size: 9.5, weight: .medium))
           .foregroundStyle(palette.secondaryText)
           .lineLimit(1)
       }

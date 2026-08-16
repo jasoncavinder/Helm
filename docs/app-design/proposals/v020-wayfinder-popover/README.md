@@ -1,16 +1,21 @@
 # v0.20 Unified Wayfinder Popover Proposal
 
-Status: **Owner review requested**
+Status: **Composition approved with minor refinements**
 
 Scope: non-shipping design and interaction contract for Roadmap Slice 20.1
 
 Production behavior is unchanged by this proposal. The SwiftUI in `tools/design-lab/` uses synthetic fixtures and is excluded from the Helm application target.
 
-## Decision to make
+## Owner decision
 
-Does this composition give Helm one useful, recognizable, and stable menu-bar surface without recreating the Dashboard inside a transient panel?
+On 2026-08-16, the owner approved the proposed composition and requested that it remain intact with these refinements:
 
-Review feedback may be left on the proposal PR, on this document, or against an individual render. The resulting decision and any requested revisions must be recorded here before production implementation begins.
+1. Increase the smallest route and context copy slightly.
+2. Make the route strip visually quieter than the Course hero.
+3. Improve the healthy hero's balance without inventing an action.
+4. Keep the utilities menu discoverable while subordinate to operational actions.
+
+The updated renders implement that decision without changing the 400-by-458-point composition, region order, or action hierarchy. The healthy hero now uses a quiet noninteractive reassurance, and the utilities control has a bounded button treatment with an explicit accessibility label and hint.
 
 Original Wayfinder remains the approved visual direction. This proposal does not reopen that decision. It applies the approved environment-navigator thesis to the production popover gap left after v0.19:
 
@@ -138,14 +143,14 @@ No package mutation, manager configuration, long diagnostics, or output browsing
 - Reduce Transparency substitutes opaque semantic surfaces without changing hierarchy.
 - All seven locales and representative +40% text expansion must pass before production replacement.
 
-## Review gate
+## Implementation gate
 
-Approve, revise, or reject these points before production implementation:
+The composition gate is resolved. Production implementation must preserve:
 
-1. Overall composition and information density.
+1. The approved overall composition and information density.
 2. Course Indicator treatment across semantic states.
-3. Usefulness of the route strip and single context row.
-4. Action hierarchy and utility-menu placement.
-5. Fixed ordinary-state footprint versus a smaller or more adaptive panel.
+3. The quieter route strip and single context row.
+4. Contextual-action hierarchy and discoverable utility-menu placement.
+5. The fixed ordinary-state footprint with bounded text expansion.
 
-After approval, production implementation should replace regions incrementally from the bottom up, retain a working Open Dashboard route throughout, and add state-fixture, deep-link, accessibility, localization, activation, and bounded-size coverage before removing the legacy code.
+Production implementation should replace regions incrementally from the bottom up, retain a working Open Dashboard route throughout, and add state-fixture, deep-link, accessibility, localization, activation, and bounded-size coverage before removing the legacy code.
