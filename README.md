@@ -9,7 +9,7 @@
   <br>
   A macOS control center and CLI for unified package manager control.
   <br>
-  <strong>Pre-1.0 &middot; v0.18.2</strong>
+  <strong>Pre-1.0 &middot; v0.19.0</strong>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 
 Helm manages software across multiple package managers (Homebrew, npm, pip, Cargo, etc.) and runtime tools (mise, rustup) from a single menu bar interface. It is designed as infrastructure software: deterministic, safety-first, and explicit about authority, orchestration, and error handling.
 
-> **Release notice:** Active pre-1.0 development continues with stable `v0.18.2` on `main`, published opt-in prerelease `v0.19.0-rc.7`, and `v0.19.0` stable in final source preparation on `dev`. `v0.18.0` remains withdrawn because of a critical SQLite migration defect.
+> **Release notice:** Active pre-1.0 development continues with stable `v0.19.0` on `main`; the published `v0.19.0-rc.7` prerelease remains available on the opt-in beta/RC channel. `v0.18.0` remains withdrawn because of a critical SQLite migration defect.
 >
-> **Testing:** Please test `v0.18.2` on the stable channel; prerelease testers may opt into `v0.19.0-rc.7`. If you installed `v0.18.0`, update to `v0.18.2` before further use. Report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Testing:** Please test `v0.19.0` on the stable channel; prerelease testers may continue using the beta/RC channel. If you installed `v0.18.0`, update to `v0.19.0` before further use. Report issues at [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Editions (Beta)
 
@@ -192,7 +192,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.16.2 | Sparkle Connectivity + Platform Baseline Alignment — network-client entitlement, feed diagnostics, macOS 11 deployment target enforcement | Completed |
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Completed (`v0.17.x` stable, latest patch `v0.17.12`) |
 | 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge, migration-safety hardening, internal advisory cache foundation, and pre-1.0 experience-definition contracts (no public advisory feature surface) | Completed (`v0.18.2` final containment release; `v0.18.0` withdrawn) |
-| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines | Stable `v0.19.0` preparation (`v0.19.0-rc.7` published) |
+| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines | Released (`v0.19.0` stable; `v0.19.0-rc.7` retained on the beta/RC channel) |
 | 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, continuous plan-to-recovery presentation, and secure direct third-party Sparkle updating | Planned |
 | 0.21.x | Accessibility, System Integration & Resilience — keyboard and VoiceOver parity, system integration, offline/partial-state recovery, and first-run receipts | Planned |
 | 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, theme-ready semantic styling, visual/state validation, moderated usability, and UI lock | Planned |
