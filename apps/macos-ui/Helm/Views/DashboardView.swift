@@ -135,7 +135,7 @@ struct RedesignPopoverView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 if overviewState.wayfinderProjection.content.condition != .healthy {
-                    PopoverAttentionBanner(onOpenControlCenter: {
+                    PopoverStatusBanner(onOpenControlCenter: {
                         onOpenControlCenter()
                     })
                         .spotlightAnchor("attentionBanner")

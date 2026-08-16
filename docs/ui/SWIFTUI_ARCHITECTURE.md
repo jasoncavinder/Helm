@@ -109,7 +109,7 @@ RedesignPopoverView
 │   └── OnboardingSettingsView
 ├── Main popover content
 │   ├── Health status header
-│   ├── Attention banner (upgrade-all action)
+│   ├── Status banner (highest-priority state and action)
 │   ├── Active tasks list
 │   ├── Manager snapshot grid
 │   └── Footer actions (search, settings, quit)
@@ -167,7 +167,7 @@ The SwiftUI `Settings` scene is the sole direct Settings destination and provide
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| `HealthBadgeView` | ControlCenterModels.swift | Status badge (healthy/attention/error/running/notInstalled) |
+| `HealthBadgeView` | ControlCenterModels.swift | Status badge (healthy/updatesReady/needsReview/error/running/unavailable/notInstalled) |
 | `PackageRowView` | Components/PackageRowView.swift | Package row with status, version, actions |
 | `TaskRowView` | Components/TaskRowView.swift | Task row with spinner, description, cancel |
 | `ManagerItemView` | Components/ManagerItemView.swift | Manager avatar tile with status dot |
@@ -224,7 +224,7 @@ Uses `SpotlightAnchorKey` preference system with even-odd fill cutout and animat
 |------|--------|
 | `ControlCenterSection` | overview, updates, packages, tasks, managers, settings |
 | `ManagerAuthority` | authoritative, standard, guarded |
-| `OperationalHealth` | healthy, attention, error, running, notInstalled |
+| `OperationalHealth` | healthy, updatesReady, needsReview, error, running, unavailable, notInstalled |
 | `PopoverOverlayRoute` | search, about, confirmQuit |
 
 ---

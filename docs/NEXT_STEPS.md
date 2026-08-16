@@ -11,14 +11,17 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0-rc.7 installed-candidate validation and v0.19.0 stabilization
+v0.19.0 stable preparation and release validation
 ```
 
 Focus:
+- review and integrate the `v0.19.0` stable source candidate through protected `dev` and `main` without advancing public metadata early
+- after exact `origin/main` convergence, repeat the mandatory quality gate, Sparkle checklist, rehearsal, preflight, release canary, and publication-auth write probe before creating the stable tag
+- publish `v0.19.0` only as a non-prerelease GitHub release marked latest; advance only the default appcast item and `cli/latest.json`, while preserving the published RC7 prerelease and beta/RC metadata so both channels coexist
 - preserve the accepted RC7 candidate evidence in `docs/validation/v0.19.0-rc.7-readiness.md`: offline launch and manual refresh avoid failed-task fan-out, cached Library/Plan data and local actions remain usable, network work defers truthfully, reconnection resumes exactly one refresh plus one deferred Helm information check, and the full repository quality gate passed from merged `dev` revision `16127dfff2050a2ba2d8b0b3502e110ab4460080`
 - preserve published stable `v0.18.2` and prerelease `v0.19.0-rc.7`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
 - preserve the completed `v0.19.0-rc.7` publication record: tag source `a29ecb3924e0f029553ad9209c6bc431852a1ccd`, canary/auth runs `31922485485` and `31922485489`, signed/notarized GUI and direct CLI workflows `31923270915` and `31923270917`, publication PRs `#475` and `#476`, and green release/appcast/CLI verification on converged `main` revision `feca8ac709d2969115ce5ef1e8026214511ac902`
-- collect the four explicitly open RC7 installed-candidate checks: RC6-to-RC7 Sparkle replacement, accepted Dashboard/Plan/Environment/Settings behavior, installed-build offline/reconnection behavior, and notification/Plan/self-update/language/helper/askpass preference persistence
+- preserve owner evidence that Sparkle detected, installed, and relaunched RC7 and that the post-RC7 semantic-status UI was visually accepted; do not infer unperformed preference or native-helper checks from that evidence
 - preserve the completed post-RC5 RC6 candidate evidence in `docs/validation/v0.19.0-rc.6-readiness.md`: the full repository and updater-specific gates passed from merged `dev`, the corrected Settings window behavior passed owner QA, and a real Arc candidate confirmed the truthful vendor-owned `Open App to Update` flow through completion and refresh
 - preserve the completed `v0.19.0-rc.6` publication record and collect the four explicitly open installed-candidate checks: RC5-to-RC6 Sparkle replacement, accepted Settings behavior, vendor-owned third-party Sparkle completion/refresh, and preference persistence
 - retain the post-publication native-helper registration/approval/persistence/unregister checks without overstating uncollected evidence; these remain evidence for the later executor-activation sequence rather than publication evidence
@@ -29,7 +32,7 @@ Focus:
 - preserve the completed owner validation of the installed `v0.19.0-rc.1` to signed/notarized `v0.19.0-rc.2` Sparkle update path; Sparkle detected, installed, and relaunched RC2 successfully, with the language-default regression discovered only after relaunch
 - keep the Environment Brief development-gated in the published RC7 line because Issue #388 remains unresolved, and disclose the limitation without implying that the production first-run route changed
 - continue from the Original Wayfinder foundation checkpoints: shared revisioned Dashboard/popover/status projection, semantic Course Indicator modes, stable destination/deep-link bridge, Dashboard naming, restored/resizable native window hosting, native Dashboard/Plan/Library/Activity sidebar composition, persistent Environment access, rendered Course Indicator, native Dashboard toolbar/app commands, one shared native Settings scene with General, Updates, Sources, CLI, and Support panes that follows the active Space beside full-screen apps, remains visible after Helm deactivates without depending on Dashboard, preserves its single-toggle centered-title Wayfinder toolbar, and uses the Wayfinder gradient only in its sidebar while keeping the detail pane on a solid base surface; one shared status-item popover for primary and secondary clicks, Dashboard-owned Service Health, and removal of the legacy in-window Settings destination are implemented; destination content migration, contextual inspector behavior, and v0.22 multi-display validation continue
-- maintain release-process hardening guardrails while RC7 moves through installed-candidate validation and short soak
+- maintain release-process hardening guardrails while `v0.19.0` moves through protected integration and final stable gates
 - do not treat registered helper state as active native authorization; the existing `sudo -A` askpass path remains the runtime implementation until signed installed-build registration/approval QA and executor activation pass together
 - preserve the released `v0.18.2` migration-safety baseline and `v0.18.1` affected-database recovery coverage
 - preserve manager-specific expected nonzero update-check outcomes as completed refreshes with actionable outdated state, starting with rustup's exit code `100`
@@ -422,6 +425,7 @@ Current checkpoint:
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
 - latest stable release on `main`: `v0.18.2`
 - latest published prerelease on `main`: `v0.19.0-rc.7`; stable GitHub/latest, appcast, and CLI pointers remain isolated from the opt-in RC channel
+- prepared stable source candidate on `dev`: `v0.19.0`; version identity, consolidated release notes, stable readiness evidence, and release contracts are prepared while protected integration and clean-`main` gates remain pending
 - `v0.19.0-rc.7` was published from tagged `main` revision `a29ecb3924e0f029553ad9209c6bc431852a1ccd`; publication PRs `#475` and `#476` merged the RC CLI metadata and beta appcast/release notes into converged `main` revision `feca8ac709d2969115ce5ef1e8026214511ac902`
 - `v0.19.0-rc.6` was published from tagged `main` revision `968d0e400acc1a02a7e0a9a3d1a55917325189e8`; publication PRs `#458` and `#459` merged the RC CLI metadata and beta appcast/release notes into `main`
 - `v0.19.0-rc.5` was published on 2026-08-13 from tagged `main` revision `7dfdc26f9dbc7d3ae75f105cef7f1d7c147a2da3`; publication PRs `#441` and `#442` merged the RC CLI metadata and beta appcast/release notes into `main`

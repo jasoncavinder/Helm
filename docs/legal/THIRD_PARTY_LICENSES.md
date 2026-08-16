@@ -22,7 +22,7 @@ The Helm project license (`LICENSE`) does not replace third-party license obliga
 
 Release context:
 
-- source candidate: `v0.19.0-rc.7`
+- source candidate: `v0.19.0`
 - published stable baseline: `v0.18.2`
 
 ### 1) macOS App Runtime Dependencies

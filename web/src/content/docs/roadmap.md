@@ -34,13 +34,13 @@ Helm follows feature-driven milestones. Dates are intentionally omitted — mile
 | 0.17.x | Diagnostics & Logging — task log viewer, structured diagnostics export, manager-detection diagnostics, onboarding/detection hardening, manager-selection controls, and stable release follow-up fixes (`v0.17.0` stable, latest patch `v0.17.12`) |
 | 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge, migration-safety hardening, internal advisory cache foundation, and pre-1.0 experience-definition contracts (`v0.18.2` final containment release; `v0.18.0` withdrawn) |
 
-> **Current Track:** `v0.18.2` remains the stable release, `v0.19.0-rc.4` is the published opt-in prerelease, and focused RC5 stabilization is in progress. `v0.18.0` remains withdrawn. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
+> **Current Track:** `v0.18.2` remains the stable release, `v0.19.0-rc.7` is the published opt-in prerelease, and `v0.19.0` stable is in final source preparation. `v0.18.0` remains withdrawn. Submit feedback via [GitHub Issues](https://github.com/jasoncavinder/Helm/issues/new/choose).
 
 ## Active and Planned
 
 | Version | Milestone |
 |---|---|
-| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines (`v0.19.0-rc.4` published; RC5 stabilization in progress) |
+| 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines (`v0.19.0-rc.7` published; stable preparation in progress) |
 | 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, action hierarchy, and continuous plan-to-recovery presentation |
 | 0.21.x | Accessibility, System Integration & Resilience — keyboard and VoiceOver parity, system integration, offline/partial-state recovery, and first-run receipts |
 | 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, theme-ready semantic styling, visual/state validation, moderated usability, and UI lock |

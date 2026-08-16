@@ -33,9 +33,9 @@ enum PackageStatus: String, CaseIterable {
 
     var iconColor: Color {
         switch self {
-        case .installed:  return .green
-        case .upgradable: return .orange
-        case .available:  return .blue
+        case .installed:  return HelmTheme.stateHealthy
+        case .upgradable: return HelmTheme.stateUpdatesReady
+        case .available:  return HelmTheme.actionSecondaryText
         }
     }
 }

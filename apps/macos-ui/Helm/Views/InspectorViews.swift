@@ -859,7 +859,7 @@ private struct InspectorPackageDetailView: View {
                 RuntimeStateBadge(
                     id: "override",
                     title: L10n.App.Inspector.packageRuntimeStateOverride.localized,
-                    color: .orange
+                    color: HelmTheme.actionSecondaryText
                 )
             )
         }
@@ -1858,7 +1858,7 @@ private extension InspectorManagerDetailView {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(HelmTheme.stateAttention)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(genericPackageStateIssueSummary(issue))
@@ -2633,13 +2633,17 @@ private struct InspectorManagerDetailView: View {
                     .foregroundColor(.secondary)
                 Text(L10n.App.Managers.Tooltip.outdated.localized(with: ["count": outdatedCount]))
                     .font(.caption)
-                    .foregroundColor(outdatedCount == 0 ? HelmTheme.textSecondary : HelmTheme.stateAttention)
+                    .foregroundColor(
+                        outdatedCount == 0
+                            ? HelmTheme.textSecondary
+                            : HelmTheme.stateUpdatesReady
+                    )
             }
 
             if multiInstanceAttentionNeeded {
                 multiInstanceBanner(
                     icon: "exclamationmark.triangle.fill",
-                    tint: HelmTheme.stateAttention,
+                    tint: HelmTheme.stateNeedsReview,
                     title: L10n.App.Inspector.MultiInstance.attentionTitle.localized,
                     message: L10n.App.Inspector.MultiInstance.attentionMessage.localized
                 ) {
@@ -2876,7 +2880,7 @@ private struct InspectorManagerDetailView: View {
                     if let unavailableMessage = selectedInstallMethodUnavailableMessage {
                         Text(unavailableMessage)
                             .font(.caption)
-                            .foregroundColor(HelmTheme.stateAttention)
+                            .foregroundColor(HelmTheme.stateNeedsReview)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -3155,7 +3159,7 @@ extension InspectorManagerDetailView {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(HelmTheme.stateAttention)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(L10n.App.Inspector.PackageStateIssue.MetadataOnly.title.localized)
@@ -3287,7 +3291,7 @@ extension InspectorManagerDetailView {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(HelmTheme.stateAttention)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("app.inspector.package_state_issue.setup_required.title".localized)
@@ -3403,7 +3407,7 @@ extension InspectorManagerDetailView {
                !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(message)
                     .font(.caption)
-                    .foregroundColor(HelmTheme.stateAttention)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -3958,7 +3962,7 @@ extension InspectorManagerDetailView {
                     ForEach(effects, id: \.self) { effect in
                         HStack(alignment: .top, spacing: 8) {
                             Circle()
-                                .fill(HelmTheme.stateAttention)
+                                .fill(HelmTheme.stateNeedsReview)
                                 .frame(width: 6, height: 6)
                                 .padding(.top, 6)
                             Text(effect)
@@ -4299,13 +4303,15 @@ extension InspectorManagerDetailView {
         case .detected:
             return HelmTheme.stateHealthy
         case .inconsistent:
-            return HelmTheme.stateAttention
+            return HelmTheme.stateNeedsReview
         case .inProgress:
-            return HelmTheme.stateAttention
+            return HelmTheme.stateRunning
         case .notDetected, .neverChecked:
             return HelmTheme.textSecondary
-        case .failed, .disabled, .notImplemented:
+        case .failed:
             return HelmTheme.stateError
+        case .disabled, .notImplemented:
+            return HelmTheme.stateUnavailable
         }
     }
 

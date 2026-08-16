@@ -105,7 +105,7 @@ Original Wayfinder's circular Course Indicator renders the single state selected
 - primary action/deep link
 - optional backend-owned completed/total progress and current authority stage
 
-The presentation layer may interpolate a supplied determinate value, but it must not manufacture a composite health score, infer progress from elapsed time, or combine unrelated manager counts into a percentage. Updates-ready uses a semantic attention segment and explicit count, not a completion arc. Indeterminate activity uses a system-equivalent motion with a static reduced-motion alternative. Failure, approval, and partial-data modes change symbol and ring treatment as well as color.
+The presentation layer may interpolate a supplied determinate value, but it must not manufacture a composite health score, infer progress from elapsed time, or combine unrelated manager counts into a percentage. Updates-ready uses a sea-glass teal segment and explicit count, not a completion arc or an attention treatment. Actionable nonfailure findings use the distinct amber/orange `Needs Review` state. Indeterminate activity uses a system-equivalent motion with a static reduced-motion alternative. Failure, approval, and partial-data modes change symbol and ring treatment as well as color.
 
 ## Terminology
 
@@ -114,5 +114,6 @@ The presentation layer may interpolate a supplied determinate value, but it must
 - `Packages` becomes `Library` at the workspace level because it includes applications and toolchains as well as language packages.
 - `Sources` becomes contextual `Environment`; manager and source remain precise domain terms in detail.
 - `Health` is a state communicated by Dashboard rather than a navigation destination.
+- `Updates Ready` is the canonical compact label for actionable update inventory; `Needs Review` identifies actionable nonfailure findings.
 
 These terminology changes are approved for incremental implementation and require canonical/mirrored locale parity as production strings are introduced.

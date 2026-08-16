@@ -133,7 +133,7 @@ struct WalkthroughTooltipCard: View {
         HStack(spacing: 4) {
             ForEach(0..<totalSteps, id: \.self) { index in
                 Circle()
-                    .fill(index == currentIndex ? HelmTheme.stateAttention : HelmTheme.borderSubtle.opacity(0.8))
+                    .fill(index == currentIndex ? HelmTheme.actionPrimaryDefault : HelmTheme.borderSubtle.opacity(0.8))
                     .frame(width: 6, height: 6)
             }
         }

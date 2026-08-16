@@ -62,6 +62,37 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
+## v0.19.0 (Native Experience Foundation Stable Release, Prepared)
+
+### Candidate Scope
+
+- [x] Consolidate the reviewed `v0.19.0-rc.1` through `v0.19.0-rc.7` line and the post-RC7 semantic-status separation from PR `#478` without widening into deferred updater, first-run, helper-executor, or theme work.
+- [x] Identify the workspace and local Rust packages as `0.19.0` while public stable metadata remains on `v0.18.2` and prerelease metadata remains on `v0.19.0-rc.7`.
+- [x] Preserve the stable/RC coexistence contract: stable GitHub releases are non-prerelease and latest, RC GitHub releases are prereleases and never latest, and each channel advances only its matching appcast and CLI metadata.
+- [x] Keep Issue `#388` and the Environment Brief outside production routing.
+- [x] Keep true direct third-party Sparkle updating in `0.20.x`, selectable themes in post-1.0 planning, and native privileged execution on askpass until its separate activation gates pass.
+- [x] Retain the audited dependency graph and macOS 13 Ventura minimum deployment target.
+
+### Required Validation
+
+- [x] Complete `docs/validation/v0.19.0-readiness.md` with inherited RC evidence, accepted deferrals, and remaining stable gates.
+- [x] Confirm Sparkle detected, installed, and relaunched the signed `v0.19.0-rc.7` update in the owner's local installation.
+- [x] Confirm the post-RC7 semantic status presentation from PR `#478` passed owner-assisted local visual QA.
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, all 154 arm64 macOS tests, release contracts, and SQLite migration compatibility pass on the prepared stable source revision.
+- [x] Non-mutating Sparkle/appcast checklist and `v0.19.0` rehearsal pass on the prepared stable source revision.
+- [ ] Integrate through protected `dev` and `main`, then repeat rehearsal and preflight from a clean worktree whose `HEAD` exactly equals freshly fetched `origin/main`.
+- [ ] Release macOS Canary and Release Publish Auth Check with `write_probe=true` pass for the final `main` revision.
+- [x] No known release-critical regression remains open; accepted deferred work is explicitly non-production or outside the stable scope.
+
+### Publication
+
+- [ ] Obtain explicit maintainer confirmation after final gates and immediately before creating or pushing `v0.19.0` or publishing artifacts.
+- [ ] Create annotated tag `v0.19.0` from exact `origin/main` and publish a non-draft, non-prerelease GitHub release with latest behavior.
+- [ ] Publish signed/notarized universal GUI and direct CLI artifacts.
+- [ ] Advance only the default appcast item and `web/public/updates/cli/latest.json` to `v0.19.0`; preserve the RC7 GitHub prerelease, beta appcast item, and `latest-rc.json`.
+- [ ] Merge any generated publication PRs through the protected flow, dispatch `verify_only` as required, and pass runbook verification plus Release Publish Verify and both metadata drift guards.
+- [ ] Confirm GitHub `releases/latest` resolves to `v0.19.0` and stable metadata never resolves to a prerelease release.
+
 ## v0.19.0-rc.7 (Offline Resilience and Wayfinder Polish, Published)
 
 ### Candidate Scope
@@ -101,7 +132,7 @@ Publication evidence:
 
 ### Installed-Candidate Validation
 
-- [ ] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.7` from the signed `v0.19.0-rc.6` installation.
+- [x] Confirm Sparkle detects, installs, and relaunches `v0.19.0-rc.7` from the signed `v0.19.0-rc.6` installation.
 - [ ] Confirm the installed build retains accepted Dashboard, Plan, Environment, and Settings behavior.
 - [ ] Confirm online-to-offline transition, offline relaunch, local-only refresh, and one coalesced reconnection refresh in the installed Developer ID build.
 - [ ] Confirm notification, Plan-selection, self-update-channel, language, helper-registration, and askpass preferences remain intact after replacement.

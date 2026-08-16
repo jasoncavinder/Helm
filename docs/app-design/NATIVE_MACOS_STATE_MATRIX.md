@@ -48,12 +48,20 @@ The Original Wayfinder Course Indicator consumes the same prioritized state proj
 | Projected mode | Canonical states represented | Progress rule |
 |---|---|---|
 | Healthy/current | Healthy, Verified, No Changes with current complete coverage | Complete semantic ring; not a score |
-| Updates ready | Current reviewed Plan contains actionable updates | Attention segment and count; not a percentage |
+| Updates Ready | Current reviewed Plan contains actionable updates | Sea-glass teal segment and count; not a percentage |
 | Determinate work | Queued/Running/Applying/Verifying with trustworthy completed/total values | Backend-owned determinate progress only |
 | Indeterminate work | Loading/Refreshing/Running without trustworthy completed/total values | Indeterminate system-equivalent treatment; static under Reduce Motion |
 | Approval required | Permission Blocked at a valid just-in-time approval stage | Paused/open ring plus authorization symbol |
 | Failed/interrupted | Failed, Failed Verification, Interrupted, or actionable recovery | Broken semantic-failure ring plus recovery route |
 | Cached/partial/offline | Cached, Partial, Offline, or Deferred coverage | Muted/dashed incomplete ring plus exact freshness/coverage text |
+
+Cross-surface semantic status rules:
+
+- `Healthy` is green, `Running` is blue, `Updates Ready` is sea-glass teal, `Needs Review` is amber/orange, failures are red, and unavailable/deferred states are neutral gray.
+- `Updates Ready` is reserved for actionable update inventory and must not be labeled `Attention` or styled as a finding.
+- `Needs Review` is reserved for actionable nonfailure findings such as multiple installs, setup requirements, metadata mismatches, and permission decisions.
+- Environment rows carrying `Needs Review` expose the specific reason directly in the list; the inspector provides detail but is not the only discovery path.
+- Every compact badge remains one line where space permits and pairs color with text and a stable symbol.
 
 ## Cross-Surface Matrix
 

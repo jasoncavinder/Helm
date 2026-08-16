@@ -1401,11 +1401,9 @@ final class HelmCore: ObservableObject {
             let status = managerStatuses[manager.id]
             let isImplemented = status?.isImplemented ?? manager.isImplemented
             let isEnabled = status?.enabled ?? true
-            let hasSetupRequiredIssue = status?.packageStateIssues?.contains(where: { issue in
-                issue.issueCode == "post_install_setup_required"
-            }) ?? false
+            let hasPackageStateIssue = !(status?.packageStateIssues?.isEmpty ?? true)
             let isDetected = isManagerDetected(manager.id)
-            return isImplemented && isDetected && (isEnabled || hasSetupRequiredIssue)
+            return isImplemented && isDetected && (isEnabled || hasPackageStateIssue)
         }
 
         let failedManagerIds = Set(
@@ -1425,16 +1423,16 @@ final class HelmCore: ObservableObject {
         for manager in visibleManagers {
             let multiInstanceAttentionNeeded =
                 managerStatuses[manager.id]?.multiInstanceState == "attention_needed"
-            let setupRequired =
-                managerStatuses[manager.id]?.packageStateIssues?.contains(where: { issue in
-                    issue.issueCode == "post_install_setup_required"
-                }) ?? false
+            let hasPackageStateIssue =
+                !(managerStatuses[manager.id]?.packageStateIssues?.isEmpty ?? true)
             if failedManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .error
             } else if runningManagerIds.contains(manager.id) {
                 managerHealthById[manager.id] = .running
-            } else if setupRequired || outdatedManagerIds.contains(manager.id) || multiInstanceAttentionNeeded {
-                managerHealthById[manager.id] = .attention
+            } else if hasPackageStateIssue || multiInstanceAttentionNeeded {
+                managerHealthById[manager.id] = .needsReview
+            } else if outdatedManagerIds.contains(manager.id) {
+                managerHealthById[manager.id] = .updatesReady
             } else {
                 managerHealthById[manager.id] = .healthy
             }
@@ -1443,10 +1441,8 @@ final class HelmCore: ObservableObject {
         let actionableFindingManagerIds = visibleManagers.compactMap { manager -> String? in
             let status = managerStatuses[manager.id]
             let requiresInstallDecision = status?.multiInstanceState == "attention_needed"
-            let requiresSetup = status?.packageStateIssues?.contains(where: { issue in
-                issue.issueCode == "post_install_setup_required"
-            }) ?? false
-            return requiresInstallDecision || requiresSetup ? manager.id : nil
+            let hasPackageStateIssue = !(status?.packageStateIssues?.isEmpty ?? true)
+            return requiresInstallDecision || hasPackageStateIssue ? manager.id : nil
         }
         let popoverManagerRows = visibleManagers
             .sorted { lhs, rhs in
