@@ -23,7 +23,7 @@ struct ControlCenterWindowView: View {
         context.selectedSection ?? .overview
     }
 
-    private var searchQuery: Binding<String> {
+    private var globalSearchQuery: Binding<String> {
         Binding(
             get: { context.searchQuery },
             set: { newValue in
@@ -34,6 +34,32 @@ struct ControlCenterWindowView: View {
                 }
             }
         )
+    }
+
+    private var toolbarSearchQuery: Binding<String> {
+        selectedSection == .updates
+            ? Binding(
+                get: { context.planPackageFilter },
+                set: { context.planPackageFilter = $0 }
+            )
+            : globalSearchQuery
+    }
+
+    private var toolbarSearchPlaceholder: String {
+        selectedSection == .updates
+            ? L10n.App.Updates.filterSearchPlaceholder.localized
+            : L10n.App.ControlCenter.searchPlaceholder.localized
+    }
+
+    private var planManagerScopeOptions: [String] {
+        let researchManagers = WholeWorkflowResearchDatasetProvider.activePlanProjection()
+            .map { Set($0.steps.map(\.managerID)) }
+        let managers = researchManagers ?? Set(
+            core.upgradePlanSteps
+                .map(\.managerId)
+                .filter(core.isManagerEnabled)
+        )
+        return [HelmCore.allManagersScopeId] + managers.sorted()
     }
 
     private func navigateToSection(for anchor: String) {
@@ -120,13 +146,34 @@ struct ControlCenterWindowView: View {
                         .accessibilityHidden(true)
                 }
 
+                if selectedSection == .updates {
+                    ToolbarItem(placement: .automatic) {
+                        Picker(
+                            L10n.App.Inspector.manager.localized,
+                            selection: $context.planManagerScopeId
+                        ) {
+                            ForEach(planManagerScopeOptions, id: \.self) { managerID in
+                                if managerID == HelmCore.allManagersScopeId {
+                                    Text(L10n.App.Packages.Filter.allManagers.localized)
+                                        .tag(managerID)
+                                } else {
+                                    Text(localizedManagerDisplayName(managerID))
+                                        .tag(managerID)
+                                }
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 170)
+                    }
+                }
+
                 ToolbarItem(placement: .automatic) {
                     ControlCenterToolbarSearchField(
-                        text: searchQuery,
-                        placeholder: L10n.App.ControlCenter.searchPlaceholder.localized,
+                        text: toolbarSearchQuery,
+                        placeholder: toolbarSearchPlaceholder,
                         focusRouter: context.controlCenterSearchFocusRouter
                     )
-                    .frame(width: 320)
+                    .frame(width: selectedSection == .updates ? 250 : 320)
                 }
 
                 ToolbarItemGroup(placement: .primaryAction) {

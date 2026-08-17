@@ -504,12 +504,21 @@ extension L10n {
             static let packages = "app.updates.packages"
             static let selectAll = "app.updates.selection.select_all"
             static let deselectAll = "app.updates.selection.deselect_all"
+            static let filterSearchPlaceholder = "app.updates.filter.search_placeholder"
             static let riskFlags = "app.updates.risk_flags"
             struct Authority {
                 static let authoritative = "app.updates.authority.authoritative"
                 static let standard = "app.updates.authority.standard"
                 static let guarded = "app.updates.authority.guarded"
+                static let detectionOnly = "app.updates.authority.detection_only"
                 static let interactive = "app.updates.authority.interactive"
+                static let other = "app.updates.authority.other"
+            }
+            struct Table {
+                static let included = "app.updates.table.included"
+                static let status = "app.updates.table.status"
+                static let action = "app.updates.table.action"
+                static let sectionSummary = "app.updates.table.section_summary"
             }
             struct Risk {
                 static let privileged = "app.updates.risk.privileged"
