@@ -44,7 +44,7 @@ struct ManagersSectionView: View {
 
                     if let routeStage = context.environmentRouteStage {
                         Button {
-                            context.environmentRouteStage = nil
+                            context.clearEnvironmentRouteStage()
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: routeStage.symbol)

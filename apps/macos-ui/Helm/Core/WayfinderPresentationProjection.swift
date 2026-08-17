@@ -63,6 +63,18 @@ struct WayfinderNavigationState: Equatable {
     }
 }
 
+struct WayfinderEnvironmentRouteFilterState: Equatable {
+    private(set) var stage: WayfinderPopoverRouteStage?
+
+    mutating func apply(_ deepLink: WayfinderDeepLink) {
+        stage = deepLink.destination == .environment ? deepLink.routeStage : nil
+    }
+
+    mutating func clear() {
+        stage = nil
+    }
+}
+
 enum WayfinderCourseMode: String, Codable, Equatable {
     case healthy
     case updatesReady

@@ -174,6 +174,22 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         XCTAssertEqual(navigationState.deepLink, deepLink)
     }
 
+    func testEnvironmentRouteFilterAppliesScopedDeepLinkAndClearsForUnscopedNavigation() {
+        let deepLink = WayfinderDeepLink(
+            destination: .environment,
+            entityID: nil,
+            focus: .primaryContent,
+            routeStage: .packages
+        )
+        var filterState = WayfinderEnvironmentRouteFilterState()
+
+        filterState.apply(deepLink)
+        XCTAssertEqual(filterState.stage, .packages)
+
+        filterState.clear()
+        XCTAssertNil(filterState.stage)
+    }
+
     func testRouteItemDeepLinkPreservesDomainAndAffectedManager() {
         let routeItem = WayfinderPopoverRouteItem(
             stage: .packages,
