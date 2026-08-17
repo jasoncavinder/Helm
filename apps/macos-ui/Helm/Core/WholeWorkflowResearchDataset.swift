@@ -519,6 +519,26 @@ enum WholeWorkflowResearchDatasetLoader {
 enum WholeWorkflowResearchDatasetProvider {
     static let environmentKey = "HELM_WAYFINDER_RESEARCH_DATASET"
 
+    static func isSelected(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        selectedURL(environment: environment) != nil
+    }
+
+    static func active(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> WholeWorkflowResearchDataset? {
+        guard let url = selectedURL(environment: environment) else { return nil }
+        return try? WholeWorkflowResearchDatasetLoader.load(from: url)
+    }
+
+    static func activePlanProjection(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> WholeWorkflowResearchPlanProjection? {
+        guard let dataset = active(environment: environment) else { return nil }
+        return WholeWorkflowResearchPlanProjector.project(dataset)
+    }
+
     static func selectedURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
         #if DEBUG
         guard let path = environment[environmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -529,5 +549,138 @@ enum WholeWorkflowResearchDatasetProvider {
         #else
         return nil
         #endif
+    }
+}
+
+struct WholeWorkflowResearchPlanProjection: Equatable {
+    let planID: String
+    let state: String
+    let steps: [WholeWorkflowResearchPlanStep]
+    let updatesByStepID: [String: ResearchUpdateRecord]
+    let initialSelectedStepIDs: Set<String>
+    let excludedStepIDs: Set<String>
+
+    func update(for stepID: String) -> ResearchUpdateRecord? {
+        updatesByStepID[stepID]
+    }
+
+    func isSelectable(stepID: String) -> Bool {
+        !excludedStepIDs.contains(stepID)
+    }
+
+    func riskSummary(selectedStepIDs: Set<String>) -> UpgradePreviewPlanner.RiskSummary {
+        let selectedUpdates = selectedStepIDs.compactMap { updatesByStepID[$0] }
+        return UpgradePreviewPlanner.RiskSummary(
+            requiresElevatedPrivileges: selectedUpdates.contains(where: \.requiresPrivilege),
+            mayRequireReboot: selectedUpdates.contains(where: \.restartRequired)
+        )
+    }
+}
+
+struct WholeWorkflowResearchPlanStep: Identifiable, Equatable {
+    let id: String
+    let orderIndex: UInt64
+    let managerID: String
+    let authority: String
+    let action: String
+    let packageName: String
+    let reasonLabelKey: String
+    let reasonLabelArgs: [String: String]
+    let status: String
+}
+
+enum WholeWorkflowResearchPlanProjector {
+    static func project(
+        _ dataset: WholeWorkflowResearchDataset
+    ) -> WholeWorkflowResearchPlanProjection? {
+        guard let scenario = dataset.scenarios.first(where: { $0.taskNumber == 2 }),
+              scenario.startingSurface == "plan",
+              scenario.recordIDs.contains(dataset.snapshot.upgradePlan.id) else {
+            return nil
+        }
+
+        let plan = dataset.snapshot.upgradePlan
+        let updateByID = Dictionary(
+            uniqueKeysWithValues: dataset.snapshot.updates.map { ($0.id, $0) }
+        )
+        let scenarioUpdateIDs = scenario.recordIDs.filter { $0 != plan.id }
+        guard scenarioUpdateIDs.allSatisfy({ updateByID[$0] != nil }) else {
+            return nil
+        }
+
+        let scenarioOrder = Dictionary(
+            uniqueKeysWithValues: scenarioUpdateIDs.enumerated().map { ($0.element, $0.offset) }
+        )
+        let authorityOrder = Dictionary(
+            uniqueKeysWithValues: plan.authorityOrder.enumerated().map { ($0.element, $0.offset) }
+        )
+        let updates = scenarioUpdateIDs
+            .compactMap { updateByID[$0] }
+            .sorted { lhs, rhs in
+                let lhsRank = authorityOrder[lhs.authority] ?? Int.max
+                let rhsRank = authorityOrder[rhs.authority] ?? Int.max
+                if lhsRank != rhsRank { return lhsRank < rhsRank }
+                return (scenarioOrder[lhs.id] ?? Int.max) < (scenarioOrder[rhs.id] ?? Int.max)
+            }
+
+        let steps = updates.enumerated().map { index, update in
+            WholeWorkflowResearchPlanStep(
+                id: update.id,
+                orderIndex: UInt64(index),
+                managerID: update.managerID,
+                authority: update.authority,
+                action: "upgrade",
+                packageName: update.packageName,
+                reasonLabelKey: reasonLabelKey(for: update.managerID),
+                reasonLabelArgs: reasonLabelArgs(for: update),
+                status: update.planSelection == "included" ? "queued" : "not_included"
+            )
+        }
+
+        return WholeWorkflowResearchPlanProjection(
+            planID: plan.id,
+            state: plan.state,
+            steps: steps,
+            updatesByStepID: Dictionary(uniqueKeysWithValues: updates.map { ($0.id, $0) }),
+            initialSelectedStepIDs: Set(plan.selectedUpdateIDs),
+            excludedStepIDs: Set(plan.excludedUpdateIDs)
+        )
+    }
+
+    private static func reasonLabelKey(for managerID: String) -> String {
+        switch managerID {
+        case "homebrew_formula":
+            return "service.task.label.upgrade.homebrew"
+        case "homebrew_cask":
+            return "service.task.label.upgrade.homebrew_cask"
+        case "mise":
+            return "service.task.label.upgrade.mise"
+        case "rustup":
+            return "service.task.label.upgrade.rustup_toolchain"
+        case "softwareupdate":
+            return "service.task.label.upgrade.softwareupdate_all"
+        default:
+            return "service.task.label.upgrade.package"
+        }
+    }
+
+    private static func reasonLabelArgs(for update: ResearchUpdateRecord) -> [String: String] {
+        var arguments = [
+            "manager": update.managerID,
+            "package": update.packageName,
+        ]
+        if update.managerID == "rustup" {
+            arguments["toolchain"] = update.packageName
+        }
+        return arguments
+    }
+}
+
+enum ResearchFixtureSafetyPolicy {
+    static func blocksLiveOperations(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        WayfinderPopoverFixtureProvider.isActive(environment: environment)
+            || WholeWorkflowResearchDatasetProvider.isSelected(environment: environment)
     }
 }

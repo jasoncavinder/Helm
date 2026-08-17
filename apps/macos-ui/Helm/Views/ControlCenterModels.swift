@@ -136,10 +136,6 @@ enum OperationalHealth: Equatable {
     }
 }
 
-enum UpgradeSheetHost {
-    case controlCenter
-}
-
 extension WayfinderLocalizedText {
     var localized: String {
         key.localized(with: arguments)
@@ -172,8 +168,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var searchQuery: String = ""
     @Published var managerFilterId: String?
     @Published private var environmentRouteFilterState = WayfinderEnvironmentRouteFilterState()
-    @Published var showUpgradeSheet: Bool = false
-    @Published var upgradeSheetHost: UpgradeSheetHost = .controlCenter
+    @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var suppressWindowBackgroundDragging: Bool = false
@@ -186,17 +181,42 @@ final class ControlCenterContext: ObservableObject {
     @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
 
+    var showUpgradeSheet: Bool {
+        upgradeSheetPresentation.isPresented
+    }
+
+    var upgradeSheetHost: UpgradeSheetHost {
+        upgradeSheetPresentation.host
+    }
+
+    var upgradeSheetIntent: UpgradeSheetIntent {
+        upgradeSheetPresentation.intent
+    }
+
     var environmentRouteStage: WayfinderPopoverRouteStage? {
         environmentRouteFilterState.stage
     }
 
     func presentUpgradeSheet(in host: UpgradeSheetHost) {
-        upgradeSheetHost = host
-        showUpgradeSheet = true
+        upgradeSheetPresentation.presentUpgradeAll(in: host)
+    }
+
+    func presentReviewedUpgradePlanSheet(
+        in host: UpgradeSheetHost,
+        managerScopeID: String,
+        packageFilter: String,
+        selectedStepIDs: Set<String>
+    ) {
+        upgradeSheetPresentation.presentReviewedPlan(
+            in: host,
+            managerScopeID: managerScopeID,
+            packageFilter: packageFilter,
+            selectedStepIDs: selectedStepIDs
+        )
     }
 
     func dismissUpgradeSheet() {
-        showUpgradeSheet = false
+        upgradeSheetPresentation.dismiss()
     }
 
     func clearInspectorSelection() {

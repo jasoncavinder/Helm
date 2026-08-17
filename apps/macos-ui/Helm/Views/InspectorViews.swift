@@ -6,6 +6,7 @@ import AppKit
 struct ControlCenterInspectorView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    private let researchPlanProjection = WholeWorkflowResearchDatasetProvider.activePlanProjection()
 
     private var selectedTask: TaskItem? {
         guard let taskId = context.selectedTaskId else { return nil }
@@ -17,16 +18,22 @@ struct ControlCenterInspectorView: View {
         return core.knownPackage(withId: packageId)
     }
 
+    private var selectedUpgradePlanStep: CoreUpgradePlanStep? {
+        guard let stepID = context.selectedUpgradePlanStepId else { return nil }
+        let steps = researchPlanProjection?.steps.map(\.coreUpgradePlanStep) ?? core.upgradePlanSteps
+        return steps.first { $0.id == stepID }
+    }
+
     private var selectedUpgradePlanTask: TaskItem? {
-        guard let stepId = context.selectedUpgradePlanStepId,
-              let step = core.upgradePlanSteps.first(where: { $0.id == stepId }) else { return nil }
+        guard researchPlanProjection == nil,
+              let step = selectedUpgradePlanStep else { return nil }
         let projectedStatus = core.projectedUpgradePlanStatus(for: step)
-        let projectedTaskId = core.projectedUpgradePlanTaskId(for: step)
-        let taskId = projectedTaskId.map(String.init) ?? step.id
+        let projectedTaskID = core.projectedUpgradePlanTaskId(for: step)
+        let taskID = projectedTaskID.map(String.init) ?? step.id
         var labelArgs = step.reasonLabelArgs
         labelArgs["plan_step_id"] = step.id
         return TaskItem(
-            id: taskId,
+            id: taskID,
             description: core.localizedUpgradePlanReason(for: step),
             status: projectedStatus,
             managerId: step.managerId,
@@ -47,8 +54,19 @@ struct ControlCenterInspectorView: View {
                 Text(L10n.App.Inspector.title.localized)
                     .font(.headline)
 
-                if let task = selectedTask ?? selectedUpgradePlanTask {
+                if let task = selectedTask {
                     InspectorTaskDetailView(task: task)
+                } else if let step = selectedUpgradePlanStep {
+                    if let task = selectedUpgradePlanTask {
+                        InspectorTaskDetailView(task: task)
+                    } else {
+                        InspectorUpgradePlanDetailView(
+                            step: step,
+                            status: step.status,
+                            reason: core.localizedUpgradePlanReason(for: step),
+                            researchUpdate: researchPlanProjection?.update(for: step.id)
+                        )
+                    }
                 } else if let package = selectedPackage {
                     let runtimeStateToken = [
                         package.runtimeState.isActive ? "1" : "0",
@@ -78,6 +96,123 @@ struct ControlCenterInspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
         }
+    }
+}
+
+// MARK: - Upgrade Plan Inspector
+
+private struct InspectorUpgradePlanDetailView: View {
+    let step: CoreUpgradePlanStep
+    let status: String
+    let reason: String
+    let researchUpdate: ResearchUpdateRecord?
+
+    private var taskPresentation: TaskItem {
+        TaskItem(
+            id: step.id,
+            description: reason,
+            status: status,
+            managerId: step.managerId,
+            taskType: step.action,
+            labelKey: step.reasonLabelKey,
+            labelArgs: step.reasonLabelArgs
+        )
+    }
+
+    private var authorityLabel: String {
+        switch step.authority.lowercased() {
+        case "authoritative":
+            return L10n.App.Updates.Authority.authoritative.localized
+        case "guarded":
+            return L10n.App.Updates.Authority.guarded.localized
+        case "interactive":
+            return L10n.App.Updates.Authority.interactive.localized
+        default:
+            return L10n.App.Updates.Authority.standard.localized
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(step.packageName)
+                .font(.title3.weight(.semibold))
+
+            HStack(spacing: 6) {
+                Image(systemName: taskPresentation.statusIcon)
+                    .foregroundColor(taskPresentation.statusColor)
+                Text(taskPresentation.localizedStatus)
+                    .font(.callout.weight(.medium))
+                    .foregroundColor(taskPresentation.statusColor)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L10n.App.Inspector.taskStatus.localized)
+            .accessibilityValue(taskPresentation.localizedStatus)
+
+            Text(reason)
+                .font(.callout)
+                .foregroundColor(.secondary)
+
+            InspectorField(label: L10n.App.Inspector.taskManager.localized) {
+                Text(localizedManagerDisplayName(step.managerId))
+                    .font(.callout)
+            }
+
+            InspectorField(label: "app.overlay.about.update_authority".localized) {
+                Text(authorityLabel)
+                    .font(.callout)
+            }
+
+            if let researchUpdate {
+                InspectorField(label: L10n.App.Inspector.installed.localized) {
+                    Text(researchUpdate.installedVersion)
+                        .font(.callout.monospacedDigit())
+                }
+
+                InspectorField(label: L10n.App.Inspector.latest.localized) {
+                    Text(researchUpdate.candidateVersion)
+                        .font(.callout.monospacedDigit())
+                }
+
+                if researchUpdate.pinned {
+                    Label(L10n.App.Packages.Label.pinned.localized, systemImage: "pin.fill")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                }
+
+                if researchUpdate.exclusionReason == "operating_system_updates_disabled" {
+                    Label(
+                        L10n.App.Updates.Exclusion.operatingSystemUpdatesDisabled.localized,
+                        systemImage: "nosign"
+                    )
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                }
+
+                if researchUpdate.requiresPrivilege {
+                    Label(
+                        L10n.App.Updates.Risk.privileged.localized,
+                        systemImage: "lock.shield.fill"
+                    )
+                    .font(.callout)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
+                }
+
+                if researchUpdate.restartRequired {
+                    Label(
+                        L10n.App.Updates.Risk.reboot.localized,
+                        systemImage: "restart"
+                    )
+                    .font(.callout)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
+                }
+            }
+
+            InspectorField(label: L10n.App.Inspector.taskId.localized) {
+                Text(step.id)
+                    .font(.caption.monospacedDigit())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

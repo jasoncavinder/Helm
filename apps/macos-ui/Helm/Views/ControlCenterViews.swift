@@ -200,7 +200,9 @@ struct ControlCenterWindowView: View {
             if core.hasCompletedOnboarding && !presentsFirstRun && !core.isRefreshing {
                 core.triggerRefresh()
             }
-            if !presentsFirstRun && !walkthrough.hasCompletedControlCenterWalkthrough {
+            if !WholeWorkflowResearchDatasetProvider.isSelected(),
+               !presentsFirstRun,
+               !walkthrough.hasCompletedControlCenterWalkthrough {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     walkthrough.startControlCenterWalkthrough()
                 }

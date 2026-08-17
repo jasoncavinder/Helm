@@ -132,6 +132,93 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         #endif
     }
 
+    func testTaskTwoProjectsThroughTheProductionPlanContract() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(WholeWorkflowResearchPlanProjector.project(dataset))
+
+        XCTAssertEqual(projection.planID, "plan-non-os-updates")
+        XCTAssertEqual(projection.state, "awaiting_confirmation")
+        XCTAssertEqual(projection.steps.count, 12)
+        XCTAssertEqual(projection.initialSelectedStepIDs.count, 10)
+        XCTAssertEqual(
+            projection.excludedStepIDs,
+            ["update-npm-typescript", "update-macos"]
+        )
+        XCTAssertEqual(
+            projection.steps.map(\.authority),
+            [
+                "authoritative", "authoritative",
+                "standard", "standard", "standard", "standard", "standard",
+                "guarded", "guarded", "guarded", "guarded", "guarded",
+            ]
+        )
+        XCTAssertEqual(
+            projection.steps.filter { $0.status == "not_included" }.map(\.id),
+            ["update-npm-typescript", "update-macos"]
+        )
+        XCTAssertFalse(projection.isSelectable(stepID: "update-npm-typescript"))
+        XCTAssertFalse(projection.isSelectable(stepID: "update-macos"))
+        XCTAssertTrue(projection.isSelectable(stepID: "update-mise-node"))
+    }
+
+    func testTaskTwoRiskSummaryTracksOnlySelectedSyntheticRecords() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(WholeWorkflowResearchPlanProjector.project(dataset))
+
+        XCTAssertEqual(
+            projection.riskSummary(selectedStepIDs: projection.initialSelectedStepIDs),
+            .init(requiresElevatedPrivileges: true, mayRequireReboot: false)
+        )
+
+        let withoutAppStore = projection.initialSelectedStepIDs.subtracting(["update-mas-pages"])
+        XCTAssertEqual(
+            projection.riskSummary(selectedStepIDs: withoutAppStore),
+            .init(requiresElevatedPrivileges: false, mayRequireReboot: false)
+        )
+
+        XCTAssertEqual(
+            projection.riskSummary(
+                selectedStepIDs: projection.initialSelectedStepIDs.union(["update-macos"])
+            ),
+            .init(requiresElevatedPrivileges: true, mayRequireReboot: true)
+        )
+    }
+
+    func testWholeWorkflowSelectionFailsClosedForLiveOperations() throws {
+        let environment = [WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path]
+
+        #if DEBUG
+        XCTAssertTrue(WholeWorkflowResearchDatasetProvider.isSelected(environment: environment))
+        XCTAssertNotNil(WholeWorkflowResearchDatasetProvider.active(environment: environment))
+        XCTAssertNotNil(
+            WholeWorkflowResearchDatasetProvider.activePlanProjection(environment: environment)
+        )
+        XCTAssertTrue(ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: environment))
+
+        let popoverEnvironment = [
+            WayfinderPopoverFixtureProvider.environmentKey: "healthy"
+        ]
+        XCTAssertFalse(
+            WholeWorkflowResearchDatasetProvider.isSelected(environment: popoverEnvironment)
+        )
+        XCTAssertTrue(
+            ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: popoverEnvironment)
+        )
+
+        let missingEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey: "/tmp/missing-helm-research.json"
+        ]
+        XCTAssertTrue(WholeWorkflowResearchDatasetProvider.isSelected(environment: missingEnvironment))
+        XCTAssertNil(WholeWorkflowResearchDatasetProvider.active(environment: missingEnvironment))
+        XCTAssertTrue(
+            ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: missingEnvironment)
+        )
+        #else
+        XCTAssertFalse(WholeWorkflowResearchDatasetProvider.isSelected(environment: environment))
+        XCTAssertFalse(ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: environment))
+        #endif
+    }
+
     private var fixtureURL: URL {
         var root = URL(fileURLWithPath: #filePath)
         for _ in 0 ..< 4 {

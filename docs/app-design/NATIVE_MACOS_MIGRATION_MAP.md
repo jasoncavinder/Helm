@@ -252,7 +252,7 @@ Implementation checkpoint on `dev`:
 - Deep links preserve originating condition, destination, focus, route domain, and affected manager. Owner QA verified the corrected visible Environment filter for all four route stages before PR #490 merged.
 - Library, Plan, Activity, Environment, and Dashboard own detail, confirmation, recovery, and search rather than hosting those workflows inside the transient panel.
 - A debug-only six-state `HELM_WAYFINDER_POPOVER_FIXTURE` seam uses the production projectors/view and suppresses refresh plus Helm update-check submission while active. It is a state-validation seam, not a whole-workflow synthetic dataset.
-- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator now cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector is not yet consumed by production destinations; each remaining workflow slice owns that projection work.
+- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector now projects Task 2 through the shipping Plan path; the other six tasks remain unprojected, and each remaining workflow slice owns that work.
 
 Affected files/components:
 
@@ -320,6 +320,10 @@ Validation:
 Rollback/incremental strategy:
 
 - New Plan destination consumes the same plan contract; old Updates route/sheet is removed only after parity.
+
+Implementation checkpoint:
+
+- Task 2's 12 synthetic update records project through the shipping Plan rows and inspector with backend authority order preserved, ten selected non-OS rows, two fixed visible exclusions, scoped selection/risk behavior, and a bounded read-only confirmation. The selector blocks service/database/network/mutation startup and fails closed for an unreadable corpus. This is a production-path research projection, not Slice 20.2 parity: native table/outline replacement plus 0/1/100+, stale-plan, partial-failure, and cancellation validation remain open before the legacy presentation can be removed.
 
 ### Slice 20.3: Library and global search
 

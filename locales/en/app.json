@@ -312,6 +312,7 @@
   "app.updates.risk_flags": "Risk Flags",
   "app.updates.risk.privileged": "Requires elevated privileges",
   "app.updates.risk.reboot": "May require reboot",
+  "app.updates.exclusion.operating_system_updates_disabled": "macOS updates excluded",
   "app.dry_run.title": "Dry Run",
   "app.dry_run.message": "Planned {count} actions:\n{summary}",
   "app.inspector.title": "Inspector",

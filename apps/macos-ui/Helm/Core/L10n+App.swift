@@ -515,6 +515,10 @@ extension L10n {
                 static let privileged = "app.updates.risk.privileged"
                 static let reboot = "app.updates.risk.reboot"
             }
+            struct Exclusion {
+                static let operatingSystemUpdatesDisabled =
+                    "app.updates.exclusion.operating_system_updates_disabled"
+            }
             struct Plan {
                 static let externalSparkle = "app.updates.plan.external_sparkle"
                 static let helmSelfUpdate = "app.updates.plan.helm_self_update"
