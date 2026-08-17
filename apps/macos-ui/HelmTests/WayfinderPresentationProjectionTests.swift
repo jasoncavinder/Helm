@@ -444,16 +444,27 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
             )
         )
 
+        let fixtureEnvironment = [
+            WayfinderPopoverFixtureProvider.environmentKey: "  UPDATES-READY  "
+        ]
+
+        #if DEBUG
         let selected = try XCTUnwrap(
             WayfinderPopoverFixtureProvider.active(
-                environment: [
-                    WayfinderPopoverFixtureProvider.environmentKey: "  UPDATES-READY  "
-                ],
+                environment: fixtureEnvironment,
                 now: now
             )
         )
         XCTAssertEqual(selected.name, .updatesReady)
         XCTAssertEqual(selected.schemaVersion, "1.0.0")
+        #else
+        XCTAssertNil(
+            WayfinderPopoverFixtureProvider.active(
+                environment: fixtureEnvironment,
+                now: now
+            )
+        )
+        #endif
     }
 
     func testPopoverFixtureProjectionIsDeterministicForReferenceDate() {
