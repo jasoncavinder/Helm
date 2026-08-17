@@ -171,6 +171,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
     @Published var managerFilterId: String?
+    @Published private var environmentRouteFilterState = WayfinderEnvironmentRouteFilterState()
     @Published var showUpgradeSheet: Bool = false
     @Published var upgradeSheetHost: UpgradeSheetHost = .controlCenter
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
@@ -184,6 +185,10 @@ final class ControlCenterContext: ObservableObject {
     @Published private(set) var dashboardFocusRequestToken: Int = 0
     @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
+
+    var environmentRouteStage: WayfinderPopoverRouteStage? {
+        environmentRouteFilterState.stage
+    }
 
     func presentUpgradeSheet(in host: UpgradeSheetHost) {
         upgradeSheetHost = host
@@ -199,7 +204,12 @@ final class ControlCenterContext: ObservableObject {
     }
 
     func select(_ section: ControlCenterSection) {
+        environmentRouteFilterState.clear()
         selectedSection = section
+    }
+
+    func clearEnvironmentRouteStage() {
+        environmentRouteFilterState.clear()
     }
 
     func toggleSidebar() {
@@ -216,6 +226,7 @@ final class ControlCenterContext: ObservableObject {
         clearInspectorSelection()
 
         selectedSection = deepLink.destination.legacyControlCenterSection
+        environmentRouteFilterState.apply(deepLink)
 
         if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
             pendingDashboardFocusTarget = .serviceHealth

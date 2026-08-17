@@ -503,7 +503,7 @@ private struct ControlCenterSidebarView: View {
                 with: ["count": "\(overviewState.visibleManagers.count)"]
             ),
             action: {
-            context.selectedSection = .managers
+                context.select(.managers)
             }
         ) {
             HStack(spacing: 10) {

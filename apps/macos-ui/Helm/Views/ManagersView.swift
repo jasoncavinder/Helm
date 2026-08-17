@@ -20,25 +20,52 @@ struct ManagersSectionView: View {
 
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         [
-            (authority: .authoritative, managers: managersState.authoritativeManagers),
-            (authority: .standard, managers: managersState.standardManagers),
-            (authority: .guarded, managers: managersState.guardedManagers)
+            (
+                authority: .authoritative,
+                managers: routeFiltered(managersState.authoritativeManagers)
+            ),
+            (authority: .standard, managers: routeFiltered(managersState.standardManagers)),
+            (authority: .guarded, managers: routeFiltered(managersState.guardedManagers))
         ]
     }
 
     private var hasImplementedManagers: Bool {
-        !managersState.authoritativeManagers.isEmpty
-            || !managersState.standardManagers.isEmpty
-            || !managersState.guardedManagers.isEmpty
+        groupedManagers.contains { !$0.managers.isEmpty }
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
-                Text(ControlCenterSection.managers.title)
-                    .font(.title2.weight(.semibold))
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
+                HStack(spacing: 12) {
+                    Text(ControlCenterSection.managers.title)
+                        .font(.title2.weight(.semibold))
+
+                    Spacer()
+
+                    if let routeStage = context.environmentRouteStage {
+                        Button {
+                            context.clearEnvironmentRouteStage()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: routeStage.symbol)
+                                Text(routeStage.titleKey.localized)
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(HelmTheme.textSecondary)
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 28)
+                            .background(HelmTheme.selectionFill, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .helmPointer()
+                        .help(L10n.App.Packages.Filter.allManagers.localized)
+                        .accessibilityLabel(routeStage.titleKey.localized)
+                        .accessibilityHint(L10n.App.Packages.Filter.allManagers.localized)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
 
                 ForEach(groupedManagers, id: \.authority) { group in
                     if !group.managers.isEmpty {
@@ -179,6 +206,13 @@ struct ManagersSectionView: View {
                     secondaryButton: .cancel(Text(L10n.Common.cancel.localized))
                 )
             }
+        }
+    }
+
+    private func routeFiltered(_ managers: [ManagerInfo]) -> [ManagerInfo] {
+        guard let routeStage = context.environmentRouteStage else { return managers }
+        return managers.filter {
+            WayfinderPopoverRouteStage.stage(forManagerCategory: $0.category) == routeStage
         }
     }
 

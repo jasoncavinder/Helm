@@ -164,6 +164,7 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
             destination: .environment,
             entityID: "pnpm",
             focus: .selectedEntity,
+            routeStage: .packages,
             originatingCondition: .actionableFinding
         )
         var navigationState = WayfinderNavigationState()
@@ -171,6 +172,56 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         navigationState.record(deepLink)
 
         XCTAssertEqual(navigationState.deepLink, deepLink)
+    }
+
+    func testEnvironmentRouteFilterAppliesScopedDeepLinkAndClearsForUnscopedNavigation() {
+        let deepLink = WayfinderDeepLink(
+            destination: .environment,
+            entityID: nil,
+            focus: .primaryContent,
+            routeStage: .packages
+        )
+        var filterState = WayfinderEnvironmentRouteFilterState()
+
+        filterState.apply(deepLink)
+        XCTAssertEqual(filterState.stage, .packages)
+
+        filterState.clear()
+        XCTAssertNil(filterState.stage)
+    }
+
+    func testRouteItemDeepLinkPreservesDomainAndAffectedManager() {
+        let routeItem = WayfinderPopoverRouteItem(
+            stage: .packages,
+            tone: .review,
+            managerID: "pnpm"
+        )
+
+        XCTAssertEqual(
+            routeItem.deepLink(originatingCondition: .actionableFinding),
+            WayfinderDeepLink(
+                destination: .environment,
+                entityID: "pnpm",
+                focus: .selectedEntity,
+                routeStage: .packages,
+                originatingCondition: .actionableFinding
+            )
+        )
+    }
+
+    func testRouteItemWithoutAffectedManagerStillPreservesDomain() {
+        let routeItem = WayfinderPopoverRouteItem(stage: .system, tone: .current)
+
+        XCTAssertEqual(
+            routeItem.deepLink(originatingCondition: .healthy),
+            WayfinderDeepLink(
+                destination: .environment,
+                entityID: nil,
+                focus: .primaryContent,
+                routeStage: .system,
+                originatingCondition: .healthy
+            )
+        )
     }
 
     func testOfflineAndUnavailableUseNeutralFooterStatus() {
