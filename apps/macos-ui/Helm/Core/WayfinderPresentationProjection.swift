@@ -805,3 +805,23 @@ enum WayfinderPopoverFixtureProvider {
         #endif
     }
 }
+
+enum WayfinderPopoverBenchmarkConfiguration {
+    static let iterationsEnvironmentKey = "HELM_WAYFINDER_POPOVER_BENCHMARK_ITERATIONS"
+
+    static func iterations(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Int? {
+        #if DEBUG
+        guard let rawValue = environment[iterationsEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            let value = Int(rawValue),
+            (1...100).contains(value) else {
+            return nil
+        }
+        return value
+        #else
+        return nil
+        #endif
+    }
+}

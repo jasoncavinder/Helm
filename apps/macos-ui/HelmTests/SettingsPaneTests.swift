@@ -72,6 +72,7 @@ final class SettingsPaneTests: XCTestCase {
             "app.popover.wayfinder.freshness.saved",
             "app.popover.wayfinder.freshness.checked",
             "app.popover.wayfinder.ready",
+            "app.inspector.multi_instance.attention_title",
         ] + WayfinderPopoverRouteStage.allCases.map(\.titleKey)
 
         for locale in locales {
@@ -86,5 +87,91 @@ final class SettingsPaneTests: XCTestCase {
                 XCTAssertNotNil(strings[key], "Missing popover key \(key) in locale \(locale)")
             }
         }
+    }
+
+    func testWayfinderPopoverManagerPlaceholdersUseSupportedSyntaxAcrossLocales() throws {
+        let keys = [
+            "app.popover.wayfinder.context.manager_needs_decision",
+            "app.popover.wayfinder.context.manager_needs_review",
+        ]
+
+        for locale in locales {
+            let catalogURL = repoRootURL
+                .appendingPathComponent("locales")
+                .appendingPathComponent(locale)
+                .appendingPathComponent("app.json")
+            let data = try Data(contentsOf: catalogURL)
+            let strings = try JSONDecoder().decode([String: String].self, from: data)
+
+            for key in keys {
+                let value = try XCTUnwrap(strings[key])
+                XCTAssertTrue(value.contains("{manager}"), "Missing manager placeholder in \(key) for \(locale)")
+                XCTAssertFalse(value.contains("%{manager}"), "Unsupported manager placeholder in \(key) for \(locale)")
+            }
+        }
+    }
+
+    func testWayfinderPopoverFindingDetailIsTranslatedAcrossLocales() throws {
+        let key = "app.inspector.multi_instance.attention_title"
+        let catalogs = try Dictionary(uniqueKeysWithValues: locales.map { locale in
+            let catalogURL = repoRootURL
+                .appendingPathComponent("locales")
+                .appendingPathComponent(locale)
+                .appendingPathComponent("app.json")
+            let data = try Data(contentsOf: catalogURL)
+            let strings = try JSONDecoder().decode([String: String].self, from: data)
+            return (locale, strings)
+        })
+        let english = try XCTUnwrap(catalogs["en"]?[key])
+
+        for locale in locales where locale != "en" {
+            let localized = try XCTUnwrap(catalogs[locale]?[key])
+            XCTAssertNotEqual(localized, english, "Untranslated popover finding detail in \(locale)")
+        }
+    }
+
+    func testWayfinderPopoverUtilityMenuIsTranslatedAcrossLocales() throws {
+        let appKeys = [
+            "app.overlay.about.check_updates",
+            "app.settings.section.support_feedback",
+            "app.overlay.about.title",
+            "app.settings.action.quit",
+        ]
+        let commonKeys = ["common.button.settings"]
+        let englishApp = try catalog(locale: "en", file: "app.json")
+        let englishCommon = try catalog(locale: "en", file: "common.json")
+
+        for locale in locales where locale != "en" {
+            let localizedApp = try catalog(locale: locale, file: "app.json")
+            let localizedCommon = try catalog(locale: locale, file: "common.json")
+
+            for key in appKeys {
+                let englishValue = try XCTUnwrap(englishApp[key])
+                let localizedValue = try XCTUnwrap(localizedApp[key])
+                XCTAssertNotEqual(
+                    localizedValue,
+                    englishValue,
+                    "Untranslated popover utility-menu key \(key) in \(locale)"
+                )
+            }
+            for key in commonKeys {
+                let englishValue = try XCTUnwrap(englishCommon[key])
+                let localizedValue = try XCTUnwrap(localizedCommon[key])
+                XCTAssertNotEqual(
+                    localizedValue,
+                    englishValue,
+                    "Untranslated popover utility-menu key \(key) in \(locale)"
+                )
+            }
+        }
+    }
+
+    private func catalog(locale: String, file: String) throws -> [String: String] {
+        let catalogURL = repoRootURL
+            .appendingPathComponent("locales")
+            .appendingPathComponent(locale)
+            .appendingPathComponent(file)
+        let data = try Data(contentsOf: catalogURL)
+        return try JSONDecoder().decode([String: String].self, from: data)
     }
 }

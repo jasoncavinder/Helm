@@ -283,7 +283,6 @@ struct WayfinderPopoverView: View {
         }
         .buttonStyle(.plain)
         .helmPointer()
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(item.stage.titleKey.localized)
         .accessibilityValue(routeToneTitleKey(for: item.tone).localized)
         .accessibilityHint("app.popover.wayfinder.route.hint".localized)
