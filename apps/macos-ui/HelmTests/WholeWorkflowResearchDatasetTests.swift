@@ -78,6 +78,42 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertTrue(issues.contains { $0.code == "scenarios.unresolved_record" })
     }
 
+    func testValidatorRejectsScenarioContractDrift() throws {
+        let original = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let mutations = [
+            (
+                target: "\"scenarioId\": \"ambient-health\"",
+                replacement: "\"scenarioId\": \"wrong-scenario\"",
+                issueCode: "scenarios.identifier"
+            ),
+            (
+                target: "\"startingSurface\": \"popover\"",
+                replacement: "\"startingSurface\": \"dashboard\"",
+                issueCode: "scenarios.starting_surface"
+            ),
+            (
+                target: "\"plan-non-os-updates\",",
+                replacement: "\"mise\",",
+                issueCode: "scenarios.record_set"
+            ),
+        ]
+
+        for mutation in mutations {
+            let modified = try replacingFirst(
+                mutation.target,
+                with: mutation.replacement,
+                in: original
+            )
+            let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+            let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+            XCTAssertTrue(
+                issues.contains { $0.code == mutation.issueCode },
+                "Expected \(mutation.issueCode) for \(mutation.target)"
+            )
+        }
+    }
+
     func testDatasetPathSelectionIsDebugOnlyAndRequiresAbsolutePath() {
         XCTAssertNil(WholeWorkflowResearchDatasetProvider.selectedURL(environment: [:]))
         XCTAssertNil(

@@ -85,6 +85,129 @@ enum WholeWorkflowResearchDatasetValidator {
                     into: &issues
                 )
             }
+
+            guard let contract = scenarioContract(for: scenario.taskNumber, in: dataset) else {
+                continue
+            }
+            require(
+                scenario.scenarioID == contract.scenarioID,
+                code: "scenarios.identifier",
+                path: "scenarios[\(index)].scenarioId",
+                message: "Task \(scenario.taskNumber) must use scenario identifier \(contract.scenarioID).",
+                into: &issues
+            )
+            require(
+                scenario.startingSurface == contract.startingSurface,
+                code: "scenarios.starting_surface",
+                path: "scenarios[\(index)].startingSurface",
+                message: "Task \(scenario.taskNumber) must start on \(contract.startingSurface).",
+                into: &issues
+            )
+            require(
+                Set(scenario.recordIDs) == contract.recordIDs
+                    && scenario.recordIDs.count == contract.recordIDs.count,
+                code: "scenarios.record_set",
+                path: "scenarios[\(index)].recordIds",
+                message: "Task \(scenario.taskNumber) must reference its complete canonical record set.",
+                into: &issues
+            )
+        }
+    }
+
+    private struct ScenarioContract {
+        let scenarioID: String
+        let startingSurface: String
+        let recordIDs: Set<String>
+    }
+
+    private static func scenarioContract(
+        for taskNumber: Int,
+        in dataset: WholeWorkflowResearchDataset
+    ) -> ScenarioContract? {
+        let snapshot = dataset.snapshot
+
+        switch taskNumber {
+        case 1:
+            return ScenarioContract(
+                scenarioID: "ambient-health",
+                startingSurface: "popover",
+                recordIDs: Set(
+                    [snapshot.coverage.id]
+                        + snapshot.activities
+                        .filter { $0.verificationResult == "failed" }
+                        .map(\.id)
+                        + snapshot.coverage.failedManagerIDs
+                )
+            )
+        case 2:
+            return ScenarioContract(
+                scenarioID: "review-updates",
+                startingSurface: "plan",
+                recordIDs: Set([snapshot.upgradePlan.id] + snapshot.updates.map(\.id))
+            )
+        case 3:
+            return ScenarioContract(
+                scenarioID: "find-and-install-ripgrep",
+                startingSurface: "library",
+                recordIDs: Set(
+                    snapshot.searchResults
+                        .filter { $0.packageName == "ripgrep" }
+                        .map(\.id)
+                        + [snapshot.installProposal.id]
+                )
+            )
+        case 4:
+            return ScenarioContract(
+                scenarioID: "recover-from-failure",
+                startingSurface: "activity",
+                recordIDs: Set(
+                    snapshot.activities.map(\.id)
+                        + snapshot.recoveryActions.map(\.id)
+                )
+            )
+        case 5:
+            let rustup = snapshot.managers.first { $0.id == "rustup" }
+            return ScenarioContract(
+                scenarioID: "inspect-rustup-source",
+                startingSurface: "environment",
+                recordIDs: Set(
+                    ["rustup", snapshot.managerDecision.id]
+                        + (rustup?.installInstances.map(\.id) ?? [])
+                )
+            )
+        case 6:
+            return ScenarioContract(
+                scenarioID: "settings-and-diagnostics",
+                startingSurface: "settings",
+                recordIDs: Set(
+                    snapshot.settings
+                        .filter { $0.key == "launch_at_login" }
+                        .map(\.id)
+                        + snapshot.activities
+                        .filter { $0.verificationResult == "failed" }
+                        .map(\.id)
+                        + snapshot.recoveryActions
+                        .filter { $0.action == "copy_diagnostics" }
+                        .map(\.id)
+                )
+            )
+        case 7:
+            let firstRun = dataset.firstRun
+            return ScenarioContract(
+                scenarioID: "project-wow-first-run",
+                startingSurface: "first_run",
+                recordIDs: Set(
+                    [
+                        firstRun.environmentBrief.briefID,
+                        firstRun.setupSession.sessionID,
+                        firstRun.plan.planID,
+                        firstRun.actionReceipt.receiptID,
+                    ].map { $0.uuidString.lowercased() }
+                        + firstRun.plan.actions.map { $0.actionID.uuidString.lowercased() }
+                )
+            )
+        default:
+            return nil
         }
     }
 
