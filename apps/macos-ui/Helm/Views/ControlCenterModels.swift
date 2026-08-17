@@ -171,6 +171,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
     @Published var managerFilterId: String?
+    @Published var environmentRouteStage: WayfinderPopoverRouteStage?
     @Published var showUpgradeSheet: Bool = false
     @Published var upgradeSheetHost: UpgradeSheetHost = .controlCenter
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
@@ -216,6 +217,9 @@ final class ControlCenterContext: ObservableObject {
         clearInspectorSelection()
 
         selectedSection = deepLink.destination.legacyControlCenterSection
+        environmentRouteStage = deepLink.destination == .environment
+            ? deepLink.routeStage
+            : nil
 
         if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
             pendingDashboardFocusTarget = .serviceHealth

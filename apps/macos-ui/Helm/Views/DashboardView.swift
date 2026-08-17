@@ -242,10 +242,7 @@ struct WayfinderPopoverView: View {
     private func routeStage(_ item: WayfinderPopoverRouteItem) -> some View {
         Button {
             navigate(
-                to: WayfinderDeepLink(
-                    destination: .environment,
-                    entityID: item.managerID,
-                    focus: item.managerID == nil ? .primaryContent : .selectedEntity,
+                to: item.deepLink(
                     originatingCondition: presentation.projection.condition.kind
                 )
             )

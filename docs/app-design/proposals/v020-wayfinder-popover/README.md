@@ -106,9 +106,9 @@ Offline is neutral rather than failed. Local Library, Plan, and history remain a
 | View Saved State | Dashboard focused on freshness and deferred work |
 | Open Dashboard | Dashboard primary content without changing active workflow state |
 | Find software | Library with toolbar search focused |
-| Route stage | Dashboard or Environment focused on the represented domain; no manager mini-list opens in the panel |
+| Route stage | Environment filtered to the represented domain; an affected manager is also selected when known, and no manager mini-list opens in the panel |
 
-Deep links must preserve stable entity/workflow IDs, originating condition, and focus target. Opening or closing the panel must not submit work, reset selection, or cancel a workflow.
+Deep links must preserve stable entity/workflow IDs, originating condition, focus target, and route domain when initiated from a route stage. Opening or closing the panel must not submit work, reset selection, or cancel a workflow.
 
 ## What leaves the popover
 

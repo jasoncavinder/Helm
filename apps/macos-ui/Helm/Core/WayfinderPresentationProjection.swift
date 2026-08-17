@@ -37,17 +37,20 @@ struct WayfinderDeepLink: Codable, Equatable {
     let destination: WayfinderDestination
     let entityID: String?
     let focus: WayfinderFocusTarget
+    let routeStage: WayfinderPopoverRouteStage?
     let originatingCondition: WayfinderConditionKind?
 
     init(
         destination: WayfinderDestination,
         entityID: String?,
         focus: WayfinderFocusTarget,
+        routeStage: WayfinderPopoverRouteStage? = nil,
         originatingCondition: WayfinderConditionKind? = nil
     ) {
         self.destination = destination
         self.entityID = entityID
         self.focus = focus
+        self.routeStage = routeStage
         self.originatingCondition = originatingCondition
     }
 }
@@ -250,7 +253,7 @@ struct WayfinderPresentationProjection: Equatable {
     )
 }
 
-enum WayfinderPopoverRouteStage: String, CaseIterable, Hashable {
+enum WayfinderPopoverRouteStage: String, CaseIterable, Hashable, Codable {
     case system
     case tools
     case apps
@@ -312,6 +315,18 @@ struct WayfinderPopoverRouteItem: Equatable {
         self.stage = stage
         self.tone = tone
         self.managerID = managerID
+    }
+
+    func deepLink(
+        originatingCondition: WayfinderConditionKind
+    ) -> WayfinderDeepLink {
+        WayfinderDeepLink(
+            destination: .environment,
+            entityID: managerID,
+            focus: managerID == nil ? .primaryContent : .selectedEntity,
+            routeStage: stage,
+            originatingCondition: originatingCondition
+        )
     }
 }
 
