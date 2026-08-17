@@ -1,0 +1,804 @@
+{
+  "schemaVersion": "1.0.0",
+  "datasetId": "v0.20-whole-workflow-v1",
+  "generatedAt": "2026-08-16T18:00:00Z",
+  "safety": {
+    "syntheticOnly": true,
+    "localOnly": true,
+    "allowsMachineScan": false,
+    "allowsMutation": false,
+    "containsPersonalData": false
+  },
+  "scenarios": [
+    {
+      "taskNumber": 1,
+      "scenarioId": "ambient-health",
+      "startingSurface": "popover",
+      "recordIds": [
+        "coverage-partial",
+        "activity-npm-verification",
+        "macports"
+      ]
+    },
+    {
+      "taskNumber": 2,
+      "scenarioId": "review-updates",
+      "startingSurface": "plan",
+      "recordIds": [
+        "plan-non-os-updates",
+        "update-mise-node",
+        "update-rustup-stable",
+        "update-npm-typescript",
+        "update-cargo-edit",
+        "update-pnpm",
+        "update-mas-pages",
+        "update-cask-vscode",
+        "update-brew-ripgrep",
+        "update-brew-jq",
+        "update-brew-git",
+        "update-brew-cmake",
+        "update-macos"
+      ]
+    },
+    {
+      "taskNumber": 3,
+      "scenarioId": "find-and-install-ripgrep",
+      "startingSurface": "library",
+      "recordIds": [
+        "search-ripgrep-homebrew",
+        "search-ripgrep-cargo",
+        "install-ripgrep-homebrew"
+      ]
+    },
+    {
+      "taskNumber": 4,
+      "scenarioId": "recover-from-failure",
+      "startingSurface": "activity",
+      "recordIds": [
+        "activity-npm-verification",
+        "activity-mas-not-started",
+        "recovery-retry-verification",
+        "recovery-restore",
+        "recovery-keep",
+        "recovery-copy-diagnostics"
+      ]
+    },
+    {
+      "taskNumber": 5,
+      "scenarioId": "inspect-rustup-source",
+      "startingSurface": "environment",
+      "recordIds": [
+        "rustup",
+        "rustup-system",
+        "rustup-user",
+        "decision-rustup-keep-multiple"
+      ]
+    },
+    {
+      "taskNumber": 6,
+      "scenarioId": "settings-and-diagnostics",
+      "startingSurface": "settings",
+      "recordIds": [
+        "setting-launch-at-login",
+        "activity-npm-verification",
+        "recovery-copy-diagnostics"
+      ]
+    },
+    {
+      "taskNumber": 7,
+      "scenarioId": "project-wow-first-run",
+      "startingSurface": "first_run",
+      "recordIds": [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+        "44444444-4444-4444-8444-444444444444",
+        "55555555-5555-4555-8555-555555555555"
+      ]
+    }
+  ],
+  "snapshot": {
+    "coverage": {
+      "id": "coverage-partial",
+      "state": "partial",
+      "currentManagerIds": [
+        "mise",
+        "rustup",
+        "homebrew_formula",
+        "npm",
+        "cargo",
+        "pnpm",
+        "mas"
+      ],
+      "cachedManagerIds": [
+        "homebrew_cask"
+      ],
+      "failedManagerIds": [
+        "macports"
+      ],
+      "deferredManagerIds": [
+        "softwareupdate"
+      ]
+    },
+    "managers": [
+      {
+        "id": "mise",
+        "authority": "authoritative",
+        "detected": true,
+        "enabled": true,
+        "freshness": "current",
+        "sourceState": "ready",
+        "installInstances": [
+          {
+            "id": "mise-user",
+            "displayPath": "<home>/.local/bin/mise",
+            "provenance": "mise",
+            "active": true,
+            "policyState": "manageable"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "rustup",
+        "authority": "authoritative",
+        "detected": true,
+        "enabled": true,
+        "freshness": "current",
+        "sourceState": "needs_review",
+        "installInstances": [
+          {
+            "id": "rustup-system",
+            "displayPath": "/usr/bin/rustup",
+            "provenance": "system",
+            "active": false,
+            "policyState": "policy_blocked"
+          },
+          {
+            "id": "rustup-user",
+            "displayPath": "<home>/.cargo/bin/rustup",
+            "provenance": "rustup_init",
+            "active": true,
+            "policyState": "manageable"
+          }
+        ],
+        "findingCode": "multiple_installs_detected"
+      },
+      {
+        "id": "homebrew_formula",
+        "authority": "guarded",
+        "detected": true,
+        "enabled": true,
+        "freshness": "current",
+        "sourceState": "ready",
+        "installInstances": [
+          {
+            "id": "homebrew-formula-arm64",
+            "displayPath": "/opt/homebrew/bin/brew",
+            "provenance": "homebrew",
+            "active": true,
+            "policyState": "manageable"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "homebrew_cask",
+        "authority": "standard",
+        "detected": true,
+        "enabled": true,
+        "freshness": "cached",
+        "sourceState": "ready",
+        "installInstances": [
+          {
+            "id": "homebrew-cask-arm64",
+            "displayPath": "/opt/homebrew/bin/brew",
+            "provenance": "homebrew",
+            "active": true,
+            "policyState": "manageable"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "npm",
+        "authority": "standard",
+        "detected": true,
+        "enabled": true,
+        "freshness": "current",
+        "sourceState": "ready",
+        "installInstances": [
+          {
+            "id": "npm-mise-node",
+            "displayPath": "<home>/.local/share/mise/shims/npm",
+            "provenance": "mise",
+            "active": true,
+            "policyState": "manageable"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "cargo",
+        "authority": "standard",
+        "detected": true,
+        "enabled": true,
+        "freshness": "current",
+        "sourceState": "ready",
+        "installInstances": [
+          {
+            "id": "cargo-user",
+            "displayPath": "<home>/.cargo/bin/cargo",
+            "provenance": "rustup_init",
+            "active": true,
+            "policyState": "manageable"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "pnpm",
+        "authority": "standard",
+        "detected": true,
+        "enabled": true,
+        "freshness": "current",
+        "sourceState": "ready",
+        "installInstances": [
+          {
+            "id": "pnpm-user",
+            "displayPath": "<home>/.local/share/mise/shims/pnpm",
+            "provenance": "mise",
+            "active": true,
+            "policyState": "manageable"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "mas",
+        "authority": "standard",
+        "detected": true,
+        "enabled": true,
+        "freshness": "current",
+        "sourceState": "ready",
+        "installInstances": [
+          {
+            "id": "mas-homebrew",
+            "displayPath": "/opt/homebrew/bin/mas",
+            "provenance": "homebrew",
+            "active": true,
+            "policyState": "needs_confirmation"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "softwareupdate",
+        "authority": "guarded",
+        "detected": true,
+        "enabled": true,
+        "freshness": "unknown",
+        "sourceState": "deferred",
+        "installInstances": [
+          {
+            "id": "softwareupdate-system",
+            "displayPath": "/usr/sbin/softwareupdate",
+            "provenance": "system",
+            "active": true,
+            "policyState": "needs_confirmation"
+          }
+        ],
+        "findingCode": null
+      },
+      {
+        "id": "macports",
+        "authority": "guarded",
+        "detected": false,
+        "enabled": true,
+        "freshness": "unknown",
+        "sourceState": "failed",
+        "installInstances": [],
+        "findingCode": "source_refresh_failed"
+      }
+    ],
+    "updates": [
+      {
+        "id": "update-mise-node",
+        "managerId": "mise",
+        "packageName": "node@24",
+        "installedVersion": "24.6.0",
+        "candidateVersion": "24.7.0",
+        "authority": "authoritative",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-rustup-stable",
+        "managerId": "rustup",
+        "packageName": "stable-aarch64-apple-darwin",
+        "installedVersion": "1.89.0",
+        "candidateVersion": "1.90.0",
+        "authority": "authoritative",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-npm-typescript",
+        "managerId": "npm",
+        "packageName": "typescript",
+        "installedVersion": "5.8.2",
+        "candidateVersion": "5.9.2",
+        "authority": "standard",
+        "pinned": true,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "excluded",
+        "exclusionReason": "pinned"
+      },
+      {
+        "id": "update-cargo-edit",
+        "managerId": "cargo",
+        "packageName": "cargo-edit",
+        "installedVersion": "0.13.6",
+        "candidateVersion": "0.13.7",
+        "authority": "standard",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-pnpm",
+        "managerId": "pnpm",
+        "packageName": "pnpm",
+        "installedVersion": "10.14.0",
+        "candidateVersion": "10.15.0",
+        "authority": "standard",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-mas-pages",
+        "managerId": "mas",
+        "packageName": "Pages",
+        "installedVersion": "14.3",
+        "candidateVersion": "14.4",
+        "authority": "standard",
+        "pinned": false,
+        "requiresPrivilege": true,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-cask-vscode",
+        "managerId": "homebrew_cask",
+        "packageName": "visual-studio-code",
+        "installedVersion": "1.102.0",
+        "candidateVersion": "1.103.0",
+        "authority": "standard",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-brew-ripgrep",
+        "managerId": "homebrew_formula",
+        "packageName": "ripgrep",
+        "installedVersion": "14.1.0",
+        "candidateVersion": "14.1.1",
+        "authority": "guarded",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-brew-jq",
+        "managerId": "homebrew_formula",
+        "packageName": "jq",
+        "installedVersion": "1.7.1",
+        "candidateVersion": "1.8.0",
+        "authority": "guarded",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-brew-git",
+        "managerId": "homebrew_formula",
+        "packageName": "git",
+        "installedVersion": "2.50.0",
+        "candidateVersion": "2.51.0",
+        "authority": "guarded",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-brew-cmake",
+        "managerId": "homebrew_formula",
+        "packageName": "cmake",
+        "installedVersion": "4.0.3",
+        "candidateVersion": "4.1.0",
+        "authority": "guarded",
+        "pinned": false,
+        "requiresPrivilege": false,
+        "restartRequired": false,
+        "planSelection": "included",
+        "exclusionReason": null
+      },
+      {
+        "id": "update-macos",
+        "managerId": "softwareupdate",
+        "packageName": "macOS 26.6.1",
+        "installedVersion": "26.6",
+        "candidateVersion": "26.6.1",
+        "authority": "guarded",
+        "pinned": false,
+        "requiresPrivilege": true,
+        "restartRequired": true,
+        "planSelection": "excluded",
+        "exclusionReason": "operating_system_updates_disabled"
+      }
+    ],
+    "upgradePlan": {
+      "id": "plan-non-os-updates",
+      "state": "awaiting_confirmation",
+      "authorityOrder": [
+        "authoritative",
+        "standard",
+        "guarded"
+      ],
+      "selectedUpdateIds": [
+        "update-mise-node",
+        "update-rustup-stable",
+        "update-cargo-edit",
+        "update-pnpm",
+        "update-mas-pages",
+        "update-cask-vscode",
+        "update-brew-ripgrep",
+        "update-brew-jq",
+        "update-brew-git",
+        "update-brew-cmake"
+      ],
+      "excludedUpdateIds": [
+        "update-npm-typescript",
+        "update-macos"
+      ],
+      "requiresPrivilege": true,
+      "restartRequired": false
+    },
+    "searchResults": [
+      {
+        "id": "search-ripgrep-homebrew",
+        "managerId": "homebrew_formula",
+        "packageName": "ripgrep",
+        "version": "14.1.1",
+        "resultOrigin": "local_cache",
+        "recommended": true,
+        "recommendationReasonKey": "research.search.recommendation.existing_authority",
+        "deferredWhenOffline": false
+      },
+      {
+        "id": "search-ripgrep-cargo",
+        "managerId": "cargo",
+        "packageName": "ripgrep",
+        "version": "14.1.1",
+        "resultOrigin": "remote",
+        "recommended": false,
+        "recommendationReasonKey": "research.search.recommendation.alternate_source",
+        "deferredWhenOffline": true
+      }
+    ],
+    "installProposal": {
+      "id": "install-ripgrep-homebrew",
+      "searchResultId": "search-ripgrep-homebrew",
+      "managerId": "homebrew_formula",
+      "packageName": "ripgrep",
+      "state": "awaiting_confirmation",
+      "requiresNetwork": true,
+      "requiresPrivilege": false,
+      "offlineBehavior": "deferred"
+    },
+    "activities": [
+      {
+        "id": "activity-npm-verification",
+        "taskId": 7001,
+        "managerId": "npm",
+        "updateId": null,
+        "state": "failed_verification",
+        "applyResult": "applied",
+        "verificationResult": "failed",
+        "sourceStarted": true,
+        "beforeKey": "research.activity.before.npm_prettier_3_5_2",
+        "afterKey": "research.activity.after.npm_prettier_3_6_0_unverified",
+        "rollbackEligible": false,
+        "recoveryLimitsKey": "research.activity.recovery.npm_restore_not_guaranteed"
+      },
+      {
+        "id": "activity-mas-not-started",
+        "taskId": 7002,
+        "managerId": "mas",
+        "updateId": "update-mas-pages",
+        "state": "deferred",
+        "applyResult": "not_started",
+        "verificationResult": "not_run",
+        "sourceStarted": false,
+        "beforeKey": "research.activity.before.mas_unchanged",
+        "afterKey": "research.activity.after.mas_unchanged",
+        "rollbackEligible": false,
+        "recoveryLimitsKey": "research.activity.recovery.no_change_to_restore"
+      }
+    ],
+    "recoveryActions": [
+      {
+        "id": "recovery-retry-verification",
+        "activityId": "activity-npm-verification",
+        "action": "retry_verification",
+        "allowed": true,
+        "reasonKey": "research.recovery.retry_verification"
+      },
+      {
+        "id": "recovery-restore",
+        "activityId": "activity-npm-verification",
+        "action": "restore",
+        "allowed": false,
+        "reasonKey": "research.recovery.restore_unavailable"
+      },
+      {
+        "id": "recovery-keep",
+        "activityId": "activity-npm-verification",
+        "action": "keep",
+        "allowed": true,
+        "reasonKey": "research.recovery.keep_applied_state"
+      },
+      {
+        "id": "recovery-copy-diagnostics",
+        "activityId": "activity-npm-verification",
+        "action": "copy_diagnostics",
+        "allowed": true,
+        "reasonKey": "research.recovery.copy_redacted_diagnostics"
+      }
+    ],
+    "managerDecision": {
+      "id": "decision-rustup-keep-multiple",
+      "managerId": "rustup",
+      "action": "keep_multiple",
+      "initialState": "pending",
+      "resultingState": "acknowledged",
+      "revisitSurface": "environment"
+    },
+    "settings": [
+      {
+        "id": "setting-launch-at-login",
+        "key": "launch_at_login",
+        "booleanValue": false
+      }
+    ]
+  },
+  "firstRun": {
+    "environmentBrief": {
+      "schemaVersion": "1.0.0",
+      "briefId": "11111111-1111-4111-8111-111111111111",
+      "revision": 1,
+      "generatedAt": "2026-08-16T18:01:00Z",
+      "system": {
+        "osVersion": "26.6.1",
+        "architecture": "arm64",
+        "activeShell": "zsh",
+        "distributionChannel": "developer_id",
+        "updateAuthority": "sparkle"
+      },
+      "discoveredManagers": [
+        {
+          "manager": "homebrew_formula",
+          "detected": true,
+          "eligibility": "eligible",
+          "managementState": "ready",
+          "activeInstallationMethod": "homebrew",
+          "provenance": "homebrew",
+          "freshness": "current"
+        },
+        {
+          "manager": "mise",
+          "detected": true,
+          "eligibility": "eligible",
+          "managementState": "setup_required",
+          "activeInstallationMethod": "script_installer",
+          "provenance": "mise",
+          "freshness": "current"
+        },
+        {
+          "manager": "macports",
+          "detected": false,
+          "eligibility": "unknown",
+          "managementState": "unknown",
+          "freshness": "unknown"
+        }
+      ],
+      "coverage": {
+        "intendedManagerCount": 3,
+        "currentManagerCount": 2,
+        "cachedManagerCount": 0,
+        "failedManagers": [
+          "macports"
+        ],
+        "cancelledManagers": [],
+        "deferredManagers": []
+      },
+      "observationClass": "local_only"
+    },
+    "setupSession": {
+      "schemaVersion": "1.0.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "briefId": "11111111-1111-4111-8111-111111111111",
+      "briefRevision": 1,
+      "planId": "33333333-3333-4333-8333-333333333333",
+      "receiptId": "55555555-5555-4555-8555-555555555555",
+      "startedAt": "2026-08-16T18:01:00Z",
+      "updatedAt": "2026-08-16T18:02:00Z",
+      "state": "partially_completed",
+      "consent": {
+        "networkAllowed": false,
+        "mutationAllowed": true,
+        "privilegeAllowed": false
+      },
+      "coverage": {
+        "completeManagers": [
+          "homebrew_formula",
+          "mise"
+        ],
+        "cachedManagers": [],
+        "failedManagers": [
+          "macports"
+        ],
+        "cancelledManagers": [],
+        "deferredManagers": []
+      },
+      "actionStates": [
+        {
+          "actionId": "44444444-4444-4444-8444-444444444444",
+          "state": "verified",
+          "updatedAt": "2026-08-16T18:01:50Z"
+        }
+      ],
+      "resume": {
+        "state": "not_applicable",
+        "lastDurableStage": "receipt_recorded",
+        "requiresRevalidation": false
+      },
+      "offlineBehavior": "opportunistic"
+    },
+    "plan": {
+      "schemaVersion": "1.0.0",
+      "planId": "33333333-3333-4333-8333-333333333333",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "briefId": "11111111-1111-4111-8111-111111111111",
+      "briefRevision": 1,
+      "policyRevision": "research-v1",
+      "createdAt": "2026-08-16T18:01:15Z",
+      "state": "approved",
+      "actions": [
+        {
+          "actionId": "44444444-4444-4444-8444-444444444444",
+          "typedActionId": "manager.setup.shell_defaults",
+          "sequence": 0,
+          "dependsOn": [],
+          "target": {
+            "kind": "manager",
+            "identifier": "mise"
+          },
+          "mutationClass": "user_environment",
+          "requiresNetwork": false,
+          "requiresPrivilege": false,
+          "impactKey": "research.first_run.mise_shell_setup.impact",
+          "impactArgs": {
+            "manager": "mise"
+          },
+          "preVerificationStatus": "applicable",
+          "verificationMethodId": "manager.setup.verify_shell_defaults",
+          "expectedStateKey": "research.first_run.mise_shell_setup.expected",
+          "retryBehavior": "revalidate_then_retry",
+          "rollbackEligible": true,
+          "recoveryLimitsKey": "research.first_run.mise_shell_setup.recovery_limits"
+        }
+      ]
+    },
+    "actionReceipt": {
+      "schemaVersion": "1.0.0",
+      "receiptId": "55555555-5555-4555-8555-555555555555",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "planId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-08-16T18:02:00Z",
+      "status": "verified",
+      "summaryKey": "research.first_run.receipt.verified",
+      "summaryArgs": {
+        "count": "1"
+      },
+      "actionResults": [
+        {
+          "actionId": "44444444-4444-4444-8444-444444444444",
+          "typedActionId": "manager.setup.shell_defaults",
+          "status": "verified",
+          "applyResult": "applied",
+          "verificationResult": "passed",
+          "before": {
+            "localizationKey": "research.first_run.before.shell_hook_missing",
+            "localizationArgs": {
+              "manager": "mise"
+            }
+          },
+          "after": {
+            "localizationKey": "research.first_run.after.shell_hook_verified",
+            "localizationArgs": {
+              "manager": "mise"
+            }
+          },
+          "authority": "authoritative",
+          "rollbackEligible": true,
+          "recoveryLimits": {
+            "localizationKey": "research.first_run.recovery.remove_managed_hook",
+            "localizationArgs": {
+              "manager": "mise"
+            }
+          }
+        }
+      ],
+      "unchangedState": [
+        {
+          "localizationKey": "research.first_run.unchanged.network_not_used",
+          "localizationArgs": {}
+        },
+        {
+          "localizationKey": "research.first_run.unchanged.packages_not_changed",
+          "localizationArgs": {}
+        },
+        {
+          "localizationKey": "research.first_run.unchanged.failed_source_not_modified",
+          "localizationArgs": {
+            "manager": "macports"
+          }
+        }
+      ]
+    },
+    "redactedSummary": {
+      "schemaVersion": "1.0.0",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "redactionClass": "strict",
+      "sessionStatus": "verified",
+      "metrics": {
+        "totalActions": 1,
+        "verifiedActions": 1,
+        "noChangeActions": 0,
+        "failedVerificationActions": 0,
+        "failedActions": 0,
+        "cancelledOrInterruptedActions": 0,
+        "deferredActions": 0,
+        "managedActions": 1,
+        "durationSeconds": 60
+      },
+      "environment": {
+        "osFamily": "macOS",
+        "architecture": "arm64"
+      }
+    }
+  }
+}

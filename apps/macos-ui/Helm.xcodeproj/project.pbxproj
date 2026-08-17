@@ -91,6 +91,11 @@
 		Q200000000000000000000001 /* WayfinderPresentationProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000001 /* WayfinderPresentationProjection.swift */; };
 		Q200000000000000000000002 /* WayfinderPresentationProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000001 /* WayfinderPresentationProjection.swift */; };
 		Q200000000000000000000003 /* WayfinderPresentationProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */; };
+		R492000000000000000000001 /* WholeWorkflowResearchDataset.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */; };
+		R492000000000000000000002 /* WholeWorkflowResearchDataset.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */; };
+		R492000000000000000000003 /* WholeWorkflowResearchDatasetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */; };
+		R492000000000000000000004 /* WholeWorkflowResearchDatasetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */; };
+		R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */; };
 		W200000000000000000000001 /* EnvironmentBriefProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000001 /* EnvironmentBriefProjection.swift */; };
 		W200000000000000000000002 /* EnvironmentBriefProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000001 /* EnvironmentBriefProjection.swift */; };
 		W200000000000000000000003 /* EnvironmentBriefProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */; };
@@ -272,6 +277,9 @@
 		P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSparkleUpdateCoordinator.swift; sourceTree = "<group>"; };
 		Q100000000000000000000001 /* WayfinderPresentationProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjection.swift; sourceTree = "<group>"; };
 		Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderPresentationProjectionTests.swift; sourceTree = "<group>"; };
+		R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDataset.swift; sourceTree = "<group>"; };
+		R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetValidator.swift; sourceTree = "<group>"; };
+		R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetTests.swift; sourceTree = "<group>"; };
 		W100000000000000000000001 /* EnvironmentBriefProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjection.swift; sourceTree = "<group>"; };
 		W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjectionTests.swift; sourceTree = "<group>"; };
 		X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+EnvironmentBrief.swift"; sourceTree = "<group>"; };
@@ -388,6 +396,8 @@
 				G10000000000000000000001 /* L10n+App.swift */,
 				W100000000000000000000001 /* EnvironmentBriefProjection.swift */,
 				Q100000000000000000000001 /* WayfinderPresentationProjection.swift */,
+				R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */,
+				R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -563,6 +573,7 @@
 				K100000000000000000000002 /* SupportRedactorTests.swift */,
 				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
 				Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */,
+				R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */,
 			);
 			path = HelmTests;
 			sourceTree = "<group>";
@@ -860,6 +871,8 @@
 				Z200000000000000000000001 /* FirstRunPresentationSupport.swift in Sources */,
 				Q200000000000000000000001 /* WayfinderPresentationProjection.swift in Sources */,
 				R200000000000000000000001 /* WayfinderCourseIndicatorView.swift in Sources */,
+				R492000000000000000000001 /* WholeWorkflowResearchDataset.swift in Sources */,
+				R492000000000000000000003 /* WholeWorkflowResearchDatasetValidator.swift in Sources */,
 			);
 		};
 		C10000000000000000000008 /* Sources */ = {
@@ -901,6 +914,9 @@
 				Z200000000000000000000003 /* FirstRunPresentationSupportTests.swift in Sources */,
 				Q200000000000000000000002 /* WayfinderPresentationProjection.swift in Sources */,
 				Q200000000000000000000003 /* WayfinderPresentationProjectionTests.swift in Sources */,
+				R492000000000000000000002 /* WholeWorkflowResearchDataset.swift in Sources */,
+				R492000000000000000000004 /* WholeWorkflowResearchDatasetValidator.swift in Sources */,
+				R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */,
 			);
 		};
 /* End PBXSourcesBuildPhase section */

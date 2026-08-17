@@ -252,6 +252,7 @@ Implementation checkpoint on `dev`:
 - Deep links preserve originating condition, destination, focus, route domain, and affected manager. Owner QA verified the corrected visible Environment filter for all four route stages before PR #490 merged.
 - Library, Plan, Activity, Environment, and Dashboard own detail, confirmation, recovery, and search rather than hosting those workflows inside the transient panel.
 - A debug-only six-state `HELM_WAYFINDER_POPOVER_FIXTURE` seam uses the production projectors/view and suppresses refresh plus Helm update-check submission while active. It is a state-validation seam, not a whole-workflow synthetic dataset.
+- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator now cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector is not yet consumed by production destinations; each remaining workflow slice owns that projection work.
 
 Affected files/components:
 
@@ -280,7 +281,7 @@ Localization/accessibility:
 Validation:
 
 - Warm/cold opening budgets, screen-edge/multi-display, dismissal/focus return, all state fixtures.
-- Execute the production-view fixture and accessibility matrix in `docs/validation/v0.20-wayfinder-popover-research-readiness.md`; do not claim the owner-moderated checkpoint until the whole-workflow synthetic dataset and participant records exist.
+- Preserve the completed production-view fixture/accessibility matrix and dataset-seeding record in `docs/validation/v0.20-wayfinder-popover-research-readiness.md`; do not claim the owner-moderated checkpoint until every protocol destination projects the corpus and participant records exist.
 
 Rollback/incremental strategy:
 

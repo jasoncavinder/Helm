@@ -67,7 +67,7 @@ Recruitment balance:
 - Keep consent and recordings outside the repository; repository records use participant IDs only.
 - Record raw counts when fewer than 10 sessions are complete and keep the checkpoint open.
 
-The production unified popover's six-state fixture seam and its remaining validation matrix are recorded in `docs/validation/v0.20-wayfinder-popover-research-readiness.md`. That seam validates the shipping popover presentation but does not synthesize Plan, Activity, recovery, package, manager, or receipt records. A versioned whole-workflow dataset remains a prerequisite for running the full seven-task protocol without scanning or mutating a participant's machine.
+The production unified popover's six-state fixture seam and its remaining validation matrix are recorded in `docs/validation/v0.20-wayfinder-popover-research-readiness.md`. That seam validates the shipping popover presentation but does not synthesize Plan, Activity, recovery, package, manager, or receipt records. The canonical `v0.20-whole-workflow-v1` corpus under `docs/validation/fixtures/` now supplies those records without scanning or mutating a participant's machine. The full seven-task protocol remains blocked until every participating production surface consumes that corpus and passes its workflow/accessibility gate.
 
 ## Moderated Task Script
 
