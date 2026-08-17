@@ -1,10 +1,10 @@
 # v0.20 Unified Wayfinder Popover Proposal
 
-Status: **Composition approved with minor refinements**
+Status: **Implemented on `dev`; research validation remains open**
 
-Scope: non-shipping design and interaction contract for Roadmap Slice 20.1
+Scope: design decision, interaction contract, and implementation record for Roadmap Slice 20.1
 
-Production behavior is unchanged by this proposal. The SwiftUI in `tools/design-lab/` uses synthetic fixtures and is excluded from the Helm application target.
+The SwiftUI in `tools/design-lab/` remains a non-shipping, synthetic design record. The approved composition now also exists in the production `WayfinderPopoverView`, backed by Helm's shared Wayfinder projection and deep-link contracts. The design-lab renderer is not production code and is not evidence that the shipping view passed runtime validation.
 
 ## Owner decision
 
@@ -25,11 +25,11 @@ Original Wayfinder remains the approved visual direction. This proposal does not
 4. Preserve compact route orientation and three fast commands.
 5. Move inspection, selection, output, and recovery depth into the relevant Dashboard workspace.
 
-## Current production gap
+## Resolved production gap
 
-The v0.19 production popover still behaves like a miniature Dashboard. It contains an inline search field, three metric chips, a manager snapshot, expandable task rows, and custom search/About/Quit overlays. That density conflicts with the approved surface contract and creates avoidable layout churn as service state changes.
+The v0.19 production popover behaved like a miniature Dashboard. It contained an inline search field, three metric chips, a manager snapshot, expandable task rows, and custom search/About/Quit overlays. That density conflicted with the approved surface contract and created avoidable layout churn as service state changed.
 
-This proposal removes those regions rather than restyling them.
+The v0.20 implementation removes those regions rather than restyling them. Dashboard, Plan, Library, Activity, and Environment now own their respective depth, while the popover retains one condition, one optional next action, compact environment orientation, and three fast commands.
 
 ## Proposed structure
 
@@ -143,14 +143,14 @@ No package mutation, manager configuration, long diagnostics, or output browsing
 - Reduce Transparency substitutes opaque semantic surfaces without changing hierarchy.
 - All seven locales and representative +40% text expansion must pass before production replacement.
 
-## Implementation gate
+## Implementation checkpoint
 
-The composition gate is resolved. Production implementation must preserve:
+The composition and production-replacement gates are resolved:
 
-1. The approved overall composition and information density.
-2. Course Indicator treatment across semantic states.
-3. The quieter route strip and single context row.
-4. Contextual-action hierarchy and discoverable utility-menu placement.
-5. The fixed ordinary-state footprint with bounded text expansion.
+1. The production view preserves the approved 400-by-458-point composition, information density, Course Indicator semantics, quiet route strip, single context row, contextual action, and utility menu.
+2. Shared projection truth drives Healthy, Updates Ready, Running, Needs Review, Error, offline, refreshing, approval, and service-unavailable states without moving business rules into SwiftUI.
+3. Deep links preserve originating condition, destination, focus, domain, and affected manager when known. The post-implementation correction verified that System, Tools, Apps, and Packages visibly filter Environment rather than opening one undifferentiated view.
+4. The legacy search, metric, manager, task, overlay, upgrade-sheet, and dynamic-size regions have been removed from the production popover.
+5. Focused tests cover projection priority, semantic route tone, finding context, deep-link preservation, offline refresh availability, and the fixed ordinary footprint.
 
-Production implementation should replace regions incrementally from the bottom up, retain a working Open Dashboard route throughout, and add state-fixture, deep-link, accessibility, localization, activation, and bounded-size coverage before removing the legacy code.
+The remaining gate is validation, not another visual replacement. A debug-only `HELM_WAYFINDER_POPOVER_FIXTURE` seam renders all six approved representative states through the production presenter and suppresses refresh/update-check submission while active. The owner state/accessibility matrix, whole-workflow synthetic dataset, and moderated participant checkpoint remain open; see `docs/validation/v0.20-wayfinder-popover-research-readiness.md`.

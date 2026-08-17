@@ -1,7 +1,7 @@
 # Native macOS Research and Validation Package
 
 Status: protocol approved; no human participant sessions claimed
-Owner checkpoint: required before v0.20 workflow migration and repeated before v0.22 UI lock
+Owner checkpoint: required before v0.20 core-workflow sign-off and repeated before v0.22 UI lock
 
 ## Evidence Status
 
@@ -59,6 +59,15 @@ Recruitment balance:
 - Think-aloud is encouraged but never required for accessibility participants when it interferes with assistive-technology use.
 - Participant chooses appearance/input setup; core tasks are repeated under required accessibility settings in the dedicated protocol.
 - Record screen/audio only with separate explicit consent. Notes alone are sufficient.
+
+## Operational Records
+
+- Copy `docs/validation/templates/native-macos-research-session.md` once per participant.
+- Aggregate only redacted observations into `docs/validation/templates/native-macos-research-checkpoint-report.md`.
+- Keep consent and recordings outside the repository; repository records use participant IDs only.
+- Record raw counts when fewer than 10 sessions are complete and keep the checkpoint open.
+
+The production unified popover's six-state fixture seam and its remaining validation matrix are recorded in `docs/validation/v0.20-wayfinder-popover-research-readiness.md`. That seam validates the shipping popover presentation but does not synthesize Plan, Activity, recovery, package, manager, or receipt records. A versioned whole-workflow dataset remains a prerequisite for running the full seven-task protocol without scanning or mutating a participant's machine.
 
 ## Moderated Task Script
 

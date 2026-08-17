@@ -372,6 +372,110 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         )
     }
 
+    func testPopoverFixturesCoverApprovedStateSuite() throws {
+        let now = Date(timeIntervalSince1970: 1_786_876_800)
+        let fixtures = Dictionary(
+            uniqueKeysWithValues: WayfinderPopoverFixtureName.allCases.map { name in
+                (name, WayfinderPopoverFixtureProvider.fixture(named: name, now: now))
+            }
+        )
+
+        XCTAssertEqual(
+            WayfinderPopoverFixtureName.allCases.map(\.rawValue),
+            ["healthy", "updates-ready", "running", "needs-review", "error", "offline"]
+        )
+        XCTAssertEqual(fixtures[.healthy]?.presentation.projection.condition, .healthy)
+        XCTAssertEqual(
+            fixtures[.updatesReady]?.presentation.projection.condition,
+            .updatesReady(count: 4)
+        )
+        XCTAssertEqual(
+            fixtures[.running]?.presentation.projection.condition,
+            .activeWork(count: 1)
+        )
+        XCTAssertEqual(
+            fixtures[.needsReview]?.presentation.projection.condition,
+            .actionableFinding(count: 1)
+        )
+        XCTAssertEqual(
+            fixtures[.error]?.presentation.projection.condition,
+            .failedOrInterrupted(failed: 1, interrupted: 0)
+        )
+        XCTAssertEqual(fixtures[.offline]?.presentation.projection.condition, .offline)
+
+        let progress = try XCTUnwrap(fixtures[.running]?.presentation.projection.progress)
+        XCTAssertEqual(progress.completed, 5)
+        XCTAssertEqual(progress.total, 12)
+        XCTAssertFalse(try XCTUnwrap(fixtures[.offline]?.presentation.allowsRefresh))
+    }
+
+    func testPopoverFixturesPreserveAffectedRoutesAndFindingContext() throws {
+        let now = Date(timeIntervalSince1970: 1_786_876_800)
+        let updates = WayfinderPopoverFixtureProvider.fixture(named: .updatesReady, now: now)
+        let needsReview = WayfinderPopoverFixtureProvider.fixture(named: .needsReview, now: now)
+
+        XCTAssertEqual(
+            updates.presentation.routeItems.filter { $0.tone == .updates }.map(\.stage),
+            [.apps, .packages]
+        )
+        let toolsRoute = try XCTUnwrap(
+            needsReview.presentation.routeItems.first { $0.stage == .tools }
+        )
+        XCTAssertEqual(toolsRoute.tone, .review)
+        XCTAssertEqual(toolsRoute.managerID, "mise")
+        XCTAssertEqual(
+            needsReview.presentation.contextTitle.arguments,
+            ["manager": "mise"]
+        )
+        XCTAssertEqual(
+            needsReview.presentation.contextDetail.key,
+            "app.inspector.multi_instance.attention_title"
+        )
+    }
+
+    func testPopoverFixtureSelectionIsDebugOnlyAndRejectsUnknownNames() throws {
+        let now = Date(timeIntervalSince1970: 1_786_876_800)
+
+        XCTAssertFalse(WayfinderPopoverFixtureProvider.isActive(environment: [:]))
+        XCTAssertNil(
+            WayfinderPopoverFixtureProvider.active(
+                environment: [WayfinderPopoverFixtureProvider.environmentKey: "unknown"],
+                now: now
+            )
+        )
+
+        let fixtureEnvironment = [
+            WayfinderPopoverFixtureProvider.environmentKey: "  UPDATES-READY  "
+        ]
+
+        #if DEBUG
+        let selected = try XCTUnwrap(
+            WayfinderPopoverFixtureProvider.active(
+                environment: fixtureEnvironment,
+                now: now
+            )
+        )
+        XCTAssertEqual(selected.name, .updatesReady)
+        XCTAssertEqual(selected.schemaVersion, "1.0.0")
+        #else
+        XCTAssertNil(
+            WayfinderPopoverFixtureProvider.active(
+                environment: fixtureEnvironment,
+                now: now
+            )
+        )
+        #endif
+    }
+
+    func testPopoverFixtureProjectionIsDeterministicForReferenceDate() {
+        let now = Date(timeIntervalSince1970: 1_786_876_800)
+
+        XCTAssertEqual(
+            WayfinderPopoverFixtureProvider.fixture(named: .running, now: now),
+            WayfinderPopoverFixtureProvider.fixture(named: .running, now: now)
+        )
+    }
+
     func testOrdinaryPopoverFootprintRemainsFixedAcrossStates() {
         XCTAssertEqual(WayfinderPopoverLayout.width, 400)
         XCTAssertEqual(WayfinderPopoverLayout.ordinaryHeight, 458)

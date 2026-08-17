@@ -243,7 +243,15 @@ Rollback/incremental strategy:
 
 ### Slice 20.1: Dashboard state and popover triage
 
-Owner-review artifact: `docs/app-design/proposals/v020-wayfinder-popover/README.md`. The rendered state suite is non-shipping design input and does not authorize production replacement until its review gate is explicitly resolved.
+Owner-review and implementation record: `docs/app-design/proposals/v020-wayfinder-popover/README.md`. Its design-lab renderer remains non-shipping historical input; the review and production-replacement gates are resolved.
+
+Implementation checkpoint on `dev`:
+
+- The legacy mini-Dashboard popover is replaced by the approved fixed-footprint unified Wayfinder composition in the production `WayfinderPopoverView`.
+- The shared projection drives one Course truth, one optional next action, affected System/Tools/Apps/Packages route tones, one context fact, and completed-check freshness.
+- Deep links preserve originating condition, destination, focus, route domain, and affected manager. Owner QA verified the corrected visible Environment filter for all four route stages before PR #490 merged.
+- Library, Plan, Activity, Environment, and Dashboard own detail, confirmation, recovery, and search rather than hosting those workflows inside the transient panel.
+- A debug-only six-state `HELM_WAYFINDER_POPOVER_FIXTURE` seam uses the production projectors/view and suppresses refresh plus Helm update-check submission while active. It is a state-validation seam, not a whole-workflow synthetic dataset.
 
 Affected files/components:
 
@@ -272,6 +280,7 @@ Localization/accessibility:
 Validation:
 
 - Warm/cold opening budgets, screen-edge/multi-display, dismissal/focus return, all state fixtures.
+- Execute the production-view fixture and accessibility matrix in `docs/validation/v0.20-wayfinder-popover-research-readiness.md`; do not claim the owner-moderated checkpoint until the whole-workflow synthetic dataset and participant records exist.
 
 Rollback/incremental strategy:
 
