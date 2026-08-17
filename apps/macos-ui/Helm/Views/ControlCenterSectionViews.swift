@@ -291,19 +291,11 @@ extension WholeWorkflowResearchPlanStep {
 }
 
 struct RedesignUpdatesSectionView: View {
-    private struct PlanStageRow: Identifiable {
-        let id: String
-        let labelKey: String
-        let managerCount: Int
-        let packageCount: Int
-    }
-
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
+    @ObservedObject private var localization = LocalizationManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     @State private var includeOsUpdates = false
-    @State private var managerScopeId = HelmCore.allManagersScopeId
-    @State private var packageScopeQuery = ""
     @State private var failedExternalSparkleStep: CoreUpgradePlanStep?
     @State private var selectedPlanStepIds = Set<String>()
     @State private var knownPlanStepIds = Set<String>()
@@ -329,19 +321,11 @@ struct RedesignUpdatesSectionView: View {
         selectedScopedPlanSteps.filter(HelmCore.isExternalSparklePlanStep).count
     }
 
-    private var managerScopeOptions: [String] {
-        let managers = Set(planSteps.map(\.managerId))
-        let availableManagers = researchPlanProjection == nil
-            ? managers.filter { core.isManagerEnabled($0) }
-            : managers
-        return [HelmCore.allManagersScopeId] + availableManagers.sorted()
-    }
-
     private var scopedPlanSteps: [CoreUpgradePlanStep] {
         HelmCore.scopedUpgradePlanSteps(
             from: planSteps,
-            managerScopeId: managerScopeId,
-            packageFilter: packageScopeQuery
+            managerScopeId: context.planManagerScopeId,
+            packageFilter: context.planPackageFilter
         )
     }
 
@@ -379,29 +363,6 @@ struct RedesignUpdatesSectionView: View {
         }.count
     }
 
-    private var stageRows: [PlanStageRow] {
-        let stages = [
-            (id: "authoritative", labelKey: L10n.App.Updates.Authority.authoritative),
-            (id: "standard", labelKey: L10n.App.Updates.Authority.standard),
-            (id: "guarded", labelKey: L10n.App.Updates.Authority.guarded),
-            (id: "interactive", labelKey: L10n.App.Updates.Authority.interactive),
-        ]
-        let stepsByAuthority = Dictionary(grouping: scopedPlanSteps) { step in
-            let normalized = step.authority.lowercased()
-            return stages.contains(where: { $0.id == normalized }) ? normalized : "standard"
-        }
-        return stages.map { stage in
-            let scopedSteps = stepsByAuthority[stage.id] ?? []
-            let managersInAuthority = Set(scopedSteps.map(\.managerId))
-            return PlanStageRow(
-                id: stage.id,
-                labelKey: stage.labelKey,
-                managerCount: managersInAuthority.count,
-                packageCount: scopedSteps.count
-            )
-        }
-    }
-
     private var riskSummary: UpgradePreviewPlanner.RiskSummary {
         if let researchPlanProjection {
             return researchPlanProjection.riskSummary(
@@ -425,20 +386,15 @@ struct RedesignUpdatesSectionView: View {
         return step.packageName
     }
 
-    private func selectionBinding(for step: CoreUpgradePlanStep) -> Binding<Bool> {
-        Binding(
-            get: { selectedPlanStepIds.contains(step.id) },
-            set: { included in
-                guard researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
-                    return
-                }
-                if included {
-                    selectedPlanStepIds.insert(step.id)
-                } else {
-                    selectedPlanStepIds.remove(step.id)
-                }
-            }
-        )
+    private func setPlanStepIncluded(_ stepID: String, included: Bool) {
+        guard researchPlanProjection?.isSelectable(stepID: stepID) ?? true else {
+            return
+        }
+        if included {
+            selectedPlanStepIds.insert(stepID)
+        } else {
+            selectedPlanStepIds.remove(stepID)
+        }
     }
 
     private func selectInspectorStep(_ step: CoreUpgradePlanStep) {
@@ -469,6 +425,106 @@ struct RedesignUpdatesSectionView: View {
             visibleStepIds: visiblePlanStepIds,
             included: visibleSelectionState != .all
         )
+    }
+
+    private func plannerStep(_ step: CoreUpgradePlanStep) -> UpgradePreviewPlanner.PlanStep {
+        .init(
+            id: step.id,
+            orderIndex: step.orderIndex,
+            managerId: step.managerId,
+            authority: step.authority,
+            action: step.action,
+            packageName: step.packageName,
+            reasonLabelKey: step.reasonLabelKey,
+            reasonLabelArgs: step.reasonLabelArgs,
+            status: step.status
+        )
+    }
+
+    private func authorityTitle(for authority: String) -> String {
+        let key: String
+        switch authority {
+        case "authoritative":
+            key = L10n.App.Updates.Authority.authoritative
+        case "standard":
+            key = L10n.App.Updates.Authority.standard
+        case "guarded":
+            key = L10n.App.Updates.Authority.guarded
+        case "detection_only":
+            key = L10n.App.Updates.Authority.detectionOnly
+        case "interactive":
+            key = L10n.App.Updates.Authority.interactive
+        default:
+            key = L10n.App.Updates.Authority.other
+        }
+        return key.localized
+    }
+
+    private var outlineSections: [UpgradePlanOutlineSection] {
+        var sequence = 0
+        var stepsByID: [String: CoreUpgradePlanStep] = [:]
+        for step in planSteps {
+            stepsByID[step.id] = step
+        }
+        return UpgradePreviewPlanner
+            .groupedForPresentation(visiblePlanSteps.map(plannerStep))
+            .map { group in
+                let rows = group.steps.map { plannerStep in
+                    sequence += 1
+                    let step = stepsByID[plannerStep.id]
+                    let projected = step.map(projectedStatus) ?? plannerStep.status
+                    let exclusion = step.flatMap(researchExclusionLabel)
+                    let status = exclusion.map {
+                        "\(core.localizedUpgradePlanStatus(projected)) (\($0))"
+                    } ?? core.localizedUpgradePlanStatus(projected)
+                    let tone: UpgradePlanOutlineRow.StatusTone
+                    if projected.lowercased() == "failed" {
+                        tone = .error
+                    } else if exclusion != nil || (step.map(core.upgradePlanStepRunsAutomatically) ?? true) {
+                        tone = .standard
+                    } else {
+                        tone = .needsReview
+                    }
+                    return UpgradePlanOutlineRow(
+                        id: plannerStep.id,
+                        sequence: sequence,
+                        title: step.map(planStepTitle) ?? plannerStep.packageName,
+                        manager: localizedManagerDisplayName(plannerStep.managerId),
+                        isIncluded: selectedPlanStepIds.contains(plannerStep.id),
+                        isSelectable: researchPlanProjection?.isSelectable(stepID: plannerStep.id) ?? true,
+                        status: status,
+                        statusTone: tone,
+                        actionTitle: step.map(HelmCore.isExternalSparklePlanStep) == true
+                            ? L10n.App.Updates.openAppToUpdate.localized
+                            : nil
+                    )
+                }
+                return UpgradePlanOutlineSection(
+                    id: group.id,
+                    title: authorityTitle(for: group.id),
+                    summary: L10n.App.Updates.Table.sectionSummary.localized(with: [
+                        "count": rows.count
+                    ]),
+                    rows: rows
+                )
+            }
+    }
+
+    private func performPlanAction(for stepID: String) {
+        guard let step = planSteps.first(where: { $0.id == stepID }),
+              HelmCore.isExternalSparklePlanStep(step),
+              !core.openExternalSparkleApplication(for: step) else {
+            return
+        }
+        failedExternalSparkleStep = step
+    }
+
+    private func reconcilePlanScope(_ steps: [CoreUpgradePlanStep]) {
+        let managerSet = Set(steps.map(\.managerId))
+        if context.planManagerScopeId != HelmCore.allManagersScopeId,
+           !managerSet.contains(context.planManagerScopeId) {
+            context.planManagerScopeId = HelmCore.allManagersScopeId
+        }
     }
 
     private func projectedStatus(_ step: CoreUpgradePlanStep) -> String {
@@ -531,300 +587,232 @@ struct RedesignUpdatesSectionView: View {
         }
     }
 
-    var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text(ControlCenterSection.updates.title)
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    Button(L10n.App.Action.refreshPlan.localized) {
-                        guard !isResearchPlanActive else { return }
-                        core.triggerRefresh()
-                        core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
-                    }
-                    .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(core.isRefreshing || isResearchPlanActive)
-                }
+    private func reconcileVisibleInspectorSelection() {
+        guard let selectedStepID = context.selectedUpgradePlanStepId,
+              !visiblePlanSteps.contains(where: { $0.id == selectedStepID }) else {
+            return
+        }
+        context.selectedUpgradePlanStepId = nil
+    }
 
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(ControlCenterSection.updates.title)
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                Button(L10n.App.Action.refreshPlan.localized) {
+                    guard !isResearchPlanActive else { return }
+                    core.triggerRefresh()
+                    core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(core.isRefreshing || isResearchPlanActive)
+            }
+
+            HStack(spacing: 12) {
                 Text(L10n.App.Updates.executionPlan.localized)
                     .font(.headline)
-
                 if !core.safeModeEnabled {
                     Toggle(L10n.App.Updates.includeOs.localized, isOn: $includeOsUpdates)
                         .toggleStyle(.switch)
                         .disabled(isResearchPlanActive)
                 }
-
-                if researchPlanProjection == nil,
-                   let completion = core.upgradePlanCompletion,
-                   completion.completedNormally,
-                   completion.remainingInteractiveCount > 0 {
-                    VStack(alignment: .leading, spacing: 4) {
+                Spacer()
+                if !visiblePlanSteps.isEmpty {
+                    Button(action: toggleVisiblePlanSelection) {
                         Label(
-                            L10n.App.Updates.Completion.title.localized,
-                            systemImage: "checkmark.circle.fill"
-                        )
-                        .font(.callout.weight(.semibold))
-                        Text(
-                            L10n.App.Updates.Completion.message.localized(with: [
-                                "count": completion.remainingInteractiveCount
-                            ])
-                        )
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .helmCardSurface(cornerRadius: 10, highlighted: true)
-                } else if interactiveSparkleCount > 0 {
-                    Label(
-                        L10n.App.Updates.interactiveSparkleNotice.localized(with: [
-                            "count": interactiveSparkleCount
-                        ]),
-                        systemImage: "hand.raised.fill"
-                    )
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .helmCardSurface(cornerRadius: 10, highlighted: true)
-                }
-
-                HStack(spacing: 10) {
-                    Picker(L10n.App.Inspector.manager.localized, selection: $managerScopeId) {
-                        ForEach(managerScopeOptions, id: \.self) { managerId in
-                            if managerId == HelmCore.allManagersScopeId {
-                                Text(L10n.App.Packages.Filter.allManagers.localized)
-                                    .tag(managerId)
-                            } else {
-                                Text(localizedManagerDisplayName(managerId))
-                                    .tag(managerId)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 240)
-
-                    TextField(L10n.App.ControlCenter.searchPlaceholder.localized, text: $packageScopeQuery)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                VStack(spacing: 8) {
-                    ForEach(stageRows) { row in
-                        HStack {
-                            Text(row.labelKey.localized)
-                                .font(.body.weight(.medium))
-                            Spacer()
-                            Text("\(row.managerCount)")
-                                .font(.body.monospacedDigit())
-                            Text(L10n.App.Updates.managers.localized)
-                                .foregroundColor(.secondary)
-                            Text("\(row.packageCount)")
-                                .font(.body.monospacedDigit())
-                            Text(L10n.App.Updates.packages.localized)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-
-                if core.scopedUpgradePlanRunInProgress {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(L10n.App.Managers.Operation.upgrading.localized)
-                            .font(.callout.weight(.medium))
-                        Spacer()
-                        Text("\(scopedInFlightStepCount)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .helmCardSurface(cornerRadius: 10, highlighted: true)
-                }
-
-                if visiblePlanSteps.isEmpty {
-                    Text(L10n.App.Tasks.noRecentTasks.localized)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                } else {
-                    HStack {
-                        Spacer()
-                        Button(action: toggleVisiblePlanSelection) {
-                            Label(
-                                visibleSelectionState == .all
-                                    ? L10n.App.Updates.deselectAll.localized
-                                    : L10n.App.Updates.selectAll.localized,
-                                systemImage: visibleSelectionState == .all
-                                    ? "checkmark.square.fill"
-                                    : (visibleSelectionState == .partial ? "minus.square.fill" : "square")
-                            )
-                        }
-                        .buttonStyle(HelmSecondaryButtonStyle())
-                        .disabled(
-                            core.scopedUpgradePlanRunInProgress
-                                || visiblePlanStepIds.isEmpty
-                        )
-                    }
-
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(visiblePlanSteps.enumerated()), id: \.element.id) { index, step in
-                            HStack(spacing: 8) {
-                                Toggle("", isOn: selectionBinding(for: step))
-                                    .labelsHidden()
-                                    .toggleStyle(.checkbox)
-                                    .disabled(
-                                        core.scopedUpgradePlanRunInProgress
-                                            || !(researchPlanProjection?.isSelectable(stepID: step.id) ?? true)
-                                    )
-
-                                Text("\(index + 1).")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundColor(.secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(planStepTitle(step))
-                                        .font(.subheadline.weight(.medium))
-                                        .lineLimit(1)
-                                    HStack(spacing: 6) {
-                                        Text(localizedManagerDisplayName(step.managerId))
-                                            .lineLimit(1)
-                                        if let exclusionLabel = researchExclusionLabel(for: step) {
-                                            Label(exclusionLabel, systemImage: "nosign")
-                                        }
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Text(core.localizedUpgradePlanStatus(projectedStatus(step)))
-                                    .font(.caption)
-                                    .foregroundColor(
-                                        projectedStatus(step).lowercased() == "failed"
-                                            ? Color.red
-                                            : (
-                                                researchExclusionLabel(for: step) != nil
-                                                    || core.upgradePlanStepRunsAutomatically(step)
-                                                    ? Color.secondary
-                                                    : HelmTheme.stateNeedsReview
-                                            )
-                                    )
-
-                                if HelmCore.isExternalSparklePlanStep(step) {
-                                    Button(L10n.App.Updates.openAppToUpdate.localized) {
-                                        if !core.openExternalSparkleApplication(for: step) {
-                                            failedExternalSparkleStep = step
-                                        }
-                                    }
-                                    .buttonStyle(HelmSecondaryButtonStyle())
-                                    .font(.caption)
-                                    .helmPointer()
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectInspectorStep(step)
-                            }
-                            .helmPointer()
-                            .background(
-                                context.selectedUpgradePlanStepId == step.id
-                                    ? HelmTheme.selectionFill
-                                    : Color.clear
-                            )
-                            Divider()
-                        }
-                    }
-                    .helmCardSurface(cornerRadius: 12)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.App.Updates.riskFlags.localized)
-                        .font(.headline)
-                    riskRow(
-                        flag: L10n.App.Updates.Risk.privileged.localized,
-                        active: riskSummary.requiresElevatedPrivileges
-                    )
-                    riskRow(
-                        flag: L10n.App.Updates.Risk.reboot.localized,
-                        active: riskSummary.mayRequireReboot
-                    )
-                }
-
-                if !scopedFailureGroups.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(L10n.App.Popover.failures.localized)
-                            .font(.headline)
-
-                        ForEach(scopedFailureGroups) { group in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(core.localizedUpgradePlanFailureCause(for: group))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-
-                                Text(packageSummary(group.packageNames, managerId: group.managerId))
-                                    .font(.caption.monospacedDigit())
-                                    .lineLimit(2)
-
-                                HStack {
-                                    Button(L10n.App.Packages.Action.update.localized) {
-                                        core.retryUpgradePlanSteps(stepIds: group.stepIds)
-                                    }
-                                    .buttonStyle(HelmSecondaryButtonStyle())
-                                    .font(.caption)
-                                    Spacer()
-                                    Text(localizedManagerDisplayName(group.managerId))
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(10)
-                            .helmCardSurface(cornerRadius: 10, highlighted: true)
-                        }
-
-                        Button(L10n.App.Packages.Action.update.localized) {
-                            core.retryUpgradePlanSteps(stepIds: scopedFailedStepIds)
-                        }
-                        .buttonStyle(HelmPrimaryButtonStyle())
-                        .font(.caption)
-                        .disabled(scopedFailedStepIds.isEmpty)
-                    }
-                }
-
-                HStack {
-                    Button(L10n.App.Tasks.Action.cancel.localized) {
-                        core.cancelRemainingUpgradePlanSteps(
-                            managerScopeId: managerScopeId,
-                            packageFilter: packageScopeQuery
+                            visibleSelectionState == .all
+                                ? L10n.App.Updates.deselectAll.localized
+                                : L10n.App.Updates.selectAll.localized,
+                            systemImage: visibleSelectionState == .all
+                                ? "checkmark.square.fill"
+                                : (visibleSelectionState == .partial ? "minus.square.fill" : "square")
                         )
                     }
                     .buttonStyle(HelmSecondaryButtonStyle())
-                    .disabled(isResearchPlanActive)
-
-                    Button(L10n.App.Action.runPlan.localized) {
-                        context.presentReviewedUpgradePlanSheet(
-                            in: .controlCenter,
-                            managerScopeID: managerScopeId,
-                            packageFilter: packageScopeQuery,
-                            selectedStepIDs: selectedPlanStepIds
-                        )
-                    }
-                    .buttonStyle(HelmPrimaryButtonStyle())
                     .disabled(
-                        runnableCount == 0
-                            || core.scopedUpgradePlanRunInProgress
-                            || (!isResearchPlanActive && !core.networkOperationsAvailable)
+                        core.scopedUpgradePlanRunInProgress
+                            || visiblePlanStepIds.isEmpty
                     )
-
-                    Spacer()
                 }
             }
-            .padding(20)
+
+            if researchPlanProjection == nil,
+               let completion = core.upgradePlanCompletion,
+               completion.completedNormally,
+               completion.remainingInteractiveCount > 0 {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(
+                        L10n.App.Updates.Completion.title.localized,
+                        systemImage: "checkmark.circle.fill"
+                    )
+                    .font(.callout.weight(.semibold))
+                    Text(
+                        L10n.App.Updates.Completion.message.localized(with: [
+                            "count": completion.remainingInteractiveCount
+                        ])
+                    )
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .helmCardSurface(cornerRadius: 10, highlighted: true)
+            } else if interactiveSparkleCount > 0 {
+                Label(
+                    L10n.App.Updates.interactiveSparkleNotice.localized(with: [
+                        "count": interactiveSparkleCount
+                    ]),
+                    systemImage: "hand.raised.fill"
+                )
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .helmCardSurface(cornerRadius: 10, highlighted: true)
+            }
+
+            if core.scopedUpgradePlanRunInProgress {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(L10n.App.Managers.Operation.upgrading.localized)
+                        .font(.callout.weight(.medium))
+                    Spacer()
+                    Text("\(scopedInFlightStepCount)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .helmCardSurface(cornerRadius: 10, highlighted: true)
+            }
+
+            if visiblePlanSteps.isEmpty {
+                VStack {
+                    Spacer()
+                    Text(L10n.App.Tasks.noRecentTasks.localized)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                UpgradePlanOutlineView(
+                    sections: outlineSections,
+                    selectedStepID: context.selectedUpgradePlanStepId,
+                    columnLabels: UpgradePlanOutlineColumnLabels(
+                        update: L10n.App.Packages.Action.update.localized,
+                        manager: L10n.App.Inspector.manager.localized,
+                        included: L10n.App.Updates.Table.included.localized,
+                        status: L10n.App.Updates.Table.status.localized,
+                        action: L10n.App.Updates.Table.action.localized
+                    ),
+                    accessibilityLabel: L10n.App.Updates.executionPlan.localized,
+                    interactionsEnabled: !core.scopedUpgradePlanRunInProgress,
+                    onSelectStep: { stepID in
+                        guard let step = planSteps.first(where: { $0.id == stepID }) else { return }
+                        selectInspectorStep(step)
+                    },
+                    onSetIncluded: setPlanStepIncluded,
+                    onPerformAction: performPlanAction
+                )
+                .frame(minHeight: 240, maxHeight: .infinity)
+            }
+
+            HStack(spacing: 16) {
+                Text(L10n.App.Updates.riskFlags.localized)
+                    .font(.headline)
+                riskRow(
+                    flag: L10n.App.Updates.Risk.privileged.localized,
+                    active: riskSummary.requiresElevatedPrivileges
+                )
+                riskRow(
+                    flag: L10n.App.Updates.Risk.reboot.localized,
+                    active: riskSummary.mayRequireReboot
+                )
+                Spacer()
+            }
+
+            if !scopedFailureGroups.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(L10n.App.Popover.failures.localized)
+                            .font(.headline)
+                        Spacer()
+                        Button(L10n.App.Packages.Action.update.localized) {
+                            core.retryUpgradePlanSteps(stepIds: scopedFailedStepIds)
+                        }
+                        .buttonStyle(HelmSecondaryButtonStyle())
+                        .font(.caption)
+                        .disabled(scopedFailedStepIds.isEmpty)
+                    }
+
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 10) {
+                            ForEach(scopedFailureGroups) { group in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(core.localizedUpgradePlanFailureCause(for: group))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(packageSummary(group.packageNames, managerId: group.managerId))
+                                        .font(.caption.monospacedDigit())
+                                        .lineLimit(2)
+                                    HStack {
+                                        Button(L10n.App.Packages.Action.update.localized) {
+                                            core.retryUpgradePlanSteps(stepIds: group.stepIds)
+                                        }
+                                        .buttonStyle(HelmSecondaryButtonStyle())
+                                        .font(.caption)
+                                        Spacer()
+                                        Text(localizedManagerDisplayName(group.managerId))
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .padding(10)
+                                .frame(width: 260, alignment: .leading)
+                                .helmCardSurface(cornerRadius: 10, highlighted: true)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 104)
+                }
+            }
+
+            HStack {
+                Button(L10n.App.Tasks.Action.cancel.localized) {
+                    core.cancelRemainingUpgradePlanSteps(
+                        managerScopeId: context.planManagerScopeId,
+                        packageFilter: context.planPackageFilter
+                    )
+                }
+                .buttonStyle(HelmSecondaryButtonStyle())
+                .disabled(isResearchPlanActive)
+
+                Button(L10n.App.Action.runPlan.localized) {
+                    context.presentReviewedUpgradePlanSheet(
+                        in: .controlCenter,
+                        managerScopeID: context.planManagerScopeId,
+                        packageFilter: context.planPackageFilter,
+                        selectedStepIDs: selectedPlanStepIds
+                    )
+                }
+                .buttonStyle(HelmPrimaryButtonStyle())
+                .disabled(
+                    runnableCount == 0
+                        || core.scopedUpgradePlanRunInProgress
+                        || (!isResearchPlanActive && !core.networkOperationsAvailable)
+                )
+
+                Spacer()
+            }
         }
+        .padding(20)
         .onAppear {
             reconcilePlanSelection(planSteps)
+            reconcilePlanScope(planSteps)
             if !isResearchPlanActive {
                 core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
             }
@@ -840,10 +828,13 @@ struct RedesignUpdatesSectionView: View {
         .onChange(of: core.upgradePlanSteps) { steps in
             guard !isResearchPlanActive else { return }
             reconcilePlanSelection(steps)
-            let managerSet = Set(steps.map(\.managerId))
-            if managerScopeId != HelmCore.allManagersScopeId && !managerSet.contains(managerScopeId) {
-                managerScopeId = HelmCore.allManagersScopeId
-            }
+            reconcilePlanScope(steps)
+        }
+        .onChange(of: context.planManagerScopeId) { _ in
+            reconcileVisibleInspectorSelection()
+        }
+        .onChange(of: context.planPackageFilter) { _ in
+            reconcileVisibleInspectorSelection()
         }
         .onChange(of: appUpdate.includeHelmInUpgradeAll) { _ in
             guard !isResearchPlanActive else { return }

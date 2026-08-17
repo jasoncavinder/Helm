@@ -55,6 +55,11 @@ struct UpgradePreviewPlanner {
         let status: String
     }
 
+    struct AuthorityGroup: Identifiable, Equatable {
+        let id: String
+        let steps: [PlanStep]
+    }
+
     struct ExternalSparkleUpdate: Equatable {
         let id: String
         let packageName: String
@@ -193,6 +198,26 @@ struct UpgradePreviewPlanner {
         }
     }
 
+    static func groupedForPresentation(_ steps: [PlanStep]) -> [AuthorityGroup] {
+        let authorityOrder = [
+            "authoritative",
+            "standard",
+            "guarded",
+            "detection_only",
+            "interactive",
+            "other",
+        ]
+        let grouped = Dictionary(grouping: sortedForExecution(steps)) {
+            presentationAuthority(for: $0.authority)
+        }
+        return authorityOrder.compactMap { authority in
+            guard let authoritySteps = grouped[authority], !authoritySteps.isEmpty else {
+                return nil
+            }
+            return AuthorityGroup(id: authority, steps: authoritySteps)
+        }
+    }
+
     static func addingInteractiveUpdates(
         to backendSteps: [PlanStep],
         externalSparkleUpdates: [ExternalSparkleUpdate],
@@ -318,6 +343,15 @@ struct UpgradePreviewPlanner {
 
     private static func riskKey(_ candidate: RiskCandidate) -> String {
         "\(candidate.managerId):\(candidate.packageName)"
+    }
+
+    private static func presentationAuthority(for authority: String) -> String {
+        switch authority.lowercased() {
+        case "authoritative", "standard", "guarded", "detection_only", "interactive":
+            return authority.lowercased()
+        default:
+            return "other"
+        }
     }
 
     static func shouldRunScopedStep(

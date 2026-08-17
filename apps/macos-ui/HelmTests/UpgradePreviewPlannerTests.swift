@@ -86,6 +86,78 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         ])
     }
 
+    func testPlanPresentationGroupingHandlesEmptyAndSingleStepPlans() {
+        XCTAssertTrue(UpgradePreviewPlanner.groupedForPresentation([]).isEmpty)
+
+        let single = step(
+            id: "softwareupdate:macOS",
+            order: 0,
+            manager: "softwareupdate",
+            authority: "guarded",
+            package: "macOS"
+        )
+        let groups = UpgradePreviewPlanner.groupedForPresentation([single])
+
+        XCTAssertEqual(groups.map(\.id), ["guarded"])
+        XCTAssertEqual(groups.first?.steps, [single])
+    }
+
+    func testPlanPresentationGroupingPreservesBackendOrderForLargePlans() {
+        let authorities = [
+            "standard",
+            "interactive",
+            "guarded",
+            "authoritative",
+            "detection_only",
+            "future_authority",
+        ]
+        let steps = (0..<125).map { index in
+            step(
+                id: "step:\(index)",
+                order: UInt64(124 - index),
+                manager: "manager-\(index % 9)",
+                authority: authorities[index % authorities.count],
+                package: "package-\(index)"
+            )
+        }
+
+        let groups = UpgradePreviewPlanner.groupedForPresentation(steps)
+        let flattened = groups.flatMap(\.steps)
+
+        XCTAssertEqual(flattened.count, 125)
+        XCTAssertEqual(flattened, UpgradePreviewPlanner.sortedForExecution(steps))
+        XCTAssertEqual(groups.map(\.id), [
+            "authoritative",
+            "standard",
+            "guarded",
+            "detection_only",
+            "interactive",
+            "other",
+        ])
+    }
+
+    func testPlanPresentationGroupingPreservesPartialFailureStatus() {
+        let queued = step(
+            id: "npm:typescript",
+            order: 0,
+            manager: "npm",
+            authority: "standard",
+            package: "typescript"
+        )
+        let failed = step(
+            id: "homebrew_formula:jq",
+            order: 1,
+            manager: "homebrew_formula",
+            authority: "standard",
+            package: "jq",
+            status: "failed"
+        )
+
+        let presented = UpgradePreviewPlanner.groupedForPresentation([failed, queued])
+
+        XCTAssertEqual(presented.flatMap(\.steps).map(\.status), ["queued", "failed"])
+    }
+
     func testAutomaticExecutionPolicyKeepsExternalSparkleInteractiveAndHelmOptIn() {
         XCTAssertFalse(
             UpgradePreviewPlanner.runsAutomatically(

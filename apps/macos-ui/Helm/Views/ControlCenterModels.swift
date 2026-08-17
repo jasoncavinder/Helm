@@ -166,6 +166,8 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedTaskId: String?
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
+    @Published var planManagerScopeId: String = HelmCore.allManagersScopeId
+    @Published var planPackageFilter: String = ""
     @Published var managerFilterId: String?
     @Published private var environmentRouteFilterState = WayfinderEnvironmentRouteFilterState()
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
