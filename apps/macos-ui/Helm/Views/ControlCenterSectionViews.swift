@@ -924,13 +924,25 @@ struct RedesignUpgradeSheetView: View {
             ("interactive", L10n.App.Updates.Authority.interactive),
         ]
         return authorities.compactMap { authority, labelKey in
-            let count = reviewedSteps.filter { $0.authority.lowercased() == authority }.count
-            return count == 0 ? nil : AuthorityEntry(id: authority, labelKey: labelKey, count: count)
+            let matchingSteps = reviewedSteps.filter { $0.authority.lowercased() == authority }
+            guard !matchingSteps.isEmpty else { return nil }
+            return AuthorityEntry(
+                id: authority,
+                labelKey: labelKey,
+                count: matchingSteps.count
+            )
         }
     }
 
     private var isResearchReadOnly: Bool {
         WholeWorkflowResearchDatasetProvider.isSelected()
+    }
+
+    private var hasRunnableUpdates: Bool {
+        if reviewedRequest != nil {
+            return !reviewedSteps.isEmpty
+        }
+        return (includeOsUpdates ? withOsCount : noOsCount) > 0
     }
 
     private var noOsCount: Int {
@@ -1016,9 +1028,7 @@ struct RedesignUpgradeSheetView: View {
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(
-                    (reviewedRequest == nil
-                        ? (includeOsUpdates ? withOsCount : noOsCount)
-                        : reviewedSteps.count) == 0
+                    !hasRunnableUpdates
                         || isResearchReadOnly
                         || !core.networkOperationsAvailable
                 )
