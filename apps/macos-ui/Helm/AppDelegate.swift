@@ -130,6 +130,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 self?.openControlCenter()
             }
         }
+
+        #if DEBUG
+        runPopoverOpeningBenchmarkIfRequested()
+        #endif
     }
 
     func openDashboardFromApplicationMenu() {
@@ -260,7 +264,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
     }
 
-    private func showPanel(allowWhileControlCenterVisible: Bool = false) {
+    private func showPanel(
+        allowWhileControlCenterVisible: Bool = false,
+        didAcknowledge: (() -> Void)? = nil
+    ) {
         guard statusItem?.button != nil else { return }
         guard allowWhileControlCenterVisible || !isControlCenterVisible else {
             openControlCenter()
@@ -279,9 +286,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         panel.setFrameOrigin(NSPoint(x: x, y: y))
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        didAcknowledge?()
         eventMonitor?.start()
         core.setInteractiveSurfaceVisibility(popoverVisible: true, controlCenterVisible: isControlCenterVisible)
     }
+
+    #if DEBUG
+    private func runPopoverOpeningBenchmarkIfRequested() {
+        guard let iterations = WayfinderPopoverBenchmarkConfiguration.iterations(),
+              WayfinderPopoverFixtureProvider.isActive() else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var acknowledgementSamples: [Double] = []
+            var firstUsefulRenderSamples: [Double] = []
+
+            for index in 0..<iterations {
+                closePanel()
+                await Task.yield()
+
+                let startedAt = ProcessInfo.processInfo.systemUptime
+                var acknowledgedAt = startedAt
+                showPanel(allowWhileControlCenterVisible: true) {
+                    acknowledgedAt = ProcessInfo.processInfo.systemUptime
+                }
+                panel.contentView?.layoutSubtreeIfNeeded()
+                panel.displayIfNeeded()
+                let renderedAt = ProcessInfo.processInfo.systemUptime
+
+                acknowledgementSamples.append((acknowledgedAt - startedAt) * 1_000)
+                firstUsefulRenderSamples.append((renderedAt - startedAt) * 1_000)
+                closePanel()
+
+                if index + 1 < iterations {
+                    try? await Task.sleep(nanoseconds: 25_000_000)
+                }
+            }
+
+            let acknowledgementJSON = benchmarkJSON(for: acknowledgementSamples)
+            let renderJSON = benchmarkJSON(for: firstUsefulRenderSamples)
+            let payload = "HELM_WAYFINDER_POPOVER_BENCHMARK "
+                + "{\"iterations\":\(iterations),"
+                + "\"acknowledgement_ms\":\(acknowledgementJSON),"
+                + "\"first_useful_render_ms\":\(renderJSON)}\n"
+            FileHandle.standardOutput.write(Data(payload.utf8))
+            NSApp.terminate(nil)
+        }
+    }
+
+    private func benchmarkJSON(for samples: [Double]) -> String {
+        let values = samples.map {
+            String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), $0)
+        }
+        return "[\(values.joined(separator: ","))]"
+    }
+    #endif
 
     private func closePanel() {
         panel.orderOut(nil)

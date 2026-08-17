@@ -476,6 +476,43 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
         )
     }
 
+    func testPopoverBenchmarkIterationConfigurationIsDebugOnlyAndBounded() {
+        XCTAssertNil(WayfinderPopoverBenchmarkConfiguration.iterations(environment: [:]))
+        XCTAssertNil(
+            WayfinderPopoverBenchmarkConfiguration.iterations(
+                environment: [
+                    WayfinderPopoverBenchmarkConfiguration.iterationsEnvironmentKey: "0"
+                ]
+            )
+        )
+        XCTAssertNil(
+            WayfinderPopoverBenchmarkConfiguration.iterations(
+                environment: [
+                    WayfinderPopoverBenchmarkConfiguration.iterationsEnvironmentKey: "101"
+                ]
+            )
+        )
+
+        #if DEBUG
+        XCTAssertEqual(
+            WayfinderPopoverBenchmarkConfiguration.iterations(
+                environment: [
+                    WayfinderPopoverBenchmarkConfiguration.iterationsEnvironmentKey: " 30 "
+                ]
+            ),
+            30
+        )
+        #else
+        XCTAssertNil(
+            WayfinderPopoverBenchmarkConfiguration.iterations(
+                environment: [
+                    WayfinderPopoverBenchmarkConfiguration.iterationsEnvironmentKey: "30"
+                ]
+            )
+        )
+        #endif
+    }
+
     func testOrdinaryPopoverFootprintRemainsFixedAcrossStates() {
         XCTAssertEqual(WayfinderPopoverLayout.width, 400)
         XCTAssertEqual(WayfinderPopoverLayout.ordinaryHeight, 458)
