@@ -10,13 +10,17 @@ struct WayfinderPopoverView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsQuitConfirmation = false
+    private let popoverFixture = WayfinderPopoverFixtureProvider.active()
 
     let onOpenControlCenter: () -> Void
     let onOpenSettings: () -> Void
     let onClosePopover: () -> Void
 
     private var presentation: WayfinderPopoverPresentation {
-        WayfinderPopoverPresentationProjector.content(
+        if let popoverFixture {
+            return popoverFixture.presentation
+        }
+        return WayfinderPopoverPresentationProjector.content(
             for: WayfinderPopoverPresentationInput(
                 projection: overviewState.wayfinderProjection.content,
                 relatedRouteStages: overviewState.wayfinderRelatedRouteStages,
@@ -29,7 +33,8 @@ struct WayfinderPopoverView: View {
 
     var body: some View {
         Group {
-            if !core.hasCompletedOnboarding || core.requiresLicenseTermsAcceptance {
+            if popoverFixture == nil
+                && (!core.hasCompletedOnboarding || core.requiresLicenseTermsAcceptance) {
                 OnboardingContainerView {
                     core.completeOnboarding()
                     core.triggerRefresh()

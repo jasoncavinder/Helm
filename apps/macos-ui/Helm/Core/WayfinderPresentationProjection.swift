@@ -681,3 +681,127 @@ enum WayfinderProjectionProjector {
         var arguments: [String: String] = [:]
     }
 }
+
+enum WayfinderPopoverFixtureName: String, Codable, CaseIterable, Hashable {
+    case healthy
+    case updatesReady = "updates-ready"
+    case running
+    case needsReview = "needs-review"
+    case error
+    case offline
+}
+
+struct WayfinderPopoverPresentationFixture: Equatable {
+    static let currentSchemaVersion = "1.0.0"
+
+    let schemaVersion: String
+    let name: WayfinderPopoverFixtureName
+    let presentation: WayfinderPopoverPresentation
+}
+
+enum WayfinderPopoverFixtureProvider {
+    static let environmentKey = "HELM_WAYFINDER_POPOVER_FIXTURE"
+
+    static func isActive(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        selectedName(environment: environment) != nil
+    }
+
+    static func active(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        now: Date = Date()
+    ) -> WayfinderPopoverPresentationFixture? {
+        guard let name = selectedName(environment: environment) else { return nil }
+        return fixture(named: name, now: now)
+    }
+
+    static func fixture(
+        named name: WayfinderPopoverFixtureName,
+        now: Date = Date()
+    ) -> WayfinderPopoverPresentationFixture {
+        let projectionInput: WayfinderProjectionInput
+        var relatedRouteStages: [WayfinderPopoverRouteStage] = []
+        var relatedManagerIDsByStage: [WayfinderPopoverRouteStage: String] = [:]
+        var findingContext: WayfinderPopoverFindingContext?
+
+        switch name {
+        case .healthy:
+            projectionInput = WayfinderProjectionInput(
+                freshnessDate: now.addingTimeInterval(-120),
+                coverage: WayfinderCoverage(completed: 17, total: 17)
+            )
+        case .updatesReady:
+            projectionInput = WayfinderProjectionInput(
+                updateCount: 4,
+                freshnessDate: now.addingTimeInterval(-120)
+            )
+            relatedRouteStages = [.apps, .packages]
+        case .running:
+            projectionInput = WayfinderProjectionInput(
+                activeTaskIDs: ["fixture-task-running"],
+                activeProgress: WayfinderDeterminateProgress(completed: 5, total: 12),
+                freshnessDate: now
+            )
+            relatedRouteStages = [.apps]
+        case .needsReview:
+            projectionInput = WayfinderProjectionInput(
+                actionableFindingIDs: ["mise"],
+                freshnessDate: now.addingTimeInterval(-120)
+            )
+            relatedRouteStages = [.tools]
+            relatedManagerIDsByStage = [.tools: "mise"]
+            findingContext = WayfinderPopoverFindingContext(
+                title: WayfinderLocalizedText(
+                    key: "app.popover.wayfinder.context.manager_needs_decision",
+                    arguments: ["manager": "mise"]
+                ),
+                detail: WayfinderLocalizedText(
+                    key: "app.inspector.multi_instance.attention_title"
+                )
+            )
+        case .error:
+            projectionInput = WayfinderProjectionInput(
+                failedTaskIDs: ["fixture-task-error"],
+                freshnessDate: now.addingTimeInterval(-30)
+            )
+            relatedRouteStages = [.apps]
+        case .offline:
+            projectionInput = WayfinderProjectionInput(
+                networkAvailable: false,
+                freshnessDate: now.addingTimeInterval(-1_080)
+            )
+        }
+
+        let presentation = WayfinderPopoverPresentationProjector.content(
+            for: WayfinderPopoverPresentationInput(
+                projection: WayfinderProjectionProjector.content(for: projectionInput),
+                relatedRouteStages: relatedRouteStages,
+                relatedManagerIDsByStage: relatedManagerIDsByStage,
+                detectedManagerCount: 17,
+                findingContext: findingContext
+            )
+        )
+
+        return WayfinderPopoverPresentationFixture(
+            schemaVersion: WayfinderPopoverPresentationFixture.currentSchemaVersion,
+            name: name,
+            presentation: presentation
+        )
+    }
+
+    private static func selectedName(
+        environment: [String: String]
+    ) -> WayfinderPopoverFixtureName? {
+        #if DEBUG
+        guard let rawName = environment[environmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() else {
+            return nil
+        }
+        return WayfinderPopoverFixtureName(rawValue: rawName)
+        #else
+        return nil
+        #endif
+    }
+}

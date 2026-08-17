@@ -1109,6 +1109,10 @@ final class HelmCore: ObservableObject {
 
     func triggerRefresh() {
         logger.info("triggerRefresh called")
+        guard !WayfinderPopoverFixtureProvider.isActive() else {
+            logger.info("Ignoring refresh while a Wayfinder popover fixture is active")
+            return
+        }
         if networkAvailability == .unknown {
             logger.info("Deferring refresh until the initial network path is known")
             refreshRequestedWhileOffline = true

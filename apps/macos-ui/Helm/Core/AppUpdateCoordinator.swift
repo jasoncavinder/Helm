@@ -307,6 +307,10 @@ final class AppUpdateCoordinator: ObservableObject {
     }
 
     func checkForUpdates() {
+        guard !WayfinderPopoverFixtureProvider.isActive() else {
+            updateLogger.info("Ignoring Helm update check while a Wayfinder popover fixture is active")
+            return
+        }
         guard canCheckForUpdates else {
             updateLogger.warning(
                 "Ignoring manual update check request because updater is unavailable. reason=\(self.unavailableReason?.rawValue ?? "unknown", privacy: .public)"
@@ -329,6 +333,7 @@ final class AppUpdateCoordinator: ObservableObject {
     }
 
     func refreshUpdateAvailability() {
+        guard !WayfinderPopoverFixtureProvider.isActive() else { return }
         guard canCheckForUpdates, !isCheckingForUpdates, driver.canCheckForUpdates else { return }
         guard networkAvailable else {
             if pendingCheckKind != .userInitiated {
@@ -421,6 +426,7 @@ final class AppUpdateCoordinator: ObservableObject {
     private func scheduleAutomaticCheck() {
         automaticCheckTimer?.invalidate()
         automaticCheckTimer = nil
+        guard !WayfinderPopoverFixtureProvider.isActive() else { return }
         guard networkAvailable, let delay = AppUpdateSchedulePolicy.nextCheckDelay(
             canCheckForUpdates: canCheckForUpdates,
             autoCheckEnabled: autoCheckEnabled,
