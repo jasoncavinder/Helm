@@ -113,11 +113,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
         let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
         let fixtureActive = EnvironmentBriefFixtureProvider.active() != nil
-        let wayfinderPopoverFixtureActive = WayfinderPopoverFixtureProvider.isActive()
+        let researchFixtureActive = ResearchFixtureSafetyPolicy.blocksLiveOperations()
 
         if core.hasCompletedOnboarding
             && !core.requiresLicenseTermsAcceptance
-            && !wayfinderPopoverFixtureActive
+            && !researchFixtureActive
             && EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
                 mode: firstRunMode,
                 fixtureActive: fixtureActive

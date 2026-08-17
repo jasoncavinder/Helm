@@ -628,6 +628,12 @@ final class HelmCore: ObservableObject {
             .sink { [weak self] availability in
                 self?.syncHelmSelfUpdateAvailability(availability)
             }
+        if WholeWorkflowResearchDatasetProvider.isSelected() {
+            isInitialized = true
+            isConnected = true
+            networkAvailability = .available
+            return
+        }
         refreshHelmCliShimStatus()
         startNetworkMonitoring()
         setupConnection()
@@ -837,6 +843,7 @@ final class HelmCore: ObservableObject {
     }
 
     func setupConnection() {
+        guard !WholeWorkflowResearchDatasetProvider.isSelected() else { return }
         guard connection == nil else { return }
 
         reconnectToken = nil
@@ -1018,6 +1025,7 @@ final class HelmCore: ObservableObject {
     }
 
     func service() -> HelmServiceProtocol? {
+        guard !WholeWorkflowResearchDatasetProvider.isSelected() else { return nil }
         guard isConnected else { return nil }
         return connection?.remoteObjectProxy as? HelmServiceProtocol
     }
@@ -1109,8 +1117,8 @@ final class HelmCore: ObservableObject {
 
     func triggerRefresh() {
         logger.info("triggerRefresh called")
-        guard !WayfinderPopoverFixtureProvider.isActive() else {
-            logger.info("Ignoring refresh while a Wayfinder popover fixture is active")
+        guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else {
+            logger.info("Ignoring refresh while a research fixture is active")
             return
         }
         if networkAvailability == .unknown {
@@ -1169,6 +1177,10 @@ final class HelmCore: ObservableObject {
 
     func triggerDetection() {
         logger.info("triggerDetection called")
+        guard !WholeWorkflowResearchDatasetProvider.isSelected() else {
+            logger.info("Ignoring detection while a research fixture is active")
+            return
+        }
         self.lastTaskSnapshotRefreshAt = .distantPast
         self.lastFullSnapshotRefreshAt = .distantPast
 

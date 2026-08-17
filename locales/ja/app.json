@@ -312,6 +312,7 @@
   "app.updates.risk_flags": "リスク項目",
   "app.updates.risk.privileged": "昇格した権限が必要",
   "app.updates.risk.reboot": "再起動が必要な場合あり",
+  "app.updates.exclusion.operating_system_updates_disabled": "macOSアップデートは除外",
   "app.dry_run.title": "ドライラン",
   "app.dry_run.message": "{count} 件のアクションを計画:\n{summary}",
   "app.inspector.title": "インスペクター",

@@ -20,6 +20,6 @@ The top-level `snapshot` is a normalized record catalog, not one claim that ever
 
 ## Loading Contract
 
-`WholeWorkflowResearchDatasetLoader` decodes the JSON and rejects semantic drift, including unresolved task references or missing task-defining records. Debug builds can resolve an absolute fixture path from `HELM_WAYFINDER_RESEARCH_DATASET`; Release builds ignore that key. No production surface consumes the selector yet. Each v0.20 workflow slice must project this same corpus through its production presentation path before the owner-moderated checkpoint begins.
+`WholeWorkflowResearchDatasetLoader` decodes the JSON and rejects semantic drift, including unresolved task references or missing task-defining records. Debug builds can resolve an absolute fixture path from `HELM_WAYFINDER_RESEARCH_DATASET`; Release builds ignore that key. Task 2 now consumes the selector through the shipping Plan, inspector, and confirmation path in read-only mode. The other six tasks remain unprojected; each v0.20 workflow slice must project this same corpus through its production presentation path before the owner-moderated checkpoint begins.
 
 Never replace this file in place after research evidence cites it. Add a new versioned dataset and update the active contract instead.

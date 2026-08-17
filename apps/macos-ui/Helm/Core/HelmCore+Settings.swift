@@ -697,6 +697,7 @@ extension HelmCore {
     }
 
     func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
+        guard !WholeWorkflowResearchDatasetProvider.isSelected() else { return }
         upgradePlanIncludePinned = includePinned
         upgradePlanAllowOsUpdates = allowOsUpdates
         rebuildProjectedUpgradePlanExtensions()

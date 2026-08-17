@@ -230,6 +230,7 @@ extension HelmCore {
         packageFilter: String,
         selectedStepIds: Set<String>? = nil
     ) {
+        guard !WholeWorkflowResearchDatasetProvider.isSelected() else { return }
         guard networkOperationsAvailable else { return }
         let scopedSteps = HelmCore.scopedUpgradePlanSteps(
             from: upgradePlanSteps,

@@ -312,6 +312,7 @@
   "app.updates.risk_flags": "Indicateurs de risque",
   "app.updates.risk.privileged": "Nécessite des privilèges élevés",
   "app.updates.risk.reboot": "Peut nécessiter un redémarrage",
+  "app.updates.exclusion.operating_system_updates_disabled": "Mises à jour macOS exclues",
   "app.dry_run.title": "Simulation",
   "app.dry_run.message": "{count} actions planifiées :\n{summary}",
   "app.inspector.title": "Inspecteur",
