@@ -1,5 +1,12 @@
 import Combine
 
+struct WayfinderPopoverDerivedState: Equatable {
+    let relatedRouteStages: [WayfinderPopoverRouteStage]
+    let relatedManagerIDsByStage: [WayfinderPopoverRouteStage: String]
+    let detectedManagerCount: Int
+    let findingContext: WayfinderPopoverFindingContext?
+}
+
 final class HelmOverviewState: ObservableObject {
     private let environmentBriefFixture = EnvironmentBriefFixtureProvider.active()?.brief
 
@@ -11,11 +18,15 @@ final class HelmOverviewState: ObservableObject {
     @Published private(set) var outdatedPackagesCount: Int = 0
     @Published private(set) var isRefreshing: Bool = false
     @Published private(set) var visibleManagers: [ManagerInfo] = []
+    @Published private(set) var wayfinderRelatedRouteStages: [WayfinderPopoverRouteStage] = []
+    @Published private(set) var wayfinderRelatedManagerIDsByStage: [
+        WayfinderPopoverRouteStage: String
+    ] = [:]
+    @Published private(set) var detectedManagerCount: Int = 0
+    @Published private(set) var wayfinderFindingContext: WayfinderPopoverFindingContext?
     @Published private(set) var outdatedCountByManager: [String: Int] = [:]
     @Published private(set) var managerHealthById: [String: OperationalHealth] = [:]
     @Published private(set) var recentTasksTop10: [TaskItem] = []
-    @Published private(set) var runningTasksTop4: [TaskItem] = []
-    @Published private(set) var popoverManagerRows: [ManagerInfo] = []
 
     func apply(
         wayfinderInput: WayfinderProjectionInput,
@@ -25,11 +36,10 @@ final class HelmOverviewState: ObservableObject {
         outdatedPackagesCount: Int,
         isRefreshing: Bool,
         visibleManagers: [ManagerInfo],
+        wayfinderPopoverState: WayfinderPopoverDerivedState,
         outdatedCountByManager: [String: Int],
         managerHealthById: [String: OperationalHealth],
-        recentTasksTop10: [TaskItem],
-        runningTasksTop4: [TaskItem],
-        popoverManagerRows: [ManagerInfo]
+        recentTasksTop10: [TaskItem]
     ) {
         let nextProjection = WayfinderProjectionProjector.project(
             wayfinderInput,
@@ -52,11 +62,13 @@ final class HelmOverviewState: ObservableObject {
         self.outdatedPackagesCount = outdatedPackagesCount
         self.isRefreshing = isRefreshing
         self.visibleManagers = visibleManagers
+        self.wayfinderRelatedRouteStages = wayfinderPopoverState.relatedRouteStages
+        self.wayfinderRelatedManagerIDsByStage = wayfinderPopoverState.relatedManagerIDsByStage
+        self.detectedManagerCount = wayfinderPopoverState.detectedManagerCount
+        self.wayfinderFindingContext = wayfinderPopoverState.findingContext
         self.outdatedCountByManager = outdatedCountByManager
         self.managerHealthById = managerHealthById
         self.recentTasksTop10 = recentTasksTop10
-        self.runningTasksTop4 = runningTasksTop4
-        self.popoverManagerRows = popoverManagerRows
     }
 
     private static func operationalHealth(

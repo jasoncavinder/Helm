@@ -137,7 +137,6 @@ enum OperationalHealth: Equatable {
 }
 
 enum UpgradeSheetHost {
-    case popover
     case controlCenter
 }
 
@@ -174,12 +173,8 @@ final class ControlCenterContext: ObservableObject {
     @Published var managerFilterId: String?
     @Published var showUpgradeSheet: Bool = false
     @Published var upgradeSheetHost: UpgradeSheetHost = .controlCenter
-    @Published var popoverOverlayRequest: PopoverOverlayRoute?
-    @Published var popoverOverlayDismissToken: Int = 0
-    @Published var popoverSearchFocusToken: Int = 0
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
-    @Published var isPopoverOverlayVisible: Bool = false
     @Published var suppressWindowBackgroundDragging: Bool = false
     @Published var isSidebarVisible: Bool = true
     @Published var isInspectorVisible: Bool = true
@@ -187,6 +182,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var managerInstallSheetRequestToken: Int = 0
     @Published private var firstRunSession = EnvironmentBriefFirstRunSession()
     @Published private(set) var dashboardFocusRequestToken: Int = 0
+    @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
 
     func presentUpgradeSheet(in host: UpgradeSheetHost) {
@@ -216,6 +212,7 @@ final class ControlCenterContext: ObservableObject {
     }
 
     func navigate(to deepLink: WayfinderDeepLink) {
+        wayfinderNavigationState.record(deepLink)
         clearInspectorSelection()
 
         selectedSection = deepLink.destination.legacyControlCenterSection
@@ -282,14 +279,6 @@ final class ControlCenterContext: ObservableObject {
             selectedUpgradePlanStepId = nil
         }
     }
-}
-
-enum PopoverOverlayRoute: String, Identifiable {
-    case search
-    case about
-    case confirmQuit
-
-    var id: String { rawValue }
 }
 
 struct HealthBadgeView: View {

@@ -11,14 +11,15 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.0 stable monitoring and v0.20.x planning
+v0.19.0 stable monitoring and v0.20.x implementation
 ```
 
 Focus:
 - preserve the completed `v0.19.0` stable publication record: tag source `e3f148fdbaf87c78e2502c6a17ff5e13ae2d4147`, canary/auth runs `31937189914` and `31937193834`, signed/notarized GUI and direct CLI workflows `31937869680` and `31937869677`, publication PRs `#482` and `#483`, and green release/appcast/CLI verification on converged `main` revision `1e8c4f55fb7f30995231fa329315b4579622e1a6`
 - preserve stable/RC coexistence: stable GitHub/latest, default appcast, and `cli/latest.json` resolve to `v0.19.0`, while the published RC7 prerelease, beta appcast item, and `latest-rc.json` remain isolated on `v0.19.0-rc.7`
 - monitor the stable installation and update path for release-critical regressions; reserve `0.19.x` for necessary maintenance and route planned workflow redesign into `0.20.x`
-- begin the existing `0.20.x` Core Workflow & Information Architecture Redesign with the owner-moderated research checkpoint, unified Wayfinder popover, continuous plan-to-recovery workflow, and separately reviewed direct third-party Sparkle updater boundary
+- continue the existing `0.20.x` Core Workflow & Information Architecture Redesign from the unified Wayfinder popover into the owner-moderated research checkpoint, continuous plan-to-recovery workflow, and separately reviewed direct third-party Sparkle updater boundary
+- preserve the unified Wayfinder popover implementation: ordinary states use one fixed `400x458` footprint with Helm identity/completed-check freshness, one shared-projection Course truth, a quiet System/Tools/Apps/Packages route, one condition-specific context fact, and Open Dashboard/Find Software/Check Again commands; Needs Review identifies the affected manager and known finding, and every contextual route carries its originating condition plus stable entity/focus targets; Settings, Helm update checks, Support, About, and Quit live in a native utility menu; Library owns package search, Plan owns upgrade confirmation, Activity owns output/recovery, and Environment owns manager detail; offline/service state remains neutral and cannot submit refresh work
 - preserve the accepted RC7 candidate evidence in `docs/validation/v0.19.0-rc.7-readiness.md`: offline launch and manual refresh avoid failed-task fan-out, cached Library/Plan data and local actions remain usable, network work defers truthfully, reconnection resumes exactly one refresh plus one deferred Helm information check, and the full repository quality gate passed from merged `dev` revision `16127dfff2050a2ba2d8b0b3502e110ab4460080`
 - preserve published stable `v0.19.0` and prerelease `v0.19.0-rc.7`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
 - preserve the completed `v0.19.0-rc.7` publication record: tag source `a29ecb3924e0f029553ad9209c6bc431852a1ccd`, canary/auth runs `31922485485` and `31922485489`, signed/notarized GUI and direct CLI workflows `31923270915` and `31923270917`, publication PRs `#475` and `#476`, and green release/appcast/CLI verification on converged `main` revision `feca8ac709d2969115ce5ef1e8026214511ac902`

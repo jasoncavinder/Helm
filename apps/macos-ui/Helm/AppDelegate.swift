@@ -44,28 +44,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             self?.openSettingsWindow()
         }
 
-        let contentView = RedesignPopoverView(onOpenControlCenter: { [weak self] in
+        let contentView = WayfinderPopoverView(onOpenControlCenter: { [weak self] in
             self?.openControlCenter()
             self?.closePanel()
         }, onOpenSettings: { [weak self] in
             guard let self else { return }
             controlCenterContext.settingsOpenRouter.requestOpen()
             closePanel()
+        }, onClosePopover: { [weak self] in
+            self?.closePanel()
         })
         .environmentObject(controlCenterContext)
         .background(VisualEffect().ignoresSafeArea())
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
         panel = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 620),
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: WayfinderPopoverLayout.width,
+                height: WayfinderPopoverLayout.ordinaryHeight
+            ),
             backing: .buffered,
             defer: false
         )
         panel.onCommandF = { [weak self] in
-            self?.focusPopoverSearch()
+            self?.focusControlCenterSearch()
         }
         panel.onEscape = { [weak self] in
-            self?.handlePopoverEscape()
+            self?.closePanel()
         }
         panel.contentViewController = NSHostingController(rootView: contentView)
 
@@ -260,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
         let buttonRect = statusItemButtonFrame() ?? .zero
 
-        let panelWidth: CGFloat = 400
+        let panelWidth = WayfinderPopoverLayout.width
         panel.setContentSize(NSSize(width: panelWidth, height: preferredPopoverHeight(forWidth: panelWidth)))
 
         let panelSize = panel.frame.size
@@ -284,8 +291,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         core.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.updateStatusItemAppearance()
-                self?.resizePopoverIfVisible()
+                DispatchQueue.main.async {
+                    self?.updateStatusItemAppearance()
+                    self?.resizePopoverIfVisible()
+                }
             }
             .store(in: &cancellables)
 
@@ -294,7 +303,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             .sink { [weak self] _ in
                 DispatchQueue.main.async {
                     self?.updateStatusItemAppearance()
-                    self?.resizePopoverIfVisible()
                 }
             }
             .store(in: &cancellables)
@@ -359,18 +367,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func resizePopoverIfVisible() {
         guard panel.isVisible else { return }
-        let panelWidth = panel.frame.width > 0 ? panel.frame.width : 400
-        panel.setContentSize(NSSize(width: panelWidth, height: preferredPopoverHeight(forWidth: panelWidth)))
+        let panelWidth = WayfinderPopoverLayout.width
+        let targetSize = NSSize(
+            width: panelWidth,
+            height: preferredPopoverHeight(forWidth: panelWidth)
+        )
+        let currentSize = panel.contentView?.frame.size ?? panel.contentLayoutRect.size
+        guard abs(currentSize.width - targetSize.width) > 0.5
+                || abs(currentSize.height - targetSize.height) > 0.5 else {
+            return
+        }
+        panel.setContentSize(targetSize)
     }
 
-    private func preferredPopoverHeight(forWidth width: CGFloat) -> CGFloat {
-        guard let view = panel.contentViewController?.view else { return 620 }
-        let oldFrame = view.frame
-        view.frame = NSRect(x: 0, y: 0, width: width, height: oldFrame.height)
-        view.layoutSubtreeIfNeeded()
-        let measured = ceil(view.fittingSize.height)
-        view.frame = oldFrame
-        return max(520, min(740, measured))
+    private func preferredPopoverHeight(forWidth _: CGFloat) -> CGFloat {
+        core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance
+            ? WayfinderPopoverLayout.ordinaryHeight
+            : WayfinderPopoverLayout.onboardingHeight
     }
 
     private func updateStatusItemAppearance() {
@@ -448,32 +461,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         return button.window?.convertToScreen(button.frame)
     }
 
-    private func openPopoverOverlay(_ route: PopoverOverlayRoute) {
-        guard !isControlCenterVisible else {
-            openControlCenter()
-            return
-        }
-        showPanel()
-        controlCenterContext.popoverOverlayRequest = nil
-        DispatchQueue.main.async { [weak self] in
-            self?.controlCenterContext.popoverOverlayRequest = route
-        }
-    }
-
-    private func focusPopoverSearch() {
-        openPopoverOverlay(.search)
-        controlCenterContext.popoverSearchFocusToken += 1
-    }
-
     private func focusControlCenterSearch() {
         openControlCenter()
         controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
     }
 
     private func handlePopoverEscape() {
-        if controlCenterContext.isPopoverOverlayVisible {
-            controlCenterContext.popoverOverlayDismissToken += 1
-        } else if panel.isVisible {
+        if panel.isVisible {
             closePanel()
         }
     }

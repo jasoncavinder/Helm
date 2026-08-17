@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 enum HelmPanelDeactivationPolicy {
     static let popoverHidesOnDeactivate = false
@@ -36,10 +37,12 @@ enum HelmSettingsPanelPolicy {
     }
 }
 
-final class HelmSettingsOpenRouter {
+final class HelmSettingsOpenRouter: ObservableObject {
     typealias OpenAction = () -> Void
 
     private var openAction: OpenAction
+    @Published private(set) var requestedPane: SettingsPane?
+    @Published private(set) var paneRequestToken: Int = 0
 
     init(openAction: @escaping OpenAction = {}) {
         self.openAction = openAction
@@ -49,7 +52,9 @@ final class HelmSettingsOpenRouter {
         self.openAction = openAction
     }
 
-    func requestOpen() {
+    func requestOpen(pane: SettingsPane? = nil) {
+        requestedPane = pane
+        paneRequestToken &+= 1
         openAction()
     }
 }

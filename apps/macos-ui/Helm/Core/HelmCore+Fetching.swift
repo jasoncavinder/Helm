@@ -274,6 +274,7 @@ extension HelmCore {
                 // Announce refresh completion to VoiceOver
                 let nowRefreshing = self.isRefreshing
                 if wasRefreshing && !nowRefreshing {
+                    self.lastCompletedRefreshAt = Date()
                     self.postAccessibilityAnnouncement(
                         L10n.Common.success.localized
                     )

@@ -729,6 +729,7 @@ Goal:
 - Preserve one continuous plan -> execution -> verification -> recovery presentation.
 - Complete content-design passes for labels, empty states, errors, policy blocks, provenance, authority, and recovery.
 - Implement the unified Wayfinder status-item popover so it remains glanceable and routes cleanly into Dashboard context.
+- Implementation checkpoint: the approved fixed-footprint composition, shared semantic Course projection, environment-domain route, single context row, three fast commands, native utility menu, and Dashboard-owned detail/search/confirmation surfaces are implemented; owner visual/accessibility QA and the remaining v0.20 workflow redesign continue before release sign-off.
 - Continue Project WOW through personalized plan preview and one supported safe, verified improvement.
 - Deliver true direct updating for eligible third-party Sparkle apps through a dedicated, uniquely identified, Developer ID-signed and notarized external-updater boundary (or an equivalently reviewed architecture) that preserves Helm's app sandbox, accepts only structured validated requests, and fails safely to Open App when compatibility cannot be established.
 

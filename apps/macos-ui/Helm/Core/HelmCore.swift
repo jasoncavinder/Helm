@@ -558,6 +558,9 @@ final class HelmCore: ObservableObject {
     var timer: Timer?
     var connection: NSXPCConnection?
     var lastRefreshTrigger: Date?
+    var lastCompletedRefreshAt: Date? {
+        didSet { scheduleDerivedViewStateRefresh() }
+    }
     var searchDebounceTimer: Timer?
     var localSearchRequestGeneration: UInt64 = 0
     var activeRemoteSearchTaskIds: Set<Int64> = []
@@ -1330,6 +1333,7 @@ final class HelmCore: ObservableObject {
                     self?.onboardingDetectionPendingManagers = []
                     self?.onboardingDetectionStartedAt = nil
                     self?.lastRefreshTrigger = nil
+                    self?.lastCompletedRefreshAt = nil
                     self?.lastTaskSnapshotRefreshAt = .distantPast
                     UserDefaults.standard.removeObject(forKey: Self.onboardingCompletedKey)
                     UserDefaults.standard.removeObject(forKey: Self.acceptedLicenseTermsVersionKey)
@@ -1444,21 +1448,64 @@ final class HelmCore: ObservableObject {
             let hasPackageStateIssue = !(status?.packageStateIssues?.isEmpty ?? true)
             return requiresInstallDecision || hasPackageStateIssue ? manager.id : nil
         }
-        let popoverManagerRows = visibleManagers
-            .sorted { lhs, rhs in
-                let lhsOutdated = outdatedCountByManager[lhs.id, default: 0]
-                let rhsOutdated = outdatedCountByManager[rhs.id, default: 0]
-                if lhsOutdated == rhsOutdated {
-                    return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
-                }
-                return lhsOutdated > rhsOutdated
-            }
-
         let failedTasks = activeTasks.filter { $0.status.lowercased() == "failed" }
         let interruptedTasks = activeTasks.filter { $0.status.lowercased() == "interrupted" }
         let failedTaskCount = failedTasks.count
         let runningTasks = activeTasks.filter(\.isRunning)
         let runningTaskCount = runningTasks.count
+        let implementedManagers = ManagerInfo.all.filter { manager in
+            managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
+        }
+        let detectedManagerCount = implementedManagers.filter { manager in
+            isManagerDetected(manager.id)
+        }.count
+        let taskManagerByID = Dictionary(
+            uniqueKeysWithValues: activeTasks.compactMap { task in
+                task.managerId.map { (task.id, $0) }
+            }
+        )
+        let approvalManagerIDs = taskTimeoutPrompts.compactMap { prompt in
+            taskManagerByID[String(prompt.taskId)]
+        }
+        let wayfinderRelatedManagerIDs: [String]
+        if !approvalManagerIDs.isEmpty {
+            wayfinderRelatedManagerIDs = approvalManagerIDs
+        } else if !failedTasks.isEmpty || !interruptedTasks.isEmpty {
+            wayfinderRelatedManagerIDs = (failedTasks + interruptedTasks).compactMap(\.managerId)
+        } else if !runningTasks.isEmpty {
+            wayfinderRelatedManagerIDs = runningTasks.compactMap(\.managerId)
+        } else if !actionableFindingManagerIds.isEmpty {
+            wayfinderRelatedManagerIDs = actionableFindingManagerIds
+        } else if !outdatedPackages.isEmpty {
+            wayfinderRelatedManagerIDs = Array(outdatedManagerIds).sorted()
+        } else {
+            wayfinderRelatedManagerIDs = []
+        }
+        let affectedRouteStages = Set(
+            wayfinderRelatedManagerIDs.compactMap { managerID in
+                ManagerInfo.find(byId: managerID).flatMap { manager in
+                    WayfinderPopoverRouteStage.stage(forManagerCategory: manager.category)
+                }
+            }
+        )
+        let wayfinderRelatedRouteStages = WayfinderPopoverRouteStage.allCases.filter(
+            affectedRouteStages.contains
+        )
+        let wayfinderRelatedManagerIDsByStage = wayfinderRelatedManagerIDs.reduce(
+            into: [WayfinderPopoverRouteStage: String]()
+        ) { result, managerID in
+            guard let manager = ManagerInfo.find(byId: managerID),
+                  let stage = WayfinderPopoverRouteStage.stage(
+                      forManagerCategory: manager.category
+                  ),
+                  result[stage] == nil else {
+                return
+            }
+            result[stage] = managerID
+        }
+        let wayfinderFindingContext = actionableFindingManagerIds.first.flatMap {
+            makeWayfinderPopoverFindingContext(for: $0)
+        }
         let wayfinderInput = WayfinderProjectionInput(
             serviceAvailable: isConnected,
             networkAvailable: networkAvailability != .unavailable,
@@ -1468,12 +1515,14 @@ final class HelmCore: ObservableObject {
             activeTaskIDs: runningTasks.map(\.id),
             actionableFindingIDs: actionableFindingManagerIds,
             updateCount: outdatedPackages.count,
-            isRefreshing: isRefreshing
+            isRefreshing: isRefreshing,
+            freshnessDate: lastCompletedRefreshAt,
+            coverage: WayfinderCoverage(
+                completed: detectedManagerCount,
+                total: implementedManagers.count
+            )
         )
 
-        let implementedManagers = ManagerInfo.all.filter { manager in
-            managerStatuses[manager.id]?.isImplemented ?? manager.isImplemented
-        }
         let environmentBriefInput = makeEnvironmentBriefInput(
             intendedManagers: implementedManagers
         )
@@ -1486,11 +1535,15 @@ final class HelmCore: ObservableObject {
             outdatedPackagesCount: outdatedPackages.count,
             isRefreshing: isRefreshing,
             visibleManagers: visibleManagers,
+            wayfinderPopoverState: WayfinderPopoverDerivedState(
+                relatedRouteStages: wayfinderRelatedRouteStages,
+                relatedManagerIDsByStage: wayfinderRelatedManagerIDsByStage,
+                detectedManagerCount: detectedManagerCount,
+                findingContext: wayfinderFindingContext
+            ),
             outdatedCountByManager: outdatedCountByManager,
             managerHealthById: managerHealthById,
-            recentTasksTop10: Array(activeTasks.prefix(10)),
-            runningTasksTop4: Array(runningTasks.prefix(4)),
-            popoverManagerRows: popoverManagerRows
+            recentTasksTop10: Array(activeTasks.prefix(10))
         )
         if hasCompletedOnboarding && !requiresLicenseTermsAcceptance {
             firstRunPresentationModel.clear()
@@ -1515,6 +1568,57 @@ final class HelmCore: ObservableObject {
             managerOperationsById: managerOperations,
             installedCountByManager: installedCountByManager,
             outdatedCountByManager: outdatedCountByManager
+        )
+    }
+
+    private func makeWayfinderPopoverFindingContext(
+        for managerID: String
+    ) -> WayfinderPopoverFindingContext? {
+        guard let manager = ManagerInfo.find(byId: managerID),
+              let status = managerStatuses[managerID] else {
+            return nil
+        }
+
+        if status.multiInstanceState == "attention_needed" {
+            return WayfinderPopoverFindingContext(
+                title: WayfinderLocalizedText(
+                    key: "app.popover.wayfinder.context.manager_needs_decision",
+                    arguments: ["manager": manager.displayName]
+                ),
+                detail: WayfinderLocalizedText(
+                    key: L10n.App.Inspector.MultiInstance.attentionTitle
+                )
+            )
+        }
+
+        guard let issue = status.packageStateIssues?.first else { return nil }
+        let detail: WayfinderLocalizedText
+        switch issue.issueCode {
+        case "post_install_setup_required":
+            detail = WayfinderLocalizedText(
+                key: "app.inspector.package_state_issue.setup_required.title"
+            )
+        case "metadata_only_install":
+            detail = WayfinderLocalizedText(
+                key: L10n.App.Managers.State.metadataMismatch,
+                arguments: ["package": issue.packageName]
+            )
+        case "homebrew_cellar_lock_conflict":
+            detail = WayfinderLocalizedText(
+                key: "app.inspector.package_state_issue.homebrew_lock.title"
+            )
+        default:
+            detail = WayfinderLocalizedText(
+                key: "app.popover.wayfinder.context.package_state_needs_review"
+            )
+        }
+
+        return WayfinderPopoverFindingContext(
+            title: WayfinderLocalizedText(
+                key: "app.popover.wayfinder.context.manager_needs_review",
+                arguments: ["manager": manager.displayName]
+            ),
+            detail: detail
         )
     }
 
