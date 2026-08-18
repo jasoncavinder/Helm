@@ -36,10 +36,11 @@ This checklist is required before creating a release tag on `main`.
 ## Release Preflight (All Releases, Mandatory Before Tagging)
 
 - [x] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
+- [x] Confirm preflight verifies the Rust workspace version matches the target tag, and the macOS release workflow validates the generated app and bundled CLI versions against that tag.
 - [x] Read and follow `docs/operations/RELEASE_FLOW.md` before any release mutation.
 - [x] Run `scripts/release/rehearsal_dry_run.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` and retain its passing report.
 - [x] Confirm `Release macOS Canary` passed on `macos-26` after the latest release-workflow or toolchain change.
-- [x] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after any release credential rotation or permission change.
+- [x] Obtain explicit maintainer approval before any `Release Publish Auth Check` dispatch with `write_probe=true`; dispatch and pass it after any release credential rotation or permission change.
 - [x] Confirm preflight reports token scopes include `repo` and `workflow`.
 - [x] Confirm preflight validates required release workflows are present and enabled.
 - [x] Confirm preflight validates required DMG/signing/update secrets are present.
@@ -76,10 +77,11 @@ This checklist is required before creating a release tag on `main`.
 
 - [x] Complete `docs/validation/v0.19.1-readiness.md` with the candidate scope, focused regression requirements, and remaining release gates.
 - [x] Focused retained-keg and install-instance regression tests pass on the prepared `0.19.1` source.
-- [x] Full repository quality gate, documentation sync, locale integrity/parity, all 154 arm64 macOS tests, release contracts, and SQLite migration compatibility pass on the prepared source revision.
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, all 154 arm64 macOS tests, and release contracts pass on the prepared source revision.
+- [x] The standalone SQLite migration compatibility gate passes on the prepared source revision.
 - [x] Non-mutating Sparkle/appcast checklist, release rehearsal, and release preflight pass for `v0.19.1`.
 - [ ] Merge the release-preparation PR through protected `main`, then repeat rehearsal and preflight from a clean worktree whose `HEAD` exactly equals freshly fetched `origin/main`.
-- [ ] Release macOS Canary and Release Publish Auth Check with `write_probe=true` pass for the final `main` revision.
+- [ ] Release macOS Canary passes for the final `main` revision; with explicit maintainer approval, dispatch and pass Release Publish Auth Check with `write_probe=true` for that revision.
 - [x] No dependency or SQLite migration changed, and no `v0.20.x` work is included.
 
 ### Publication
