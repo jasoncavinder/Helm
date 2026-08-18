@@ -92,6 +92,56 @@ validate_tag_format() {
   return 1
 }
 
+extract_workspace_version() {
+  awk '
+    /^[[:space:]]*\[workspace\.package\][[:space:]]*$/ {
+      in_workspace_package = 1
+      next
+    }
+    /^[[:space:]]*\[/ {
+      in_workspace_package = 0
+    }
+    in_workspace_package && /^[[:space:]]*version[[:space:]]*=/ {
+      if (match($0, /"[^"]+"/)) {
+        print substr($0, RSTART + 1, RLENGTH - 2)
+        found = 1
+        exit
+      }
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  ' "$ROOT_DIR/core/rust/Cargo.toml"
+}
+
+check_source_version_matches_tag() {
+  if [ -z "$TAG_NAME" ]; then
+    return
+  fi
+
+  # Tag-format validation reports its own error. Avoid adding a misleading
+  # source-version error when the requested tag is not a supported release tag.
+  if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+    return
+  fi
+
+  local expected_version workspace_version
+  expected_version="${TAG_NAME#v}"
+  if ! workspace_version="$(extract_workspace_version)" || [ -z "$workspace_version" ]; then
+    fail "unable to read [workspace.package] version from core/rust/Cargo.toml"
+    return
+  fi
+
+  if [ "$workspace_version" != "$expected_version" ]; then
+    fail "release tag version ${expected_version} does not match Rust workspace version ${workspace_version}"
+    return
+  fi
+
+  info "source workspace version matches release tag (${workspace_version})"
+}
+
 check_git_state() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     fail "current directory is not inside a git worktree"
@@ -730,6 +780,7 @@ main() {
 
   check_git_state
   check_tag_availability
+  check_source_version_matches_tag
   check_pre_tag_metadata_snapshot
   check_github_auth
   check_main_ruleset_policy

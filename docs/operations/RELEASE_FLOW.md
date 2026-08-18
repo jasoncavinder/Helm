@@ -31,7 +31,11 @@ fetched `origin/main`; this exception does not permit tagging a candidate branch
 
    In an isolated release worktree whose branch is not named `main`, use
    `--allow-non-main`. The mutating tag command repeats stricter exact-commit
-   validation immediately before creating the tag.
+   validation immediately before creating the tag. Every tagged preflight and
+   rehearsal fails unless the tag version exactly matches
+   `core/rust/Cargo.toml`'s `[workspace.package]` version; synthetic contract
+   rehearsals must use an isolated matching-version fixture rather than a
+   release-facing bypass.
 
 4. Confirm the scheduled or manually dispatched `Release macOS Canary` is green on `macos-26` after the latest workflow/toolchain change.
 5. With explicit maintainer approval, dispatch `Release Publish Auth Check` with `write_probe=true`. Require a passing probe that creates and cleans up an empty branch/PR to validate effective Git contents-write and pull-request permissions.
@@ -92,6 +96,9 @@ only to the prerelease feed; the GitHub release-state contract does not change.
    accepted blindly.
 
 3. Watch `Release macOS DMG` and `Release CLI Direct Installer` to completion. Do not run auxiliary variants until direct GUI and CLI artifacts have published.
+   Before notarization or appcast generation, the DMG workflow requires both
+   the app's `CFBundleShortVersionString` and the bundled CLI version to match
+   the immutable tag.
    Stable tags replace the unchanneled default item. RC tags replace only the `beta` item and must preserve the current stable item. The workflow merges against current `main` both during generation and immediately before publication, and rejects any per-channel build regression.
 4. Read both publication summaries. Artifact upload and metadata synchronization are separate states.
 5. If either workflow opens a publish PR, wait for required checks, merge it through the protected-branch flow, then dispatch that workflow with `verify_only=true`.

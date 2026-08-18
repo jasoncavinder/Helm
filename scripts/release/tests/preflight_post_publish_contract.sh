@@ -13,9 +13,21 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 TEST_ROOT="${TMP_DIR}/repo"
-mkdir -p "${TEST_ROOT}/scripts/release" "${TEST_ROOT}/web/public/updates/cli" "${TMP_DIR}/bin"
+mkdir -p \
+  "${TEST_ROOT}/core/rust" \
+  "${TEST_ROOT}/scripts/release" \
+  "${TEST_ROOT}/web/public/updates/cli" \
+  "${TMP_DIR}/bin"
 cp "$PREFLIGHT_SOURCE" "${TEST_ROOT}/scripts/release/preflight.sh"
 chmod +x "${TEST_ROOT}/scripts/release/preflight.sh"
+
+cat > "${TEST_ROOT}/core/rust/Cargo.toml" <<'TOML'
+[workspace]
+members = []
+
+[workspace.package]
+version = "0.18.0"
+TOML
 
 cat > "${TEST_ROOT}/web/public/updates/appcast.xml" <<'XML'
 <?xml version="1.0" encoding="utf-8"?>
@@ -66,7 +78,7 @@ chmod +x "${TMP_DIR}/bin/gh"
 git -C "$TEST_ROOT" init -q -b task
 git -C "$TEST_ROOT" config user.name "Helm Release Contract"
 git -C "$TEST_ROOT" config user.email "release-contract@example.invalid"
-git -C "$TEST_ROOT" add web scripts/release/preflight.sh
+git -C "$TEST_ROOT" add core web scripts/release/preflight.sh
 git -C "$TEST_ROOT" commit -q -m "test fixture"
 git -C "$TEST_ROOT" update-ref refs/remotes/origin/main HEAD
 
@@ -88,8 +100,42 @@ grep -F "stable metadata on origin/main already matches target version 0.18.0" "
 
 PATH="${TMP_DIR}/bin:${PATH}" "${TEST_ROOT}/scripts/release/preflight.sh" \
   "${common_args[@]}" --allow-published-metadata >"${TMP_DIR}/post-publish.log" 2>&1
+grep -F "source workspace version matches release tag (0.18.0)" \
+  "${TMP_DIR}/post-publish.log" >/dev/null || fail "matching source workspace version was not accepted"
 grep -F "stable metadata on origin/main matches target version 0.18.0 (post-publication verification)" \
   "${TMP_DIR}/post-publish.log" >/dev/null || fail "post-publication acceptance was not reported"
+
+mismatch_args=(
+  --tag v0.18.1
+  --allow-non-main
+  --no-fetch
+  --skip-secrets
+  --skip-workflows
+  --skip-ruleset-policy
+  --allow-existing-tag
+)
+if PATH="${TMP_DIR}/bin:${PATH}" "${TEST_ROOT}/scripts/release/preflight.sh" \
+  "${mismatch_args[@]}" >"${TMP_DIR}/source-mismatch.log" 2>&1; then
+  fail "source workspace version mismatch must fail preflight"
+fi
+grep -F "release tag version 0.18.1 does not match Rust workspace version 0.18.0" \
+  "${TMP_DIR}/source-mismatch.log" >/dev/null || fail "source workspace mismatch reason was not reported"
+
+rc_mismatch_args=(
+  --tag v0.18.0-rc.1
+  --allow-non-main
+  --no-fetch
+  --skip-secrets
+  --skip-workflows
+  --skip-ruleset-policy
+  --allow-existing-tag
+)
+if PATH="${TMP_DIR}/bin:${PATH}" "${TEST_ROOT}/scripts/release/preflight.sh" \
+  "${rc_mismatch_args[@]}" >"${TMP_DIR}/rc-source-mismatch.log" 2>&1; then
+  fail "RC source workspace version mismatch must fail preflight"
+fi
+grep -F "release tag version 0.18.0-rc.1 does not match Rust workspace version 0.18.0" \
+  "${TMP_DIR}/rc-source-mismatch.log" >/dev/null || fail "RC source workspace mismatch reason was not reported"
 
 if HELM_STUB_DISABLED_WORKFLOW=appcast-drift.yml PATH="${TMP_DIR}/bin:${PATH}" \
   "${TEST_ROOT}/scripts/release/preflight.sh" "${base_args[@]}" --allow-published-metadata \

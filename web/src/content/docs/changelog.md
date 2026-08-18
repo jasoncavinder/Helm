@@ -11,6 +11,30 @@ For the full changelog, see [CHANGELOG.md on GitHub](https://github.com/jasoncav
 
 ---
 
+## 0.19.1 — 2026-08-18
+
+### Fixed
+- Retained older Homebrew kegs no longer appear as separate manageable installations when a current keg for the same formula and Homebrew prefix is active or linked.
+- Inactive install-instance rows no longer offer manager-wide update or uninstall actions, and inactive paths no longer inherit the active executable's version label.
+
+## 0.19.0 — 2026-08-15
+
+### Added
+- Original Wayfinder provides the native Dashboard, Plan, Library, Activity, Environment, Settings, and unified menu-bar popover foundation.
+- Scheduled Helm update checks, stable/RC channel selection, actionable notifications, selective Plan execution, and offline-aware recovery integrate update work across the control plane.
+
+### Changed
+- The minimum supported platform is macOS 13 Ventura.
+- Plan, Settings, status-item behavior, manager coverage, and semantic status presentation use the reviewed native v0.19 workflow and visual foundation.
+
+### Fixed
+- Manager detection, npm search, Mac App Store planning, language defaults, XPC reconnects, refresh scheduling, workspace selection, Settings routing, toolbar layout, and window behavior incorporate the seven-candidate stabilization line.
+
+### Security
+- Stable and RC GitHub release state, appcast routing, CLI metadata, and `releases/latest` semantics are contract-validated so prerelease artifacts cannot replace the stable update line.
+
+The Environment Brief replacement for first-run onboarding remains development-gated pending Issue #388, true direct third-party Sparkle updating remains planned for `0.20.x`, and selectable themes remain post-1.0 work.
+
 ## 0.18.2 — 2026-08-04
 
 Patch `0.18.2` is the final v0.18 containment release before production v0.19 native-experience and first-run implementation.

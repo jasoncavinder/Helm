@@ -11,6 +11,7 @@ PUBLISH_VERIFY_WORKFLOW="${WORKFLOWS_DIR}/release-publish-verify.yml"
 CLI_DRIFT_WORKFLOW="${WORKFLOWS_DIR}/cli-update-drift.yml"
 CANARY_WORKFLOW="${WORKFLOWS_DIR}/release-macos-canary.yml"
 AUTH_CHECK_WORKFLOW="${WORKFLOWS_DIR}/release-publish-auth-check.yml"
+RELEASE_CONTRACTS_WORKFLOW="${WORKFLOWS_DIR}/release-contract-checks.yml"
 PREFLIGHT_SCRIPT="${ROOT_DIR}/scripts/release/preflight.sh"
 RUNBOOK_SCRIPT="${ROOT_DIR}/scripts/release/runbook.sh"
 RELEASE_STATE_VALIDATOR="${ROOT_DIR}/scripts/release/validate_github_release_state.sh"
@@ -62,6 +63,11 @@ for workflow in "$CLI_WORKFLOW" "$DMG_WORKFLOW"; do
 done
 
 expect_pattern 'APPCAST_CHANNEL="beta"' "$DMG_WORKFLOW" "RC releases must select the Sparkle beta channel"
+expect_pattern 'APP_SHORT_VERSION=.*CFBundleShortVersionString' "$DMG_WORKFLOW" "DMG release builds must read the app bundle short version"
+expect_pattern 'BUNDLED_CLI_VERSION=' "$DMG_WORKFLOW" "DMG release builds must read the bundled CLI version"
+expect_pattern '"\$CLI_BIN" --json --version' "$DMG_WORKFLOW" "DMG release builds must query the bundled CLI version contract"
+expect_pattern 'if \[ "\$APP_SHORT_VERSION" != "\$EXPECTED_VERSION" \]; then' "$DMG_WORKFLOW" "DMG release builds must reject an app bundle version that differs from the tag"
+expect_pattern 'if \[ "\$BUNDLED_CLI_VERSION" != "\$EXPECTED_VERSION" \]; then' "$DMG_WORKFLOW" "DMG release builds must reject a bundled CLI version that differs from the tag"
 expect_pattern '--channel "\$APPCAST_CHANNEL"' "$DMG_WORKFLOW" "appcast generation must receive the selected channel"
 expect_pattern 'merge_sparkle_appcast\.py' "$DMG_WORKFLOW" "appcast publication must merge the candidate with the existing feed"
 expect_pattern '--base-appcast "\$APPCAST_BASE_PATH"' "$DMG_WORKFLOW" "appcast publication must preserve items from the existing feed"
@@ -109,5 +115,13 @@ expect_pattern 'branches: \[dev, main\]' "$WEB_BUILD_WORKFLOW" "web build must c
 expect_pattern '"web/\*\*"' "$WEB_BUILD_WORKFLOW" "web build must filter for web paths"
 expect_pattern 'actions/workflows/\$\{wf\}' "$PREFLIGHT_SCRIPT" "release preflight must query required workflow state"
 expect_pattern 'required workflow is not active' "$PREFLIGHT_SCRIPT" "release preflight must reject disabled required workflows"
+expect_pattern 'check_source_version_matches_tag' "$PREFLIGHT_SCRIPT" "release preflight must compare the source workspace version with the tag"
+expect_pattern 'does not match Rust workspace version' "$PREFLIGHT_SCRIPT" "release preflight must report source/tag version mismatches"
+
+expect_pattern 'Prepare release rehearsal source-version fixture' "$RELEASE_CONTRACTS_WORKFLOW" "release-contract CI must prepare an isolated matching-version rehearsal fixture"
+expect_pattern 'git worktree add --detach "\$REHEARSAL_FIXTURE" HEAD' "$RELEASE_CONTRACTS_WORKFLOW" "release-contract CI must isolate its synthetic rehearsal version in a detached worktree"
+expect_pattern 'REHEARSAL_FIXTURE/core/rust/Cargo\.toml' "$RELEASE_CONTRACTS_WORKFLOW" "release-contract CI must update only the fixture workspace version"
+expect_pattern '"\$\{REHEARSAL_FIXTURE\}/scripts/release/rehearsal_dry_run\.sh"' "$RELEASE_CONTRACTS_WORKFLOW" "release-contract CI must run rehearsal from the matching-version fixture"
+reject_pattern 'allow-source-version-mismatch|skip-source-version' "$RELEASE_CONTRACTS_WORKFLOW" "release-contract CI must not bypass source/tag version equality"
 
 printf '[release-workflow-contract] passed\n'
