@@ -3,7 +3,7 @@ import SwiftUI
 
 private enum UpgradePlanOutlineMetrics {
     static let hierarchyIndent: CGFloat = 10
-    static let disclosureVerticalOffset: CGFloat = 2
+    static let disclosureVerticalOffset: CGFloat = 1
     static let cardLeadingInset: CGFloat = 26
     static let cardTrailingInset: CGFloat = 4
     static let cardVerticalInset: CGFloat = 3
