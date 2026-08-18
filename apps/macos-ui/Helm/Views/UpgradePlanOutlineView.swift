@@ -3,6 +3,7 @@ import SwiftUI
 
 private enum UpgradePlanOutlineMetrics {
     static let hierarchyIndent: CGFloat = 10
+    static let disclosureVerticalOffset: CGFloat = 2
     static let cardLeadingInset: CGFloat = 26
     static let cardTrailingInset: CGFloat = 4
     static let cardVerticalInset: CGFloat = 3
@@ -671,6 +672,13 @@ private final class UpgradePlanScrollView: NSScrollView {
 
 private final class UpgradePlanNativeOutlineView: NSOutlineView {
     var toggleCurrentRow: (() -> Bool)?
+
+    override func frameOfOutlineCell(atRow row: Int) -> NSRect {
+        super.frameOfOutlineCell(atRow: row).offsetBy(
+            dx: 0,
+            dy: UpgradePlanOutlineMetrics.disclosureVerticalOffset
+        )
+    }
 
     override func layout() {
         fitColumnsToBounds()
