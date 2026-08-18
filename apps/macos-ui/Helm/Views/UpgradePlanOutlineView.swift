@@ -56,16 +56,16 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
         outlineView.allowsMultipleSelection = false
         outlineView.autosaveExpandedItems = false
         outlineView.backgroundColor = .clear
+        outlineView.autoresizingMask = [.width]
         outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outlineView.floatsGroupRows = false
         outlineView.style = .plain
-        outlineView.headerView = NSTableHeaderView()
+        outlineView.headerView = nil
         outlineView.indentationPerLevel = 10
-        outlineView.intercellSpacing = NSSize(width: 6, height: 2)
+        outlineView.intercellSpacing = NSSize(width: 6, height: 6)
         outlineView.rowSizeStyle = .medium
         outlineView.selectionHighlightStyle = .regular
-        outlineView.gridStyleMask = .solidHorizontalGridLineMask
-        outlineView.gridColor = .separatorColor.withAlphaComponent(0.35)
+        outlineView.gridStyleMask = []
         outlineView.setAccessibilityLabel(accessibilityLabel)
         outlineView.toggleCurrentRow = { [weak coordinator = context.coordinator] in
             coordinator?.toggleCurrentRow() ?? false
@@ -135,6 +135,11 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
         }
 
         private final class StepSummaryCell: NSTableCellView {
+            let inclusionCheckbox = StepCheckbox(
+                checkboxWithTitle: "",
+                target: nil,
+                action: nil
+            )
             let titleLabel = NSTextField(labelWithString: "")
             let managerLabel = NSTextField(labelWithString: "")
 
@@ -142,6 +147,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 super.init(frame: frameRect)
 
                 titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize)
+                titleLabel.textColor = .labelColor
                 titleLabel.lineBreakMode = .byTruncatingTail
                 titleLabel.maximumNumberOfLines = 1
                 managerLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -149,18 +155,52 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 managerLabel.lineBreakMode = .byTruncatingTail
                 managerLabel.maximumNumberOfLines = 1
 
-                let stack = NSStackView(views: [titleLabel, managerLabel])
-                stack.orientation = .vertical
-                stack.alignment = .leading
-                stack.spacing = 1
-                stack.translatesAutoresizingMaskIntoConstraints = false
-                addSubview(stack)
+                inclusionCheckbox.controlSize = .small
+                inclusionCheckbox.setContentHuggingPriority(.required, for: .horizontal)
+
+                let textStack = NSStackView(views: [titleLabel, managerLabel])
+                textStack.orientation = .vertical
+                textStack.alignment = .leading
+                textStack.spacing = 1
+
+                let contentStack = NSStackView(views: [inclusionCheckbox, textStack])
+                contentStack.orientation = .horizontal
+                contentStack.alignment = .centerY
+                contentStack.spacing = 8
+                contentStack.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(contentStack)
                 NSLayoutConstraint.activate([
-                    stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-                    stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
-                    stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+                    contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+                    contentStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
+                    contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
                 ])
                 textField = titleLabel
+            }
+
+            @available(*, unavailable)
+            required init?(coder: NSCoder) {
+                fatalError("init(coder:) has not been implemented")
+            }
+        }
+
+        private final class StepStatusCell: NSTableCellView {
+            let statusLabel = NSTextField(labelWithString: "")
+
+            override init(frame frameRect: NSRect) {
+                super.init(frame: frameRect)
+
+                statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+                statusLabel.alignment = .right
+                statusLabel.lineBreakMode = .byTruncatingTail
+                statusLabel.maximumNumberOfLines = 1
+                statusLabel.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(statusLabel)
+                NSLayoutConstraint.activate([
+                    statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
+                    statusLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                    statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+                ])
+                textField = statusLabel
             }
 
             @available(*, unavailable)
@@ -197,28 +237,21 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
 
         func installColumns(in outlineView: NSOutlineView) {
             let updateColumn = NSTableColumn(identifier: ColumnID.update)
-            updateColumn.minWidth = 220
-            updateColumn.width = 360
+            updateColumn.minWidth = 180
+            updateColumn.width = 340
             updateColumn.resizingMask = [.autoresizingMask, .userResizingMask]
             outlineView.addTableColumn(updateColumn)
             outlineView.outlineTableColumn = updateColumn
 
-            let includedColumn = NSTableColumn(identifier: ColumnID.included)
-            includedColumn.minWidth = 62
-            includedColumn.maxWidth = 78
-            includedColumn.width = 68
-            includedColumn.resizingMask = .userResizingMask
-            outlineView.addTableColumn(includedColumn)
-
             let statusColumn = NSTableColumn(identifier: ColumnID.status)
-            statusColumn.minWidth = 96
-            statusColumn.width = 120
+            statusColumn.minWidth = 72
+            statusColumn.width = 92
             statusColumn.resizingMask = .userResizingMask
             outlineView.addTableColumn(statusColumn)
 
             let actionColumn = NSTableColumn(identifier: ColumnID.action)
-            actionColumn.minWidth = 110
-            actionColumn.width = 136
+            actionColumn.minWidth = 92
+            actionColumn.width = 108
             actionColumn.resizingMask = .userResizingMask
             outlineView.addTableColumn(actionColumn)
         }
@@ -281,11 +314,11 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
         }
 
         func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-            item is SectionNode ? 30 : 46
+            item is SectionNode ? 28 : 50
         }
 
         func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
-            UpgradePlanOutlineRowView()
+            UpgradePlanOutlineRowView(drawsCard: item is RowNode)
         }
 
         func outlineView(
@@ -301,8 +334,8 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                     in: outlineView,
                     identifier: NSUserInterfaceItemIdentifier("plan.group"),
                     value: "\(section.title) (\(section.summary))",
-                    font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold),
-                    color: .labelColor
+                    font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold),
+                    color: .secondaryLabelColor
                 )
             }
 
@@ -320,18 +353,8 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                     font: .systemFont(ofSize: NSFont.smallSystemFontSize),
                     color: .secondaryLabelColor
                 )
-            case ColumnID.included:
-                return checkbox(in: outlineView, for: row)
             case ColumnID.status:
-                let field = textCell(
-                    in: outlineView,
-                    identifier: ColumnID.status,
-                    value: row.status,
-                    font: .systemFont(ofSize: NSFont.smallSystemFontSize),
-                    color: statusColor(for: row.statusTone)
-                )
-                field.alignment = .right
-                return field
+                return statusCell(in: outlineView, for: row)
             case ColumnID.action:
                 return actionButton(in: outlineView, for: row)
             default:
@@ -447,7 +470,6 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             guard let outlineView, let labels = columnLabels else { return }
             outlineView.tableColumn(withIdentifier: ColumnID.update)?.title = labels.update
             outlineView.tableColumn(withIdentifier: ColumnID.manager)?.title = labels.manager
-            outlineView.tableColumn(withIdentifier: ColumnID.included)?.title = labels.included
             outlineView.tableColumn(withIdentifier: ColumnID.status)?.title = labels.status
             outlineView.tableColumn(withIdentifier: ColumnID.action)?.title = labels.action
         }
@@ -484,25 +506,17 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             cell.titleLabel.toolTip = title
             cell.managerLabel.stringValue = row.manager
             cell.managerLabel.toolTip = row.manager
+            cell.inclusionCheckbox.identifier = ColumnID.included
+            cell.inclusionCheckbox.target = self
+            cell.inclusionCheckbox.action = #selector(checkboxChanged(_:))
+            cell.inclusionCheckbox.stepID = row.id
+            cell.inclusionCheckbox.state = row.isIncluded ? .on : .off
+            cell.inclusionCheckbox.isEnabled = interactionsEnabled && row.isSelectable
+            cell.inclusionCheckbox.setAccessibilityLabel(
+                "\(columnLabels?.included ?? ""), \(row.title)"
+            )
             cell.setAccessibilityLabel("\(title), \(columnLabels?.manager ?? ""), \(row.manager)")
             return cell
-        }
-
-        private func checkbox(
-            in outlineView: NSOutlineView,
-            for row: UpgradePlanOutlineRow
-        ) -> StepCheckbox {
-            let identifier = ColumnID.included
-            let button = outlineView.makeView(withIdentifier: identifier, owner: nil) as? StepCheckbox
-                ?? StepCheckbox(checkboxWithTitle: "", target: self, action: #selector(checkboxChanged(_:)))
-            button.identifier = identifier
-            button.target = self
-            button.action = #selector(checkboxChanged(_:))
-            button.stepID = row.id
-            button.state = row.isIncluded ? .on : .off
-            button.isEnabled = interactionsEnabled && row.isSelectable
-            button.setAccessibilityLabel("\(columnLabels?.included ?? ""), \(row.title)")
-            return button
         }
 
         private func actionButton(
@@ -527,6 +541,21 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             return button
         }
 
+        private func statusCell(
+            in outlineView: NSOutlineView,
+            for row: UpgradePlanOutlineRow
+        ) -> StepStatusCell {
+            let identifier = ColumnID.status
+            let cell = outlineView.makeView(withIdentifier: identifier, owner: nil) as? StepStatusCell
+                ?? StepStatusCell(frame: .zero)
+            cell.identifier = identifier
+            cell.statusLabel.stringValue = row.status
+            cell.statusLabel.textColor = statusColor(for: row.statusTone)
+            cell.statusLabel.toolTip = row.status
+            cell.setAccessibilityLabel("\(columnLabels?.status ?? ""), \(row.status)")
+            return cell
+        }
+
         private func statusColor(for tone: UpgradePlanOutlineRow.StatusTone) -> NSColor {
             switch tone {
             case .standard:
@@ -541,14 +570,49 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
 }
 
 private final class UpgradePlanOutlineRowView: NSTableRowView {
+    private let drawsCard: Bool
+
+    init(drawsCard: Bool) {
+        self.drawsCard = drawsCard
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        guard drawsCard else { return }
+        let path = cardPath
+        NSColor(HelmTheme.surfaceElevated).setFill()
+        path.fill()
+        NSColor(HelmTheme.borderSubtle).withAlphaComponent(0.9).setStroke()
+        path.lineWidth = 0.8
+        path.stroke()
+    }
+
     override func drawSelection(in dirtyRect: NSRect) {
-        guard selectionHighlightStyle != .none else { return }
+        guard drawsCard, selectionHighlightStyle != .none else { return }
+        let path = cardPath
         NSColor(HelmTheme.selectionFill).setFill()
+        path.fill()
+        NSColor(HelmTheme.selectionStroke).setStroke()
+        path.lineWidth = 0.9
+        path.stroke()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    private var cardPath: NSBezierPath {
         NSBezierPath(
-            roundedRect: bounds.insetBy(dx: 2, dy: 1),
-            xRadius: 7,
-            yRadius: 7
-        ).fill()
+            roundedRect: bounds.insetBy(dx: 4, dy: 3),
+            xRadius: 8,
+            yRadius: 8
+        )
     }
 }
 
