@@ -370,20 +370,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             .store(in: &cancellables)
 
-        controlCenterContext.$suppressWindowBackgroundDragging
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.updateControlCenterWindowDragBehavior()
-            }
-            .store(in: &cancellables)
-
-        controlCenterContext.$selectedSection
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.updateControlCenterWindowDragBehavior()
-            }
-            .store(in: &cancellables)
-
         LocalizationManager.shared.$currentLocale
             .dropFirst()
             .receive(on: RunLoop.main)
@@ -796,12 +782,7 @@ private extension AppDelegate {
                 self?.handlePopoverEscape()
             }
             window.title = "app.window.control_center".localized
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = shouldAllowControlCenterWindowBackgroundDragging()
             window.delegate = self
-            window.toolbarStyle = .unifiedCompact
-            window.titlebarSeparatorStyle = .none
             window.contentViewController = hostingController
             window.autorecalculatesKeyViewLoop = true
             window.isReleasedWhenClosed = false
@@ -817,20 +798,9 @@ private extension AppDelegate {
         }
 
         guard let window = controlCenterWindowController?.window else { return }
-        updateControlCenterWindowDragBehavior()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: true)
-    }
-
-    private func shouldAllowControlCenterWindowBackgroundDragging() -> Bool {
-        // Interactive controls and manager drag/drop can suppress background dragging.
-        return !controlCenterContext.suppressWindowBackgroundDragging
-    }
-
-    func updateControlCenterWindowDragBehavior() {
-        controlCenterWindowController?.window?.isMovableByWindowBackground =
-            shouldAllowControlCenterWindowBackgroundDragging()
     }
 
     @objc func handleSystemAppearanceChanged() {

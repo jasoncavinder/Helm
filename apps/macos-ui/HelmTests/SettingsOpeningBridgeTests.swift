@@ -21,8 +21,7 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertFalse(behavior.contains(.auxiliary))
     }
 
-    func testSettingsPanelUsesToolbarTitleInsteadOfDuplicateWindowTitle() {
-        XCTAssertEqual(HelmSettingsPanelPolicy.titleVisibility, .hidden)
+    func testSettingsPanelAllowsFullHeightNativeSidebarLayout() {
         XCTAssertTrue(HelmSettingsPanelPolicy.styleMask.contains(.fullSizeContentView))
     }
 

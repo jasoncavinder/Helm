@@ -7,7 +7,6 @@ enum HelmPanelDeactivationPolicy {
 }
 
 enum HelmSettingsPanelPolicy {
-    static let titleVisibility: NSWindow.TitleVisibility = .hidden
     static let styleMask: NSWindow.StyleMask = [
         .titled,
         .closable,

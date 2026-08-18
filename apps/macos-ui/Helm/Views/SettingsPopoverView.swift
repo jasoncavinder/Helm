@@ -572,7 +572,9 @@ struct SettingsWindowView: View {
                     .tag(pane)
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 240)
+            .background(WayfinderSidebarSurface())
             .id(localization.currentLocale)
         } detail: {
             let pane = selectedPane ?? .general
@@ -600,28 +602,8 @@ struct SettingsWindowView: View {
         )
     }
 
-    private var toolbarTitle: some View {
-        Text(L10n.App.Settings.windowTitle.localized)
-            .font(.headline)
-            .fixedSize()
-            .allowsHitTesting(false)
-            .accessibilityAddTraits(.isHeader)
-    }
-
     var body: some View {
         settingsContent
-            .toolbar {
-                if #available(macOS 26.0, *) {
-                    ToolbarItem(placement: .principal) {
-                        toolbarTitle
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .principal) {
-                        toolbarTitle
-                    }
-                }
-            }
             .onAppear {
                 applyRequestedPane()
             }

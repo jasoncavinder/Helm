@@ -85,21 +85,7 @@ struct ControlCenterWindowView: View {
             if presentsFirstRun {
                 EnvironmentBriefFirstRunView(onComplete: completeFirstRun)
             } else {
-                ControlCenterSplitViewBridge(
-                    isInspectorPresented: selectedSection.supportsInspector && context.isInspectorVisible,
-                    contentMinimumThickness: sidebarWidth + 400
-                ) {
-                    ControlCenterHostedContentView(
-                        context: context,
-                        walkthrough: walkthrough,
-                        sidebarWidth: sidebarWidth
-                    )
-                } inspector: {
-                    ControlCenterHostedInspectorView(
-                        context: context,
-                        walkthrough: walkthrough
-                    )
-                }
+                controlCenterContent
             }
         }
         .frame(minWidth: 1024, minHeight: 640)
@@ -120,14 +106,6 @@ struct ControlCenterWindowView: View {
         )
         .toolbar {
             if !presentsFirstRun {
-                // Keep a principal item in the native toolbar so AppKit reserves the
-                // center and places the search and actions against the trailing edge.
-                ToolbarItem(placement: .principal) {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
-                }
-
                 if selectedSection == .updates {
                     ToolbarItem(placement: .automatic) {
                         Picker(
@@ -239,6 +217,50 @@ struct ControlCenterWindowView: View {
         }
     }
 
+    @ViewBuilder
+    private var controlCenterContent: some View {
+        if #available(macOS 14.0, *) {
+            ControlCenterHostedContentView(
+                context: context,
+                walkthrough: walkthrough,
+                sidebarWidth: sidebarWidth
+            ) {
+                ControlCenterSectionHostView()
+                    .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .inspector(isPresented: nativeInspectorPresentation) {
+                ControlCenterHostedInspectorView(
+                    context: context,
+                    walkthrough: walkthrough
+                )
+                .inspectorColumnWidth(min: 220, ideal: 280, max: 320)
+            }
+        } else {
+            ControlCenterHostedContentView(
+                context: context,
+                walkthrough: walkthrough,
+                sidebarWidth: sidebarWidth
+            ) {
+                ControlCenterVenturaDetailView(
+                    context: context,
+                    walkthrough: walkthrough,
+                    isInspectorPresented: selectedSection.supportsInspector
+                        && context.isInspectorVisible
+                )
+            }
+        }
+    }
+
+    private var nativeInspectorPresentation: Binding<Bool> {
+        Binding(
+            get: { selectedSection.supportsInspector && context.isInspectorVisible },
+            set: { isPresented in
+                guard selectedSection.supportsInspector else { return }
+                context.isInspectorVisible = isPresented
+            }
+        )
+    }
+
     private func completeFirstRun() {
         context.dismissFirstRunPreview()
         if !core.hasCompletedOnboarding {
@@ -248,20 +270,23 @@ struct ControlCenterWindowView: View {
     }
 }
 
-private struct ControlCenterHostedContentView: View {
+private struct ControlCenterHostedContentView<Detail: View>: View {
     @ObservedObject var context: ControlCenterContext
     @ObservedObject var walkthrough: WalkthroughManager
     @State private var sidebarVisibility: NavigationSplitViewVisibility
     let sidebarWidth: CGFloat
+    let detail: Detail
 
     init(
         context: ControlCenterContext,
         walkthrough: WalkthroughManager,
-        sidebarWidth: CGFloat
+        sidebarWidth: CGFloat,
+        @ViewBuilder detail: () -> Detail
     ) {
         self.context = context
         self.walkthrough = walkthrough
         self.sidebarWidth = sidebarWidth
+        self.detail = detail()
         _sidebarVisibility = State(
             initialValue: NativeSidebarVisibilityPolicy.splitViewVisibility(
                 isSidebarVisible: context.isSidebarVisible
@@ -279,8 +304,7 @@ private struct ControlCenterHostedContentView: View {
                 )
                 .spotlightAnchor("ccSidebar")
         } detail: {
-            ControlCenterSectionHostView()
-                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+            detail
         }
         .environmentObject(context)
         .onChange(of: sidebarVisibility) { visibility in
@@ -303,6 +327,27 @@ private struct ControlCenterHostedContentView: View {
         .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
             if walkthrough.isControlCenterWalkthroughActive {
                 SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
+    }
+}
+
+private struct ControlCenterVenturaDetailView: View {
+    @ObservedObject var context: ControlCenterContext
+    @ObservedObject var walkthrough: WalkthroughManager
+    let isInspectorPresented: Bool
+
+    var body: some View {
+        HSplitView {
+            ControlCenterSectionHostView()
+                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+
+            if isInspectorPresented {
+                ControlCenterHostedInspectorView(
+                    context: context,
+                    walkthrough: walkthrough
+                )
+                .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
             }
         }
     }
@@ -481,6 +526,7 @@ private struct ControlCenterSidebarView: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
 
             Divider()
 
@@ -508,6 +554,7 @@ private struct ControlCenterSidebarView: View {
             .frame(height: 46)
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        .background(WayfinderSidebarSurface())
     }
 
     @ViewBuilder

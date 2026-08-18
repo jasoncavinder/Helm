@@ -173,7 +173,6 @@ final class ControlCenterContext: ObservableObject {
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
-    @Published var suppressWindowBackgroundDragging: Bool = false
     @Published var isSidebarVisible: Bool = true
     @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?

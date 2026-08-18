@@ -16,6 +16,9 @@ enum HelmTheme {
     static let surfaceElevated = Color.helmDynamic(light: 0xFBFCFE, dark: 0x18263A)
     static let borderSubtle = Color.helmDynamic(light: 0xE2E6EC, dark: 0x24324A)
     static let statusRail = Color.helmDynamic(light: 0xD9E2F0, dark: 0x2A3C57)
+    static let wayfinderSidebarTop = Color.helmDynamic(light: 0xDBECF2, dark: 0x111C27)
+    static let wayfinderSidebarMiddle = Color.helmDynamic(light: 0xEDF4F5, dark: 0x0F1821)
+    static let wayfinderSidebarBottom = Color.helmDynamic(light: 0xFAFBFB, dark: 0x0D141B)
 
     static let textPrimary = Color.helmDynamic(light: 0x1C1F26, dark: 0xE6EDF6)
     static let textSecondary = Color.helmDynamic(light: 0x4B5563, dark: 0x9FB0C7)
@@ -48,6 +51,20 @@ enum HelmTheme {
         lightAlpha: 0.4,
         darkAlpha: 0.52
     )
+}
+
+struct WayfinderSidebarSurface: View {
+    var body: some View {
+        LinearGradient(
+            colors: [
+                HelmTheme.wayfinderSidebarTop,
+                HelmTheme.wayfinderSidebarMiddle,
+                HelmTheme.wayfinderSidebarBottom
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 }
 
 enum HelmMetrics {
