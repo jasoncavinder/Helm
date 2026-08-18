@@ -196,8 +196,8 @@ final class ControlCenterContext: ObservableObject {
         upgradeSheetPresentation.reviewedPlanRequest
     }
 
-    var upgradePlanConfirmationRequestToken: Int {
-        upgradePlanConfirmationRequestState.token
+    var pendingUpgradePlanConfirmationRequest: UpgradePlanConfirmationRequest? {
+        upgradePlanConfirmationRequestState.pendingRequest
     }
 
     var environmentRouteStage: WayfinderPopoverRouteStage? {
@@ -209,6 +209,26 @@ final class ControlCenterContext: ObservableObject {
         planPackageFilter = ""
         select(.updates)
         upgradePlanConfirmationRequestState.requestUpgradeAll()
+    }
+
+    func completeUpgradePlanConfirmationRequest(
+        _ request: UpgradePlanConfirmationRequest,
+        presentationSucceeded: Bool
+    ) {
+        upgradePlanConfirmationRequestState.complete(
+            request,
+            presentationSucceeded: presentationSucceeded
+        )
+    }
+
+    func requireUpgradePlanPreview(
+        _ previewRequest: UpgradePlanPreviewRequest,
+        for request: UpgradePlanConfirmationRequest
+    ) {
+        upgradePlanConfirmationRequestState.requirePreview(
+            previewRequest,
+            for: request
+        )
     }
 
     func presentReviewedUpgradePlanSheet(

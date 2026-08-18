@@ -315,7 +315,6 @@ struct RedesignUpdatesSectionView: View {
     @State private var failedExternalSparkleStep: CoreUpgradePlanStep?
     @State private var selectedPlanStepIds = Set<String>()
     @State private var knownPlanStepIds = Set<String>()
-    @State private var handledConfirmationRequestToken = 0
     private let researchPlanProjection = WholeWorkflowResearchDatasetProvider.activePlanProjection()
 
     private var researchPlanSteps: [CoreUpgradePlanStep] {
@@ -355,11 +354,7 @@ struct RedesignUpdatesSectionView: View {
     }
 
     private var selectedAutomaticStepIDs: Set<String> {
-        Set(
-            selectedScopedPlanSteps
-                .filter(core.upgradePlanStepRunsAutomatically)
-                .map(\.id)
-        )
+        automaticallyRunStepIDs(in: selectedScopedPlanSteps)
     }
 
     private var visiblePlanStepIds: Set<String> {
@@ -389,13 +384,19 @@ struct RedesignUpdatesSectionView: View {
     }
 
     private var riskSummary: UpgradePreviewPlanner.RiskSummary {
+        riskSummary(for: selectedScopedPlanSteps)
+    }
+
+    private func riskSummary(
+        for selectedSteps: [CoreUpgradePlanStep]
+    ) -> UpgradePreviewPlanner.RiskSummary {
         if let researchPlanProjection {
             return researchPlanProjection.riskSummary(
-                selectedStepIDs: Set(selectedScopedPlanSteps.map(\.id))
+                selectedStepIDs: Set(selectedSteps.map(\.id))
             )
         }
         return UpgradePreviewPlanner.riskSummary(
-            for: selectedScopedPlanSteps.map {
+            for: selectedSteps.map {
                 .init(managerId: $0.managerId, packageName: $0.packageName)
             },
             restartRequiredCandidates: core.outdatedPackages
@@ -452,33 +453,116 @@ struct RedesignUpdatesSectionView: View {
         )
     }
 
-    private func presentReviewedConfirmation() {
-        guard !selectedAutomaticStepIDs.isEmpty else { return }
-        guard isResearchPlanActive || core.networkOperationsAvailable else { return }
+    private func automaticallyRunStepIDs(
+        in selectedSteps: [CoreUpgradePlanStep]
+    ) -> Set<String> {
+        Set(
+            selectedSteps
+                .filter(core.upgradePlanStepRunsAutomatically)
+                .map(\.id)
+        )
+    }
+
+    @discardableResult
+    private func presentReviewedConfirmation(
+        selectedSteps: [CoreUpgradePlanStep]? = nil
+    ) -> Bool {
+        let selectedSteps = selectedSteps ?? selectedScopedPlanSteps
+        let automaticStepIDs = automaticallyRunStepIDs(in: selectedSteps)
+        guard ReviewedUpgradePlanPresentationPolicy.canPresent(
+            automaticallyRunStepIDs: automaticStepIDs,
+            executionAvailable: isResearchPlanActive || core.networkOperationsAvailable
+        ) else { return false }
         context.presentReviewedUpgradePlanSheet(
             in: .controlCenter,
             managerScopeID: context.planManagerScopeId,
             packageFilter: context.planPackageFilter,
-            selectedSteps: HelmCore.sortedUpgradePlanStepsForExecution(selectedScopedPlanSteps)
+            selectedSteps: HelmCore.sortedUpgradePlanStepsForExecution(selectedSteps)
                 .map { $0.reviewedUpgradePlanStep(status: projectedStatus($0)) },
-            automaticallyRunStepIDs: selectedAutomaticStepIDs,
-            riskSummary: riskSummary
+            automaticallyRunStepIDs: automaticStepIDs,
+            riskSummary: riskSummary(for: selectedSteps)
         )
+        return true
     }
 
-    private func handleRequestedConfirmationIfReady() {
-        let requestToken = context.upgradePlanConfirmationRequestToken
-        guard requestToken != handledConfirmationRequestToken else { return }
-        guard !planSteps.isEmpty else { return }
-        handledConfirmationRequestToken = requestToken
-        selectedPlanStepIds = Set(planSteps.compactMap { step in
-            guard researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
-                return nil
-            }
-            return step.id
+    private func requestedConfirmationSteps(
+        for request: UpgradePlanConfirmationRequest
+    ) -> [CoreUpgradePlanStep] {
+        let pinnedPackageKeys = Set(core.outdatedPackages.lazy.filter(\.pinned).map {
+            "\($0.managerId)\u{0}\($0.name)"
         })
+        return planSteps.filter { step in
+            guard researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
+                return false
+            }
+            let isPinned = pinnedPackageKeys.contains("\(step.managerId)\u{0}\(step.packageName)")
+            return request.includes(managerID: step.managerId, isPinned: isPinned)
+        }
+    }
+
+    private func issueRequestedConfirmationPreview(
+        for request: UpgradePlanConfirmationRequest
+    ) {
+        guard let previewRequest = core.refreshUpgradePlan(
+            includePinned: request.includePinned,
+            allowOsUpdates: request.allowOsUpdates
+        ) else { return }
+        context.requireUpgradePlanPreview(previewRequest, for: request)
+    }
+
+    private func synchronizeRequestedConfirmation(forceNewPreview: Bool = false) {
+        guard let request = context.pendingUpgradePlanConfirmationRequest else { return }
+        if includeOsUpdates != request.allowOsUpdates {
+            includeOsUpdates = request.allowOsUpdates
+        }
+
+        if isResearchPlanActive {
+            let requestedSteps = requestedConfirmationSteps(for: request)
+            selectedPlanStepIds = Set(requestedSteps.map(\.id))
+            knownPlanStepIds = Set(planSteps.map(\.id))
+            let presentationSucceeded = presentReviewedConfirmation(selectedSteps: requestedSteps)
+            context.completeUpgradePlanConfirmationRequest(
+                request,
+                presentationSucceeded: presentationSucceeded
+            )
+            return
+        }
+
+        if forceNewPreview {
+            issueRequestedConfirmationPreview(for: request)
+            return
+        }
+        guard let requiredPreviewRevision = request.requiredPreviewRevision else {
+            issueRequestedConfirmationPreview(for: request)
+            return
+        }
+        guard let latestIssuedRequest = core.upgradePlanPreviewRevisionState.latestIssuedRequest else {
+            issueRequestedConfirmationPreview(for: request)
+            return
+        }
+        guard latestIssuedRequest.revision == requiredPreviewRevision else {
+            if latestIssuedRequest.matches(request) {
+                context.requireUpgradePlanPreview(latestIssuedRequest, for: request)
+            } else {
+                issueRequestedConfirmationPreview(for: request)
+            }
+            return
+        }
+        guard UpgradePlanConfirmationPreviewPolicy.isReady(
+            request,
+            previewState: core.upgradePlanPreviewRevisionState
+        ) else {
+            return
+        }
+
+        let requestedSteps = requestedConfirmationSteps(for: request)
+        selectedPlanStepIds = Set(requestedSteps.map(\.id))
         knownPlanStepIds = Set(planSteps.map(\.id))
-        presentReviewedConfirmation()
+        let presentationSucceeded = presentReviewedConfirmation(selectedSteps: requestedSteps)
+        context.completeUpgradePlanConfirmationRequest(
+            request,
+            presentationSucceeded: presentationSucceeded
+        )
     }
 
     private func plannerStep(_ step: CoreUpgradePlanStep) -> UpgradePreviewPlanner.PlanStep {
@@ -862,13 +946,15 @@ struct RedesignUpdatesSectionView: View {
         .onAppear {
             reconcilePlanSelection(planSteps)
             reconcilePlanScope(planSteps)
-            handleRequestedConfirmationIfReady()
-            if !isResearchPlanActive {
+            if context.pendingUpgradePlanConfirmationRequest != nil {
+                synchronizeRequestedConfirmation(forceNewPreview: true)
+            } else if !isResearchPlanActive {
                 core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
             }
         }
         .onChange(of: includeOsUpdates) { value in
             guard !isResearchPlanActive else { return }
+            guard context.pendingUpgradePlanConfirmationRequest == nil else { return }
             core.refreshUpgradePlan(includePinned: false, allowOsUpdates: value)
         }
         .onChange(of: core.safeModeEnabled) { _ in
@@ -879,10 +965,23 @@ struct RedesignUpdatesSectionView: View {
             guard !isResearchPlanActive else { return }
             reconcilePlanSelection(steps)
             reconcilePlanScope(steps)
-            handleRequestedConfirmationIfReady()
         }
-        .onChange(of: context.upgradePlanConfirmationRequestToken) { _ in
-            handleRequestedConfirmationIfReady()
+        .onChange(of: context.pendingUpgradePlanConfirmationRequest) { request in
+            guard let request else { return }
+            synchronizeRequestedConfirmation(
+                forceNewPreview: request.requiredPreviewRevision == nil
+            )
+        }
+        .onChange(of: core.upgradePlanPreviewRevisionState) { _ in
+            synchronizeRequestedConfirmation()
+        }
+        .onChange(of: core.networkOperationsAvailable) { available in
+            guard available else { return }
+            synchronizeRequestedConfirmation(forceNewPreview: true)
+        }
+        .onChange(of: core.isConnected) { connected in
+            guard connected else { return }
+            synchronizeRequestedConfirmation(forceNewPreview: true)
         }
         .onChange(of: context.planManagerScopeId) { _ in
             reconcileVisibleInspectorSelection()

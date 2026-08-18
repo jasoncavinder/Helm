@@ -478,6 +478,7 @@ final class HelmCore: ObservableObject {
     @Published var upgradePlanCompletion: UpgradePlanCompletion?
     @Published var upgradePlanAllowOsUpdates: Bool = false
     @Published var upgradePlanIncludePinned: Bool = false
+    @Published var upgradePlanPreviewRevisionState = UpgradePlanPreviewRevisionState()
     @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = [] {
         didSet {

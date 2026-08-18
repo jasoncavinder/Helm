@@ -39,11 +39,117 @@ enum ReviewedUpgradePlanValidation {
     }
 }
 
+enum ReviewedUpgradePlanPresentationPolicy {
+    static func canPresent(
+        automaticallyRunStepIDs: Set<String>,
+        executionAvailable: Bool
+    ) -> Bool {
+        !automaticallyRunStepIDs.isEmpty && executionAvailable
+    }
+}
+
+struct UpgradePlanConfirmationRequest: Equatable, Identifiable {
+    let id: Int
+    let includePinned: Bool
+    let allowOsUpdates: Bool
+    var requiredPreviewRevision: Int?
+
+    func includes(managerID: String, isPinned: Bool) -> Bool {
+        (includePinned || !isPinned)
+            && (allowOsUpdates || managerID != "softwareupdate")
+    }
+}
+
+struct UpgradePlanPreviewRequest: Equatable {
+    let revision: Int
+    let includePinned: Bool
+    let allowOsUpdates: Bool
+
+    func matches(_ confirmationRequest: UpgradePlanConfirmationRequest) -> Bool {
+        includePinned == confirmationRequest.includePinned
+            && allowOsUpdates == confirmationRequest.allowOsUpdates
+    }
+}
+
+struct UpgradePlanPreviewRevisionState: Equatable {
+    private(set) var latestIssuedRequest: UpgradePlanPreviewRequest?
+    private(set) var latestAppliedRequest: UpgradePlanPreviewRequest?
+    private var nextRevision = 0
+
+    mutating func issue(
+        includePinned: Bool,
+        allowOsUpdates: Bool
+    ) -> UpgradePlanPreviewRequest {
+        nextRevision &+= 1
+        let request = UpgradePlanPreviewRequest(
+            revision: nextRevision,
+            includePinned: includePinned,
+            allowOsUpdates: allowOsUpdates
+        )
+        latestIssuedRequest = request
+        return request
+    }
+
+    @discardableResult
+    mutating func apply(_ request: UpgradePlanPreviewRequest) -> Bool {
+        guard latestIssuedRequest == request else { return false }
+        latestAppliedRequest = request
+        return true
+    }
+}
+
+enum UpgradePlanConfirmationPreviewPolicy {
+    static func isReady(
+        _ confirmationRequest: UpgradePlanConfirmationRequest,
+        previewState: UpgradePlanPreviewRevisionState
+    ) -> Bool {
+        guard let requiredRevision = confirmationRequest.requiredPreviewRevision,
+              let latestIssuedRequest = previewState.latestIssuedRequest,
+              latestIssuedRequest.revision == requiredRevision,
+              latestIssuedRequest.matches(confirmationRequest) else {
+            return false
+        }
+        return previewState.latestAppliedRequest == latestIssuedRequest
+    }
+}
+
 struct UpgradePlanConfirmationRequestState: Equatable {
-    private(set) var token = 0
+    private(set) var pendingRequest: UpgradePlanConfirmationRequest?
+    private(set) var lastConsumedRequestID: Int?
+    private var nextRequestID = 0
 
     mutating func requestUpgradeAll() {
-        token &+= 1
+        nextRequestID &+= 1
+        pendingRequest = UpgradePlanConfirmationRequest(
+            id: nextRequestID,
+            includePinned: false,
+            allowOsUpdates: false,
+            requiredPreviewRevision: nil
+        )
+    }
+
+    @discardableResult
+    mutating func requirePreview(
+        _ previewRequest: UpgradePlanPreviewRequest,
+        for request: UpgradePlanConfirmationRequest
+    ) -> Bool {
+        guard pendingRequest?.id == request.id,
+              previewRequest.matches(request) else {
+            return false
+        }
+        pendingRequest?.requiredPreviewRevision = previewRequest.revision
+        return true
+    }
+
+    @discardableResult
+    mutating func complete(
+        _ request: UpgradePlanConfirmationRequest,
+        presentationSucceeded: Bool
+    ) -> Bool {
+        guard presentationSucceeded, pendingRequest == request else { return false }
+        pendingRequest = nil
+        lastConsumedRequestID = request.id
+        return true
     }
 }
 
