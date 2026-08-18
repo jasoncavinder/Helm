@@ -67,7 +67,8 @@ This checklist is required before creating a release tag on `main`.
 
 ### Candidate Scope
 
-- [x] Carry only the retained Homebrew-keg normalization merged in PR `#496`; do not include `v0.20.x` UI, workflow, research, or adapter work.
+- [x] Carry only the retained Homebrew-keg normalization merged in PR `#496` as shipped product/runtime behavior; do not include `v0.20.x` UI, product-workflow, research, or adapter work.
+- [x] Limit independent-review changes to release-integrity safeguards and evidence corrections: require preflight target-tag/Rust-source equality and validate generated macOS app and bundled CLI versions against the tag without expanding product scope.
 - [x] Identify the Rust workspace and local packages as `0.19.1` while published stable metadata remains on `v0.19.0` and beta/RC metadata remains on `v0.19.0-rc.7`.
 - [x] Collapse older same-formula kegs only when they share a Homebrew prefix with the active or linked installation; preserve distinct Homebrew prefixes as separate installations.
 - [x] Keep inactive install-instance rows informational by withholding manager-wide update and uninstall actions, and avoid displaying the active executable's version on inactive paths.
