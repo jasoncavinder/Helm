@@ -251,30 +251,26 @@ struct ControlCenterWindowView: View {
 private struct ControlCenterHostedContentView: View {
     @ObservedObject var context: ControlCenterContext
     @ObservedObject var walkthrough: WalkthroughManager
+    @State private var sidebarVisibility: NavigationSplitViewVisibility
     let sidebarWidth: CGFloat
 
-    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
-        Binding(
-            get: {
-                NativeSidebarVisibilityPolicy.splitViewVisibility(
-                    isSidebarVisible: context.isSidebarVisible
-                )
-            },
-            set: { visibility in
-                let isSidebarVisible = NativeSidebarVisibilityPolicy.isSidebarVisible(
-                    for: visibility
-                )
-                guard context.isSidebarVisible != isSidebarVisible else { return }
-                DispatchQueue.main.async {
-                    guard context.isSidebarVisible != isSidebarVisible else { return }
-                    context.isSidebarVisible = isSidebarVisible
-                }
-            }
+    init(
+        context: ControlCenterContext,
+        walkthrough: WalkthroughManager,
+        sidebarWidth: CGFloat
+    ) {
+        self.context = context
+        self.walkthrough = walkthrough
+        self.sidebarWidth = sidebarWidth
+        _sidebarVisibility = State(
+            initialValue: NativeSidebarVisibilityPolicy.splitViewVisibility(
+                isSidebarVisible: context.isSidebarVisible
+            )
         )
     }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: sidebarVisibility) {
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
             ControlCenterSidebarView()
                 .navigationSplitViewColumnWidth(
                     min: 210,
@@ -287,6 +283,23 @@ private struct ControlCenterHostedContentView: View {
                 .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
         }
         .environmentObject(context)
+        .onChange(of: sidebarVisibility) { visibility in
+            let isSidebarVisible = NativeSidebarVisibilityPolicy.isSidebarVisible(
+                for: visibility
+            )
+            guard context.isSidebarVisible != isSidebarVisible else { return }
+            DispatchQueue.main.async {
+                guard context.isSidebarVisible != isSidebarVisible else { return }
+                context.isSidebarVisible = isSidebarVisible
+            }
+        }
+        .onChange(of: context.isSidebarVisible) { isSidebarVisible in
+            let visibility = NativeSidebarVisibilityPolicy.splitViewVisibility(
+                isSidebarVisible: isSidebarVisible
+            )
+            guard sidebarVisibility != visibility else { return }
+            sidebarVisibility = visibility
+        }
         .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
             if walkthrough.isControlCenterWalkthroughActive {
                 SpotlightOverlay(manager: walkthrough, anchors: anchors)
