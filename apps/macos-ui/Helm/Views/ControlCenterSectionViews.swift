@@ -1045,11 +1045,13 @@ struct ManagerHealthCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(alignment: .top, spacing: 10) {
                 Text(title)
                     .font(.headline)
-                Spacer()
+                    .lineLimit(2, reservesSpace: true)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 HealthBadgeView(status: status)
+                    .fixedSize()
             }
 
             HStack(spacing: 6) {
@@ -1065,6 +1067,7 @@ struct ManagerHealthCardView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            .lineLimit(1)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Changed
+- Dashboard Manager Health cards now reserve a consistent two-line title region, keeping one-line and wrapped manager names aligned without truncating every name to one line.
+
 ## [0.19.0] - 2026-08-15
 
 ### Added
