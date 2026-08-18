@@ -312,7 +312,8 @@ private struct ControlCenterDetailView: View {
     var body: some View {
         HSplitView {
             ControlCenterSectionHostView()
-                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
 
             if isInspectorPresented {
                 ControlCenterHostedInspectorView(
@@ -320,6 +321,7 @@ private struct ControlCenterDetailView: View {
                     walkthrough: walkthrough
                 )
                 .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
+                .layoutPriority(0)
             }
         }
     }

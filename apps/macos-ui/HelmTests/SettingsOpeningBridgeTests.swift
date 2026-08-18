@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 
 final class HelmSettingsOpenRouterTests: XCTestCase {
@@ -27,6 +28,22 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
 
     func testPrimaryWindowsHideRedundantVisibleTitles() {
         XCTAssertEqual(HelmWindowChromePolicy.titleVisibility, .hidden)
+    }
+
+    func testPrimaryWindowFramesRemainOwnedByAppKit() {
+        let controller = NSHostingController(rootView: EmptyView())
+
+        HelmHostingSizingPolicy.apply(to: controller)
+
+        XCTAssertTrue(controller.sizingOptions.isEmpty)
+        XCTAssertEqual(
+            controller.view.contentCompressionResistancePriority(for: .horizontal),
+            .defaultLow
+        )
+        XCTAssertEqual(
+            controller.view.contentCompressionResistancePriority(for: .vertical),
+            .defaultLow
+        )
     }
 
     func testClosingDashboardDetachesSettingsPanelFromParentWindow() {

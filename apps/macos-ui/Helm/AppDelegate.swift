@@ -215,6 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             })
             .environmentObject(controlCenterContext)
             let hostingController = NSHostingController(rootView: rootView)
+            HelmHostingSizingPolicy.apply(to: hostingController)
             let window = SettingsPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 680, height: 500)
             )
@@ -769,6 +770,7 @@ private extension AppDelegate {
                 .environmentObject(controlCenterContext)
 
             let hostingController = NSHostingController(rootView: rootView)
+            HelmHostingSizingPolicy.apply(to: hostingController)
             let window = ControlCenterWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 1120, height: 740),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],

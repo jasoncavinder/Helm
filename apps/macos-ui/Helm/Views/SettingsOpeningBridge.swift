@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SwiftUI
 
 enum HelmPanelDeactivationPolicy {
     static let popoverHidesOnDeactivate = false
@@ -8,6 +9,18 @@ enum HelmPanelDeactivationPolicy {
 
 enum HelmWindowChromePolicy {
     static let titleVisibility: NSWindow.TitleVisibility = .hidden
+}
+
+enum HelmHostingSizingPolicy {
+    static let windowOwned: NSHostingSizingOptions = []
+
+    static func apply<Content: View>(to controller: NSHostingController<Content>) {
+        controller.sizingOptions = windowOwned
+        controller.view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        controller.view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        controller.view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        controller.view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    }
 }
 
 enum HelmSettingsPanelPolicy {
