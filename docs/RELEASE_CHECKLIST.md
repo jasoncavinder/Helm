@@ -36,10 +36,11 @@ This checklist is required before creating a release tag on `main`.
 ## Release Preflight (All Releases, Mandatory Before Tagging)
 
 - [x] Run `scripts/release/preflight.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` from a clean local clone before tag creation.
+- [x] Confirm preflight verifies the Rust workspace version matches the target tag, and the macOS release workflow validates the generated app and bundled CLI versions against that tag.
 - [x] Read and follow `docs/operations/RELEASE_FLOW.md` before any release mutation.
 - [x] Run `scripts/release/rehearsal_dry_run.sh --tag <vX.Y.Z|vX.Y.Z-rc.N>` and retain its passing report.
 - [x] Confirm `Release macOS Canary` passed on `macos-26` after the latest release-workflow or toolchain change.
-- [x] Dispatch and pass `Release Publish Auth Check` with `write_probe=true` after any release credential rotation or permission change.
+- [x] Obtain explicit maintainer approval before any `Release Publish Auth Check` dispatch with `write_probe=true`; dispatch and pass it after any release credential rotation or permission change.
 - [x] Confirm preflight reports token scopes include `repo` and `workflow`.
 - [x] Confirm preflight validates required release workflows are present and enabled.
 - [x] Confirm preflight validates required DMG/signing/update secrets are present.
@@ -61,6 +62,37 @@ This checklist is required before creating a release tag on `main`.
   - `Appcast Drift Guard`
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
+
+## v0.19.1 (Retained Homebrew Keg Maintenance, Prepared)
+
+### Candidate Scope
+
+- [x] Carry only the retained Homebrew-keg normalization merged in PR `#496` as shipped product/runtime behavior; do not include `v0.20.x` UI, product-workflow, research, or adapter work.
+- [x] Limit independent-review changes to release-integrity safeguards and evidence corrections: require preflight target-tag/Rust-source equality and validate generated macOS app and bundled CLI versions against the tag without expanding product scope.
+- [x] Identify the Rust workspace and local packages as `0.19.1` while published stable metadata remains on `v0.19.0` and beta/RC metadata remains on `v0.19.0-rc.7`.
+- [x] Collapse older same-formula kegs only when they share a Homebrew prefix with the active or linked installation; preserve distinct Homebrew prefixes as separate installations.
+- [x] Keep inactive install-instance rows informational by withholding manager-wide update and uninstall actions, and avoid displaying the active executable's version on inactive paths.
+- [x] Preserve the existing dependency graph, macOS 13 Ventura minimum, stable/RC coexistence contract, and all accepted `v0.19.0` deferrals.
+
+### Required Validation
+
+- [x] Complete `docs/validation/v0.19.1-readiness.md` with the candidate scope, focused regression requirements, and remaining release gates.
+- [x] Focused retained-keg and install-instance regression tests pass on the prepared `0.19.1` source.
+- [x] Full repository quality gate, documentation sync, locale integrity/parity, all 154 arm64 macOS tests, and release contracts pass on the prepared source revision.
+- [x] The standalone SQLite migration compatibility gate passes on the prepared source revision.
+- [x] Non-mutating Sparkle/appcast checklist, release rehearsal, and release preflight pass for `v0.19.1`.
+- [ ] Merge the release-preparation PR through protected `main`, then repeat rehearsal and preflight from a clean worktree whose `HEAD` exactly equals freshly fetched `origin/main`.
+- [ ] Release macOS Canary passes for the final `main` revision; with explicit maintainer approval, dispatch and pass Release Publish Auth Check with `write_probe=true` for that revision.
+- [x] No dependency or SQLite migration changed, and no `v0.20.x` work is included.
+
+### Publication
+
+- [ ] Obtain explicit maintainer confirmation after final gates and immediately before creating or pushing `v0.19.1` or publishing artifacts.
+- [ ] Create annotated tag `v0.19.1` from exact `origin/main` and publish a non-draft, non-prerelease GitHub release with latest behavior.
+- [ ] Publish signed/notarized universal GUI and direct CLI artifacts.
+- [ ] Advance only the default appcast item and `web/public/updates/cli/latest.json` to `v0.19.1`; preserve the RC7 GitHub prerelease, beta appcast item, and `latest-rc.json`.
+- [ ] Merge any generated publication PRs through the protected flow, dispatch `verify_only` as required, and pass runbook verification plus Release Publish Verify and both metadata drift guards.
+- [ ] Confirm GitHub `releases/latest` resolves to `v0.19.1` and stable metadata resolves only to its published non-prerelease release.
 
 ## v0.19.0 (Native Experience Foundation Stable Release, Published)
 

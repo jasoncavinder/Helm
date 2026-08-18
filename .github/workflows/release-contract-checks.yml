@@ -94,12 +94,50 @@ jobs:
           --skip-workflows
           --skip-ruleset-policy
 
+      - name: Prepare release rehearsal source-version fixture
+        env:
+          REHEARSAL_TAG: v99.99.${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          REHEARSAL_FIXTURE="$RUNNER_TEMP/release-rehearsal-fixture"
+          git worktree add --detach "$REHEARSAL_FIXTURE" HEAD
+          python3 - "$REHEARSAL_FIXTURE/core/rust/Cargo.toml" "${REHEARSAL_TAG#v}" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          manifest_path = pathlib.Path(sys.argv[1])
+          fixture_version = sys.argv[2]
+          lines = manifest_path.read_text(encoding="utf-8").splitlines(keepends=True)
+          in_workspace_package = False
+          replacements = 0
+
+          for index, line in enumerate(lines):
+              stripped = line.strip()
+              if stripped.startswith("[") and stripped.endswith("]"):
+                  in_workspace_package = stripped == "[workspace.package]"
+                  continue
+              if not in_workspace_package:
+                  continue
+              match = re.match(r'^(\s*version\s*=\s*")[^"]+(".*)$', line, flags=re.DOTALL)
+              if match:
+                  lines[index] = f"{match.group(1)}{fixture_version}{match.group(2)}"
+                  replacements += 1
+                  break
+
+          if replacements != 1:
+              raise SystemExit("unable to replace the rehearsal fixture workspace version")
+
+          manifest_path.write_text("".join(lines), encoding="utf-8")
+          PY
+          echo "REHEARSAL_FIXTURE=$REHEARSAL_FIXTURE" >> "$GITHUB_ENV"
+
       - name: Run release rehearsal dry-run contract
         env:
           REHEARSAL_TAG: v99.99.${{ github.run_id }}
           REHEARSAL_REPORT_PATH: ${{ runner.temp }}/release-rehearsal-report.json
         run: >
-          scripts/release/rehearsal_dry_run.sh
+          "${REHEARSAL_FIXTURE}/scripts/release/rehearsal_dry_run.sh"
           --tag "${REHEARSAL_TAG}"
           --report-path "${REHEARSAL_REPORT_PATH}"
 

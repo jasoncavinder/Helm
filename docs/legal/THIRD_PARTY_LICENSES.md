@@ -18,12 +18,13 @@ The Helm project license (`LICENSE`) does not replace third-party license obliga
 
 ---
 
-## Snapshot (Audited 2026-08-11; release context updated 2026-08-16)
+## Snapshot (Audited 2026-08-11; release context updated 2026-08-18)
 
 Release context:
 
 - published stable baseline: `v0.19.0`
 - retained beta/RC baseline: `v0.19.0-rc.7`
+- prepared maintenance candidate: `v0.19.1` (dependency graph unchanged)
 
 ### 1) macOS App Runtime Dependencies
 
