@@ -506,6 +506,11 @@ extension L10n {
             static let deselectAll = "app.updates.selection.deselect_all"
             static let filterSearchPlaceholder = "app.updates.filter.search_placeholder"
             static let riskFlags = "app.updates.risk_flags"
+            struct Confirmation {
+                static let selectedSummary = "app.updates.confirmation.selected_summary"
+                static let automaticSummary = "app.updates.confirmation.automatic_summary"
+                static let planChanged = "app.updates.confirmation.plan_changed"
+            }
             struct Authority {
                 static let authoritative = "app.updates.authority.authoritative"
                 static let standard = "app.updates.authority.standard"

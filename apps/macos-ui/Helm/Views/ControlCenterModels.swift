@@ -172,6 +172,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var managerFilterId: String?
     @Published private var environmentRouteFilterState = WayfinderEnvironmentRouteFilterState()
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
+    @Published private var upgradePlanConfirmationRequestState = UpgradePlanConfirmationRequestState()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isSidebarVisible: Bool = true
@@ -191,29 +192,62 @@ final class ControlCenterContext: ObservableObject {
         upgradeSheetPresentation.host
     }
 
-    var upgradeSheetIntent: UpgradeSheetIntent {
-        upgradeSheetPresentation.intent
+    var reviewedUpgradePlanRequest: ReviewedUpgradePlanRequest? {
+        upgradeSheetPresentation.reviewedPlanRequest
+    }
+
+    var pendingUpgradePlanConfirmationRequest: UpgradePlanConfirmationRequest? {
+        upgradePlanConfirmationRequestState.pendingRequest
     }
 
     var environmentRouteStage: WayfinderPopoverRouteStage? {
         environmentRouteFilterState.stage
     }
 
-    func presentUpgradeSheet(in host: UpgradeSheetHost) {
-        upgradeSheetPresentation.presentUpgradeAll(in: host)
+    func requestUpgradeAllPlanConfirmation() {
+        planManagerScopeId = HelmCore.allManagersScopeId
+        planPackageFilter = ""
+        select(.updates)
+        upgradePlanConfirmationRequestState.requestUpgradeAll()
+    }
+
+    func completeUpgradePlanConfirmationRequest(
+        _ request: UpgradePlanConfirmationRequest,
+        presentationSucceeded: Bool
+    ) {
+        upgradePlanConfirmationRequestState.complete(
+            request,
+            presentationSucceeded: presentationSucceeded
+        )
+    }
+
+    func requireUpgradePlanPreview(
+        _ previewRequest: UpgradePlanPreviewRequest,
+        for request: UpgradePlanConfirmationRequest
+    ) {
+        upgradePlanConfirmationRequestState.requirePreview(
+            previewRequest,
+            for: request
+        )
     }
 
     func presentReviewedUpgradePlanSheet(
         in host: UpgradeSheetHost,
         managerScopeID: String,
         packageFilter: String,
-        selectedStepIDs: Set<String>
+        selectedSteps: [ReviewedUpgradePlanStep],
+        selectedBackendSteps: [ReviewedUpgradePlanStep],
+        automaticallyRunStepIDs: Set<String>,
+        riskSummary: UpgradePreviewPlanner.RiskSummary
     ) {
         upgradeSheetPresentation.presentReviewedPlan(
             in: host,
             managerScopeID: managerScopeID,
             packageFilter: packageFilter,
-            selectedStepIDs: selectedStepIDs
+            selectedSteps: selectedSteps,
+            selectedBackendSteps: selectedBackendSteps,
+            automaticallyRunStepIDs: automaticallyRunStepIDs,
+            riskSummary: riskSummary
         )
     }
 

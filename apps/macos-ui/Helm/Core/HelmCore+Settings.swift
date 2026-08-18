@@ -696,8 +696,16 @@ extension HelmCore {
         }
     }
 
-    func refreshUpgradePlan(includePinned: Bool = false, allowOsUpdates: Bool = false) {
-        guard !WholeWorkflowResearchDatasetProvider.isSelected() else { return }
+    @discardableResult
+    func refreshUpgradePlan(
+        includePinned: Bool = false,
+        allowOsUpdates: Bool = false
+    ) -> UpgradePlanPreviewRequest? {
+        guard !WholeWorkflowResearchDatasetProvider.isSelected() else { return nil }
+        let previewRequest = upgradePlanPreviewRevisionState.issue(
+            includePinned: includePinned,
+            allowOsUpdates: allowOsUpdates
+        )
         upgradePlanIncludePinned = includePinned
         upgradePlanAllowOsUpdates = allowOsUpdates
         rebuildProjectedUpgradePlanExtensions()
@@ -708,7 +716,7 @@ extension HelmCore {
                 action: "previewUpgradePlan.service_unavailable",
                 taskType: "upgrade"
             )
-            return
+            return previewRequest
         }
         service.previewUpgradePlan(includePinned: includePinned, allowOsUpdates: allowOsUpdates) { [weak self] jsonString in
             guard let self = self else { return }
@@ -723,6 +731,9 @@ extension HelmCore {
                   ) else { return }
 
             DispatchQueue.main.async {
+                guard self.upgradePlanPreviewRevisionState.latestIssuedRequest == previewRequest else {
+                    return
+                }
                 self.upgradePlanIncludePinned = includePinned
                 self.upgradePlanAllowOsUpdates = allowOsUpdates
                 self.upgradePlanSteps = self.augmentedUpgradePlanSteps(
@@ -731,8 +742,10 @@ extension HelmCore {
                 )
                 self.reconcileUpgradePlanCompletionWithCurrentSteps()
                 self.syncUpgradePlanProjection(from: self.latestCoreTasksSnapshot)
+                self.upgradePlanPreviewRevisionState.apply(previewRequest)
             }
         }
+        return previewRequest
     }
 
     func projectedUpgradePlanStatus(for step: CoreUpgradePlanStep) -> String {

@@ -297,7 +297,7 @@ Rollback/incremental strategy:
 
 Affected files/components:
 
-- `ControlCenterSectionViews.swift` Updates and `RedesignUpgradeSheetView`
+- `ControlCenterSectionViews.swift` Plan and `ReviewedUpgradeConfirmationSheet`
 - Upgrade-plan inspector portions of `InspectorViews.swift`
 - `ControlCenterContext` plan selection
 
@@ -330,7 +330,8 @@ Implementation checkpoint:
 
 - Task 2's 12 synthetic update records project through the shipping Plan and inspector with backend authority order preserved, ten selected non-OS rows, two fixed visible exclusions, scoped selection/risk behavior, and a bounded read-only confirmation. The selector blocks service/database/network/mutation startup and fails closed for an unreadable corpus.
 - The Plan now uses a Ventura-compatible native `NSOutlineView` grouped by backend authority, with native row selection, keyboard traversal, inclusion controls, contextual inspector routing, standard toolbar manager/search filters, and a virtualized scrolling boundary for large plans. Presentation grouping is deterministic and does not alter execution order.
-- Automated coverage now exercises empty, single-step, and 125-step plans; fixed pin and OS exclusions; stale-selection reconciliation; partial-failure status; scoped cancellation; selected-row risk; and hidden-selection preservation. Owner visual, Full Keyboard Access, and VoiceOver validation plus final bounded confirmation-sheet parity remain open before the legacy confirmation presentation can be removed and Slice 20.2 can close.
+- The legacy generic Upgrade All preview is removed. Dashboard routes to Plan, notification Upgrade All requests the same Plan-owned reviewed flow, and the final sheet snapshots exact selected rows and execution order, automatic/interactive eligibility, vendor-app handoffs, and selected privilege/reboot risk. Run Plan disables if any reviewed step, eligibility, or risk value drifts before submission.
+- Automated coverage now exercises empty, single-step, and 125-step plans; fixed pin and OS exclusions; stale-selection and stale-confirmation rejection; partial-failure status; scoped cancellation; selected-row risk; and hidden-selection preservation. Owner visual, Full Keyboard Access, and VoiceOver validation remain open before Slice 20.2 can close.
 
 ### Slice 20.3: Library and global search
 
