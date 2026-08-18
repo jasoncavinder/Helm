@@ -1,6 +1,15 @@
 import AppKit
 import SwiftUI
 
+private enum UpgradePlanOutlineMetrics {
+    static let hierarchyIndent: CGFloat = 10
+    static let cardLeadingInset: CGFloat = 26
+    static let cardTrailingInset: CGFloat = 4
+    static let cardVerticalInset: CGFloat = 3
+    static let leadingContentInset: CGFloat = 6
+    static let trailingContentInset: CGFloat = 18
+}
+
 struct UpgradePlanOutlineSection: Equatable, Identifiable {
     let id: String
     let title: String
@@ -57,11 +66,11 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
         outlineView.autosaveExpandedItems = false
         outlineView.backgroundColor = .clear
         outlineView.autoresizingMask = [.width]
-        outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        outlineView.columnAutoresizingStyle = .noColumnAutoresizing
         outlineView.floatsGroupRows = false
         outlineView.style = .plain
         outlineView.headerView = nil
-        outlineView.indentationPerLevel = 0
+        outlineView.indentationPerLevel = UpgradePlanOutlineMetrics.hierarchyIndent
         outlineView.intercellSpacing = NSSize(width: 6, height: 6)
         outlineView.rowSizeStyle = .medium
         outlineView.selectionHighlightStyle = .regular
@@ -73,7 +82,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
 
         context.coordinator.installColumns(in: outlineView)
 
-        let scrollView = NSScrollView()
+        let scrollView = UpgradePlanScrollView()
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.documentView = outlineView
@@ -89,6 +98,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.update(parent: self)
+        (scrollView as? UpgradePlanScrollView)?.fitDocumentWidthToViewport()
     }
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
@@ -170,7 +180,10 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 contentStack.translatesAutoresizingMaskIntoConstraints = false
                 addSubview(contentStack)
                 NSLayoutConstraint.activate([
-                    contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+                    contentStack.leadingAnchor.constraint(
+                        equalTo: leadingAnchor,
+                        constant: UpgradePlanOutlineMetrics.leadingContentInset
+                    ),
                     contentStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
                     contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
                 ])
@@ -210,7 +223,10 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 addSubview(stack)
                 NSLayoutConstraint.activate([
                     stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
-                    stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+                    stack.trailingAnchor.constraint(
+                        equalTo: trailingAnchor,
+                        constant: -UpgradePlanOutlineMetrics.trailingContentInset
+                    ),
                     stack.centerYAnchor.constraint(equalTo: centerYAnchor),
                 ])
                 textField = statusLabel
@@ -615,16 +631,65 @@ private final class UpgradePlanOutlineRowView: NSTableRowView {
     }
 
     private var cardPath: NSBezierPath {
-        NSBezierPath(
-            roundedRect: bounds.insetBy(dx: 4, dy: 3),
+        let cardRect = NSRect(
+            x: bounds.minX + UpgradePlanOutlineMetrics.cardLeadingInset,
+            y: bounds.minY + UpgradePlanOutlineMetrics.cardVerticalInset,
+            width: max(
+                0,
+                bounds.width
+                    - UpgradePlanOutlineMetrics.cardLeadingInset
+                    - UpgradePlanOutlineMetrics.cardTrailingInset
+            ),
+            height: max(0, bounds.height - (UpgradePlanOutlineMetrics.cardVerticalInset * 2))
+        )
+        return NSBezierPath(
+            roundedRect: cardRect,
             xRadius: 8,
             yRadius: 8
         )
     }
 }
 
+private final class UpgradePlanScrollView: NSScrollView {
+    override func tile() {
+        super.tile()
+        fitDocumentWidthToViewport()
+    }
+
+    func fitDocumentWidthToViewport() {
+        guard let documentView else { return }
+        let viewportWidth = contentView.bounds.width
+        guard viewportWidth > 0, abs(documentView.frame.width - viewportWidth) > 0.5 else {
+            return
+        }
+        documentView.setFrameSize(
+            NSSize(width: viewportWidth, height: documentView.frame.height)
+        )
+        (documentView as? UpgradePlanNativeOutlineView)?.fitColumnsToBounds()
+    }
+}
+
 private final class UpgradePlanNativeOutlineView: NSOutlineView {
     var toggleCurrentRow: (() -> Bool)?
+
+    override func layout() {
+        fitColumnsToBounds()
+        super.layout()
+    }
+
+    func fitColumnsToBounds() {
+        guard bounds.width > 0, let leadingColumn = tableColumns.first else { return }
+        let fixedColumnWidth = tableColumns.dropFirst().reduce(CGFloat.zero) {
+            $0 + $1.width
+        }
+        let spacingWidth = intercellSpacing.width * CGFloat(max(0, tableColumns.count - 1))
+        let leadingWidth = max(
+            leadingColumn.minWidth,
+            bounds.width - fixedColumnWidth - spacingWidth
+        )
+        guard abs(leadingColumn.width - leadingWidth) > 0.5 else { return }
+        leadingColumn.width = leadingWidth
+    }
 
     override func keyDown(with event: NSEvent) {
         let blockedModifiers: NSEvent.ModifierFlags = [.command, .control, .option]
