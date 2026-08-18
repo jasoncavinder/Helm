@@ -719,6 +719,8 @@ struct RedesignUpdatesSectionView: View {
                     onPerformAction: performPlanAction
                 )
                 .frame(minHeight: 240, maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .helmCardSurface(cornerRadius: 12)
             }
 
             HStack(spacing: 16) {

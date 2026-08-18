@@ -46,6 +46,64 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         )
     }
 
+    func testFirstRunUsesSmallerFixedWindowBeforeRestoringDashboardSizing() {
+        let window = NSWindow(
+            contentRect: NSRect(
+                origin: .zero,
+                size: HelmPrimaryWindowSizingPolicy.dashboardDefaultSize
+            ),
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+
+        HelmPrimaryWindowSizingPolicy.applyFirstRun(to: window)
+
+        XCTAssertFalse(window.styleMask.contains(.resizable))
+        XCTAssertEqual(window.frame.size, HelmPrimaryWindowSizingPolicy.firstRunSize)
+        XCTAssertEqual(window.minSize, HelmPrimaryWindowSizingPolicy.firstRunSize)
+        XCTAssertEqual(window.maxSize, HelmPrimaryWindowSizingPolicy.firstRunSize)
+        XCTAssertLessThan(
+            HelmPrimaryWindowSizingPolicy.firstRunSize.width,
+            HelmPrimaryWindowSizingPolicy.dashboardMinimumSize.width
+        )
+
+        HelmPrimaryWindowSizingPolicy.applyDashboard(to: window)
+
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertEqual(window.minSize, HelmPrimaryWindowSizingPolicy.dashboardMinimumSize)
+    }
+
+    func testPrimaryWindowResizePoliciesClampRequestedGeometry() {
+        XCTAssertEqual(
+            HelmPrimaryWindowSizingPolicy.dashboardResizeSize(
+                NSSize(width: 700, height: 400)
+            ),
+            HelmPrimaryWindowSizingPolicy.dashboardMinimumSize
+        )
+        XCTAssertEqual(
+            HelmPrimaryWindowSizingPolicy.settingsResizeSize(
+                NSSize(width: 900, height: 800)
+            ),
+            HelmPrimaryWindowSizingPolicy.settingsMaximumSize
+        )
+    }
+
+    func testRestoredDashboardFrameKeepsInspectorEdgeOnscreen() {
+        let visibleFrame = NSRect(x: 0, y: 25, width: 1728, height: 1067)
+        let restoredFrame = NSRect(x: 863, y: 304, width: 1024, height: 640)
+
+        let constrained = HelmPrimaryWindowSizingPolicy.fullyVisibleFrame(
+            restoredFrame,
+            in: visibleFrame
+        )
+
+        XCTAssertEqual(constrained.origin.x, 704)
+        XCTAssertEqual(constrained.origin.y, restoredFrame.origin.y)
+        XCTAssertLessThanOrEqual(constrained.maxX, visibleFrame.maxX)
+        XCTAssertLessThanOrEqual(constrained.maxY, visibleFrame.maxY)
+    }
+
     func testClosingDashboardDetachesSettingsPanelFromParentWindow() {
         let dashboardWindow = NSWindow()
         let settingsWindow = NSWindow()

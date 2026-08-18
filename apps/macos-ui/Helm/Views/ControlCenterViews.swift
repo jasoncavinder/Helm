@@ -7,6 +7,11 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
     private let sidebarWidth: CGFloat = 232
+    let onFirstRunComplete: () -> Void
+
+    init(onFirstRunComplete: @escaping () -> Void = {}) {
+        self.onFirstRunComplete = onFirstRunComplete
+    }
 
     private var firstRunMode: EnvironmentBriefFirstRunMode {
         EnvironmentBriefFirstRunConfiguration.mode()
@@ -106,6 +111,16 @@ struct ControlCenterWindowView: View {
         )
         .toolbar {
             if !presentsFirstRun {
+                if #available(macOS 26.0, *) {
+                    ToolbarSpacer(.flexible)
+                } else {
+                    ToolbarItem(placement: .principal) {
+                        Color.clear
+                            .frame(width: 1, height: 1)
+                            .accessibilityHidden(true)
+                    }
+                }
+
                 if selectedSection == .updates {
                     ToolbarItem(placement: .automatic) {
                         Picker(
@@ -239,6 +254,7 @@ struct ControlCenterWindowView: View {
             core.completeOnboarding()
             core.triggerRefresh()
         }
+        onFirstRunComplete()
     }
 }
 

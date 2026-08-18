@@ -9,6 +9,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 ### Changed
 - Dashboard Manager Health cards now reserve a consistent two-line title region, keeping one-line and wrapped manager names aligned without truncating every name to one line.
 - Dashboard and Settings now use native macOS split-view sidebars with system-owned title-bar integration, resizing, collapse behavior, dividers, and sidebar toggles. Their redundant visible window titles are removed, and a restrained Original Wayfinder surface runs beneath the window controls from pale blue at the upper-left to near-white at the lower-right while detail surfaces remain solid. Dashboard dragging returns to the standard title-bar-only behavior, and its trailing inspector stays inside the detail column without moving or expanding the outer window.
+- The development-gated Environment Brief now opens in a fixed `960x600` first-run window before transitioning to the resizable Dashboard. Dashboard and Settings enforce their AppKit-owned minimum geometry, restored Dashboard frames keep both edges onscreen, and contextual toolbar controls align to the trailing title-bar area.
+- Plan retains its native authority-grouped outline, keyboard behavior, and virtualized scrolling while restoring a roomier Wayfinder surface, visible authority headings, secondary manager labels, and balanced row selection treatment.
 
 ### Fixed
 - Retained older Homebrew kegs no longer appear as separate manageable installations when a current keg for the same formula and Homebrew prefix is active or linked. Inactive install-instance rows no longer offer manager-wide update or uninstall actions, and inactive paths no longer inherit the active executable's version label.
