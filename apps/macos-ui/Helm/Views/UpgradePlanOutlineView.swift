@@ -61,7 +61,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
         outlineView.floatsGroupRows = false
         outlineView.style = .plain
         outlineView.headerView = nil
-        outlineView.indentationPerLevel = 10
+        outlineView.indentationPerLevel = 0
         outlineView.intercellSpacing = NSSize(width: 6, height: 6)
         outlineView.rowSizeStyle = .medium
         outlineView.selectionHighlightStyle = .regular
@@ -166,11 +166,11 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 let contentStack = NSStackView(views: [inclusionCheckbox, textStack])
                 contentStack.orientation = .horizontal
                 contentStack.alignment = .centerY
-                contentStack.spacing = 8
+                contentStack.spacing = 12
                 contentStack.translatesAutoresizingMaskIntoConstraints = false
                 addSubview(contentStack)
                 NSLayoutConstraint.activate([
-                    contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+                    contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
                     contentStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
                     contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
                 ])
@@ -183,8 +183,9 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             }
         }
 
-        private final class StepStatusCell: NSTableCellView {
+        private final class StepTrailingCell: NSTableCellView {
             let statusLabel = NSTextField(labelWithString: "")
+            let actionButton = StepActionButton(title: "", target: nil, action: nil)
 
             override init(frame frameRect: NSRect) {
                 super.init(frame: frameRect)
@@ -193,12 +194,24 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 statusLabel.alignment = .right
                 statusLabel.lineBreakMode = .byTruncatingTail
                 statusLabel.maximumNumberOfLines = 1
-                statusLabel.translatesAutoresizingMaskIntoConstraints = false
-                addSubview(statusLabel)
+                statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+                actionButton.bezelStyle = .rounded
+                actionButton.controlSize = .small
+                actionButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+                actionButton.lineBreakMode = .byTruncatingTail
+                actionButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+                let stack = NSStackView(views: [statusLabel, actionButton])
+                stack.orientation = .horizontal
+                stack.alignment = .centerY
+                stack.spacing = 8
+                stack.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(stack)
                 NSLayoutConstraint.activate([
-                    statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
-                    statusLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-                    statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+                    stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
+                    stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+                    stack.centerYAnchor.constraint(equalTo: centerYAnchor),
                 ])
                 textField = statusLabel
             }
@@ -218,6 +231,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
         private var columnLabels: UpgradePlanOutlineColumnLabels?
         private var interactionsEnabled = true
         private var isSynchronizingSelection = false
+        private var expansionState = UpgradePlanSectionExpansionState()
 
         init(parent: UpgradePlanOutlineView) {
             self.parent = parent
@@ -244,16 +258,10 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             outlineView.outlineTableColumn = updateColumn
 
             let statusColumn = NSTableColumn(identifier: ColumnID.status)
-            statusColumn.minWidth = 72
-            statusColumn.width = 92
+            statusColumn.minWidth = 132
+            statusColumn.width = 180
             statusColumn.resizingMask = .userResizingMask
             outlineView.addTableColumn(statusColumn)
-
-            let actionColumn = NSTableColumn(identifier: ColumnID.action)
-            actionColumn.minWidth = 92
-            actionColumn.width = 108
-            actionColumn.resizingMask = .userResizingMask
-            outlineView.addTableColumn(actionColumn)
         }
 
         func update(parent: UpgradePlanOutlineView) {
@@ -354,9 +362,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                     color: .secondaryLabelColor
                 )
             case ColumnID.status:
-                return statusCell(in: outlineView, for: row)
-            case ColumnID.action:
-                return actionButton(in: outlineView, for: row)
+                return trailingCell(in: outlineView, for: row)
             default:
                 return nil
             }
@@ -404,11 +410,13 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             interactionsEnabled: Bool
         ) {
             guard let outlineView else { return }
-            let hadModel = !sectionModels.isEmpty
-            let expandedIDs = Set(
-                sectionNodes
-                    .filter { outlineView.isItemExpanded($0) }
-                    .map(\.id)
+            expansionState.recordVisibleSections(
+                Set(sectionNodes.map(\.id)),
+                expandedSectionIDs: Set(
+                    sectionNodes
+                        .filter { outlineView.isItemExpanded($0) }
+                        .map(\.id)
+                )
             )
 
             sectionModels = sections
@@ -421,7 +429,10 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             )
 
             outlineView.reloadData()
-            for section in sectionNodes where !hadModel || expandedIDs.contains(section.id) {
+            let sectionsToExpand = expansionState.sectionsToExpand(
+                from: Set(sectionNodes.map(\.id))
+            )
+            for section in sectionNodes where sectionsToExpand.contains(section.id) {
                 outlineView.expandItem(section)
             }
         }
@@ -471,7 +482,6 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             outlineView.tableColumn(withIdentifier: ColumnID.update)?.title = labels.update
             outlineView.tableColumn(withIdentifier: ColumnID.manager)?.title = labels.manager
             outlineView.tableColumn(withIdentifier: ColumnID.status)?.title = labels.status
-            outlineView.tableColumn(withIdentifier: ColumnID.action)?.title = labels.action
         }
 
         private func textCell(
@@ -519,39 +529,36 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             return cell
         }
 
-        private func actionButton(
+        private func trailingCell(
             in outlineView: NSOutlineView,
             for row: UpgradePlanOutlineRow
-        ) -> NSButton? {
-            guard let actionTitle = row.actionTitle else { return nil }
-            let identifier = ColumnID.action
-            let button = outlineView.makeView(withIdentifier: identifier, owner: nil) as? StepActionButton
-                ?? StepActionButton(title: "", target: self, action: #selector(actionPressed(_:)))
-            button.identifier = identifier
-            button.target = self
-            button.action = #selector(actionPressed(_:))
-            button.bezelStyle = .rounded
-            button.controlSize = .small
-            button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            button.lineBreakMode = .byTruncatingTail
-            button.stepID = row.id
-            button.title = actionTitle
-            button.toolTip = actionTitle
-            button.isEnabled = interactionsEnabled
-            return button
-        }
-
-        private func statusCell(
-            in outlineView: NSOutlineView,
-            for row: UpgradePlanOutlineRow
-        ) -> StepStatusCell {
+        ) -> StepTrailingCell {
             let identifier = ColumnID.status
-            let cell = outlineView.makeView(withIdentifier: identifier, owner: nil) as? StepStatusCell
-                ?? StepStatusCell(frame: .zero)
+            let cell = outlineView.makeView(withIdentifier: identifier, owner: nil) as? StepTrailingCell
+                ?? StepTrailingCell(frame: .zero)
             cell.identifier = identifier
             cell.statusLabel.stringValue = row.status
             cell.statusLabel.textColor = statusColor(for: row.statusTone)
             cell.statusLabel.toolTip = row.status
+            if let actionTitle = row.actionTitle {
+                cell.actionButton.identifier = ColumnID.action
+                cell.actionButton.target = self
+                cell.actionButton.action = #selector(actionPressed(_:))
+                cell.actionButton.stepID = row.id
+                cell.actionButton.title = actionTitle
+                cell.actionButton.toolTip = actionTitle
+                cell.actionButton.isEnabled = interactionsEnabled
+                cell.actionButton.isHidden = false
+                cell.actionButton.setAccessibilityLabel(actionTitle)
+            } else {
+                cell.actionButton.target = nil
+                cell.actionButton.action = nil
+                cell.actionButton.stepID = ""
+                cell.actionButton.title = ""
+                cell.actionButton.toolTip = nil
+                cell.actionButton.isEnabled = false
+                cell.actionButton.isHidden = true
+            }
             cell.setAccessibilityLabel("\(columnLabels?.status ?? ""), \(row.status)")
             return cell
         }

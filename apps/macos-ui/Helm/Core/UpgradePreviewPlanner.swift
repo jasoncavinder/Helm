@@ -16,6 +16,27 @@ enum ManagerPriorityDragPolicy {
     }
 }
 
+struct UpgradePlanSectionExpansionState {
+    private(set) var expandedSectionIDs = Set<String>()
+    private var knownSectionIDs = Set<String>()
+
+    mutating func recordVisibleSections(
+        _ visibleSectionIDs: Set<String>,
+        expandedSectionIDs visibleExpandedSectionIDs: Set<String>
+    ) {
+        expandedSectionIDs.subtract(visibleSectionIDs)
+        expandedSectionIDs.formUnion(visibleExpandedSectionIDs.intersection(visibleSectionIDs))
+        knownSectionIDs.formUnion(visibleSectionIDs)
+    }
+
+    mutating func sectionsToExpand(from visibleSectionIDs: Set<String>) -> Set<String> {
+        let newlyVisibleSectionIDs = visibleSectionIDs.subtracting(knownSectionIDs)
+        expandedSectionIDs.formUnion(newlyVisibleSectionIDs)
+        knownSectionIDs.formUnion(visibleSectionIDs)
+        return expandedSectionIDs.intersection(visibleSectionIDs)
+    }
+}
+
 struct PackageRuntimeStateProjection: Codable, Hashable {
     var isActive: Bool = false
     var isDefault: Bool = false
