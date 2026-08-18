@@ -45,7 +45,7 @@ their content and window chrome use standard SwiftUI navigation and toolbar APIs
 
 Key types:
 - `FloatingPanel` — Borderless `NSPanel` with `Cmd+F` and `Escape` key handling
-- `ControlCenterWindow` — 1120×740 default window with a 1024×640 AppKit-enforced minimum, hosting a top-level `NavigationSplitView`; macOS supplies title-free full-size chrome, the sidebar toggle, resizing, and title-bar integration, while SwiftUI supplies trailing search and actions plus a frame-stable in-detail inspector. The development-gated first-run route temporarily fixes this window at 960×600 and restores normal Dashboard geometry on completion.
+- `ControlCenterWindow` — 1120×740 default window with a 1024×640 AppKit-enforced minimum, hosting a top-level `NavigationSplitView`; macOS supplies title-free full-size chrome, the sidebar toggle, resizing, and title-bar integration, while SwiftUI supplies native top-trailing search, standard toolbar actions, and a frame-stable in-detail inspector. The development-gated first-run route temporarily fixes this window at 960×600 and restores normal Dashboard geometry on completion.
 - `SettingsPanel` — Floating single-instance panel with a 680×500 default, 600×420 minimum, title-free full-size chrome, and a top-level `NavigationSplitView`; its collection behavior keeps Settings available alongside an external full-screen app
 - `EventMonitor` — Detects clicks outside the panel to dismiss it
 - `VisualEffect: NSViewRepresentable` — Window material backing

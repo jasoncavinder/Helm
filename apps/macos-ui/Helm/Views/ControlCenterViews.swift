@@ -109,11 +109,17 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
+        .modifier(
+            ControlCenterNativeSearchModifier(
+                text: toolbarSearchQuery,
+                isPresented: $context.isControlCenterSearchPresented,
+                prompt: toolbarSearchPlaceholder,
+                isEnabled: !presentsFirstRun
+            )
+        )
         .toolbar {
             if !presentsFirstRun {
-                if #available(macOS 26.0, *) {
-                    ToolbarSpacer(.flexible)
-                } else {
+                if #unavailable(macOS 26.0) {
                     ToolbarItem(placement: .principal) {
                         Color.clear
                             .frame(width: 1, height: 1)
@@ -142,16 +148,18 @@ struct ControlCenterWindowView: View {
                     }
                 }
 
-                ToolbarItem(placement: .automatic) {
-                    ControlCenterToolbarSearchField(
-                        text: toolbarSearchQuery,
-                        placeholder: toolbarSearchPlaceholder,
-                        focusRouter: context.controlCenterSearchFocusRouter
-                    )
-                    .frame(width: selectedSection == .updates ? 250 : 320)
+                if #unavailable(macOS 26.0) {
+                    ToolbarItem(placement: .automatic) {
+                        ControlCenterToolbarSearchField(
+                            text: toolbarSearchQuery,
+                            placeholder: toolbarSearchPlaceholder,
+                            focusRouter: context.controlCenterSearchFocusRouter
+                        )
+                        .frame(width: selectedSection == .updates ? 250 : 320)
+                    }
                 }
 
-                ToolbarItemGroup(placement: .automatic) {
+                ToolbarItemGroup(placement: .primaryAction) {
                     if selectedSection.supportsInspector {
                         Button {
                             context.toggleInspector()
@@ -185,12 +193,16 @@ struct ControlCenterWindowView: View {
                         } label: {
                             Label(
                                 L10n.App.ControlCenter.upgradeAll.localized,
-                                systemImage: "arrow.up.circle.fill"
+                                systemImage: "arrow.up"
                             )
+                            .labelStyle(.iconOnly)
+                            .frame(width: 22)
                         }
                         .buttonStyle(.borderedProminent)
+                        .modifier(ControlCenterUpgradeButtonShape())
                         .controlSize(.regular)
                         .fixedSize()
+                        .help(L10n.App.ControlCenter.upgradeAll.localized)
                         .disabled(!core.networkOperationsAvailable)
                     }
                 }
@@ -255,6 +267,38 @@ struct ControlCenterWindowView: View {
             core.triggerRefresh()
         }
         onFirstRunComplete()
+    }
+}
+
+private struct ControlCenterNativeSearchModifier: ViewModifier {
+    @Binding var text: String
+    @Binding var isPresented: Bool
+    let prompt: String
+    let isEnabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), isEnabled {
+            content.searchable(
+                text: $text,
+                isPresented: $isPresented,
+                placement: .automatic,
+                prompt: Text(prompt)
+            )
+        } else {
+            content
+        }
+    }
+}
+
+private struct ControlCenterUpgradeButtonShape: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.buttonBorderShape(.circle)
+        } else {
+            content.buttonBorderShape(.roundedRectangle)
+        }
     }
 }
 

@@ -166,6 +166,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedTaskId: String?
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
+    @Published var isControlCenterSearchPresented: Bool = false
     @Published var planManagerScopeId: String = HelmCore.allManagersScopeId
     @Published var planPackageFilter: String = ""
     @Published var managerFilterId: String?

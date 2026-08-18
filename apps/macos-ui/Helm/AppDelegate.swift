@@ -523,7 +523,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func focusControlCenterSearch() {
         openControlCenter()
-        controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
+        if #available(macOS 26.0, *) {
+            controlCenterContext.isControlCenterSearchPresented = true
+        } else {
+            controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
+        }
     }
 
     private func handlePopoverEscape() {
