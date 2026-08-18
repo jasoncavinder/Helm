@@ -1,6 +1,16 @@
 import AppKit
 import SwiftUI
 
+enum NativeSidebarVisibilityPolicy {
+    static func splitViewVisibility(isSidebarVisible: Bool) -> NavigationSplitViewVisibility {
+        isSidebarVisible ? .all : .detailOnly
+    }
+
+    static func isSidebarVisible(for visibility: NavigationSplitViewVisibility) -> Bool {
+        visibility != .detailOnly
+    }
+}
+
 struct ControlCenterSplitViewBridge<Content: View, Inspector: View>: NSViewControllerRepresentable {
     let isInspectorPresented: Bool
     let contentMinimumThickness: CGFloat

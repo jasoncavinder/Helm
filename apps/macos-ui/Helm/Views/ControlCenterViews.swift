@@ -120,24 +120,6 @@ struct ControlCenterWindowView: View {
         )
         .toolbar {
             if !presentsFirstRun {
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        context.toggleSidebar()
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                    }
-                    .help(
-                        context.isSidebarVisible
-                            ? "app.command.hide_sidebar".localized
-                            : "app.command.show_sidebar".localized
-                    )
-                    .accessibilityLabel(
-                        context.isSidebarVisible
-                            ? "app.command.hide_sidebar".localized
-                            : "app.command.show_sidebar".localized
-                    )
-                }
-
                 // Keep a principal item in the native toolbar so AppKit reserves the
                 // center and places the search and actions against the trailing edge.
                 ToolbarItem(placement: .principal) {
@@ -271,14 +253,36 @@ private struct ControlCenterHostedContentView: View {
     @ObservedObject var walkthrough: WalkthroughManager
     let sidebarWidth: CGFloat
 
-    var body: some View {
-        HStack(spacing: 0) {
-            if context.isSidebarVisible {
-                ControlCenterSidebarView(sidebarWidth: sidebarWidth)
-                    .spotlightAnchor("ccSidebar")
-                Divider()
+    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: {
+                NativeSidebarVisibilityPolicy.splitViewVisibility(
+                    isSidebarVisible: context.isSidebarVisible
+                )
+            },
+            set: { visibility in
+                let isSidebarVisible = NativeSidebarVisibilityPolicy.isSidebarVisible(
+                    for: visibility
+                )
+                guard context.isSidebarVisible != isSidebarVisible else { return }
+                DispatchQueue.main.async {
+                    guard context.isSidebarVisible != isSidebarVisible else { return }
+                    context.isSidebarVisible = isSidebarVisible
+                }
             }
+        )
+    }
 
+    var body: some View {
+        NavigationSplitView(columnVisibility: sidebarVisibility) {
+            ControlCenterSidebarView()
+                .navigationSplitViewColumnWidth(
+                    min: 210,
+                    ideal: sidebarWidth,
+                    max: 280
+                )
+                .spotlightAnchor("ccSidebar")
+        } detail: {
             ControlCenterSectionHostView()
                 .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -408,8 +412,6 @@ private struct ControlCenterSidebarView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
-    @Environment(\.colorScheme) private var colorScheme
-    let sidebarWidth: CGFloat
 
     private var footerProjection: WayfinderProjectionContent {
         overviewState.wayfinderProjection.content
@@ -466,7 +468,6 @@ private struct ControlCenterSidebarView: View {
                 }
             }
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
 
             Divider()
 
@@ -493,11 +494,7 @@ private struct ControlCenterSidebarView: View {
             .padding(.horizontal, 18)
             .frame(height: 46)
         }
-        .frame(width: sidebarWidth)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(
-            ControlCenterSidebarSurface(colorScheme: colorScheme)
-        )
     }
 
     @ViewBuilder
@@ -579,43 +576,6 @@ private struct ControlCenterSidebarView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-    }
-}
-
-private struct ControlCenterSidebarSurface: View {
-    let colorScheme: ColorScheme
-
-    var body: some View {
-        ZStack {
-            Rectangle().fill(HelmTheme.surfacePanel)
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            ControlCenterSidebarGradientPalette.topColor(for: colorScheme),
-                            ControlCenterSidebarGradientPalette.bottomColor(for: colorScheme)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        }
-    }
-}
-
-private enum ControlCenterSidebarGradientPalette {
-    static func topColor(for colorScheme: ColorScheme) -> Color {
-        if colorScheme == .dark {
-            return HelmTheme.blue900.opacity(0.22)
-        }
-        return HelmTheme.blue700.opacity(0.08)
-    }
-
-    static func bottomColor(for colorScheme: ColorScheme) -> Color {
-        if colorScheme == .dark {
-            return HelmTheme.surfaceBase.opacity(0.15)
-        }
-        return HelmTheme.surfacePanel.opacity(0.96)
     }
 }
 
