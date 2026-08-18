@@ -618,7 +618,11 @@ fn classify_instance(
         canonical_path: candidate.canonical_path,
         alias_paths: candidate.alias_paths,
         is_active: candidate.is_active,
-        version: detection.version.clone(),
+        version: if candidate.is_active {
+            detection.version.clone()
+        } else {
+            None
+        },
         provenance: InstallProvenance::Unknown,
         confidence: 0.0,
         decision_margin: None,
@@ -2986,6 +2990,28 @@ mod tests {
         };
         let mut context = ExternalEvidenceContext::without_external_queries();
         classify_instance(manager, &detection, candidate, &mut context)
+    }
+
+    #[test]
+    fn inactive_install_instance_does_not_inherit_active_detection_version() {
+        let detection = DetectionInfo {
+            installed: true,
+            executable_path: Some(PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.5/bin/mise")),
+            version: Some("2026.8.5".to_string()),
+        };
+        let candidate = CandidateInstance {
+            identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+            identity_value: "/opt/homebrew/Cellar/mise/2026.8.4/bin/mise".to_string(),
+            display_path: PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.4/bin/mise"),
+            canonical_path: Some(PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.4/bin/mise")),
+            alias_paths: vec![PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.4/bin/mise")],
+            is_active: false,
+        };
+        let mut context = ExternalEvidenceContext::without_external_queries();
+
+        let instance = classify_instance(ManagerId::Mise, &detection, candidate, &mut context);
+
+        assert_eq!(instance.version, None);
     }
 
     #[test]

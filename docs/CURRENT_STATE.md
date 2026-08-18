@@ -12,6 +12,8 @@ Current documentation baseline: **0.19.0 is the latest public stable release on 
 
 Implementation baseline: **published stable `0.19.0`**, consolidating the seven published release candidates plus the reviewed semantic-status separation merged in PR `#478`. The release includes the Original Wayfinder Dashboard and native Settings foundation, integrated Plan and update behavior, manager compatibility fixes, stable/RC self-update routing, vendor-authoritative Sparkle app handoff, offline resilience, localized system-language defaults, corrected window and status-item behavior, and consistent Healthy, Running, Updates Ready, Needs Review, Error, and unavailable/deferred presentation. RC7 installed successfully through Sparkle and the post-RC7 semantic-status UI passed owner-assisted visual QA. Stable GitHub/latest, default appcast, and stable CLI metadata now resolve to `v0.19.0`; RC7 remains available on the beta/RC channel. The Environment Brief remains development-gated behind Issue `#388`, true direct third-party Sparkle updating remains deferred to `0.20.x`, and native privileged execution remains on askpass until its separate activation gates pass.
 
+Post-stable maintenance now normalizes retained older Homebrew kegs under the same formula and Homebrew prefix into the active or linked logical manager installation. Separate Homebrew prefixes remain distinct, inactive installation paths no longer inherit the active executable's version, and manager-wide update/uninstall controls are limited to the active installation entry. This is corrective `0.19.x` work; it does not add automatic keg cleanup or change Homebrew ownership.
+
 See:
 - CHANGELOG.md
 

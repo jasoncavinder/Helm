@@ -9,6 +9,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 ### Changed
 - Dashboard Manager Health cards now reserve a consistent two-line title region, keeping one-line and wrapped manager names aligned without truncating every name to one line.
 
+### Fixed
+- Retained older Homebrew kegs no longer appear as separate manageable installations when a current keg for the same formula and Homebrew prefix is active or linked. Inactive install-instance rows no longer offer manager-wide update or uninstall actions, and inactive paths no longer inherit the active executable's version label.
+
 ## [0.19.0] - 2026-08-15
 
 ### Added
