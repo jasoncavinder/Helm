@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ## [Unreleased]
 
+### Fixed
+- Retained older Homebrew kegs no longer appear as separate manageable installations when a current keg for the same formula and Homebrew prefix is active or linked. Inactive install-instance rows no longer offer manager-wide update or uninstall actions, and inactive paths no longer inherit the active executable's version label.
+
 ## [0.19.0] - 2026-08-15
 
 ### Added

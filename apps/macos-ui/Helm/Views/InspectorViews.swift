@@ -2777,7 +2777,7 @@ private struct InspectorManagerDetailView: View {
                                             }
                                         }
 
-                                        if manager.canUpdate && detected && enabled {
+                                        if instance.isActive && manager.canUpdate && detected && enabled {
                                             managerActionButton(
                                                 symbol: "arrow.up.circle",
                                                 tooltip: L10n.Common.update.localized,
@@ -2789,7 +2789,7 @@ private struct InspectorManagerDetailView: View {
                                             }
                                         }
 
-                                        if manager.canUninstall && detected {
+                                        if instance.isActive && manager.canUninstall && detected {
                                             managerActionButton(
                                                 symbol: "trash",
                                                 tooltip: L10n.Common.uninstall.localized,
@@ -3659,6 +3659,8 @@ extension InspectorManagerDetailView {
             executeManagedInstanceFollowUp(followUp)
             return
         }
+
+        guard case .none = followUp else { return }
 
         if let parentManagerId = requiredDependencyManagerId(for: instance),
            let parentStatus = core.managersState.managerStatusesById[parentManagerId],
