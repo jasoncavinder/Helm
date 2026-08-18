@@ -14,6 +14,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ### Fixed
 - Plan filters no longer collapse authority sections that temporarily have no visible updates; prior expanded and intentionally collapsed disclosure choices return when the filter is cleared.
+- Oversized saved Dashboard frames are now reduced to the current display's visible bounds before their origin is restored, while preserving the Dashboard minimum when the display can accommodate it.
 - Retained older Homebrew kegs no longer appear as separate manageable installations when a current keg for the same formula and Homebrew prefix is active or linked. Inactive install-instance rows no longer offer manager-wide update or uninstall actions, and inactive paths no longer inherit the active executable's version label.
 
 ## [0.19.0] - 2026-08-15

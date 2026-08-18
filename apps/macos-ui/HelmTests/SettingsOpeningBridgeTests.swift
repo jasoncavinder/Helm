@@ -104,6 +104,40 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertLessThanOrEqual(constrained.maxY, visibleFrame.maxY)
     }
 
+    func testOversizedRestoredDashboardFrameShrinksToVisibleScreen() {
+        let visibleFrame = NSRect(x: -1440, y: 25, width: 1440, height: 877)
+        let restoredFrame = NSRect(x: 80, y: 120, width: 2000, height: 1200)
+
+        let constrained = HelmPrimaryWindowSizingPolicy.fullyVisibleFrame(
+            restoredFrame,
+            in: visibleFrame,
+            minimumSize: HelmPrimaryWindowSizingPolicy.dashboardMinimumSize
+        )
+
+        XCTAssertEqual(constrained.size, visibleFrame.size)
+        XCTAssertGreaterThanOrEqual(constrained.minX, visibleFrame.minX)
+        XCTAssertGreaterThanOrEqual(constrained.minY, visibleFrame.minY)
+        XCTAssertLessThanOrEqual(constrained.maxX, visibleFrame.maxX)
+        XCTAssertLessThanOrEqual(constrained.maxY, visibleFrame.maxY)
+    }
+
+    func testRestoredDashboardFramePreservesMinimumOnSmallerScreen() {
+        let visibleFrame = NSRect(x: 0, y: 25, width: 900, height: 590)
+        let restoredFrame = NSRect(x: 200, y: 200, width: 1600, height: 1000)
+
+        let constrained = HelmPrimaryWindowSizingPolicy.fullyVisibleFrame(
+            restoredFrame,
+            in: visibleFrame,
+            minimumSize: HelmPrimaryWindowSizingPolicy.dashboardMinimumSize
+        )
+
+        XCTAssertEqual(
+            constrained.size,
+            HelmPrimaryWindowSizingPolicy.dashboardMinimumSize
+        )
+        XCTAssertEqual(constrained.origin, visibleFrame.origin)
+    }
+
     func testClosingDashboardDetachesSettingsPanelFromParentWindow() {
         let dashboardWindow = NSWindow()
         let settingsWindow = NSWindow()

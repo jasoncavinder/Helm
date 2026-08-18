@@ -158,7 +158,9 @@ is limited to lifecycle, transparent title-bar integration, and Space behavior
 needed to remain visible beside external full-screen apps. The declared SwiftUI
 `Settings` scene supplies app-level Settings semantics, while the custom
 application command routes Command-Comma through the same single-instance
-presenter.
+presenter. The declaration remains the SwiftUI command host rather than a second
+direct window route: Helm replaces the standard `.appSettings` command, and all
+app entry points converge through `HelmSettingsOpenRouter` on the cached panel.
 
 ### Sidebar Sections
 

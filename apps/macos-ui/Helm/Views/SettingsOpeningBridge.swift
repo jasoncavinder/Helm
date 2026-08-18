@@ -43,7 +43,7 @@ enum HelmPrimaryWindowSizingPolicy {
             maximum: unconstrainedMaximumSize,
             to: window
         )
-        constrainToVisibleScreen(window)
+        constrainToVisibleScreen(window, minimumSize: dashboardMinimumSize)
         window.standardWindowButton(.zoomButton)?.isEnabled = true
     }
 
@@ -64,7 +64,7 @@ enum HelmPrimaryWindowSizingPolicy {
             maximum: settingsMaximumSize,
             to: window
         )
-        constrainToVisibleScreen(window)
+        constrainToVisibleScreen(window, minimumSize: settingsMinimumSize)
     }
 
     static func dashboardResizeSize(_ proposedSize: NSSize) -> NSSize {
@@ -94,10 +94,19 @@ enum HelmPrimaryWindowSizingPolicy {
         )
     }
 
-    static func fullyVisibleFrame(_ frame: NSRect, in visibleFrame: NSRect) -> NSRect {
-        let maximumX = max(visibleFrame.minX, visibleFrame.maxX - frame.width)
-        let maximumY = max(visibleFrame.minY, visibleFrame.maxY - frame.height)
+    static func fullyVisibleFrame(
+        _ frame: NSRect,
+        in visibleFrame: NSRect,
+        minimumSize: NSSize = .zero
+    ) -> NSRect {
         var constrained = frame
+        constrained.size = NSSize(
+            width: max(minimumSize.width, min(frame.width, visibleFrame.width)),
+            height: max(minimumSize.height, min(frame.height, visibleFrame.height))
+        )
+
+        let maximumX = max(visibleFrame.minX, visibleFrame.maxX - constrained.width)
+        let maximumY = max(visibleFrame.minY, visibleFrame.maxY - constrained.height)
         constrained.origin.x = min(max(frame.minX, visibleFrame.minX), maximumX)
         constrained.origin.y = min(max(frame.minY, visibleFrame.minY), maximumY)
         return constrained
@@ -126,9 +135,16 @@ enum HelmPrimaryWindowSizingPolicy {
         window.setFrame(frame, display: false)
     }
 
-    private static func constrainToVisibleScreen(_ window: NSWindow) {
+    private static func constrainToVisibleScreen(
+        _ window: NSWindow,
+        minimumSize: NSSize
+    ) {
         guard let screen = window.screen ?? NSScreen.main else { return }
-        let constrainedFrame = fullyVisibleFrame(window.frame, in: screen.visibleFrame)
+        let constrainedFrame = fullyVisibleFrame(
+            window.frame,
+            in: screen.visibleFrame,
+            minimumSize: minimumSize
+        )
         guard constrainedFrame != window.frame else { return }
         window.setFrame(constrainedFrame, display: false)
     }
