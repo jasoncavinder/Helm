@@ -2,7 +2,7 @@ enum UpgradeSheetHost: Equatable {
     case controlCenter
 }
 
-struct ReviewedUpgradePlanStep: Equatable, Identifiable {
+struct ReviewedUpgradePlanStep: Codable, Equatable, Identifiable {
     let id: String
     let orderIndex: UInt64
     let managerID: String
@@ -12,12 +12,25 @@ struct ReviewedUpgradePlanStep: Equatable, Identifiable {
     let reasonLabelKey: String
     let reasonLabelArgs: [String: String]
     let status: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id = "stepId"
+        case orderIndex
+        case managerID = "managerId"
+        case authority
+        case action
+        case packageName
+        case reasonLabelKey
+        case reasonLabelArgs
+        case status
+    }
 }
 
 struct ReviewedUpgradePlanRequest: Equatable {
     let managerScopeID: String
     let packageFilter: String
     let selectedSteps: [ReviewedUpgradePlanStep]
+    let selectedBackendSteps: [ReviewedUpgradePlanStep]
     let automaticallyRunStepIDs: Set<String>
     let riskSummary: UpgradePreviewPlanner.RiskSummary
 
@@ -163,6 +176,7 @@ struct UpgradeSheetPresentationState: Equatable {
         managerScopeID: String,
         packageFilter: String,
         selectedSteps: [ReviewedUpgradePlanStep],
+        selectedBackendSteps: [ReviewedUpgradePlanStep],
         automaticallyRunStepIDs: Set<String>,
         riskSummary: UpgradePreviewPlanner.RiskSummary
     ) {
@@ -171,6 +185,7 @@ struct UpgradeSheetPresentationState: Equatable {
             managerScopeID: managerScopeID,
             packageFilter: packageFilter,
             selectedSteps: selectedSteps,
+            selectedBackendSteps: selectedBackendSteps,
             automaticallyRunStepIDs: automaticallyRunStepIDs,
             riskSummary: riskSummary
         )

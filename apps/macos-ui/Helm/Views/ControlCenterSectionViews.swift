@@ -473,12 +473,17 @@ struct RedesignUpdatesSectionView: View {
             automaticallyRunStepIDs: automaticStepIDs,
             executionAvailable: isResearchPlanActive || core.networkOperationsAvailable
         ) else { return false }
+        let sortedSelectedSteps = HelmCore.sortedUpgradePlanStepsForExecution(selectedSteps)
         context.presentReviewedUpgradePlanSheet(
             in: .controlCenter,
             managerScopeID: context.planManagerScopeId,
             packageFilter: context.planPackageFilter,
-            selectedSteps: HelmCore.sortedUpgradePlanStepsForExecution(selectedSteps)
-                .map { $0.reviewedUpgradePlanStep(status: projectedStatus($0)) },
+            selectedSteps: sortedSelectedSteps.map {
+                $0.reviewedUpgradePlanStep(status: projectedStatus($0))
+            },
+            selectedBackendSteps: sortedSelectedSteps
+                .filter(HelmCore.isBackendManagedUpgradePlanStep)
+                .map { $0.reviewedUpgradePlanStep(status: $0.status) },
             automaticallyRunStepIDs: automaticStepIDs,
             riskSummary: riskSummary(for: selectedSteps)
         )
@@ -1304,7 +1309,8 @@ struct ReviewedUpgradeConfirmationSheet: View {
                     core.runUpgradePlanScoped(
                         managerScopeId: request.managerScopeID,
                         packageFilter: request.packageFilter,
-                        selectedStepIds: request.selectedStepIDs
+                        selectedStepIds: request.selectedStepIDs,
+                        reviewedBackendSteps: request.selectedBackendSteps
                     )
                     context.dismissUpgradeSheet()
                     presentationMode.wrappedValue.dismiss()

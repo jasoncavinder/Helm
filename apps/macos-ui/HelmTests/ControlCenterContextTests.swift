@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 final class ControlCenterContextTests: XCTestCase {
@@ -8,6 +9,7 @@ final class ControlCenterContextTests: XCTestCase {
             planStep(id: "update-mas-pages", orderIndex: 2, managerID: "mas"),
         ]
         let automaticStepIDs: Set<String> = ["update-mise-node", "update-mas-pages"]
+        let backendSteps = selectedSteps
         let riskSummary = UpgradePreviewPlanner.RiskSummary(
             requiresElevatedPrivileges: true,
             mayRequireReboot: false
@@ -18,6 +20,7 @@ final class ControlCenterContextTests: XCTestCase {
             managerScopeID: "mise",
             packageFilter: "node",
             selectedSteps: selectedSteps,
+            selectedBackendSteps: backendSteps,
             automaticallyRunStepIDs: automaticStepIDs,
             riskSummary: riskSummary
         )
@@ -30,6 +33,7 @@ final class ControlCenterContextTests: XCTestCase {
         XCTAssertEqual(request.managerScopeID, "mise")
         XCTAssertEqual(request.packageFilter, "node")
         XCTAssertEqual(request.selectedSteps, selectedSteps)
+        XCTAssertEqual(request.selectedBackendSteps, backendSteps)
         XCTAssertEqual(request.selectedStepIDs, Set(selectedSteps.map(\.id)))
         XCTAssertEqual(request.automaticallyRunStepIDs, automaticStepIDs)
         XCTAssertEqual(request.riskSummary, riskSummary)
@@ -178,6 +182,19 @@ final class ControlCenterContextTests: XCTestCase {
         )
     }
 
+    func testReviewedBackendStepEncodesWithCoreFFIKeys() throws {
+        let step = planStep(id: "update-mise-node", orderIndex: 1, managerID: "mise")
+
+        let data = try JSONEncoder().encode([step])
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let encodedStep = try XCTUnwrap(payload.first)
+
+        XCTAssertEqual(encodedStep["stepId"] as? String, step.id)
+        XCTAssertEqual(encodedStep["managerId"] as? String, step.managerID)
+        XCTAssertNil(encodedStep["id"])
+        XCTAssertNil(encodedStep["managerID"])
+    }
+
     func testReviewedPlanValidationAcceptsAnUnchangedSnapshot() {
         let request = reviewedRequest()
 
@@ -282,13 +299,15 @@ final class ControlCenterContextTests: XCTestCase {
     }
 
     private func reviewedRequest() -> ReviewedUpgradePlanRequest {
-        ReviewedUpgradePlanRequest(
+        let selectedSteps = [
+            planStep(id: "update-mise-node", orderIndex: 1, managerID: "mise"),
+            planStep(id: "update-mas-pages", orderIndex: 2, managerID: "mas"),
+        ]
+        return ReviewedUpgradePlanRequest(
             managerScopeID: "",
             packageFilter: "",
-            selectedSteps: [
-                planStep(id: "update-mise-node", orderIndex: 1, managerID: "mise"),
-                planStep(id: "update-mas-pages", orderIndex: 2, managerID: "mas"),
-            ],
+            selectedSteps: selectedSteps,
+            selectedBackendSteps: selectedSteps,
             automaticallyRunStepIDs: ["update-mise-node", "update-mas-pages"],
             riskSummary: .init(
                 requiresElevatedPrivileges: true,

@@ -3537,6 +3537,7 @@ struct FfiUpgradePlanStep {
 }
 
 const MAS_ALL_PACKAGES_TARGET: &str = "__all__";
+const HOMEBREW_CLEANUP_REASON_LABEL_KEY: &str = "service.task.label.upgrade.homebrew_cleanup";
 
 fn manager_authority_key(id: ManagerId) -> &'static str {
     match helm_core::registry::manager(id).map(|descriptor| descriptor.authority) {
@@ -3557,7 +3558,7 @@ fn upgrade_reason_label_for(
         ManagerId::HomebrewFormula => {
             if cleanup_old_kegs {
                 (
-                    "service.task.label.upgrade.homebrew_cleanup",
+                    HOMEBREW_CLEANUP_REASON_LABEL_KEY,
                     vec![("package", package_name.to_string())],
                 )
             } else {
@@ -5152,12 +5153,12 @@ fn run_updates_workflow(
 
 fn run_external_updates_workflow_steps(
     runtime: &AdapterRuntime,
-    store: &SqliteStore,
+    _store: &SqliteStore,
     rt_handle: &tokio::runtime::Handle,
     steps: Vec<FfiUpgradePlanStep>,
 ) -> Result<(), String> {
     for step in steps {
-        let (manager, request, _) = upgrade_workflow_request(store, &step)
+        let (manager, request, _) = upgrade_workflow_request(&step)
             .ok_or_else(|| format!("invalid upgrade workflow step '{}'", step.step_id))?;
         // The external coordinator retains the legacy synchronous transport, so execute its
         // authority-ordered plan sequentially and wait for each task before the next step.
@@ -7602,32 +7603,41 @@ fn preview_upgrade_workflow_steps(
     ))
 }
 
-fn retain_selected_upgrade_workflow_steps(
+fn retain_reviewed_upgrade_workflow_steps(
     steps: &mut Vec<FfiUpgradePlanStep>,
-    selected_step_ids: &std::collections::HashSet<String>,
+    reviewed_steps: &[FfiUpgradePlanStep],
 ) -> Result<(), &'static str> {
-    let available_step_ids = steps
+    if reviewed_steps.is_empty() {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+
+    let reviewed_step_ids = reviewed_steps
         .iter()
         .map(|step| step.step_id.as_str())
         .collect::<std::collections::HashSet<_>>();
-    if selected_step_ids.is_empty()
-        || !selected_step_ids
-            .iter()
-            .all(|step_id| available_step_ids.contains(step_id.as_str()))
-    {
+    if reviewed_step_ids.len() != reviewed_steps.len() {
         return Err(SERVICE_ERROR_INVALID_INPUT);
     }
-    steps.retain(|step| selected_step_ids.contains(&step.step_id));
+
+    let matched_steps = steps
+        .iter()
+        .filter(|step| reviewed_step_ids.contains(step.step_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if matched_steps != reviewed_steps {
+        return Err(SERVICE_ERROR_INVALID_INPUT);
+    }
+
+    *steps = matched_steps;
     Ok(())
 }
 
 fn upgrade_workflow_request(
-    store: &SqliteStore,
     step: &FfiUpgradePlanStep,
 ) -> Option<(ManagerId, AdapterRequest, bool)> {
     let manager = step.manager_id.parse::<ManagerId>().ok()?;
     let cleanup_old_kegs = manager == ManagerId::HomebrewFormula
-        && effective_homebrew_keg_policy(store, &step.package_name) == HomebrewKegPolicy::Cleanup;
+        && step.reason_label_key == HOMEBREW_CLEANUP_REASON_LABEL_KEY;
     let package_name = if manager == ManagerId::HomebrewFormula {
         encode_homebrew_upgrade_target(&step.package_name, cleanup_old_kegs)
     } else {
@@ -7649,11 +7659,10 @@ fn upgrade_workflow_request(
 
 async fn submit_upgrade_workflow_step(
     runtime: &AdapterRuntime,
-    store: &SqliteStore,
     step: &FfiUpgradePlanStep,
     control: &UpgradeWorkflowControl,
 ) -> Option<helm_core::models::TaskId> {
-    let (manager, request, cleanup_old_kegs) = upgrade_workflow_request(store, step)?;
+    let (manager, request, cleanup_old_kegs) = upgrade_workflow_request(step)?;
     match runtime.submit(manager, request).await {
         Ok(task_id) => {
             let (label_key, label_args) =
@@ -7680,7 +7689,7 @@ fn start_scoped_upgrade_workflow(
     workflow_id: String,
     manager_scope_id: String,
     package_filter: String,
-    selected_step_ids: Option<std::collections::HashSet<String>>,
+    reviewed_steps: Option<Vec<FfiUpgradePlanStep>>,
 ) -> Result<(), &'static str> {
     if manager_scope_id != ALL_MANAGERS_UPGRADE_SCOPE
         && manager_scope_id.parse::<ManagerId>().is_err()
@@ -7694,17 +7703,13 @@ fn start_scoped_upgrade_workflow(
         &manager_scope_id,
         &package_filter,
     )?;
-    if let Some(selected_step_ids) = selected_step_ids {
-        retain_selected_upgrade_workflow_steps(&mut steps, &selected_step_ids)?;
+    if let Some(reviewed_steps) = reviewed_steps {
+        retain_reviewed_upgrade_workflow_steps(&mut steps, &reviewed_steps)?;
     }
-    let (store, runtime, rt_handle) = {
+    let (runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = guard.as_ref().ok_or(SERVICE_ERROR_INTERNAL)?;
-        (
-            state.store.clone(),
-            state.runtime.clone(),
-            state.rt_handle.clone(),
-        )
+        (state.runtime.clone(), state.rt_handle.clone())
     };
     let Some(control) = register_upgrade_workflow(workflow_id.clone())? else {
         return Ok(());
@@ -7724,8 +7729,7 @@ fn start_scoped_upgrade_workflow(
                 if control.is_cancelled() {
                     break;
                 }
-                if let Some(task_id) =
-                    submit_upgrade_workflow_step(&runtime, &store, step, &control).await
+                if let Some(task_id) = submit_upgrade_workflow_step(&runtime, step, &control).await
                 {
                     task_ids.push(task_id);
                 }
@@ -7821,10 +7825,10 @@ pub unsafe extern "C" fn helm_start_scoped_upgrade_workflow_with_id(
     .is_ok()
 }
 
-/// Start a scoped bulk upgrade workflow containing only explicitly selected preview steps.
+/// Start a scoped bulk upgrade workflow containing only exactly reviewed preview steps.
 ///
-/// The selected identifiers must be a non-empty JSON string array and every identifier must
-/// still exist in the current scoped preview. Stale or unknown identifiers fail closed.
+/// The reviewed steps must be a non-empty JSON array whose full values and execution order match
+/// the current scoped preview. Missing, reordered, or semantically changed steps fail closed.
 ///
 /// # Safety
 ///
@@ -7836,7 +7840,7 @@ pub unsafe extern "C" fn helm_start_selected_upgrade_workflow_with_id(
     allow_os_updates: bool,
     manager_scope_id: *const c_char,
     package_filter: *const c_char,
-    selected_step_ids_json: *const c_char,
+    reviewed_steps_json: *const c_char,
 ) -> bool {
     clear_last_error_key();
     let workflow_id = match unsafe { parse_required_cstr_arg(workflow_id) } {
@@ -7851,14 +7855,13 @@ pub unsafe extern "C" fn helm_start_selected_upgrade_workflow_with_id(
         Ok(value) => value,
         Err(error) => return return_error_bool(error),
     };
-    let selected_step_ids_json = match unsafe { parse_required_cstr_arg(selected_step_ids_json) } {
+    let reviewed_steps_json = match unsafe { parse_required_cstr_arg(reviewed_steps_json) } {
         Ok(value) => value,
         Err(error) => return return_error_bool(error),
     };
-    let selected_step_ids = match serde_json::from_str::<Vec<String>>(&selected_step_ids_json) {
-        Ok(step_ids) => step_ids
-            .into_iter()
-            .collect::<std::collections::HashSet<_>>(),
+    let reviewed_steps = match serde_json::from_str::<Vec<FfiUpgradePlanStep>>(&reviewed_steps_json)
+    {
+        Ok(steps) => steps,
         Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
 
@@ -7868,7 +7871,7 @@ pub unsafe extern "C" fn helm_start_selected_upgrade_workflow_with_id(
         workflow_id,
         manager_scope_id,
         package_filter,
-        Some(selected_step_ids),
+        Some(reviewed_steps),
     )
     .is_ok()
 }
@@ -11564,20 +11567,21 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 mod tests {
     use super::{
         ALL_MANAGERS_UPGRADE_SCOPE, CoordinatorRequest, CoordinatorWorkflowRequest,
-        FfiUpgradePlanStep, SERVICE_ERROR_INVALID_INPUT, SERVICE_ERROR_UNSUPPORTED_CAPABILITY,
-        UpgradeWorkflowControl, build_manager_statuses, build_manager_uninstall_plan,
-        build_manager_uninstall_preview, build_visible_tasks, collect_upgrade_all_targets,
-        homebrew_probe_candidates, manager_allows_individual_package_install,
-        manager_allows_individual_package_uninstall, manager_authority_key,
-        manager_participates_in_catalog_sync, manager_participates_in_package_search,
-        manager_uninstall_label_for_route, parse_homebrew_config_version,
-        parse_package_filter_cstr_arg, prune_expired_upgrade_workflow_reservations,
-        push_upgrade_plan_step, repair_confirmation_satisfied,
-        resolve_homebrew_manager_update_strategy, resolve_rustup_uninstall_strategy,
-        retain_selected_upgrade_workflow_steps, run_external_updates_workflow_steps,
-        rustup_probe_candidates, scoped_upgrade_workflow_steps, search_label_args,
-        search_label_key_for_query, search_task_type_for_query, upgrade_plan_step_id,
-        upgrade_reason_label_for, upgrade_task_label_for,
+        FfiUpgradePlanStep, HOMEBREW_CLEANUP_REASON_LABEL_KEY, SERVICE_ERROR_INVALID_INPUT,
+        SERVICE_ERROR_UNSUPPORTED_CAPABILITY, UpgradeWorkflowControl, build_manager_statuses,
+        build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
+        collect_upgrade_all_targets, homebrew_probe_candidates,
+        manager_allows_individual_package_install, manager_allows_individual_package_uninstall,
+        manager_authority_key, manager_participates_in_catalog_sync,
+        manager_participates_in_package_search, manager_uninstall_label_for_route,
+        parse_homebrew_config_version, parse_package_filter_cstr_arg,
+        prune_expired_upgrade_workflow_reservations, push_upgrade_plan_step,
+        repair_confirmation_satisfied, resolve_homebrew_manager_update_strategy,
+        resolve_rustup_uninstall_strategy, retain_reviewed_upgrade_workflow_steps,
+        run_external_updates_workflow_steps, rustup_probe_candidates,
+        scoped_upgrade_workflow_steps, search_label_args, search_label_key_for_query,
+        search_task_type_for_query, upgrade_plan_step_id, upgrade_reason_label_for,
+        upgrade_task_label_for, upgrade_workflow_request,
     };
     use helm_core::adapters::{
         AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, UninstallRequest,
@@ -13018,7 +13022,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_upgrade_workflow_keeps_only_exact_preview_steps() {
+    fn selected_upgrade_workflow_keeps_only_exact_reviewed_preview_steps() {
         let mut steps = Vec::new();
         let mut order_index = 0;
         push_upgrade_plan_step(
@@ -13036,14 +13040,14 @@ mod tests {
             &mut order_index,
         );
 
-        let selected = ["mas:Pages".to_string()].into_iter().collect();
-        assert!(retain_selected_upgrade_workflow_steps(&mut steps, &selected).is_ok());
+        let reviewed = vec![steps[0].clone()];
+        assert!(retain_reviewed_upgrade_workflow_steps(&mut steps, &reviewed).is_ok());
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].step_id, "mas:Pages");
     }
 
     #[test]
-    fn selected_upgrade_workflow_rejects_empty_or_stale_selection() {
+    fn selected_upgrade_workflow_rejects_empty_or_stale_review() {
         let mut steps = Vec::new();
         let mut order_index = 0;
         push_upgrade_plan_step(
@@ -13055,13 +13059,92 @@ mod tests {
         );
 
         assert_eq!(
-            retain_selected_upgrade_workflow_steps(&mut steps.clone(), &Default::default()),
+            retain_reviewed_upgrade_workflow_steps(&mut steps.clone(), &[]),
             Err(SERVICE_ERROR_INVALID_INPUT)
         );
-        let stale = ["npm:eslint".to_string()].into_iter().collect();
+        let mut stale = steps[0].clone();
+        stale.step_id = "npm:eslint".to_string();
         assert_eq!(
-            retain_selected_upgrade_workflow_steps(&mut steps, &stale),
+            retain_reviewed_upgrade_workflow_steps(&mut steps, &[stale]),
             Err(SERVICE_ERROR_INVALID_INPUT)
+        );
+    }
+
+    #[test]
+    fn selected_upgrade_workflow_rejects_same_id_semantic_drift() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::HomebrewFormula,
+            "openssl@3".to_string(),
+            false,
+            &mut order_index,
+        );
+        let mut changed = steps[0].clone();
+        changed.reason_label_key = HOMEBREW_CLEANUP_REASON_LABEL_KEY.to_string();
+
+        assert_eq!(
+            retain_reviewed_upgrade_workflow_steps(&mut steps, &[changed]),
+            Err(SERVICE_ERROR_INVALID_INPUT)
+        );
+    }
+
+    #[test]
+    fn reviewed_homebrew_keep_step_builds_non_cleanup_task() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::HomebrewFormula,
+            "openssl@3".to_string(),
+            false,
+            &mut order_index,
+        );
+
+        let (manager, request, cleanup_old_kegs) =
+            upgrade_workflow_request(&steps[0]).expect("reviewed step should be executable");
+
+        assert_eq!(manager, ManagerId::HomebrewFormula);
+        assert!(!cleanup_old_kegs);
+        let AdapterRequest::Upgrade(request) = request else {
+            panic!("reviewed step should build an upgrade request");
+        };
+        assert_eq!(
+            request
+                .package
+                .expect("upgrade should target a package")
+                .name,
+            "openssl@3"
+        );
+    }
+
+    #[test]
+    fn reviewed_homebrew_cleanup_step_builds_cleanup_task() {
+        let mut steps = Vec::new();
+        let mut order_index = 0;
+        push_upgrade_plan_step(
+            &mut steps,
+            ManagerId::HomebrewFormula,
+            "openssl@3".to_string(),
+            true,
+            &mut order_index,
+        );
+
+        let (manager, request, cleanup_old_kegs) =
+            upgrade_workflow_request(&steps[0]).expect("reviewed step should be executable");
+
+        assert_eq!(manager, ManagerId::HomebrewFormula);
+        assert!(cleanup_old_kegs);
+        let AdapterRequest::Upgrade(request) = request else {
+            panic!("reviewed step should build an upgrade request");
+        };
+        assert_eq!(
+            request
+                .package
+                .expect("upgrade should target a package")
+                .name,
+            "openssl@3@@helm.cleanup"
         );
     }
 

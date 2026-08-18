@@ -63,7 +63,7 @@ import Foundation
         allowOsUpdates: Bool,
         managerScopeId: String,
         packageFilter: String,
-        selectedStepIdsJSON: String,
+        reviewedStepsJSON: String,
         withReply reply: @escaping (Bool) -> Void
     )
     func cancelUpgradeWorkflow(workflowId: String, withReply reply: @escaping (Bool) -> Void)

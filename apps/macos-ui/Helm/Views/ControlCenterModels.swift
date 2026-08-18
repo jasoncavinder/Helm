@@ -236,6 +236,7 @@ final class ControlCenterContext: ObservableObject {
         managerScopeID: String,
         packageFilter: String,
         selectedSteps: [ReviewedUpgradePlanStep],
+        selectedBackendSteps: [ReviewedUpgradePlanStep],
         automaticallyRunStepIDs: Set<String>,
         riskSummary: UpgradePreviewPlanner.RiskSummary
     ) {
@@ -244,6 +245,7 @@ final class ControlCenterContext: ObservableObject {
             managerScopeID: managerScopeID,
             packageFilter: packageFilter,
             selectedSteps: selectedSteps,
+            selectedBackendSteps: selectedBackendSteps,
             automaticallyRunStepIDs: automaticallyRunStepIDs,
             riskSummary: riskSummary
         )

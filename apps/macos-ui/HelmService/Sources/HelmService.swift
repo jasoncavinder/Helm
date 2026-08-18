@@ -563,20 +563,20 @@ class HelmService: NSObject, HelmServiceProtocol {
         allowOsUpdates: Bool,
         managerScopeId: String,
         packageFilter: String,
-        selectedStepIdsJSON: String,
+        reviewedStepsJSON: String,
         withReply reply: @escaping (Bool) -> Void
     ) {
         let result = workflowId.withCString { workflow in
             managerScopeId.withCString { scope in
                 packageFilter.withCString { filter in
-                    selectedStepIdsJSON.withCString { selectedStepIds in
+                    reviewedStepsJSON.withCString { reviewedSteps in
                         helm_start_selected_upgrade_workflow_with_id(
                             workflow,
                             includePinned,
                             allowOsUpdates,
                             scope,
                             filter,
-                            selectedStepIds
+                            reviewedSteps
                         )
                     }
                 }

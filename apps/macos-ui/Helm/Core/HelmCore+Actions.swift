@@ -228,7 +228,8 @@ extension HelmCore {
     func runUpgradePlanScoped(
         managerScopeId: String,
         packageFilter: String,
-        selectedStepIds: Set<String>? = nil
+        selectedStepIds: Set<String>? = nil,
+        reviewedBackendSteps: [ReviewedUpgradePlanStep]? = nil
     ) {
         guard !WholeWorkflowResearchDatasetProvider.isSelected() else { return }
         guard networkOperationsAvailable else { return }
@@ -248,6 +249,20 @@ extension HelmCore {
             && AppUpdateCoordinator.shared.includeHelmInUpgradeAll
         guard !backendSteps.isEmpty || includeHelmSelfUpdate else { return }
 
+        if selectedStepIds != nil {
+            let currentBackendSteps = Self.sortedUpgradePlanStepsForExecution(backendSteps)
+                .map { $0.reviewedUpgradePlanStep(status: $0.status) }
+            guard let reviewedBackendSteps,
+                  currentBackendSteps == reviewedBackendSteps else {
+                recordLastError(
+                    source: "core.actions",
+                    action: "runUpgradePlanScoped.reviewed_plan_changed",
+                    taskType: "upgrade"
+                )
+                return
+            }
+        }
+
         if backendSteps.isEmpty, includeHelmSelfUpdate {
             AppUpdateCoordinator.shared.checkForUpdates()
             return
@@ -262,7 +277,7 @@ extension HelmCore {
             action: "runUpgradePlanScoped",
             includeHelmSelfUpdate: includeHelmSelfUpdate,
             externalSparkleStepIds: externalSparkleStepIds,
-            selectedBackendStepIds: selectedStepIds == nil ? nil : backendSteps.map(\.id)
+            reviewedBackendSteps: selectedStepIds == nil ? nil : reviewedBackendSteps
         )
     }
 
@@ -275,7 +290,7 @@ extension HelmCore {
         action: String,
         includeHelmSelfUpdate: Bool = false,
         externalSparkleStepIds: [String] = [],
-        selectedBackendStepIds: [String]? = nil
+        reviewedBackendSteps: [ReviewedUpgradePlanStep]? = nil
     ) {
         guard networkOperationsAvailable else { return }
         guard scopedUpgradeWorkflowId == nil,
@@ -290,16 +305,17 @@ extension HelmCore {
             return
         }
 
-        let selectedStepIdsJSON: String?
-        if let selectedBackendStepIds {
-            guard let data = try? JSONEncoder().encode(selectedBackendStepIds.sorted()),
+        let reviewedStepsJSON: String?
+        if let reviewedBackendSteps {
+            guard !reviewedBackendSteps.isEmpty,
+                  let data = try? JSONEncoder().encode(reviewedBackendSteps),
                   let encoded = String(data: data, encoding: .utf8) else {
-                recordLastError(source: source, action: "\(action).encode_selection", taskType: "upgrade")
+                recordLastError(source: source, action: "\(action).encode_reviewed_plan", taskType: "upgrade")
                 return
             }
-            selectedStepIdsJSON = encoded
+            reviewedStepsJSON = encoded
         } else {
-            selectedStepIdsJSON = nil
+            reviewedStepsJSON = nil
         }
 
         let workflowId = "upgrade-workflow-\(UUID().uuidString.lowercased())"
@@ -318,14 +334,14 @@ extension HelmCore {
             action: "\(action).start",
             taskType: "upgrade",
             operation: { completion in
-                if let selectedStepIdsJSON {
+                if let reviewedStepsJSON {
                     service.startSelectedUpgradeWorkflowWithId(
                         workflowId: workflowId,
                         includePinned: includePinned,
                         allowOsUpdates: allowOsUpdates,
                         managerScopeId: managerScopeId,
                         packageFilter: packageFilter,
-                        selectedStepIdsJSON: selectedStepIdsJSON
+                        reviewedStepsJSON: reviewedStepsJSON
                     ) { completion($0) }
                 } else {
                     service.startScopedUpgradeWorkflowWithId(
