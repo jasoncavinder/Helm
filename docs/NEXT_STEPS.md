@@ -11,17 +11,16 @@ It is intentionally tactical.
 Helm is in:
 
 ```
-v0.19.1 maintenance release preparation and v0.20.x planning
+v0.20.x core workflow implementation and v0.19.1 stable monitoring
 ```
 
 Focus:
-- preserve the completed `v0.19.0` stable publication record: tag source `e3f148fdbaf87c78e2502c6a17ff5e13ae2d4147`, canary/auth runs `31937189914` and `31937193834`, signed/notarized GUI and direct CLI workflows `31937869680` and `31937869677`, publication PRs `#482` and `#483`, and green release/appcast/CLI verification on converged `main` revision `1e8c4f55fb7f30995231fa329315b4579622e1a6`
-- preserve stable/RC coexistence: stable GitHub/latest, default appcast, and `cli/latest.json` resolve to `v0.19.0`, while the published RC7 prerelease, beta appcast item, and `latest-rc.json` remain isolated on `v0.19.0-rc.7`
+- preserve the completed `v0.19.1` stable publication record: tag source `0319641b29b26c89d7c8a7e224e2091306e95fd2`, canary/auth runs `32136717070` and `32138158953`, signed/notarized GUI and direct CLI workflows `32138347077` and `32138347136`, publication PRs `#504` and `#505`, and green workflow-specific/release/appcast/CLI verification on converged `main` revision `ec9def28c3ef965574e6fb9afe93c0ec499901cc`
+- preserve stable/RC coexistence: stable GitHub/latest, default appcast, and `cli/latest.json` resolve to `v0.19.1`, while the published RC7 prerelease, beta appcast item, and `latest-rc.json` remain isolated on `v0.19.0-rc.7`
 - monitor the stable installation and update path for release-critical regressions; reserve `0.19.x` for necessary maintenance and route planned workflow redesign into `0.20.x`
-- complete the narrowly scoped `0.19.1` release sequence for the retained-Homebrew-keg correction from PR `#496`: preserve focused regression evidence, integrate the prepared candidate through protected `main`, repeat clean-`main` release gates, and advance only stable release metadata after explicit publication approval
-- begin the existing `0.20.x` Core Workflow & Information Architecture Redesign with the owner-moderated research checkpoint, unified Wayfinder popover, continuous plan-to-recovery workflow, and separately reviewed direct third-party Sparkle updater boundary
+- continue the existing `0.20.x` Core Workflow & Information Architecture Redesign with the owner-moderated research checkpoint, unified Wayfinder popover, continuous plan-to-recovery workflow, and separately reviewed direct third-party Sparkle updater boundary
 - preserve the accepted RC7 candidate evidence in `docs/validation/v0.19.0-rc.7-readiness.md`: offline launch and manual refresh avoid failed-task fan-out, cached Library/Plan data and local actions remain usable, network work defers truthfully, reconnection resumes exactly one refresh plus one deferred Helm information check, and the full repository quality gate passed from merged `dev` revision `16127dfff2050a2ba2d8b0b3502e110ab4460080`
-- preserve published stable `v0.19.0` and prerelease `v0.19.0-rc.7`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
+- preserve published stable `v0.19.1` and prerelease `v0.19.0-rc.7`; stable GitHub/latest, appcast, and CLI pointers must remain isolated from the beta/RC channel
 - preserve the completed `v0.19.0-rc.7` publication record: tag source `a29ecb3924e0f029553ad9209c6bc431852a1ccd`, canary/auth runs `31922485485` and `31922485489`, signed/notarized GUI and direct CLI workflows `31923270915` and `31923270917`, publication PRs `#475` and `#476`, and green release/appcast/CLI verification on converged `main` revision `feca8ac709d2969115ce5ef1e8026214511ac902`
 - preserve owner evidence that Sparkle detected, installed, and relaunched RC7 and that the post-RC7 semantic-status UI was visually accepted; do not infer unperformed preference or native-helper checks from that evidence
 - preserve the completed post-RC5 RC6 candidate evidence in `docs/validation/v0.19.0-rc.6-readiness.md`: the full repository and updater-specific gates passed from merged `dev`, the corrected Settings window behavior passed owner QA, and a real Arc candidate confirmed the truthful vendor-owned `Open App to Update` flow through completion and refresh
@@ -425,8 +424,9 @@ Current checkpoint:
     - audit-remediation follow-up delivered: stable CLI update metadata now points to published `v0.17.2` CLI release assets with real checksums (no placeholder zeros), and auto-check last-checked timestamps now update only after eligible direct self-managed check attempts instead of policy-gated skips
     - audit-remediation follow-up delivered: distribution profile contract is now centralized in `docs/contracts/distribution-profiles.json` and consumed by shared build orchestration (`scripts/build.sh`, `scripts/release/build_unsigned_variant.sh`, matrix-based `release-all-variants.yml` auxiliary jobs); Swift update-authority mapping now has one source (`AppUpdateConfiguration`), targeted updater policy tests pass on macOS, and GUI checksum-publication symmetry is explicitly documented as deferred while Sparkle remains canonical GUI integrity authority
     - trust-chain future work is now explicitly tracked: detached signatures + signing-key rotation for CLI update artifacts (`docs/roadmap/CLI_DISTRIBUTION_CI_MILESTONES.md`, milestone M5)
-- latest stable release on `main`: `v0.19.0`; GitHub `releases/latest`, the default appcast item, and stable CLI metadata resolve to the published stable release
+- latest stable release on `main`: `v0.19.1`; GitHub `releases/latest`, the default appcast item, and stable CLI metadata resolve to the published stable release
 - latest published prerelease on `main`: `v0.19.0-rc.7`; its GitHub prerelease, beta appcast item, and RC CLI metadata remain isolated from the stable channel
+- `v0.19.1` was published from tagged `main` revision `0319641b29b26c89d7c8a7e224e2091306e95fd2`; publication PRs `#504` and `#505` merged stable CLI metadata and the default appcast/release notes into converged `main` revision `ec9def28c3ef965574e6fb9afe93c0ec499901cc`
 - `v0.19.0` was published from tagged `main` revision `e3f148fdbaf87c78e2502c6a17ff5e13ae2d4147`; publication PRs `#482` and `#483` merged stable CLI metadata and the default appcast/release notes into converged `main` revision `1e8c4f55fb7f30995231fa329315b4579622e1a6`
 - `v0.19.0-rc.7` was published from tagged `main` revision `a29ecb3924e0f029553ad9209c6bc431852a1ccd`; publication PRs `#475` and `#476` merged the RC CLI metadata and beta appcast/release notes into converged `main` revision `feca8ac709d2969115ce5ef1e8026214511ac902`
 - `v0.19.0-rc.6` was published from tagged `main` revision `968d0e400acc1a02a7e0a9a3d1a55917325189e8`; publication PRs `#458` and `#459` merged the RC CLI metadata and beta appcast/release notes into `main`
@@ -434,8 +434,8 @@ Current checkpoint:
 - RC6 candidate readiness completed on 2026-08-14 from merged `dev` revision `d8a029a5e3bdc65c56d71056be2f192b3d7cbbc1`; the quality gate, updater checklist, corrected Settings full-screen behavior, and real Arc vendor-update handoff all passed
 - RC7 candidate readiness completed on 2026-08-15 from merged `dev` revision `16127dfff2050a2ba2d8b0b3502e110ab4460080`; focused connectivity QA, the full quality gate, 153 arm64 macOS tests, release/appcast contracts, and non-mutating release checks passed
 - owner installation validation confirms successive signed Developer ID updates from `0.19.0-rc.1` to RC2 and from RC2 to RC3 through Sparkle; broader participant feedback should not be inferred from these owner installation checks
-- post-publication release verification is green for the `v0.19.0` stable GUI appcast, stable CLI metadata, GitHub release/latest state, and stable/RC coexistence contract
-- validation gates are green through published stable `v0.19.0`: candidate quality and 154 arm64 macOS tests, locale integrity/length audits, release contracts, clean-`main` rehearsal/preflight/canary, signed/notarized GUI and direct CLI publication, and all three post-publication verification paths passed
+- post-publication release verification is green for the `v0.19.1` stable GUI appcast, stable CLI metadata, GitHub release/latest state, and stable/RC coexistence contract
+- validation gates are green through published stable `v0.19.1`: candidate quality and 154 arm64 macOS tests, locale integrity/length audits, release contracts, clean-`main` rehearsal/preflight/canary, signed/notarized GUI and direct CLI publication, workflow-specific verification-only checks, and all three post-publication verification paths passed
 - `v0.15.0` released on `main` (tag `v0.15.0`)
 - `v0.14.0` released (merged to `main`, tagged, manager rollout + docs/version alignment complete)
 - `v0.14.1` released (merged to `main` via `#65`, tagged `v0.14.1`)
@@ -452,7 +452,7 @@ Current checkpoint:
 - `v0.14.0` distribution/licensing architecture planning docs aligned (future-state, no implementation changes)
 
 Next release targets:
-- `v0.19.x` — Stable maintenance only as required after `v0.19.0`
+- `v0.19.x` — Stable maintenance only as required after `v0.19.1`
 - `v0.20.x` — Core workflow & information architecture redesign
 - `v0.21.x` — Accessibility, system integration & resilience
 - `v0.22.x` — Fit, finish & pre-1.0 hardening

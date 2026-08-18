@@ -63,7 +63,7 @@ This checklist is required before creating a release tag on `main`.
   - `CLI Update Metadata Drift Guard`
 - [x] Review `TMP_RELEASE_FRICTION`; promote recurring friction items into durable docs (`docs/DECISIONS.md`, `docs/operations/CLI_RELEASE_AND_CI.md`) and keep temporary notes uncommitted.
 
-## v0.19.1 (Retained Homebrew Keg Maintenance, Prepared)
+## v0.19.1 (Retained Homebrew Keg Maintenance, Published)
 
 ### Candidate Scope
 
@@ -76,23 +76,30 @@ This checklist is required before creating a release tag on `main`.
 
 ### Required Validation
 
-- [x] Complete `docs/validation/v0.19.1-readiness.md` with the candidate scope, focused regression requirements, and remaining release gates.
+- [x] Complete `docs/validation/v0.19.1-readiness.md` with the candidate scope, focused regression requirements, and release gates.
 - [x] Focused retained-keg and install-instance regression tests pass on the prepared `0.19.1` source.
 - [x] Full repository quality gate, documentation sync, locale integrity/parity, all 154 arm64 macOS tests, and release contracts pass on the prepared source revision.
 - [x] The standalone SQLite migration compatibility gate passes on the prepared source revision.
 - [x] Non-mutating Sparkle/appcast checklist, release rehearsal, and release preflight pass for `v0.19.1`.
-- [ ] Merge the release-preparation PR through protected `main`, then repeat rehearsal and preflight from a clean worktree whose `HEAD` exactly equals freshly fetched `origin/main`.
-- [ ] Release macOS Canary passes for the final `main` revision; with explicit maintainer approval, dispatch and pass Release Publish Auth Check with `write_probe=true` for that revision.
+- [x] Merge the release-preparation PR through protected `main`, then repeat rehearsal and preflight from a clean worktree whose `HEAD` exactly equals freshly fetched `origin/main`.
+- [x] Release macOS Canary passes for the final `main` revision; with explicit maintainer approval, dispatch and pass Release Publish Auth Check with `write_probe=true` for that revision.
 - [x] No dependency or SQLite migration changed, and no `v0.20.x` work is included.
 
 ### Publication
 
-- [ ] Obtain explicit maintainer confirmation after final gates and immediately before creating or pushing `v0.19.1` or publishing artifacts.
-- [ ] Create annotated tag `v0.19.1` from exact `origin/main` and publish a non-draft, non-prerelease GitHub release with latest behavior.
-- [ ] Publish signed/notarized universal GUI and direct CLI artifacts.
-- [ ] Advance only the default appcast item and `web/public/updates/cli/latest.json` to `v0.19.1`; preserve the RC7 GitHub prerelease, beta appcast item, and `latest-rc.json`.
-- [ ] Merge any generated publication PRs through the protected flow, dispatch `verify_only` as required, and pass runbook verification plus Release Publish Verify and both metadata drift guards.
-- [ ] Confirm GitHub `releases/latest` resolves to `v0.19.1` and stable metadata resolves only to its published non-prerelease release.
+- [x] Obtain explicit maintainer confirmation after final gates and immediately before creating or pushing `v0.19.1` or publishing artifacts.
+- [x] Create annotated tag `v0.19.1` from exact `origin/main` and publish a non-draft, non-prerelease GitHub release with latest behavior.
+- [x] Publish signed/notarized universal GUI and direct CLI artifacts.
+- [x] Advance only the default appcast item and `web/public/updates/cli/latest.json` to `v0.19.1`; preserve the RC7 GitHub prerelease, beta appcast item, and `latest-rc.json`.
+- [x] Merge any generated publication PRs through the protected flow, dispatch `verify_only` as required, and pass runbook verification plus Release Publish Verify and both metadata drift guards.
+- [x] Confirm GitHub `releases/latest` resolves to `v0.19.1` and stable metadata resolves only to its published non-prerelease release.
+
+Publication evidence:
+- Tag `v0.19.1` identifies `main` revision `0319641b29b26c89d7c8a7e224e2091306e95fd2`; the published GitHub release is non-draft, non-prerelease, and owns `releases/latest`.
+- Release macOS Canary run `32136717070` and Release Publish Auth Check run `32138158953` passed on the exact tagged revision before publication.
+- Release macOS DMG run `32138347077` and Release CLI Direct Installer run `32138347136` completed successfully; generated publication PRs `#504` and `#505` merged the stable CLI pointer and default appcast/release notes into `main`.
+- Workflow-specific verification-only runs `32140177815` and `32140177145`, `scripts/release/runbook.sh verify --tag v0.19.1`, Release Publish Verify run `32140177531`, Appcast Drift Guard run `32140177303`, and CLI Update Metadata Drift Guard run `32140177470` passed after metadata convergence at `ec9def28c3ef965574e6fb9afe93c0ec499901cc`.
+- Stable metadata resolves only to `v0.19.1`; the published RC7 prerelease, beta appcast item, and `latest-rc.json` remain on `v0.19.0-rc.7`.
 
 ## v0.19.0 (Native Experience Foundation Stable Release, Published)
 
