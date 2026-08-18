@@ -88,7 +88,7 @@ struct ControlCenterWindowView: View {
                 controlCenterContent
             }
         }
-        .frame(minWidth: 1024, minHeight: 640)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
                 colors: colorScheme == .dark
@@ -219,46 +219,18 @@ struct ControlCenterWindowView: View {
 
     @ViewBuilder
     private var controlCenterContent: some View {
-        if #available(macOS 14.0, *) {
-            ControlCenterHostedContentView(
+        ControlCenterHostedContentView(
+            context: context,
+            walkthrough: walkthrough,
+            sidebarWidth: sidebarWidth
+        ) {
+            ControlCenterDetailView(
                 context: context,
                 walkthrough: walkthrough,
-                sidebarWidth: sidebarWidth
-            ) {
-                ControlCenterSectionHostView()
-                    .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .inspector(isPresented: nativeInspectorPresentation) {
-                ControlCenterHostedInspectorView(
-                    context: context,
-                    walkthrough: walkthrough
-                )
-                .inspectorColumnWidth(min: 220, ideal: 280, max: 320)
-            }
-        } else {
-            ControlCenterHostedContentView(
-                context: context,
-                walkthrough: walkthrough,
-                sidebarWidth: sidebarWidth
-            ) {
-                ControlCenterVenturaDetailView(
-                    context: context,
-                    walkthrough: walkthrough,
-                    isInspectorPresented: selectedSection.supportsInspector
-                        && context.isInspectorVisible
-                )
-            }
+                isInspectorPresented: selectedSection.supportsInspector
+                    && context.isInspectorVisible
+            )
         }
-    }
-
-    private var nativeInspectorPresentation: Binding<Bool> {
-        Binding(
-            get: { selectedSection.supportsInspector && context.isInspectorVisible },
-            set: { isPresented in
-                guard selectedSection.supportsInspector else { return }
-                context.isInspectorVisible = isPresented
-            }
-        )
     }
 
     private func completeFirstRun() {
@@ -332,7 +304,7 @@ private struct ControlCenterHostedContentView<Detail: View>: View {
     }
 }
 
-private struct ControlCenterVenturaDetailView: View {
+private struct ControlCenterDetailView: View {
     @ObservedObject var context: ControlCenterContext
     @ObservedObject var walkthrough: WalkthroughManager
     let isInspectorPresented: Bool

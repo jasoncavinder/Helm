@@ -64,6 +64,7 @@ struct WayfinderSidebarSurface: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+        .ignoresSafeArea(edges: .top)
     }
 }
 

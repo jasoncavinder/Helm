@@ -45,8 +45,8 @@ their content and window chrome use standard SwiftUI navigation and toolbar APIs
 
 Key types:
 - `FloatingPanel` — Borderless `NSPanel` with `Cmd+F` and `Escape` key handling
-- `ControlCenterWindow` — 1120×740 window hosting a top-level `NavigationSplitView`; macOS supplies title placement, the sidebar toggle, resizing, and title-bar integration, while SwiftUI supplies search, inspector, refresh, and Upgrade All controls plus `Cmd+F`, `Escape`, and `Cmd+W`
-- `SettingsPanel` — Floating single-instance panel with native title placement and a top-level `NavigationSplitView`; its collection behavior keeps Settings available alongside an external full-screen app
+- `ControlCenterWindow` — 1120×740 window hosting a top-level `NavigationSplitView`; macOS supplies title-free full-size chrome, the sidebar toggle, resizing, and title-bar integration, while SwiftUI supplies search, a frame-stable in-detail inspector, refresh, and Upgrade All controls plus `Cmd+F`, `Escape`, and `Cmd+W`
+- `SettingsPanel` — Floating single-instance panel with title-free full-size chrome and a top-level `NavigationSplitView`; its collection behavior keeps Settings available alongside an external full-screen app
 - `EventMonitor` — Detects clicks outside the panel to dismiss it
 - `VisualEffect: NSViewRepresentable` — Window material backing
 
@@ -126,7 +126,7 @@ RedesignPopoverView
 
 ```
 ControlCenterWindowView
-├── Native toolbar (system sidebar toggle/title, search, inspector, refresh, Upgrade All)
+├── Native toolbar (system sidebar toggle, search, inspector, refresh, Upgrade All)
 ├── NavigationSplitView
 │   ├── ControlCenterSidebarView (native navigation plus restrained Wayfinder surface)
 │   │   ├── Dashboard/Plan/Library/Activity workspace list
@@ -139,7 +139,7 @@ ControlCenterWindowView
 │   │   ├── TasksSectionView (Views/TaskListView.swift)
 │   │   ├── ManagersSectionView (Views/ManagersView.swift)
 │   │   └── SettingsSectionView (Views/SettingsPopoverView.swift)
-│   └── ControlCenterInspectorView (native inspector on macOS 14+; trailing in-detail HSplitView on Ventura)
+│   └── ControlCenterInspectorView (trailing in-detail HSplitView on every supported release)
 │       ├── InspectorTaskDetailView
 │       ├── InspectorPackageDetailView
 │       ├── InspectorManagerDetailView
@@ -153,11 +153,12 @@ ControlCenterWindowView
 
 All direct Settings routes use `HelmSettingsOpenRouter` to present one
 `SettingsPanel` instance. Its SwiftUI `NavigationSplitView` supplies the standard
-sidebar toggle, resizing, selection, and system-positioned window title; AppKit is
-limited to lifecycle and Space behavior needed to remain visible beside external
-full-screen apps. The declared SwiftUI `Settings` scene supplies app-level Settings
-semantics, while the custom application command routes Command-Comma through the
-same single-instance presenter.
+sidebar toggle, resizing, and selection within title-free full-size chrome; AppKit
+is limited to lifecycle, transparent title-bar integration, and Space behavior
+needed to remain visible beside external full-screen apps. The declared SwiftUI
+`Settings` scene supplies app-level Settings semantics, while the custom
+application command routes Command-Comma through the same single-instance
+presenter.
 
 ### Sidebar Sections
 

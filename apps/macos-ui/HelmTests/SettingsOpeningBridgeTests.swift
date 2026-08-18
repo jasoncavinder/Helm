@@ -25,6 +25,10 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertTrue(HelmSettingsPanelPolicy.styleMask.contains(.fullSizeContentView))
     }
 
+    func testPrimaryWindowsHideRedundantVisibleTitles() {
+        XCTAssertEqual(HelmWindowChromePolicy.titleVisibility, .hidden)
+    }
+
     func testClosingDashboardDetachesSettingsPanelFromParentWindow() {
         let dashboardWindow = NSWindow()
         let settingsWindow = NSWindow()

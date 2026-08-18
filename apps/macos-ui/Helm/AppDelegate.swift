@@ -782,6 +782,8 @@ private extension AppDelegate {
                 self?.handlePopoverEscape()
             }
             window.title = "app.window.control_center".localized
+            window.titleVisibility = HelmWindowChromePolicy.titleVisibility
+            window.titlebarAppearsTransparent = true
             window.delegate = self
             window.contentViewController = hostingController
             window.autorecalculatesKeyViewLoop = true

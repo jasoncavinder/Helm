@@ -128,6 +128,8 @@ final class SettingsPanel: NSPanel {
 
         isFloatingPanel = true
         level = .floating
+        titleVisibility = HelmWindowChromePolicy.titleVisibility
+        titlebarAppearsTransparent = true
         collectionBehavior = HelmSettingsPanelPolicy.collectionBehavior
         hidesOnDeactivate = HelmPanelDeactivationPolicy.settingsHidesOnDeactivate
         becomesKeyOnlyIfNeeded = false

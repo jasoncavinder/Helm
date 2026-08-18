@@ -6,6 +6,10 @@ enum HelmPanelDeactivationPolicy {
     static let settingsHidesOnDeactivate = false
 }
 
+enum HelmWindowChromePolicy {
+    static let titleVisibility: NSWindow.TitleVisibility = .hidden
+}
+
 enum HelmSettingsPanelPolicy {
     static let styleMask: NSWindow.StyleMask = [
         .titled,
