@@ -11,7 +11,7 @@ Target migration references:
 - Incremental implementation slices: `docs/app-design/NATIVE_MACOS_MIGRATION_MAP.md`
 - Complete presentation states and quality gates: `docs/app-design/NATIVE_MACOS_STATE_MATRIX.md` and `docs/app-design/NATIVE_MACOS_QUALITY_BUDGETS.md`
 
-Original Wayfinder presents Dashboard, Plan, Library, and Activity as peer workspaces, keeps Environment persistently available, and routes Settings to a standard separate scene/window. Legacy section hosts remain behind stable mappings during incremental migration. Business rules, planning, orchestration, execution, verification, and recovery remain service/core-owned throughout.
+Original Wayfinder presents Dashboard, Plan, Library, and Activity as peer workspaces, keeps Environment persistently available, and routes Settings to a separate single-instance window. Legacy section hosts remain behind stable mappings during incremental migration. Business rules, planning, orchestration, execution, verification, and recovery remain service/core-owned throughout.
 
 ---
 
@@ -34,21 +34,24 @@ The app uses `AppDelegate` for all window, popover, and status item management. 
 
 **File:** `Helm/AppDelegate.swift`
 
-`AppDelegate` manages three app-owned UI surfaces, while SwiftUI owns the standard Settings scene:
+`AppDelegate` manages the four app-owned UI surfaces. Dashboard and Settings keep
+AppKit lifecycle ownership for status-item and full-screen-Space behavior, while
+their content and window chrome use standard SwiftUI navigation and toolbar APIs:
 
 1. **Status Item** — `NSStatusItem` with custom icon and badge overlays
 2. **Floating Panel** — `FloatingPanel: NSPanel` for the menu bar popover
 3. **Control Center Window** — `ControlCenterWindow: NSWindow` for the full dashboard
-4. **Settings Window** — Single-instance SwiftUI `Settings` scene shared by app, status-menu, popover, and Dashboard routes
+4. **Settings Window** — Single-instance `SettingsPanel: NSPanel` hosting the shared SwiftUI Settings view for app-menu, popover, and Dashboard routes
 
 Key types:
 - `FloatingPanel` — Borderless `NSPanel` with `Cmd+F` and `Escape` key handling
-- `ControlCenterWindow` — 1120×740 unified compact toolbar window with native sidebar, inspector, search, refresh, and Upgrade All controls plus `Cmd+F`, `Escape`, and `Cmd+W`
+- `ControlCenterWindow` — 1120×740 default window with a 1024×640 AppKit-enforced minimum, hosting a top-level `NavigationSplitView`; macOS supplies title-free full-size chrome, the sidebar toggle, resizing, and title-bar integration, while SwiftUI supplies native top-trailing search, standard toolbar actions, and a frame-stable in-detail inspector. The development-gated first-run route temporarily fixes this window at 960×600 and restores normal Dashboard geometry on completion.
+- `SettingsPanel` — Floating single-instance panel with a 680×500 default, 600×420 minimum, title-free full-size chrome, and a top-level `NavigationSplitView`; its collection behavior keeps Settings available alongside an external full-screen app
 - `EventMonitor` — Detects clicks outside the panel to dismiss it
 - `VisualEffect: NSViewRepresentable` — Window material backing
 
 Status item features:
-- Right-click context menu (About, Upgrade All, Settings, Refresh, Dashboard, Quit)
+- Primary and secondary clicks route through the shared Wayfinder popover policy; when Dashboard is visible, a primary click focuses it and a secondary click opens the popover
 - Badge overlays: `.count(Int, NSColor)`, `.symbol(String, NSColor)`, `.dot(NSColor)`
 
 ---
@@ -123,9 +126,9 @@ RedesignPopoverView
 
 ```
 ControlCenterWindowView
-├── Native toolbar (sidebar, title, search, inspector, refresh, Upgrade All)
-├── HStack / contextual HSplitView
-│   ├── ControlCenterSidebarView
+├── Native toolbar (system sidebar toggle, search, inspector, refresh, Upgrade All)
+├── NavigationSplitView
+│   ├── ControlCenterSidebarView (native navigation plus restrained Wayfinder surface)
 │   │   ├── Dashboard/Plan/Library/Activity workspace list
 │   │   ├── Environment route
 │   │   └── Settings window route
@@ -136,7 +139,7 @@ ControlCenterWindowView
 │   │   ├── TasksSectionView (Views/TaskListView.swift)
 │   │   ├── ManagersSectionView (Views/ManagersView.swift)
 │   │   └── SettingsSectionView (Views/SettingsPopoverView.swift)
-│   └── ControlCenterInspectorView (Views/InspectorViews.swift)
+│   └── ControlCenterInspectorView (trailing in-detail HSplitView on every supported release)
 │       ├── InspectorTaskDetailView
 │       ├── InspectorPackageDetailView
 │       ├── InspectorManagerDetailView
@@ -144,11 +147,20 @@ ControlCenterWindowView
 └── SpotlightOverlay (walkthrough, 7 control center steps)
 ```
 
-### Settings (Standard Window)
+### Settings (Single-Instance Window)
 
 **Files:** `HelmApp.swift`, `Views/SettingsPopoverView.swift`
 
-The SwiftUI `Settings` scene is the sole direct Settings destination and provides standard Command-Comma/single-instance behavior. It currently hosts the existing Settings card body without its Dashboard navigation summary as an explicit transition. Dedicated preference panes and relocation of service diagnostics, support operations, reset, and walkthrough actions remain subsequent parity-gated work.
+All direct Settings routes use `HelmSettingsOpenRouter` to present one
+`SettingsPanel` instance. Its SwiftUI `NavigationSplitView` supplies the standard
+sidebar toggle, resizing, and selection within title-free full-size chrome; AppKit
+is limited to lifecycle, transparent title-bar integration, and Space behavior
+needed to remain visible beside external full-screen apps. The declared SwiftUI
+`Settings` scene supplies app-level Settings semantics, while the custom
+application command routes Command-Comma through the same single-instance
+presenter. The declaration remains the SwiftUI command host rather than a second
+direct window route: Helm replaces the standard `.appSettings` command, and all
+app entry points converge through `HelmSettingsOpenRouter` on the cached panel.
 
 ### Sidebar Sections
 

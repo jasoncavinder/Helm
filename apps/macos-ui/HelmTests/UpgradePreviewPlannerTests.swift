@@ -158,6 +158,40 @@ final class UpgradePreviewPlannerTests: XCTestCase {
         XCTAssertEqual(presented.flatMap(\.steps).map(\.status), ["queued", "failed"])
     }
 
+    func testPlanSectionExpansionStateRestoresSectionsHiddenByFiltering() {
+        let allSections: Set<String> = ["authoritative", "standard", "guarded"]
+        var state = UpgradePlanSectionExpansionState()
+
+        XCTAssertEqual(state.sectionsToExpand(from: allSections), allSections)
+        state.recordVisibleSections(allSections, expandedSectionIDs: allSections)
+
+        let filteredSections: Set<String> = ["authoritative", "standard"]
+        XCTAssertEqual(state.sectionsToExpand(from: filteredSections), filteredSections)
+        state.recordVisibleSections(filteredSections, expandedSectionIDs: filteredSections)
+
+        XCTAssertEqual(state.sectionsToExpand(from: allSections), allSections)
+    }
+
+    func testPlanSectionExpansionStatePreservesIntentionalCollapseAcrossFiltering() {
+        let allSections: Set<String> = ["authoritative", "standard", "guarded"]
+        var state = UpgradePlanSectionExpansionState()
+
+        _ = state.sectionsToExpand(from: allSections)
+        state.recordVisibleSections(
+            allSections,
+            expandedSectionIDs: ["authoritative", "guarded"]
+        )
+
+        let filteredSections: Set<String> = ["authoritative"]
+        XCTAssertEqual(state.sectionsToExpand(from: filteredSections), filteredSections)
+        state.recordVisibleSections(filteredSections, expandedSectionIDs: filteredSections)
+
+        XCTAssertEqual(
+            state.sectionsToExpand(from: allSections),
+            ["authoritative", "guarded"]
+        )
+    }
+
     func testAutomaticExecutionPolicyKeepsExternalSparkleInteractiveAndHelmOptIn() {
         XCTAssertFalse(
             UpgradePreviewPlanner.runsAutomatically(

@@ -543,11 +543,10 @@ struct SettingsSectionView: View {
 
 struct SettingsWindowView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var localization = LocalizationManager.shared
     @State private var selectedPane: SettingsPane? = .general
-    @State private var isSidebarVisible = true
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     var onDismiss: (() -> Void)?
 
     init(onDismiss: (() -> Void)? = nil) {
@@ -567,21 +566,17 @@ struct SettingsWindowView: View {
     }
 
     private var settingsContent: some View {
-        HStack(spacing: 0) {
-            if isSidebarVisible {
-                List(SettingsPane.allCases, selection: paneSelection) { pane in
-                    Label(pane.title, systemImage: pane.icon)
-                        .tag(pane)
-                }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-                .frame(width: 180)
-                .background(SettingsSidebarSurface(colorScheme: colorScheme))
-                .id(localization.currentLocale)
-
-                Divider()
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            List(SettingsPane.allCases, selection: paneSelection) { pane in
+                Label(pane.title, systemImage: pane.icon)
+                    .tag(pane)
             }
-
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 240)
+            .background(WayfinderSidebarSurface())
+            .id(localization.currentLocale)
+        } detail: {
             let pane = selectedPane ?? .general
             SettingsSectionView(
                 selectedPane: pane,
@@ -607,49 +602,8 @@ struct SettingsWindowView: View {
         )
     }
 
-    private var sidebarToggle: some View {
-        Button {
-            isSidebarVisible.toggle()
-        } label: {
-            Image(systemName: "sidebar.leading")
-        }
-        .help(
-            isSidebarVisible
-                ? "app.command.hide_sidebar".localized
-                : "app.command.show_sidebar".localized
-        )
-        .accessibilityLabel(
-            isSidebarVisible
-                ? "app.command.hide_sidebar".localized
-                : "app.command.show_sidebar".localized
-        )
-    }
-
-    private var toolbarTitle: some View {
-        Text(L10n.App.Settings.windowTitle.localized)
-            .font(.headline)
-            .fixedSize()
-            .allowsHitTesting(false)
-            .accessibilityAddTraits(.isHeader)
-    }
-
     var body: some View {
         settingsContent
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    sidebarToggle
-                }
-                if #available(macOS 26.0, *) {
-                    ToolbarItem(placement: .principal) {
-                        toolbarTitle
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .principal) {
-                        toolbarTitle
-                    }
-                }
-            }
             .onAppear {
                 applyRequestedPane()
             }
@@ -662,31 +616,6 @@ struct SettingsWindowView: View {
         guard let requestedPane = context.settingsOpenRouter.requestedPane else { return }
         DispatchQueue.main.async {
             selectedPane = requestedPane
-        }
-    }
-}
-
-private struct SettingsSidebarSurface: View {
-    let colorScheme: ColorScheme
-
-    var body: some View {
-        ZStack {
-            Rectangle().fill(HelmTheme.surfacePanel)
-            LinearGradient(
-                colors: colorScheme == .dark
-                    ? [
-                        HelmTheme.blue900.opacity(0.3),
-                        HelmTheme.surfaceBase.opacity(0.18),
-                        HelmTheme.surfacePanel.opacity(0.96)
-                    ]
-                    : [
-                        HelmTheme.blue700.opacity(0.1),
-                        HelmTheme.seaGlass.opacity(0.035),
-                        HelmTheme.surfacePanel.opacity(0.98)
-                    ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
         }
     }
 }

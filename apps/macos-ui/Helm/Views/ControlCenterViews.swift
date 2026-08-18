@@ -7,6 +7,11 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
     private let sidebarWidth: CGFloat = 232
+    let onFirstRunComplete: () -> Void
+
+    init(onFirstRunComplete: @escaping () -> Void = {}) {
+        self.onFirstRunComplete = onFirstRunComplete
+    }
 
     private var firstRunMode: EnvironmentBriefFirstRunMode {
         EnvironmentBriefFirstRunConfiguration.mode()
@@ -85,24 +90,10 @@ struct ControlCenterWindowView: View {
             if presentsFirstRun {
                 EnvironmentBriefFirstRunView(onComplete: completeFirstRun)
             } else {
-                ControlCenterSplitViewBridge(
-                    isInspectorPresented: selectedSection.supportsInspector && context.isInspectorVisible,
-                    contentMinimumThickness: sidebarWidth + 400
-                ) {
-                    ControlCenterHostedContentView(
-                        context: context,
-                        walkthrough: walkthrough,
-                        sidebarWidth: sidebarWidth
-                    )
-                } inspector: {
-                    ControlCenterHostedInspectorView(
-                        context: context,
-                        walkthrough: walkthrough
-                    )
-                }
+                controlCenterContent
             }
         }
-        .frame(minWidth: 1024, minHeight: 640)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
                 colors: colorScheme == .dark
@@ -118,32 +109,22 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
+        .modifier(
+            ControlCenterNativeSearchModifier(
+                text: toolbarSearchQuery,
+                isPresented: $context.isControlCenterSearchPresented,
+                prompt: toolbarSearchPlaceholder,
+                isEnabled: !presentsFirstRun
+            )
+        )
         .toolbar {
             if !presentsFirstRun {
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        context.toggleSidebar()
-                    } label: {
-                        Image(systemName: "sidebar.leading")
+                if #unavailable(macOS 26.0) {
+                    ToolbarItem(placement: .principal) {
+                        Color.clear
+                            .frame(width: 1, height: 1)
+                            .accessibilityHidden(true)
                     }
-                    .help(
-                        context.isSidebarVisible
-                            ? "app.command.hide_sidebar".localized
-                            : "app.command.show_sidebar".localized
-                    )
-                    .accessibilityLabel(
-                        context.isSidebarVisible
-                            ? "app.command.hide_sidebar".localized
-                            : "app.command.show_sidebar".localized
-                    )
-                }
-
-                // Keep a principal item in the native toolbar so AppKit reserves the
-                // center and places the search and actions against the trailing edge.
-                ToolbarItem(placement: .principal) {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
                 }
 
                 if selectedSection == .updates {
@@ -167,13 +148,15 @@ struct ControlCenterWindowView: View {
                     }
                 }
 
-                ToolbarItem(placement: .automatic) {
-                    ControlCenterToolbarSearchField(
-                        text: toolbarSearchQuery,
-                        placeholder: toolbarSearchPlaceholder,
-                        focusRouter: context.controlCenterSearchFocusRouter
-                    )
-                    .frame(width: selectedSection == .updates ? 250 : 320)
+                if #unavailable(macOS 26.0) {
+                    ToolbarItem(placement: .automatic) {
+                        ControlCenterToolbarSearchField(
+                            text: toolbarSearchQuery,
+                            placeholder: toolbarSearchPlaceholder,
+                            focusRouter: context.controlCenterSearchFocusRouter
+                        )
+                        .frame(width: selectedSection == .updates ? 250 : 320)
+                    }
                 }
 
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -210,12 +193,16 @@ struct ControlCenterWindowView: View {
                         } label: {
                             Label(
                                 L10n.App.ControlCenter.upgradeAll.localized,
-                                systemImage: "arrow.up.circle.fill"
+                                systemImage: "arrow.up"
                             )
+                            .labelStyle(.iconOnly)
+                            .frame(width: 22)
                         }
                         .buttonStyle(.borderedProminent)
+                        .modifier(ControlCenterUpgradeButtonShape())
                         .controlSize(.regular)
                         .fixedSize()
+                        .help(L10n.App.ControlCenter.upgradeAll.localized)
                         .disabled(!core.networkOperationsAvailable)
                     }
                 }
@@ -257,35 +244,144 @@ struct ControlCenterWindowView: View {
         }
     }
 
+    @ViewBuilder
+    private var controlCenterContent: some View {
+        ControlCenterHostedContentView(
+            context: context,
+            walkthrough: walkthrough,
+            sidebarWidth: sidebarWidth
+        ) {
+            ControlCenterDetailView(
+                context: context,
+                walkthrough: walkthrough,
+                isInspectorPresented: selectedSection.supportsInspector
+                    && context.isInspectorVisible
+            )
+        }
+    }
+
     private func completeFirstRun() {
         context.dismissFirstRunPreview()
         if !core.hasCompletedOnboarding {
             core.completeOnboarding()
             core.triggerRefresh()
         }
+        onFirstRunComplete()
     }
 }
 
-private struct ControlCenterHostedContentView: View {
+private struct ControlCenterNativeSearchModifier: ViewModifier {
+    @Binding var text: String
+    @Binding var isPresented: Bool
+    let prompt: String
+    let isEnabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), isEnabled {
+            content.searchable(
+                text: $text,
+                isPresented: $isPresented,
+                placement: .automatic,
+                prompt: Text(prompt)
+            )
+        } else {
+            content
+        }
+    }
+}
+
+private struct ControlCenterUpgradeButtonShape: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.buttonBorderShape(.circle)
+        } else {
+            content.buttonBorderShape(.roundedRectangle)
+        }
+    }
+}
+
+private struct ControlCenterHostedContentView<Detail: View>: View {
     @ObservedObject var context: ControlCenterContext
     @ObservedObject var walkthrough: WalkthroughManager
+    @State private var sidebarVisibility: NavigationSplitViewVisibility
     let sidebarWidth: CGFloat
+    let detail: Detail
+
+    init(
+        context: ControlCenterContext,
+        walkthrough: WalkthroughManager,
+        sidebarWidth: CGFloat,
+        @ViewBuilder detail: () -> Detail
+    ) {
+        self.context = context
+        self.walkthrough = walkthrough
+        self.sidebarWidth = sidebarWidth
+        self.detail = detail()
+        _sidebarVisibility = State(
+            initialValue: NativeSidebarVisibilityPolicy.splitViewVisibility(
+                isSidebarVisible: context.isSidebarVisible
+            )
+        )
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            if context.isSidebarVisible {
-                ControlCenterSidebarView(sidebarWidth: sidebarWidth)
-                    .spotlightAnchor("ccSidebar")
-                Divider()
-            }
-
-            ControlCenterSectionHostView()
-                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            ControlCenterSidebarView()
+                .navigationSplitViewColumnWidth(
+                    min: 210,
+                    ideal: sidebarWidth,
+                    max: 280
+                )
+                .spotlightAnchor("ccSidebar")
+        } detail: {
+            detail
         }
         .environmentObject(context)
+        .onChange(of: sidebarVisibility) { visibility in
+            let isSidebarVisible = NativeSidebarVisibilityPolicy.isSidebarVisible(
+                for: visibility
+            )
+            guard context.isSidebarVisible != isSidebarVisible else { return }
+            DispatchQueue.main.async {
+                guard context.isSidebarVisible != isSidebarVisible else { return }
+                context.isSidebarVisible = isSidebarVisible
+            }
+        }
+        .onChange(of: context.isSidebarVisible) { isSidebarVisible in
+            let visibility = NativeSidebarVisibilityPolicy.splitViewVisibility(
+                isSidebarVisible: isSidebarVisible
+            )
+            guard sidebarVisibility != visibility else { return }
+            sidebarVisibility = visibility
+        }
         .overlayPreferenceValue(SpotlightAnchorKey.self) { anchors in
             if walkthrough.isControlCenterWalkthroughActive {
                 SpotlightOverlay(manager: walkthrough, anchors: anchors)
+            }
+        }
+    }
+}
+
+private struct ControlCenterDetailView: View {
+    @ObservedObject var context: ControlCenterContext
+    @ObservedObject var walkthrough: WalkthroughManager
+    let isInspectorPresented: Bool
+
+    var body: some View {
+        HSplitView {
+            ControlCenterSectionHostView()
+                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+
+            if isInspectorPresented {
+                ControlCenterHostedInspectorView(
+                    context: context,
+                    walkthrough: walkthrough
+                )
+                .frame(minWidth: 220, idealWidth: 280, maxWidth: 320)
+                .layoutPriority(0)
             }
         }
     }
@@ -408,8 +504,6 @@ private struct ControlCenterSidebarView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
-    @Environment(\.colorScheme) private var colorScheme
-    let sidebarWidth: CGFloat
 
     private var footerProjection: WayfinderProjectionContent {
         overviewState.wayfinderProjection.content
@@ -493,11 +587,8 @@ private struct ControlCenterSidebarView: View {
             .padding(.horizontal, 18)
             .frame(height: 46)
         }
-        .frame(width: sidebarWidth)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(
-            ControlCenterSidebarSurface(colorScheme: colorScheme)
-        )
+        .background(WayfinderSidebarSurface())
     }
 
     @ViewBuilder
@@ -579,43 +670,6 @@ private struct ControlCenterSidebarView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-    }
-}
-
-private struct ControlCenterSidebarSurface: View {
-    let colorScheme: ColorScheme
-
-    var body: some View {
-        ZStack {
-            Rectangle().fill(HelmTheme.surfacePanel)
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            ControlCenterSidebarGradientPalette.topColor(for: colorScheme),
-                            ControlCenterSidebarGradientPalette.bottomColor(for: colorScheme)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        }
-    }
-}
-
-private enum ControlCenterSidebarGradientPalette {
-    static func topColor(for colorScheme: ColorScheme) -> Color {
-        if colorScheme == .dark {
-            return HelmTheme.blue900.opacity(0.22)
-        }
-        return HelmTheme.blue700.opacity(0.08)
-    }
-
-    static func bottomColor(for colorScheme: ColorScheme) -> Color {
-        if colorScheme == .dark {
-            return HelmTheme.surfaceBase.opacity(0.15)
-        }
-        return HelmTheme.surfacePanel.opacity(0.96)
     }
 }
 

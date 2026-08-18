@@ -8,8 +8,13 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ### Changed
 - Dashboard Manager Health cards now reserve a consistent two-line title region, keeping one-line and wrapped manager names aligned without truncating every name to one line.
+- Dashboard and Settings now use native macOS split-view sidebars with system-owned title-bar integration, resizing, collapse behavior, dividers, and sidebar toggles. Their redundant visible window titles are removed, and a restrained Original Wayfinder surface runs beneath the window controls from pale blue at the upper-left to near-white at the lower-right while detail surfaces remain solid. Dashboard dragging returns to the standard title-bar-only behavior, and its trailing inspector stays inside the detail column without moving or expanding the outer window.
+- The development-gated Environment Brief now opens in a fixed `960x600` first-run window before transitioning to the resizable Dashboard. Dashboard and Settings enforce their AppKit-owned minimum geometry, restored Dashboard frames keep both edges onscreen, and Dashboard search uses native top-trailing placement while standard actions remain in the native action area with a compact circular Upgrade All control.
+- Plan retains its native authority-grouped outline, keyboard behavior, and virtualized scrolling while presenting updates as a Wayfinder vertical card list with visible authority headings, leading inclusion controls, trailing status alignment, secondary manager labels, balanced selection treatment, and no spreadsheet-style header or grid.
 
 ### Fixed
+- Plan filters no longer collapse authority sections that temporarily have no visible updates; prior expanded and intentionally collapsed disclosure choices return when the filter is cleared.
+- Oversized saved Dashboard frames are now reduced to the current display's visible bounds before their origin is restored, while preserving the Dashboard minimum when the display can accommodate it.
 - Retained older Homebrew kegs no longer appear as separate manageable installations when a current keg for the same formula and Homebrew prefix is active or linked. Inactive install-instance rows no longer offer manager-wide update or uninstall actions, and inactive paths no longer inherit the active executable's version label.
 
 ## [0.19.0] - 2026-08-15

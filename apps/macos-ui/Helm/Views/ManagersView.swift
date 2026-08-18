@@ -128,8 +128,7 @@ struct ManagersSectionView: View {
                                     ManagerPriorityDragModifier(
                                         managerId: manager.id,
                                         canInitiateDrag: canReorder,
-                                        draggedManagerId: $draggedManagerId,
-                                        suppressWindowBackgroundDragging: $context.suppressWindowBackgroundDragging
+                                        draggedManagerId: $draggedManagerId
                                     )
                                 )
                                 .onDrop(
@@ -138,8 +137,7 @@ struct ManagersSectionView: View {
                                         core: core,
                                         authority: group.authority,
                                         targetManagerId: manager.id,
-                                        draggedManagerId: $draggedManagerId,
-                                        suppressWindowBackgroundDragging: $context.suppressWindowBackgroundDragging
+                                        draggedManagerId: $draggedManagerId
                                     )
                                 )
                             }
@@ -156,12 +154,8 @@ struct ManagersSectionView: View {
             }
             .padding(.bottom, 18)
         }
-        .onHover { hovering in
-            context.suppressWindowBackgroundDragging = hovering || draggedManagerId != nil
-        }
         .onDisappear {
             draggedManagerId = nil
-            context.suppressWindowBackgroundDragging = false
         }
         .alert(item: $managerDependencyAlert) { alertState in
             switch alertState.kind {
@@ -574,14 +568,12 @@ private struct ManagerPriorityDragModifier: ViewModifier {
     let managerId: String
     let canInitiateDrag: Bool
     @Binding var draggedManagerId: String?
-    @Binding var suppressWindowBackgroundDragging: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if canInitiateDrag {
             content.onDrag {
                 draggedManagerId = managerId
-                suppressWindowBackgroundDragging = true
                 return NSItemProvider(object: managerId as NSString)
             }
         } else {
@@ -595,7 +587,6 @@ private struct ManagerPriorityDropDelegate: DropDelegate {
     let authority: ManagerAuthority
     let targetManagerId: String
     @Binding var draggedManagerId: String?
-    @Binding var suppressWindowBackgroundDragging: Bool
 
     func performDrop(info: DropInfo) -> Bool {
         guard let draggedManagerId else { return false }
@@ -605,14 +596,12 @@ private struct ManagerPriorityDropDelegate: DropDelegate {
             targetManagerId: targetManagerId
         )
         self.draggedManagerId = nil
-        suppressWindowBackgroundDragging = true
         return true
     }
 
     func dropExited(info: DropInfo) {
         if !info.hasItemsConforming(to: [UTType.text.identifier]) {
             draggedManagerId = nil
-            suppressWindowBackgroundDragging = true
         }
     }
 }

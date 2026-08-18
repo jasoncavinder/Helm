@@ -10,6 +10,7 @@ private let appDelegateLogger = Logger(
 )
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
+    private static let controlCenterFrameAutosaveName = "HelmDashboardWindow"
     private var statusItem: NSStatusItem?
     private var panel: FloatingPanel!
     private var eventMonitor: EventMonitor?
@@ -36,6 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private static let updatesAvailableNotificationId = "helm.updates.available"
     private var isControlCenterVisible: Bool {
         controlCenterWindowController?.window?.isVisible == true
+    }
+
+    private var presentsEnvironmentBrief: Bool {
+        controlCenterContext.shouldPresentFirstRun(
+            mode: EnvironmentBriefFirstRunConfiguration.mode(),
+            hasCompletedOnboarding: core.hasCompletedOnboarding
+        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -215,14 +223,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             })
             .environmentObject(controlCenterContext)
             let hostingController = NSHostingController(rootView: rootView)
+            HelmHostingSizingPolicy.apply(to: hostingController)
             let window = SettingsPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 680, height: 500)
+                contentRect: NSRect(
+                    origin: .zero,
+                    size: HelmPrimaryWindowSizingPolicy.settingsDefaultSize
+                )
             )
             window.title = L10n.App.Settings.windowTitle.localized
             window.contentViewController = hostingController
             window.delegate = self
-            window.minSize = NSSize(width: 600, height: 420)
-            window.maxSize = NSSize(width: 760, height: 600)
+            HelmPrimaryWindowSizingPolicy.applySettings(to: window)
             window.center()
             settingsWindowController = NSWindowController(window: window)
         }
@@ -370,20 +381,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             .store(in: &cancellables)
 
-        controlCenterContext.$suppressWindowBackgroundDragging
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.updateControlCenterWindowDragBehavior()
-            }
-            .store(in: &cancellables)
-
-        controlCenterContext.$selectedSection
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.updateControlCenterWindowDragBehavior()
-            }
-            .store(in: &cancellables)
-
         LocalizationManager.shared.$currentLocale
             .dropFirst()
             .receive(on: RunLoop.main)
@@ -526,7 +523,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func focusControlCenterSearch() {
         openControlCenter()
-        controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
+        if #available(macOS 26.0, *) {
+            controlCenterContext.isControlCenterSearchPresented = true
+        } else {
+            controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
+        }
     }
 
     private func handlePopoverEscape() {
@@ -779,12 +780,19 @@ private extension AppDelegate {
         closePanel()
 
         if controlCenterWindowController == nil {
-            let rootView = ControlCenterWindowView()
+            let isPresentingFirstRun = presentsEnvironmentBrief
+            let initialSize = isPresentingFirstRun
+                ? HelmPrimaryWindowSizingPolicy.firstRunSize
+                : HelmPrimaryWindowSizingPolicy.dashboardDefaultSize
+            let rootView = ControlCenterWindowView(onFirstRunComplete: { [weak self] in
+                self?.transitionControlCenterFromFirstRun()
+            })
                 .environmentObject(controlCenterContext)
 
             let hostingController = NSHostingController(rootView: rootView)
+            HelmHostingSizingPolicy.apply(to: hostingController)
             let window = ControlCenterWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1120, height: 740),
+                contentRect: NSRect(origin: .zero, size: initialSize),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -796,41 +804,49 @@ private extension AppDelegate {
                 self?.handlePopoverEscape()
             }
             window.title = "app.window.control_center".localized
-            window.titleVisibility = .hidden
+            window.titleVisibility = HelmWindowChromePolicy.titleVisibility
             window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = shouldAllowControlCenterWindowBackgroundDragging()
             window.delegate = self
-            window.toolbarStyle = .unifiedCompact
-            window.titlebarSeparatorStyle = .none
             window.contentViewController = hostingController
             window.autorecalculatesKeyViewLoop = true
             window.isReleasedWhenClosed = false
-            window.minSize = NSSize(width: 1024, height: 640)
-            let frameAutosaveName = "HelmDashboardWindow"
-            let restoredFrame = window.setFrameUsingName(frameAutosaveName)
-            window.setFrameAutosaveName(frameAutosaveName)
-            if !restoredFrame {
+
+            if isPresentingFirstRun {
+                HelmPrimaryWindowSizingPolicy.applyFirstRun(to: window)
                 window.center()
+            } else {
+                HelmPrimaryWindowSizingPolicy.applyDashboard(to: window)
+                let restoredFrame = window.setFrameUsingName(Self.controlCenterFrameAutosaveName)
+                HelmPrimaryWindowSizingPolicy.applyDashboard(to: window)
+                window.setFrameAutosaveName(Self.controlCenterFrameAutosaveName)
+                if !restoredFrame {
+                    window.center()
+                }
             }
 
             controlCenterWindowController = NSWindowController(window: window)
         }
 
         guard let window = controlCenterWindowController?.window else { return }
-        updateControlCenterWindowDragBehavior()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: true)
     }
 
-    private func shouldAllowControlCenterWindowBackgroundDragging() -> Bool {
-        // Interactive controls and manager drag/drop can suppress background dragging.
-        return !controlCenterContext.suppressWindowBackgroundDragging
-    }
+    func transitionControlCenterFromFirstRun() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  let window = controlCenterWindowController?.window else { return }
 
-    func updateControlCenterWindowDragBehavior() {
-        controlCenterWindowController?.window?.isMovableByWindowBackground =
-            shouldAllowControlCenterWindowBackgroundDragging()
+            HelmPrimaryWindowSizingPolicy.applyDashboard(to: window)
+            let restoredFrame = window.setFrameUsingName(Self.controlCenterFrameAutosaveName)
+            if !restoredFrame {
+                window.setContentSize(HelmPrimaryWindowSizingPolicy.dashboardDefaultSize)
+                window.center()
+            }
+            HelmPrimaryWindowSizingPolicy.applyDashboard(to: window)
+            window.setFrameAutosaveName(Self.controlCenterFrameAutosaveName)
+        }
     }
 
     @objc func handleSystemAppearanceChanged() {
@@ -839,6 +855,18 @@ private extension AppDelegate {
 }
 
 extension AppDelegate {
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        if sender == settingsWindowController?.window {
+            return HelmPrimaryWindowSizingPolicy.settingsResizeSize(frameSize)
+        }
+        if sender == controlCenterWindowController?.window {
+            return presentsEnvironmentBrief
+                ? HelmPrimaryWindowSizingPolicy.firstRunSize
+                : HelmPrimaryWindowSizingPolicy.dashboardResizeSize(frameSize)
+        }
+        return frameSize
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else {
             return

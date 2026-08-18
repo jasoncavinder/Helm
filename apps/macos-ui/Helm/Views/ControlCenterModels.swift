@@ -166,6 +166,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedTaskId: String?
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
+    @Published var isControlCenterSearchPresented: Bool = false
     @Published var planManagerScopeId: String = HelmCore.allManagersScopeId
     @Published var planPackageFilter: String = ""
     @Published var managerFilterId: String?
@@ -173,7 +174,6 @@ final class ControlCenterContext: ObservableObject {
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
-    @Published var suppressWindowBackgroundDragging: Bool = false
     @Published var isSidebarVisible: Bool = true
     @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?

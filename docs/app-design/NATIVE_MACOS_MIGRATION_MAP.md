@@ -125,6 +125,11 @@ Implementation checkpoint on `dev`:
 - The Settings window now presents General, Updates, Sources, CLI, and Support as native sidebar panes. General and update preferences are separated, the accidental duplicate CLI card is removed, and the existing cards/actions remain the parity boundary while destination migration continues.
 - Operational-card relocation and removal of the legacy in-window Settings destination remain open until the parity checklist passes. They are explicitly deferred until after `v0.19.0-rc.2` so the candidate can validate the native pane architecture without rushing broader Dashboard/diagnostics placement; this pane slice does not hide or duplicate those actions.
 
+Superseding lifecycle clarification from the v0.20 native-sidebar slice:
+
+- SwiftUI still owns Settings content, pane navigation, commands, and presentation state, but `AppDelegate` now owns the one concrete window through a single cached `SettingsPanel`. This bounded AppKit lifecycle exception keeps Settings available beside external full-screen Spaces and allows explicit panel geometry without moving preference behavior out of SwiftUI.
+- `HelmApp` retains its `Settings` scene declaration as the SwiftUI app-command host. The standard `.appSettings` command group is replaced, and Command-Comma plus every in-app Settings route goes through `HelmSettingsOpenRouter` to the same cached panel, preventing a second platform-created Settings window.
+
 Affected files/components:
 
 - `HelmApp.swift`
@@ -133,7 +138,7 @@ Affected files/components:
 
 Native primitives:
 
-- SwiftUI `Settings` scene or standard AppKit settings window.
+- SwiftUI Settings content and commands hosted in one AppKit-owned `SettingsPanel` lifecycle exception.
 - Grouped Form, standard toggles/pickers, noncustomizable pane navigation.
 
 Dependencies:
