@@ -151,7 +151,7 @@ struct ControlCenterWindowView: View {
                     .frame(width: selectedSection == .updates ? 250 : 320)
                 }
 
-                ToolbarItemGroup(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .automatic) {
                     if selectedSection.supportsInspector {
                         Button {
                             context.toggleInspector()
