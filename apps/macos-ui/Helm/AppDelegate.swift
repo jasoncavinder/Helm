@@ -653,7 +653,7 @@ private extension AppDelegate {
         let interactiveSurfaceVisible = panel.isVisible || isControlCenterVisible
         let automaticUpdateCount = core.upgradeAllPreviewCount(
             includePinned: false,
-            allowOsUpdates: true
+            allowOsUpdates: false
         )
         var updateIdentifiers = packages.map { package in
             [
@@ -903,20 +903,21 @@ extension AppDelegate {
         if categoryIdentifier == Self.upgradePlanCompletionCategoryId
             || categoryIdentifier == Self.updatesAvailableReviewCategoryId
             || categoryIdentifier == Self.updatesAvailableUpgradeCategoryId {
-            let presentsUpgradeSheet = response.actionIdentifier == Self.upgradeAllActionId
+            let requestsPlanConfirmation = response.actionIdentifier == Self.upgradeAllActionId
             guard response.actionIdentifier == UNNotificationDefaultActionIdentifier
                     || response.actionIdentifier == Self.reviewPlanActionId
-                    || presentsUpgradeSheet else {
+                    || requestsPlanConfirmation else {
                 return
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                controlCenterContext.select(.updates)
-                openControlCenter()
-                if presentsUpgradeSheet,
-                   core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true) > 0 {
-                    controlCenterContext.presentUpgradeSheet(in: .controlCenter)
+                if requestsPlanConfirmation,
+                   core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false) > 0 {
+                    controlCenterContext.requestUpgradeAllPlanConfirmation()
+                } else {
+                    controlCenterContext.select(.updates)
                 }
+                openControlCenter()
             }
             return
         }

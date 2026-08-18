@@ -290,6 +290,22 @@ extension WholeWorkflowResearchPlanStep {
     }
 }
 
+extension CoreUpgradePlanStep {
+    func reviewedUpgradePlanStep(status projectedStatus: String? = nil) -> ReviewedUpgradePlanStep {
+        ReviewedUpgradePlanStep(
+            id: id,
+            orderIndex: orderIndex,
+            managerID: managerId,
+            authority: authority,
+            action: action,
+            packageName: packageName,
+            reasonLabelKey: reasonLabelKey,
+            reasonLabelArgs: reasonLabelArgs,
+            status: projectedStatus ?? status
+        )
+    }
+}
+
 struct RedesignUpdatesSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
@@ -299,6 +315,7 @@ struct RedesignUpdatesSectionView: View {
     @State private var failedExternalSparkleStep: CoreUpgradePlanStep?
     @State private var selectedPlanStepIds = Set<String>()
     @State private var knownPlanStepIds = Set<String>()
+    @State private var handledConfirmationRequestToken = 0
     private let researchPlanProjection = WholeWorkflowResearchDatasetProvider.activePlanProjection()
 
     private var researchPlanSteps: [CoreUpgradePlanStep] {
@@ -335,6 +352,14 @@ struct RedesignUpdatesSectionView: View {
 
     private var selectedScopedPlanSteps: [CoreUpgradePlanStep] {
         scopedPlanSteps.filter { selectedPlanStepIds.contains($0.id) }
+    }
+
+    private var selectedAutomaticStepIDs: Set<String> {
+        Set(
+            selectedScopedPlanSteps
+                .filter(core.upgradePlanStepRunsAutomatically)
+                .map(\.id)
+        )
     }
 
     private var visiblePlanStepIds: Set<String> {
@@ -425,6 +450,35 @@ struct RedesignUpdatesSectionView: View {
             visibleStepIds: visiblePlanStepIds,
             included: visibleSelectionState != .all
         )
+    }
+
+    private func presentReviewedConfirmation() {
+        guard !selectedAutomaticStepIDs.isEmpty else { return }
+        guard isResearchPlanActive || core.networkOperationsAvailable else { return }
+        context.presentReviewedUpgradePlanSheet(
+            in: .controlCenter,
+            managerScopeID: context.planManagerScopeId,
+            packageFilter: context.planPackageFilter,
+            selectedSteps: HelmCore.sortedUpgradePlanStepsForExecution(selectedScopedPlanSteps)
+                .map { $0.reviewedUpgradePlanStep(status: projectedStatus($0)) },
+            automaticallyRunStepIDs: selectedAutomaticStepIDs,
+            riskSummary: riskSummary
+        )
+    }
+
+    private func handleRequestedConfirmationIfReady() {
+        let requestToken = context.upgradePlanConfirmationRequestToken
+        guard requestToken != handledConfirmationRequestToken else { return }
+        guard !planSteps.isEmpty else { return }
+        handledConfirmationRequestToken = requestToken
+        selectedPlanStepIds = Set(planSteps.compactMap { step in
+            guard researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
+                return nil
+            }
+            return step.id
+        })
+        knownPlanStepIds = Set(planSteps.map(\.id))
+        presentReviewedConfirmation()
     }
 
     private func plannerStep(_ step: CoreUpgradePlanStep) -> UpgradePreviewPlanner.PlanStep {
@@ -792,12 +846,7 @@ struct RedesignUpdatesSectionView: View {
                 .disabled(isResearchPlanActive)
 
                 Button(L10n.App.Action.runPlan.localized) {
-                    context.presentReviewedUpgradePlanSheet(
-                        in: .controlCenter,
-                        managerScopeID: context.planManagerScopeId,
-                        packageFilter: context.planPackageFilter,
-                        selectedStepIDs: selectedPlanStepIds
-                    )
+                    presentReviewedConfirmation()
                 }
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .disabled(
@@ -813,6 +862,7 @@ struct RedesignUpdatesSectionView: View {
         .onAppear {
             reconcilePlanSelection(planSteps)
             reconcilePlanScope(planSteps)
+            handleRequestedConfirmationIfReady()
             if !isResearchPlanActive {
                 core.refreshUpgradePlan(includePinned: false, allowOsUpdates: includeOsUpdates)
             }
@@ -829,6 +879,10 @@ struct RedesignUpdatesSectionView: View {
             guard !isResearchPlanActive else { return }
             reconcilePlanSelection(steps)
             reconcilePlanScope(steps)
+            handleRequestedConfirmationIfReady()
+        }
+        .onChange(of: context.upgradePlanConfirmationRequestToken) { _ in
+            handleRequestedConfirmationIfReady()
         }
         .onChange(of: context.planManagerScopeId) { _ in
             reconcileVisibleInspectorSelection()
@@ -860,45 +914,61 @@ struct RedesignUpdatesSectionView: View {
     }
 }
 
-struct RedesignUpgradeSheetView: View {
-    private struct AuthorityEntry: Identifiable {
+struct ReviewedUpgradeConfirmationSheet: View {
+    private struct ConfirmationRow: Identifiable {
         let id: String
-        let labelKey: String
-        let count: Int
+        let sequence: Int
+        let step: ReviewedUpgradePlanStep
     }
 
+    private struct AuthorityGroup: Identifiable {
+        let id: String
+        let rows: [ConfirmationRow]
+    }
+
+    let request: ReviewedUpgradePlanRequest
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     @Environment(\.presentationMode) private var presentationMode
-    @State private var includeOsUpdates = false
     private let researchPlanProjection = WholeWorkflowResearchDatasetProvider.activePlanProjection()
-
-    private var reviewedRequest: ReviewedUpgradePlanRequest? {
-        guard case let .reviewedPlan(request) = context.upgradeSheetIntent else { return nil }
-        return request
-    }
 
     private var planSteps: [CoreUpgradePlanStep] {
         researchPlanProjection?.steps.map(\.coreUpgradePlanStep) ?? core.upgradePlanSteps
     }
 
-    private var reviewedSteps: [CoreUpgradePlanStep] {
-        guard let reviewedRequest else { return [] }
-        return HelmCore.scopedUpgradePlanSteps(
+    private var currentCoreSelectedSteps: [CoreUpgradePlanStep] {
+        let scopedSteps = HelmCore.scopedUpgradePlanSteps(
             from: planSteps,
-            managerScopeId: reviewedRequest.managerScopeID,
-            packageFilter: reviewedRequest.packageFilter
-        ).filter { reviewedRequest.selectedStepIDs.contains($0.id) }
+            managerScopeId: request.managerScopeID,
+            packageFilter: request.packageFilter
+        )
+        return HelmCore.sortedUpgradePlanStepsForExecution(
+            scopedSteps.filter { request.selectedStepIDs.contains($0.id) }
+        )
     }
 
-    private var reviewedRiskSummary: UpgradePreviewPlanner.RiskSummary {
-        if let researchPlanProjection, reviewedRequest != nil {
+    private var currentSelectedSteps: [ReviewedUpgradePlanStep] {
+        currentCoreSelectedSteps.map {
+            $0.reviewedUpgradePlanStep(
+                status: researchPlanProjection == nil
+                    ? core.projectedUpgradePlanStatus(for: $0)
+                    : $0.status
+            )
+        }
+    }
+
+    private var currentAutomaticStepIDs: Set<String> {
+        Set(currentCoreSelectedSteps.filter(core.upgradePlanStepRunsAutomatically).map(\.id))
+    }
+
+    private var currentRiskSummary: UpgradePreviewPlanner.RiskSummary {
+        if let researchPlanProjection {
             return researchPlanProjection.riskSummary(
-                selectedStepIDs: Set(reviewedSteps.map(\.id))
+                selectedStepIDs: Set(currentSelectedSteps.map(\.id))
             )
         }
         return UpgradePreviewPlanner.riskSummary(
-            for: reviewedSteps.map {
+            for: currentCoreSelectedSteps.map {
                 .init(managerId: $0.managerId, packageName: $0.packageName)
             },
             restartRequiredCandidates: core.outdatedPackages
@@ -907,80 +977,208 @@ struct RedesignUpgradeSheetView: View {
         )
     }
 
-    private var authorityEntries: [AuthorityEntry] {
-        let authorities = [
-            ("authoritative", L10n.App.Updates.Authority.authoritative),
-            ("standard", L10n.App.Updates.Authority.standard),
-            ("guarded", L10n.App.Updates.Authority.guarded),
-            ("interactive", L10n.App.Updates.Authority.interactive),
-        ]
-        return authorities.compactMap { authority, labelKey in
-            let matchingSteps = reviewedSteps.filter { $0.authority.lowercased() == authority }
-            guard !matchingSteps.isEmpty else { return nil }
-            return AuthorityEntry(
-                id: authority,
-                labelKey: labelKey,
-                count: matchingSteps.count
-            )
+    private var confirmationGroups: [AuthorityGroup] {
+        let indexedSteps = request.selectedSteps.enumerated().map { index, step in
+            ConfirmationRow(id: step.id, sequence: index + 1, step: step)
         }
+        return ["authoritative", "standard", "guarded", "detection_only", "interactive", "other"]
+            .compactMap { authority in
+                let rows = indexedSteps.filter {
+                    normalizedAuthority($0.step.authority) == authority
+                }
+                guard !rows.isEmpty else { return nil }
+                return AuthorityGroup(id: authority, rows: rows)
+            }
+    }
+
+    private var vendorInteractionCount: Int {
+        request.selectedSteps.filter(isExternalSparkleStep).count
+    }
+
+    private var planIsCurrent: Bool {
+        ReviewedUpgradePlanValidation.isCurrent(
+            request: request,
+            currentSelectedSteps: currentSelectedSteps,
+            currentAutomaticallyRunStepIDs: currentAutomaticStepIDs,
+            currentRiskSummary: currentRiskSummary
+        )
+    }
+
+    private var hasRunnableUpdates: Bool {
+        !request.automaticallyRunStepIDs.isEmpty && planIsCurrent
     }
 
     private var isResearchReadOnly: Bool {
         WholeWorkflowResearchDatasetProvider.isSelected()
     }
 
-    private var hasRunnableUpdates: Bool {
-        if reviewedRequest != nil {
-            return !reviewedSteps.isEmpty
+    private func normalizedAuthority(_ authority: String) -> String {
+        switch authority.lowercased() {
+        case "authoritative", "standard", "guarded", "detection_only", "interactive":
+            return authority.lowercased()
+        default:
+            return "other"
         }
-        return (includeOsUpdates ? withOsCount : noOsCount) > 0
     }
 
-    private var noOsCount: Int {
-        core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: false)
+    private func authorityTitle(for authority: String) -> String {
+        switch authority {
+        case "authoritative":
+            return L10n.App.Updates.Authority.authoritative.localized
+        case "standard":
+            return L10n.App.Updates.Authority.standard.localized
+        case "guarded":
+            return L10n.App.Updates.Authority.guarded.localized
+        case "detection_only":
+            return L10n.App.Updates.Authority.detectionOnly.localized
+        case "interactive":
+            return L10n.App.Updates.Authority.interactive.localized
+        default:
+            return L10n.App.Updates.Authority.other.localized
+        }
     }
 
-    private var withOsCount: Int {
-        core.upgradeAllPreviewCount(includePinned: false, allowOsUpdates: true)
+    private func stepTitle(_ step: ReviewedUpgradePlanStep) -> String {
+        if step.managerID == "softwareupdate", step.packageName == "__confirm_os_updates__" {
+            let arguments = step.reasonLabelArgs.reduce(into: [String: Any]()) { result, entry in
+                result[entry.key] = entry.value
+            }
+            return step.reasonLabelKey.localized(with: arguments)
+        }
+        return step.packageName
+    }
+
+    private func isExternalSparkleStep(_ step: ReviewedUpgradePlanStep) -> Bool {
+        step.action == UpgradePreviewPlanner.externalSparkleAction
+    }
+
+    private func isHelmSelfUpdateStep(_ step: ReviewedUpgradePlanStep) -> Bool {
+        step.action == UpgradePreviewPlanner.helmSelfUpdateAction
+            && step.managerID == UpgradePreviewPlanner.helmSelfUpdateManagerId
+    }
+
+    private func stepStatus(_ step: ReviewedUpgradePlanStep) -> String {
+        if isExternalSparkleStep(step) {
+            return L10n.App.Updates.Status.requiresInteraction.localized
+        }
+        if isHelmSelfUpdateStep(step) {
+            return request.automaticallyRunStepIDs.contains(step.id)
+                ? L10n.App.Updates.Status.runsLast.localized
+                : L10n.App.Updates.Status.notIncluded.localized
+        }
+        return core.localizedUpgradePlanStatus(step.status)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.App.Updates.executionPlan.localized)
+            Text(L10n.App.Action.runPlan.localized)
                 .font(.title3.weight(.semibold))
 
-            if reviewedRequest != nil {
-                ForEach(authorityEntries) { entry in
-                    HStack {
-                        Text(entry.labelKey.localized)
-                        Spacer()
-                        Text("\(entry.count)")
-                            .font(.callout.monospacedDigit())
+            Text(
+                L10n.App.Updates.Confirmation.selectedSummary.localized(with: [
+                    "count": request.selectedSteps.count
+                ])
+            )
+            .font(.callout)
+            .foregroundColor(.secondary)
+
+            HStack(spacing: 8) {
+                Label(
+                    L10n.App.Updates.Confirmation.automaticSummary.localized(with: [
+                        "count": request.automaticallyRunStepIDs.count
+                    ]),
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+                .font(.callout.weight(.medium))
+                Spacer()
+            }
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(confirmationGroups) { group in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(authorityTitle(for: group.id))
+                                    .font(.headline)
+                                Spacer()
+                                Text(
+                                    L10n.App.Updates.Table.sectionSummary.localized(with: [
+                                        "count": group.rows.count
+                                    ])
+                                )
+                                .font(.caption.monospacedDigit())
+                                .foregroundColor(.secondary)
+                            }
+
+                            ForEach(group.rows) { row in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text("\(row.sequence)")
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 20, alignment: .trailing)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(stepTitle(row.step))
+                                            .font(.callout.weight(.medium))
+                                            .lineLimit(2)
+                                        Text(localizedManagerDisplayName(row.step.managerID))
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    Spacer(minLength: 12)
+
+                                    Text(stepStatus(row.step))
+                                        .font(.caption.weight(.medium))
+                                        .foregroundColor(
+                                            isExternalSparkleStep(row.step)
+                                                ? HelmTheme.stateNeedsReview
+                                                : .secondary
+                                        )
+                                        .multilineTextAlignment(.trailing)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .helmCardSurface(cornerRadius: 9)
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
                     }
                 }
+                .padding(1)
+            }
+            .frame(minHeight: 170, idealHeight: 260, maxHeight: 320)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    confirmationRiskRow(
-                        label: L10n.App.Updates.Risk.privileged.localized,
-                        active: reviewedRiskSummary.requiresElevatedPrivileges
-                    )
-                    confirmationRiskRow(
-                        label: L10n.App.Updates.Risk.reboot.localized,
-                        active: reviewedRiskSummary.mayRequireReboot
-                    )
-                }
-            } else {
-                if !core.safeModeEnabled {
-                    Toggle(L10n.App.Updates.includeOs.localized, isOn: $includeOsUpdates)
-                        .toggleStyle(.switch)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                confirmationRiskRow(
+                    label: L10n.App.Updates.Risk.privileged.localized,
+                    active: request.riskSummary.requiresElevatedPrivileges
+                )
+                confirmationRiskRow(
+                    label: L10n.App.Updates.Risk.reboot.localized,
+                    active: request.riskSummary.mayRequireReboot
+                )
+            }
 
-                HStack {
-                    Text(L10n.App.Updates.Authority.standard.localized)
-                    Spacer()
-                    Text("\(includeOsUpdates ? withOsCount : noOsCount)")
-                        .font(.callout.monospacedDigit())
-                }
+            if vendorInteractionCount > 0 {
+                Label(
+                    L10n.App.Updates.interactiveSparkleNotice.localized(with: [
+                        "count": vendorInteractionCount
+                    ]),
+                    systemImage: "hand.raised.fill"
+                )
+                .font(.callout)
+                .foregroundColor(.secondary)
+            }
+
+            if !planIsCurrent {
+                Label(
+                    L10n.App.Updates.Confirmation.planChanged.localized,
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.callout)
+                .foregroundColor(HelmTheme.stateNeedsReview)
             }
 
             if isResearchReadOnly {
@@ -1003,16 +1201,12 @@ struct RedesignUpgradeSheetView: View {
                 .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(L10n.App.Action.runPlan.localized) {
-                    guard !isResearchReadOnly else { return }
-                    if let reviewedRequest {
-                        core.runUpgradePlanScoped(
-                            managerScopeId: reviewedRequest.managerScopeID,
-                            packageFilter: reviewedRequest.packageFilter,
-                            selectedStepIds: reviewedRequest.selectedStepIDs
-                        )
-                    } else {
-                        core.upgradeAll(includePinned: false, allowOsUpdates: includeOsUpdates)
-                    }
+                    guard !isResearchReadOnly, planIsCurrent else { return }
+                    core.runUpgradePlanScoped(
+                        managerScopeId: request.managerScopeID,
+                        packageFilter: request.packageFilter,
+                        selectedStepIds: request.selectedStepIDs
+                    )
                     context.dismissUpgradeSheet()
                     presentationMode.wrappedValue.dismiss()
                 }
@@ -1022,11 +1216,12 @@ struct RedesignUpgradeSheetView: View {
                     !hasRunnableUpdates
                         || isResearchReadOnly
                         || !core.networkOperationsAvailable
+                        || core.scopedUpgradePlanRunInProgress
                 )
             }
         }
         .padding(20)
-        .frame(minWidth: 460)
+        .frame(minWidth: 520, idealWidth: 560, maxWidth: 620)
     }
 
     private func confirmationRiskRow(label: String, active: Bool) -> some View {

@@ -188,12 +188,11 @@ struct ControlCenterWindowView: View {
 
                     if !core.outdatedPackages.isEmpty {
                         Button {
-                            context.presentUpgradeSheet(in: .controlCenter)
-                            context.selectedSection = .updates
+                            context.select(.updates)
                         } label: {
                             Label(
-                                L10n.App.ControlCenter.upgradeAll.localized,
-                                systemImage: "arrow.up"
+                                L10n.App.Updates.Notification.reviewPlan.localized,
+                                systemImage: "list.bullet.rectangle"
                             )
                             .labelStyle(.iconOnly)
                             .frame(width: 22)
@@ -202,8 +201,7 @@ struct ControlCenterWindowView: View {
                         .modifier(ControlCenterUpgradeButtonShape())
                         .controlSize(.regular)
                         .fixedSize()
-                        .help(L10n.App.ControlCenter.upgradeAll.localized)
-                        .disabled(!core.networkOperationsAvailable)
+                        .help(L10n.App.Updates.Notification.reviewPlan.localized)
                     }
                 }
             }
@@ -218,8 +216,10 @@ struct ControlCenterWindowView: View {
                 }
             )
         ) {
-            RedesignUpgradeSheetView()
-                .environmentObject(context)
+            if let request = context.reviewedUpgradePlanRequest {
+                ReviewedUpgradeConfirmationSheet(request: request)
+                    .environmentObject(context)
+            }
         }
         .onChange(of: walkthrough.currentStepIndex) { _ in
             guard walkthrough.isControlCenterWalkthroughActive,
