@@ -1,5 +1,37 @@
 import XCTest
 
+final class ControlCenterGlobalSearchNavigationPolicyTests: XCTestCase {
+    func testAcceptedResultTargetsTheSelectedLibraryEntity() throws {
+        let deepLink = try XCTUnwrap(
+            ControlCenterGlobalSearchNavigationPolicy.acceptedResultDeepLink(
+                packageID: " search-ripgrep-homebrew "
+            )
+        )
+
+        XCTAssertEqual(deepLink.destination, .library)
+        XCTAssertEqual(deepLink.entityID, "search-ripgrep-homebrew")
+        XCTAssertEqual(deepLink.focus, .selectedEntity)
+    }
+
+    func testEmptyResultIdentifierCannotNavigate() {
+        XCTAssertNil(
+            ControlCenterGlobalSearchNavigationPolicy.acceptedResultDeepLink(packageID: "  ")
+        )
+    }
+
+    func testAcceptedResultNavigationClearsAStaleManagerFilter() throws {
+        let decision = try XCTUnwrap(
+            ControlCenterGlobalSearchNavigationPolicy.acceptedResultNavigation(
+                packageID: "search-ripgrep-homebrew"
+            )
+        )
+
+        XCTAssertEqual(decision.deepLink.destination, .library)
+        XCTAssertEqual(decision.deepLink.entityID, "search-ripgrep-homebrew")
+        XCTAssertNil(decision.managerFilterID)
+    }
+}
+
 final class ControlCenterSearchFocusRouterTests: XCTestCase {
     func testRequestBeforeAttachmentIsDeliveredWhenTargetAttaches() {
         let router = ControlCenterSearchFocusRouter()

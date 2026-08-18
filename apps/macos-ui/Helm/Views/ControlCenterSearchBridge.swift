@@ -1,5 +1,32 @@
 import Foundation
 
+struct ControlCenterGlobalSearchNavigationDecision {
+    let deepLink: WayfinderDeepLink
+    let managerFilterID: String?
+}
+
+enum ControlCenterGlobalSearchNavigationPolicy {
+    static func acceptedResultNavigation(
+        packageID: String
+    ) -> ControlCenterGlobalSearchNavigationDecision? {
+        guard let deepLink = acceptedResultDeepLink(packageID: packageID) else { return nil }
+        return ControlCenterGlobalSearchNavigationDecision(
+            deepLink: deepLink,
+            managerFilterID: nil
+        )
+    }
+
+    static func acceptedResultDeepLink(packageID: String) -> WayfinderDeepLink? {
+        let packageID = packageID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageID.isEmpty else { return nil }
+        return WayfinderDeepLink(
+            destination: .library,
+            entityID: packageID,
+            focus: .selectedEntity
+        )
+    }
+}
+
 protocol ControlCenterSearchFocusTarget: AnyObject {
     func requestSearchFocus(completion: @escaping () -> Void)
 }

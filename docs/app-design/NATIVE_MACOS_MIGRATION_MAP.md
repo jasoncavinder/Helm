@@ -366,6 +366,12 @@ Rollback/incremental strategy:
 
 - New Library table behind the destination route; contextual detail reuses current action methods until contract migration.
 
+Implementation checkpoint:
+
+- Task 3's exact Homebrew cached result, delayed Cargo remote result, existing-authority recommendation, source-specific inspector selection, and install proposal now project through the shipping Library and global-search path. Accepting a global result deliberately routes to that exact Library entity instead of changing destinations while the user types.
+- The Debug-only offline variant keeps the cached result usable, marks the remote result and network-backed proposal Deferred, and never starts service, database, network, updater, or mutation work. Its bounded install confirmation is explicitly read-only.
+- Focused projection and routing tests cover exact record scope, progressive visibility, offline deferral, bounded confirmation requirements, and fail-closed scenario drift. Owner visual, Full Keyboard Access, and VoiceOver validation remain open. The production native table migration, explicit production-result provenance contract, remote cancellation, and 20,000-row performance budget remain later Slice 20.3 work.
+
 ### Slice 20.4: Activity, diagnostics, and workflow continuity
 
 Affected files/components:

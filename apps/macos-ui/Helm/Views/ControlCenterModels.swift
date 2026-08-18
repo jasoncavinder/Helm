@@ -167,6 +167,8 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
     @Published var isControlCenterSearchPresented: Bool = false
+    @Published private(set) var researchRemoteSearchResultsAvailable = false
+    @Published var researchInstallConfirmation: WholeWorkflowResearchInstallConfirmation?
     @Published var planManagerScopeId: String = HelmCore.allManagersScopeId
     @Published var planPackageFilter: String = ""
     @Published var managerFilterId: String?
@@ -183,6 +185,7 @@ final class ControlCenterContext: ObservableObject {
     @Published private(set) var dashboardFocusRequestToken: Int = 0
     @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
+    private var researchSearchPresentationGeneration = 0
 
     var showUpgradeSheet: Bool {
         upgradeSheetPresentation.isPresented
@@ -262,6 +265,45 @@ final class ControlCenterContext: ObservableObject {
     func select(_ section: ControlCenterSection) {
         environmentRouteFilterState.clear()
         selectedSection = section
+    }
+
+    func acceptGlobalSearchResult(packageID: String) {
+        guard let decision = ControlCenterGlobalSearchNavigationPolicy.acceptedResultNavigation(
+            packageID: packageID
+        ) else { return }
+        managerFilterId = decision.managerFilterID
+        navigate(to: decision.deepLink)
+        isControlCenterSearchPresented = false
+    }
+
+    func updateResearchSearchPresentation(
+        query: String,
+        isOfflineVariant: Bool
+    ) {
+        researchSearchPresentationGeneration &+= 1
+        let generation = researchSearchPresentationGeneration
+        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        researchRemoteSearchResultsAvailable = hasQuery && isOfflineVariant
+        guard hasQuery, !isOfflineVariant else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
+            guard let self,
+                  self.researchSearchPresentationGeneration == generation else {
+                return
+            }
+            self.researchRemoteSearchResultsAvailable = true
+        }
+    }
+
+    func presentResearchInstallConfirmation(
+        _ confirmation: WholeWorkflowResearchInstallConfirmation
+    ) {
+        researchInstallConfirmation = confirmation
+    }
+
+    func dismissResearchInstallConfirmation() {
+        researchInstallConfirmation = nil
     }
 
     func clearEnvironmentRouteStage() {
