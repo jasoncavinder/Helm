@@ -39,7 +39,7 @@ pub fn normalize_manager_install_instances(
             .cloned()
             .map(canonicalize_system_manager_instance)
             .collect::<Vec<_>>();
-        return normalize_runtime_dependency_instances(normalized);
+        return normalize_non_system_manager_instances(normalized);
     }
 
     let manager = instances[0].manager;
@@ -51,7 +51,7 @@ pub fn normalize_manager_install_instances(
             .cloned()
             .map(canonicalize_system_manager_instance)
             .collect::<Vec<_>>();
-        return normalize_runtime_dependency_instances(normalized);
+        return normalize_non_system_manager_instances(normalized);
     };
 
     let mut trusted = Vec::new();
@@ -71,7 +71,7 @@ pub fn normalize_manager_install_instances(
     if trusted.len() <= 1 {
         let mut normalized = trusted;
         normalized.extend(passthrough);
-        return normalize_runtime_dependency_instances(normalized);
+        return normalize_non_system_manager_instances(normalized);
     }
 
     let mut merged = trusted
@@ -115,7 +115,7 @@ pub fn normalize_manager_install_instances(
             .cmp(&left.is_active)
             .then_with(|| left.instance_id.cmp(&right.instance_id))
     });
-    normalize_runtime_dependency_instances(passthrough)
+    normalize_non_system_manager_instances(passthrough)
 }
 
 pub fn instance_ids_fingerprint<'a>(
@@ -287,6 +287,169 @@ fn normalize_runtime_dependency_instances(
     instances: Vec<ManagerInstallInstance>,
 ) -> Vec<ManagerInstallInstance> {
     collapse_runtime_dependency_entrypoints(collapse_runtime_dependency_shims(instances))
+}
+
+fn normalize_non_system_manager_instances(
+    instances: Vec<ManagerInstallInstance>,
+) -> Vec<ManagerInstallInstance> {
+    normalize_runtime_dependency_instances(collapse_retained_homebrew_kegs(instances))
+}
+
+fn collapse_retained_homebrew_kegs(
+    instances: Vec<ManagerInstallInstance>,
+) -> Vec<ManagerInstallInstance> {
+    let mut grouped: BTreeMap<(PathBuf, String), Vec<(usize, ManagerInstallInstance)>> =
+        BTreeMap::new();
+    let mut passthrough = Vec::new();
+
+    for (index, instance) in instances.into_iter().enumerate() {
+        let Some(key) = homebrew_keg_group_key(&instance) else {
+            passthrough.push((index, instance));
+            continue;
+        };
+        grouped.entry(key).or_default().push((index, instance));
+    }
+
+    for ((prefix, formula), indexed_group) in grouped {
+        if indexed_group.len() <= 1 {
+            passthrough.extend(indexed_group);
+            continue;
+        }
+
+        let first_index = indexed_group
+            .iter()
+            .map(|(index, _)| *index)
+            .min()
+            .expect("Homebrew keg group is non-empty");
+        let group = indexed_group
+            .iter()
+            .map(|(_, instance)| instance.clone())
+            .collect::<Vec<_>>();
+        let Some(representative_index) =
+            homebrew_keg_representative_index(group.as_slice(), prefix.as_path(), formula.as_str())
+        else {
+            // Without an active or linked keg, Helm cannot safely determine which
+            // version represents the formula's current installation.
+            passthrough.extend(indexed_group);
+            continue;
+        };
+
+        passthrough.push((
+            first_index,
+            merge_homebrew_keg_group(group, representative_index),
+        ));
+    }
+
+    passthrough.sort_by_key(|(index, _)| *index);
+    passthrough
+        .into_iter()
+        .map(|(_, instance)| instance)
+        .collect()
+}
+
+fn homebrew_keg_group_key(instance: &ManagerInstallInstance) -> Option<(PathBuf, String)> {
+    if instance.provenance != InstallProvenance::Homebrew {
+        return None;
+    }
+
+    instance_paths(instance).find_map(homebrew_keg_path_key)
+}
+
+fn homebrew_keg_path_key(path: &Path) -> Option<(PathBuf, String)> {
+    let components = path.components().collect::<Vec<_>>();
+    let cellar_index = components.iter().position(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|value| value.eq_ignore_ascii_case("Cellar"))
+    })?;
+
+    let formula = components.get(cellar_index + 1)?.as_os_str().to_str()?;
+    let version = components.get(cellar_index + 2)?.as_os_str().to_str()?;
+    let bin = components.get(cellar_index + 3)?.as_os_str().to_str()?;
+    components.get(cellar_index + 4)?;
+    if formula.is_empty() || version.is_empty() || !bin.eq_ignore_ascii_case("bin") {
+        return None;
+    }
+
+    let mut prefix = PathBuf::new();
+    for component in &components[..cellar_index] {
+        prefix.push(component.as_os_str());
+    }
+    if prefix.as_os_str().is_empty() {
+        return None;
+    }
+
+    Some((prefix, formula.to_string()))
+}
+
+fn homebrew_keg_representative_index(
+    group: &[ManagerInstallInstance],
+    prefix: &Path,
+    formula: &str,
+) -> Option<usize> {
+    group
+        .iter()
+        .enumerate()
+        .filter(|(_, instance)| instance.is_active)
+        .max_by(|(_, left), (_, right)| compare_instance_confidence(left, right))
+        .map(|(index, _)| index)
+        .or_else(|| {
+            group
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| has_homebrew_link_alias(instance, prefix, formula))
+                .max_by(|(_, left), (_, right)| compare_instance_confidence(left, right))
+                .map(|(index, _)| index)
+        })
+}
+
+fn compare_instance_confidence(
+    left: &ManagerInstallInstance,
+    right: &ManagerInstallInstance,
+) -> std::cmp::Ordering {
+    left.confidence
+        .partial_cmp(&right.confidence)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then_with(|| left.instance_id.cmp(&right.instance_id))
+}
+
+fn has_homebrew_link_alias(
+    instance: &ManagerInstallInstance,
+    prefix: &Path,
+    formula: &str,
+) -> bool {
+    let prefix_bin = prefix.join("bin");
+    let formula_bin = prefix.join("opt").join(formula).join("bin");
+    instance_paths(instance).any(|path| {
+        path.parent()
+            .is_some_and(|parent| parent == prefix_bin || parent == formula_bin)
+    })
+}
+
+fn merge_homebrew_keg_group(
+    mut group: Vec<ManagerInstallInstance>,
+    representative_index: usize,
+) -> ManagerInstallInstance {
+    let mut merged = group.swap_remove(representative_index);
+    let mut alias_paths = BTreeSet::new();
+    for instance in std::iter::once(&merged).chain(group.iter()) {
+        alias_paths.insert(instance.display_path.clone());
+        if let Some(path) = instance.canonical_path.clone() {
+            alias_paths.insert(path);
+        }
+        alias_paths.extend(instance.alias_paths.iter().cloned());
+    }
+
+    merged.alias_paths = alias_paths.into_iter().collect();
+    merged.is_active = merged.is_active || group.iter().any(|instance| instance.is_active);
+    if merged.version.is_none() {
+        merged.version = group
+            .iter()
+            .find(|instance| instance.is_active)
+            .and_then(|instance| instance.version.clone());
+    }
+    merged
 }
 
 fn collapse_runtime_dependency_shims(
@@ -697,6 +860,159 @@ mod tests {
                 .iter()
                 .any(|path| path == &PathBuf::from("/usr/bin/xcode-select"))
         );
+    }
+
+    #[test]
+    fn normalizes_retained_homebrew_kegs_into_one_logical_installation() {
+        let mut current = sample_instance(
+            ManagerId::Mise,
+            "mise-current",
+            "/opt/homebrew/bin/mise",
+            true,
+            0.99,
+        );
+        current.canonical_path = Some(PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.5/bin/mise"));
+        current
+            .alias_paths
+            .push(PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.5/bin/mise"));
+        current.version = Some("2026.8.5".to_string());
+        current.provenance = InstallProvenance::Homebrew;
+
+        let mut retained = sample_instance(
+            ManagerId::Mise,
+            "mise-retained",
+            "/opt/homebrew/Cellar/mise/2026.8.4/bin/mise",
+            false,
+            0.99,
+        );
+        retained.version = None;
+        retained.provenance = InstallProvenance::Homebrew;
+
+        let normalized = normalize_manager_install_instances(&[current, retained]);
+
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].instance_id, "mise-current");
+        assert!(normalized[0].is_active);
+        assert_eq!(normalized[0].version.as_deref(), Some("2026.8.5"));
+        assert!(
+            normalized[0].alias_paths.iter().any(|path| {
+                path == &PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.4/bin/mise")
+            })
+        );
+    }
+
+    #[test]
+    fn preserves_homebrew_installations_from_distinct_prefixes() {
+        let mut apple_silicon = sample_instance(
+            ManagerId::Mise,
+            "mise-opt-homebrew",
+            "/opt/homebrew/bin/mise",
+            true,
+            0.99,
+        );
+        apple_silicon.canonical_path =
+            Some(PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.5/bin/mise"));
+        apple_silicon.provenance = InstallProvenance::Homebrew;
+
+        let mut intel = sample_instance(
+            ManagerId::Mise,
+            "mise-usr-local",
+            "/usr/local/bin/mise",
+            false,
+            0.99,
+        );
+        intel.canonical_path = Some(PathBuf::from("/usr/local/Cellar/mise/2026.8.5/bin/mise"));
+        intel.provenance = InstallProvenance::Homebrew;
+
+        let normalized = normalize_manager_install_instances(&[apple_silicon, intel]);
+
+        assert_eq!(normalized.len(), 2);
+        assert!(
+            normalized
+                .iter()
+                .any(|instance| instance.instance_id == "mise-opt-homebrew")
+        );
+        assert!(
+            normalized
+                .iter()
+                .any(|instance| instance.instance_id == "mise-usr-local")
+        );
+    }
+
+    #[test]
+    fn normalizes_retained_homebrew_kegs_using_linked_alias_when_another_install_is_active() {
+        let mut linked = sample_instance(
+            ManagerId::Mise,
+            "mise-homebrew-current",
+            "/opt/homebrew/Cellar/mise/2026.8.5/bin/mise",
+            false,
+            0.99,
+        );
+        linked
+            .alias_paths
+            .push(PathBuf::from("/opt/homebrew/bin/mise"));
+        linked.provenance = InstallProvenance::Homebrew;
+
+        let mut retained = sample_instance(
+            ManagerId::Mise,
+            "mise-homebrew-retained",
+            "/opt/homebrew/Cellar/mise/2026.8.4/bin/mise",
+            false,
+            0.99,
+        );
+        retained.provenance = InstallProvenance::Homebrew;
+
+        let mut script = sample_instance(
+            ManagerId::Mise,
+            "mise-script",
+            "/Users/test/.local/bin/mise",
+            true,
+            0.95,
+        );
+        script.provenance = InstallProvenance::SourceBuild;
+
+        let normalized = normalize_manager_install_instances(&[script, linked, retained]);
+
+        assert_eq!(normalized.len(), 2);
+        assert!(
+            normalized
+                .iter()
+                .any(|instance| instance.instance_id == "mise-script" && instance.is_active)
+        );
+        let homebrew = normalized
+            .iter()
+            .find(|instance| instance.instance_id == "mise-homebrew-current")
+            .expect("linked Homebrew keg should represent retained versions");
+        assert!(!homebrew.is_active);
+        assert!(
+            homebrew.alias_paths.iter().any(|path| {
+                path == &PathBuf::from("/opt/homebrew/Cellar/mise/2026.8.4/bin/mise")
+            })
+        );
+    }
+
+    #[test]
+    fn preserves_unlinked_homebrew_kegs_when_current_version_is_unknown() {
+        let mut first = sample_instance(
+            ManagerId::Mise,
+            "mise-first",
+            "/opt/homebrew/Cellar/mise/2026.8.4/bin/mise",
+            false,
+            0.99,
+        );
+        first.provenance = InstallProvenance::Homebrew;
+
+        let mut second = sample_instance(
+            ManagerId::Mise,
+            "mise-second",
+            "/opt/homebrew/Cellar/mise/2026.8.5/bin/mise",
+            false,
+            0.99,
+        );
+        second.provenance = InstallProvenance::Homebrew;
+
+        let normalized = normalize_manager_install_instances(&[first, second]);
+        assert_eq!(normalized.len(), 2);
     }
 
     #[test]

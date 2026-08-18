@@ -87,3 +87,15 @@ Operational notes:
 - Alias-path changes should not create new instances when `DevInode` or canonical-path identity is available.
 - `FallbackHash` is intentionally conservative and may change when file metadata changes.
 - If continuity resets while using `FallbackHash`, treat that as expected ambiguity and favor interactive workflows.
+
+## 8. Homebrew Retained Kegs
+
+Homebrew may keep an older keg after upgrading a formula. Helm treats multiple keg paths as one logical manager installation when all of the following are true:
+
+- the paths resolve to the same Homebrew formula;
+- they are under the same Homebrew prefix (for example, `/opt/homebrew`); and
+- Helm can identify the active or linked keg.
+
+Historical keg paths remain aliases for diagnostics but do not create multi-install attention. Installations under different Homebrew prefixes remain distinct. If no active or linked keg can be identified, Helm keeps the entries separate rather than guessing.
+
+Manager update and uninstall operations apply to the active logical installation, not to an individual historical keg. Helm does not automatically remove retained kegs through the install-instance inspector; use `brew cleanup --dry-run <formula>` to review Homebrew's own cleanup decision before choosing whether to clean it up separately.
