@@ -257,7 +257,7 @@ Implementation checkpoint on `dev`:
 - Deep links preserve originating condition, destination, focus, route domain, and affected manager. Owner QA verified the corrected visible Environment filter for all four route stages before PR #490 merged.
 - Library, Plan, Activity, Environment, and Dashboard own detail, confirmation, recovery, and search rather than hosting those workflows inside the transient panel.
 - A debug-only six-state `HELM_WAYFINDER_POPOVER_FIXTURE` seam uses the production projectors/view and suppresses refresh plus Helm update-check submission while active. It is a state-validation seam, not a whole-workflow synthetic dataset.
-- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector now projects Task 2 through the shipping Plan path; the other six tasks remain unprojected, and each remaining workflow slice owns that work.
+- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector now projects Task 2 through the shipping Plan path and Task 3 through the shipping Library/global-search path; the other five tasks remain unprojected, and each remaining workflow slice owns that work.
 
 Affected files/components:
 
