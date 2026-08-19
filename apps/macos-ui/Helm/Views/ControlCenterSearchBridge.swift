@@ -1,16 +1,16 @@
 import Foundation
 
-struct ControlCenterGlobalSearchNavigationDecision {
+struct GlobalSearchNavigationDecision {
     let deepLink: WayfinderDeepLink
     let managerFilterID: String?
 }
 
-enum ControlCenterGlobalSearchNavigationPolicy {
+enum GlobalSearchNavigationPolicy {
     static func acceptedResultNavigation(
         packageID: String
-    ) -> ControlCenterGlobalSearchNavigationDecision? {
+    ) -> GlobalSearchNavigationDecision? {
         guard let deepLink = acceptedResultDeepLink(packageID: packageID) else { return nil }
-        return ControlCenterGlobalSearchNavigationDecision(
+        return GlobalSearchNavigationDecision(
             deepLink: deepLink,
             managerFilterID: nil
         )
@@ -24,6 +24,74 @@ enum ControlCenterGlobalSearchNavigationPolicy {
             entityID: packageID,
             focus: .selectedEntity
         )
+    }
+}
+
+struct ControlCenterGlobalSearchSessionState {
+    private(set) var isResultsPresented = false
+
+    mutating func updateQuery(
+        _ query: String,
+        presentsResults: Bool
+    ) {
+        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        isResultsPresented = presentsResults && hasQuery
+    }
+
+    mutating func synchronize(
+        isSearchFieldPresented: Bool,
+        supportsGlobalResults: Bool,
+        query: String
+    ) {
+        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        isResultsPresented = isSearchFieldPresented && supportsGlobalResults && hasQuery
+    }
+
+    mutating func dismiss() {
+        isResultsPresented = false
+    }
+}
+
+struct ResearchSearchPresentationState {
+    private struct Identity: Equatable {
+        let normalizedQuery: String
+        let isOfflineVariant: Bool
+    }
+
+    private(set) var remoteResultsAvailable = false
+    private var identity: Identity?
+    private var generation = 0
+
+    mutating func update(
+        query: String,
+        isOfflineVariant: Bool
+    ) -> Int? {
+        let normalizedQuery = query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let nextIdentity = Identity(
+            normalizedQuery: normalizedQuery,
+            isOfflineVariant: isOfflineVariant
+        )
+        guard identity != nextIdentity else { return nil }
+
+        identity = nextIdentity
+        generation &+= 1
+        let hasQuery = !normalizedQuery.isEmpty
+        remoteResultsAvailable = hasQuery && isOfflineVariant
+        return hasQuery && !isOfflineVariant ? generation : nil
+    }
+
+    mutating func revealRemoteResults(for generation: Int) -> Bool {
+        guard self.generation == generation,
+              let identity,
+              !identity.normalizedQuery.isEmpty,
+              !identity.isOfflineVariant,
+              !remoteResultsAvailable else {
+            return false
+        }
+        remoteResultsAvailable = true
+        return true
     }
 }
 

@@ -167,6 +167,7 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
     @Published var isControlCenterSearchPresented: Bool = false
+    @Published private(set) var isGlobalSearchResultsPresented = false
     @Published private(set) var researchRemoteSearchResultsAvailable = false
     @Published var researchInstallConfirmation: WholeWorkflowResearchInstallConfirmation?
     @Published var planManagerScopeId: String = HelmCore.allManagersScopeId
@@ -185,7 +186,17 @@ final class ControlCenterContext: ObservableObject {
     @Published private(set) var dashboardFocusRequestToken: Int = 0
     @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
-    private var researchSearchPresentationGeneration = 0
+    private var globalSearchSessionState = ControlCenterGlobalSearchSessionState()
+    private var researchSearchPresentationState = ResearchSearchPresentationState()
+    private let researchSearchRevealScheduler: (@escaping () -> Void) -> Void
+
+    init(
+        researchSearchRevealScheduler: @escaping (@escaping () -> Void) -> Void = { completion in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: completion)
+        }
+    ) {
+        self.researchSearchRevealScheduler = researchSearchRevealScheduler
+    }
 
     var showUpgradeSheet: Bool {
         upgradeSheetPresentation.isPresented
@@ -268,31 +279,59 @@ final class ControlCenterContext: ObservableObject {
     }
 
     func acceptGlobalSearchResult(packageID: String) {
-        guard let decision = ControlCenterGlobalSearchNavigationPolicy.acceptedResultNavigation(
+        guard let decision = GlobalSearchNavigationPolicy.acceptedResultNavigation(
             packageID: packageID
         ) else { return }
         managerFilterId = decision.managerFilterID
         navigate(to: decision.deepLink)
+        dismissGlobalSearchResults()
         isControlCenterSearchPresented = false
+    }
+
+    func updateGlobalSearchQuery(
+        _ query: String,
+        presentsResults: Bool
+    ) {
+        searchQuery = query
+        globalSearchSessionState.updateQuery(query, presentsResults: presentsResults)
+        isGlobalSearchResultsPresented = globalSearchSessionState.isResultsPresented
+    }
+
+    func synchronizeGlobalSearchPresentation(isSearchFieldPresented: Bool) {
+        let section = selectedSection ?? .overview
+        let supportsGlobalResults = section != .updates && section != .packages
+        globalSearchSessionState.synchronize(
+            isSearchFieldPresented: isSearchFieldPresented,
+            supportsGlobalResults: supportsGlobalResults,
+            query: searchQuery
+        )
+        isGlobalSearchResultsPresented = globalSearchSessionState.isResultsPresented
+    }
+
+    func dismissGlobalSearchResults() {
+        globalSearchSessionState.dismiss()
+        isGlobalSearchResultsPresented = globalSearchSessionState.isResultsPresented
     }
 
     func updateResearchSearchPresentation(
         query: String,
         isOfflineVariant: Bool
     ) {
-        researchSearchPresentationGeneration &+= 1
-        let generation = researchSearchPresentationGeneration
-        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let revealGeneration = researchSearchPresentationState.update(
+            query: query,
+            isOfflineVariant: isOfflineVariant
+        )
+        researchRemoteSearchResultsAvailable = researchSearchPresentationState.remoteResultsAvailable
+        guard let revealGeneration else { return }
 
-        researchRemoteSearchResultsAvailable = hasQuery && isOfflineVariant
-        guard hasQuery, !isOfflineVariant else { return }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
+        researchSearchRevealScheduler { [weak self] in
             guard let self,
-                  self.researchSearchPresentationGeneration == generation else {
-                return
-            }
-            self.researchRemoteSearchResultsAvailable = true
+                  self.researchSearchPresentationState.revealRemoteResults(
+                      for: revealGeneration
+                  ) else { return }
+            self.researchRemoteSearchResultsAvailable = self
+                .researchSearchPresentationState
+                .remoteResultsAvailable
         }
     }
 

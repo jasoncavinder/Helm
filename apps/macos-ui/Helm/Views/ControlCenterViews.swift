@@ -33,7 +33,10 @@ struct ControlCenterWindowView: View {
         Binding(
             get: { context.searchQuery },
             set: { newValue in
-                context.searchQuery = newValue
+                context.updateGlobalSearchQuery(
+                    newValue,
+                    presentsResults: selectedSection != .updates && selectedSection != .packages
+                )
                 if let researchLibraryProjection {
                     context.updateResearchSearchPresentation(
                         query: newValue,
@@ -120,6 +123,7 @@ struct ControlCenterWindowView: View {
     private var presentsGlobalSearchResults: Bool {
         let hasQuery = !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return !presentsFirstRun
+            && context.isGlobalSearchResultsPresented
             && hasQuery
             && selectedSection != .updates
             && selectedSection != .packages
@@ -322,7 +326,13 @@ struct ControlCenterWindowView: View {
             navigateToSection(for: step.targetAnchor)
         }
         .onChange(of: context.selectedSection) { newSection in
+            context.dismissGlobalSearchResults()
             deferInspectorAlignment(for: newSection)
+        }
+        .onChange(of: context.isControlCenterSearchPresented) { isPresented in
+            context.synchronizeGlobalSearchPresentation(
+                isSearchFieldPresented: isPresented
+            )
         }
         .onAppear {
             deferInspectorAlignment(for: context.selectedSection)

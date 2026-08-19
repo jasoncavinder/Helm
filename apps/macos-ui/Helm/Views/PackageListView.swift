@@ -240,7 +240,7 @@ struct PackagesSectionView: View {
                 }
             }
 
-            researchFilterBar
+            researchFilterBar(projection)
 
             if context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 VStack(spacing: 8) {
@@ -314,21 +314,25 @@ struct PackagesSectionView: View {
         }
         .padding(20)
         .onAppear {
-            let managerIDs = projection.results.map(\.managerID)
-            availableManagerIds = Array(Set(managerIDs)).sorted {
-                localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(
-                    localizedManagerDisplayName($1)
-                ) == .orderedAscending
-            }
             context.updateResearchSearchPresentation(
                 query: context.searchQuery,
                 isOfflineVariant: projection.isOfflineVariant
             )
+            reconcileResearchPresentation(projection)
+        }
+        .onChange(of: context.searchQuery) { _ in
+            reconcileResearchPresentation(projection)
+        }
+        .onChange(of: context.researchRemoteSearchResultsAvailable) { _ in
+            reconcileResearchPresentation(projection)
         }
     }
 
-    private var researchFilterBar: some View {
-        HStack(spacing: 8) {
+    private func researchFilterBar(
+        _ projection: WholeWorkflowResearchLibraryProjection
+    ) -> some View {
+        let managerIDs = researchVisibleManagerIDs(in: projection)
+        return HStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(PackageStatus.allCases, id: \.self) { status in
@@ -362,7 +366,7 @@ struct PackagesSectionView: View {
                     context.managerFilterId = nil
                 }
                 Divider()
-                ForEach(availableManagerIds, id: \.self) { managerID in
+                ForEach(managerIDs, id: \.self) { managerID in
                     Button(localizedManagerDisplayName(managerID)) {
                         selectedManagerId = managerID
                         context.managerFilterId = managerID
@@ -400,6 +404,47 @@ struct PackagesSectionView: View {
             managerID: selectedManagerId ?? context.managerFilterId,
             includeRemoteResults: context.researchRemoteSearchResultsAvailable
         )
+    }
+
+    private func researchPresentationResults(
+        in projection: WholeWorkflowResearchLibraryProjection
+    ) -> [WholeWorkflowResearchLibraryResult] {
+        projection.visibleResults(
+            matching: context.searchQuery,
+            includeRemoteResults: context.researchRemoteSearchResultsAvailable
+        )
+    }
+
+    private func researchVisibleManagerIDs(
+        in projection: WholeWorkflowResearchLibraryProjection
+    ) -> [String] {
+        Array(Set(researchPresentationResults(in: projection).map(\.managerID))).sorted {
+            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(
+                localizedManagerDisplayName($1)
+            ) == .orderedAscending
+        }
+    }
+
+    private func reconcileResearchPresentation(
+        _ projection: WholeWorkflowResearchLibraryProjection
+    ) {
+        let visibleResults = researchPresentationResults(in: projection)
+        let visibleResultIDs = Set(visibleResults.map(\.id))
+        if let selectedPackageID = context.selectedPackageId,
+           projection.result(withID: selectedPackageID) != nil,
+           !visibleResultIDs.contains(selectedPackageID) {
+            context.selectedPackageId = nil
+            context.selectedManagerId = nil
+        }
+
+        let visibleManagerIDs = Set(visibleResults.map(\.managerID))
+        if let selectedManagerId, !visibleManagerIDs.contains(selectedManagerId) {
+            self.selectedManagerId = nil
+        }
+        if let managerFilterID = context.managerFilterId,
+           !visibleManagerIDs.contains(managerFilterID) {
+            context.managerFilterId = nil
+        }
     }
 
     private func researchSearchIsEnriching(

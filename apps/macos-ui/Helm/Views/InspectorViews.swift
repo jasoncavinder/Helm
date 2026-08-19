@@ -16,8 +16,15 @@ struct ControlCenterInspectorView: View {
 
     private var selectedPackage: PackageItem? {
         guard let packageId = context.selectedPackageId else { return nil }
-        if let result = researchLibraryProjection?.result(withID: packageId) {
+        if let researchLibraryProjection,
+           let result = researchLibraryProjection.visibleResults(
+               matching: context.searchQuery,
+               includeRemoteResults: context.researchRemoteSearchResultsAvailable
+           ).first(where: { $0.id == packageId }) {
             return result.packageItem
+        }
+        if researchLibraryProjection != nil {
+            return nil
         }
         return core.knownPackage(withId: packageId)
     }
@@ -1289,7 +1296,12 @@ private struct InspectorPackageDetailView: View {
 
             InspectorField(label: L10n.App.Packages.Research.source.localized) {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(projection.results) { candidate in
+                    ForEach(
+                        projection.visibleResults(
+                            matching: context.searchQuery,
+                            includeRemoteResults: context.researchRemoteSearchResultsAvailable
+                        )
+                    ) { candidate in
                         let candidateState = projection.resultState(for: candidate)
                         let isSelected = candidate.id == result.id
                         Button {
