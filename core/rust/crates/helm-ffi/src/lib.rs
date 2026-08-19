@@ -14582,14 +14582,15 @@ mod tests {
         assert_eq!(result.provenance.origin, LibraryResultOrigin::LocalCache);
         assert_eq!(
             result.provenance.discovery_source,
-            LibraryResultDiscoverySource::RemoteSearch
+            LibraryResultDiscoverySource::ManagerSearch
         );
         assert_eq!(result.provenance.source_manager, ManagerId::Cargo);
 
         let value = serde_json::to_value(result).expect("FFI result should serialize");
         assert_eq!(value["provenance"]["schema_version"], 1);
         assert_eq!(value["provenance"]["origin"], "local_cache");
-        assert_eq!(value["provenance"]["discovery_source"], "remote_search");
+        assert_eq!(value["provenance"]["discovery_source"], "manager_search");
+        assert!(value["provenance"].get("cached_at_unix").is_none());
     }
 
     #[test]

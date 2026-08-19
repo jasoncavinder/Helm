@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +20,7 @@ pub enum LibraryResultOrigin {
 pub enum LibraryResultDiscoverySource {
     ManagerSnapshot,
     CatalogSync,
-    RemoteSearch,
+    ManagerSearch,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -30,7 +30,6 @@ pub struct LibraryResultProvenance {
     pub discovery_source: LibraryResultDiscoverySource,
     pub source_manager: ManagerId,
     pub originating_query: Option<String>,
-    pub observed_at_unix: Option<u64>,
 }
 
 impl LibraryResultProvenance {
@@ -41,7 +40,6 @@ impl LibraryResultProvenance {
             discovery_source: LibraryResultDiscoverySource::ManagerSnapshot,
             source_manager,
             originating_query: None,
-            observed_at_unix: None,
         }
     }
 }
@@ -70,16 +68,11 @@ impl CachedSearchResult {
             discovery_source: if originating_query.is_empty() {
                 LibraryResultDiscoverySource::CatalogSync
             } else {
-                LibraryResultDiscoverySource::RemoteSearch
+                LibraryResultDiscoverySource::ManagerSearch
             },
             source_manager: self.source_manager,
             originating_query: (!originating_query.is_empty())
                 .then(|| originating_query.to_string()),
-            observed_at_unix: self
-                .cached_at
-                .duration_since(UNIX_EPOCH)
-                .ok()
-                .map(|duration| duration.as_secs()),
         }
     }
 }
@@ -111,7 +104,7 @@ mod tests {
     }
 
     #[test]
-    fn manager_snapshot_is_local_without_query_or_observation_time() {
+    fn manager_snapshot_is_local_without_query() {
         let provenance = LibraryResultProvenance::manager_snapshot(ManagerId::Rustup);
 
         assert_eq!(provenance.origin, LibraryResultOrigin::Local);
@@ -121,11 +114,10 @@ mod tests {
         );
         assert_eq!(provenance.source_manager, ManagerId::Rustup);
         assert_eq!(provenance.originating_query, None);
-        assert_eq!(provenance.observed_at_unix, None);
     }
 
     #[test]
-    fn interactive_cache_result_preserves_remote_discovery_without_claiming_remote_delivery() {
+    fn interactive_cache_result_preserves_manager_search_without_claiming_remote_delivery() {
         let provenance = result("  ripgrep  ", 1_800_000_000).library_result_provenance();
 
         assert_eq!(
@@ -135,11 +127,10 @@ mod tests {
         assert_eq!(provenance.origin, LibraryResultOrigin::LocalCache);
         assert_eq!(
             provenance.discovery_source,
-            LibraryResultDiscoverySource::RemoteSearch
+            LibraryResultDiscoverySource::ManagerSearch
         );
         assert_eq!(provenance.source_manager, ManagerId::Cargo);
         assert_eq!(provenance.originating_query.as_deref(), Some("ripgrep"));
-        assert_eq!(provenance.observed_at_unix, Some(1_800_000_000));
     }
 
     #[test]
@@ -162,7 +153,8 @@ mod tests {
 
         assert_eq!(value["schema_version"], 1);
         assert_eq!(value["origin"], "local_cache");
-        assert_eq!(value["discovery_source"], "remote_search");
+        assert_eq!(value["discovery_source"], "manager_search");
         assert_eq!(value["source_manager"], "cargo");
+        assert!(value.get("cached_at_unix").is_none());
     }
 }

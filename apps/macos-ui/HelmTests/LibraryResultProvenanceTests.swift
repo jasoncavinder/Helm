@@ -2,78 +2,135 @@ import Foundation
 import XCTest
 
 final class LibraryResultProvenanceTests: XCTestCase {
-    func testDecodesAndValidatesManagerSnapshotProvenance() throws {
-        let provenance = try decode(
-            """
-            {
-              "schema_version": 1,
-              "origin": "local",
-              "discovery_source": "manager_snapshot",
-              "source_manager": "rustup"
-            }
-            """
-        )
+    func testValidatesEverySupportedBoundaryCombination() throws {
+        let cases: [(String, PackageResultProvenanceBoundary)] = [
+            (
+                provenanceJSON(origin: "local", discovery: "manager_snapshot", manager: "rustup"),
+                .managerSnapshot
+            ),
+            (
+                provenanceJSON(origin: "local_cache", discovery: "catalog_sync", manager: "cargo"),
+                .localCacheSearch
+            ),
+            (
+                provenanceJSON(
+                    origin: "local_cache",
+                    discovery: "manager_search",
+                    manager: "cargo",
+                    query: "ripgrep"
+                ),
+                .localCacheSearch
+            ),
+            (
+                provenanceJSON(
+                    origin: "remote",
+                    discovery: "manager_search",
+                    manager: "cargo",
+                    query: "ripgrep"
+                ),
+                .directSearch
+            ),
+            (
+                provenanceJSON(
+                    origin: "deferred",
+                    discovery: "manager_search",
+                    manager: "cargo",
+                    query: "ripgrep"
+                ),
+                .directSearch
+            ),
+        ]
 
-        let validated = try XCTUnwrap(provenance.validated(for: "rustup"))
-        XCTAssertEqual(validated.origin, .local)
-        XCTAssertEqual(validated.discoverySource, .managerSnapshot)
-        XCTAssertNil(validated.originatingQuery)
+        for (json, boundary) in cases {
+            let provenance = try decode(PackageResultProvenance.self, json)
+            let managerId = provenance.sourceManager
+            XCTAssertNotNil(provenance.validated(for: managerId, at: boundary))
+        }
     }
 
-    func testDecodesAndValidatesVersionedCacheProvenance() throws {
+    func testDecodesAndValidatesVersionedManagerSearchProvenance() throws {
         let provenance = try decode(
-            """
-            {
-              "schema_version": 1,
-              "origin": "local_cache",
-              "discovery_source": "remote_search",
-              "source_manager": "cargo",
-              "originating_query": "ripgrep",
-              "observed_at_unix": 1800000000
-            }
-            """
+            PackageResultProvenance.self,
+            provenanceJSON(
+                origin: "local_cache",
+                discovery: "manager_search",
+                manager: "cargo",
+                query: "ripgrep"
+            )
         )
 
-        let validated = try XCTUnwrap(provenance.validated(for: "cargo"))
+        let validated = try XCTUnwrap(provenance.validated(for: "cargo", at: .localCacheSearch))
         XCTAssertEqual(validated.origin, .localCache)
-        XCTAssertEqual(validated.discoverySource, .remoteSearch)
+        XCTAssertEqual(validated.discoverySource, .managerSearch)
         XCTAssertEqual(validated.originatingQuery, "ripgrep")
-        XCTAssertEqual(validated.observedAtUnix, 1_800_000_000)
     }
 
-    func testRejectsSourceManagerMismatch() throws {
-        let provenance = try decode(
-            """
-            {
-              "schema_version": 1,
-              "origin": "local_cache",
-              "discovery_source": "catalog_sync",
-              "source_manager": "homebrew_formula"
-            }
-            """
+    func testRejectsEndpointInvalidProvenance() throws {
+        let snapshot = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(origin: "local", discovery: "manager_snapshot", manager: "cargo")
+        )
+        let cached = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(
+                origin: "local_cache",
+                discovery: "manager_search",
+                manager: "cargo",
+                query: "ripgrep"
+            )
+        )
+        let remote = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(
+                origin: "remote",
+                discovery: "manager_search",
+                manager: "cargo",
+                query: "ripgrep"
+            )
         )
 
-        XCTAssertNil(provenance.validated(for: "cargo"))
+        XCTAssertNil(snapshot.validated(for: "cargo", at: .localCacheSearch))
+        XCTAssertNil(cached.validated(for: "cargo", at: .managerSnapshot))
+        XCTAssertNil(remote.validated(for: "cargo", at: .localCacheSearch))
     }
 
-    func testRejectsNoncanonicalSourceManagerIdentity() throws {
-        let provenance = try decode(
-            """
-            {
-              "schema_version": 1,
-              "origin": "local_cache",
-              "discovery_source": "remote_search",
-              "source_manager": "Cargo",
-              "originating_query": "ripgrep"
-            }
-            """
+    func testRejectsNoncanonicalManagerIdentitiesAndQueries() throws {
+        let paddedManager = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(origin: "local", discovery: "manager_snapshot", manager: " cargo ")
+        )
+        let noncanonicalManager = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(origin: "local", discovery: "manager_snapshot", manager: "Cargo")
+        )
+        let mismatchedManager = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(origin: "local", discovery: "manager_snapshot", manager: "homebrew_formula")
+        )
+        let explicitEmptyCatalogQuery = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(origin: "local_cache", discovery: "catalog_sync", manager: "cargo", query: "")
+        )
+        let paddedManagerQuery = try decode(
+            PackageResultProvenance.self,
+            provenanceJSON(
+                origin: "local_cache",
+                discovery: "manager_search",
+                manager: "cargo",
+                query: " ripgrep "
+            )
         )
 
-        XCTAssertNil(provenance.validated(for: "cargo"))
+        XCTAssertNil(paddedManager.validated(for: " cargo ", at: .managerSnapshot))
+        XCTAssertNil(noncanonicalManager.validated(for: "Cargo", at: .managerSnapshot))
+        XCTAssertNil(mismatchedManager.validated(for: "cargo", at: .managerSnapshot))
+        XCTAssertNil(explicitEmptyCatalogQuery.validated(for: "cargo", at: .localCacheSearch))
+        XCTAssertNil(paddedManagerQuery.validated(for: "cargo", at: .localCacheSearch))
     }
 
     func testRejectsUnknownSchemaAndEnumValuesWithoutFailingDecode() throws {
         let provenance = try decode(
+            PackageResultProvenance.self,
             """
             {
               "schema_version": 2,
@@ -86,27 +143,118 @@ final class LibraryResultProvenanceTests: XCTestCase {
 
         XCTAssertEqual(provenance.origin, .unknown)
         XCTAssertEqual(provenance.discoverySource, .unknown)
-        XCTAssertNil(provenance.validated(for: "cargo"))
+        XCTAssertNil(provenance.validated(for: "cargo", at: .localCacheSearch))
     }
 
-    func testRejectsRemoteDiscoveryWithoutOriginatingQuery() throws {
-        let provenance = try decode(
+    func testMalformedNestedProvenanceDoesNotDiscardEnclosingResults() throws {
+        let malformedProvenance =
             """
             {
-              "schema_version": 1,
-              "origin": "local_cache",
-              "discovery_source": "remote_search",
+              "schema_version": "future",
+              "origin": {"kind": "future"},
+              "discovery_source": "manager_search",
               "source_manager": "cargo"
             }
             """
+
+        let results: [EnclosingResult] = try decode(
+            [EnclosingResult].self,
+            """
+            [{
+              "name": "ripgrep",
+              "provenance": \(malformedProvenance)
+            }]
+            """
         )
 
-        XCTAssertNil(provenance.validated(for: "cargo"))
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].name, "ripgrep")
+        XCTAssertNil(results[0].provenance?.validated(for: "cargo", at: .localCacheSearch))
     }
 
-    private func decode(_ json: String) throws -> PackageResultProvenance {
+    func testExactInspectorSelectionWinsBeforePersistedManagerPreference() {
+        let selected = PackageInspectorSelectionPolicy.managerId(
+            explicitManagerId: "cargo",
+            selectedPackageManagerId: "homebrew_formula",
+            persistedManagerId: "homebrew_formula",
+            candidateManagerIds: ["cargo", "homebrew_formula"],
+            fallbackManagerId: "homebrew_formula"
+        )
+
+        XCTAssertEqual(selected, "cargo")
+    }
+
+    func testExactPackageManagerWinsWhenDeepLinkHasNoExplicitManager() {
+        let selected = PackageInspectorSelectionPolicy.managerId(
+            explicitManagerId: nil,
+            selectedPackageManagerId: "cargo",
+            persistedManagerId: "homebrew_formula",
+            candidateManagerIds: ["cargo", "homebrew_formula"],
+            fallbackManagerId: "homebrew_formula"
+        )
+
+        XCTAssertEqual(selected, "cargo")
+    }
+
+    func testExactPackageManagerWinsBeforeRecommendationWhenNoPreferenceExists() {
+        XCTAssertTrue(
+            PackageInspectorSelectionPolicy.hasExactPackageSelection(
+                selectedPackageId: "cargo:ripgrep",
+                presentedPackageId: "cargo:ripgrep",
+                presentedManagerId: "cargo",
+                candidateManagerIds: ["cargo", "homebrew_formula"]
+            )
+        )
+
+        let selected = PackageInspectorSelectionPolicy.managerId(
+            explicitManagerId: nil,
+            selectedPackageManagerId: "cargo",
+            persistedManagerId: nil,
+            candidateManagerIds: ["cargo", "homebrew_formula"],
+            fallbackManagerId: "homebrew_formula"
+        )
+
+        XCTAssertEqual(selected, "cargo")
+    }
+
+    func testInspectorSelectionFallsBackWhenExplicitManagerIsNotInFamily() {
+        let selected = PackageInspectorSelectionPolicy.managerId(
+            explicitManagerId: "npm",
+            selectedPackageManagerId: nil,
+            persistedManagerId: "cargo",
+            candidateManagerIds: ["cargo", "homebrew_formula"],
+            fallbackManagerId: "homebrew_formula"
+        )
+
+        XCTAssertEqual(selected, "cargo")
+    }
+
+    private func provenanceJSON(
+        origin: String,
+        discovery: String,
+        manager: String,
+        query: String? = nil
+    ) -> String {
+        var fields = [
+            "\"schema_version\": 1",
+            "\"origin\": \"\(origin)\"",
+            "\"discovery_source\": \"\(discovery)\"",
+            "\"source_manager\": \"\(manager)\"",
+        ]
+        if let query {
+            fields.append("\"originating_query\": \"\(query)\"")
+        }
+        return "{\(fields.joined(separator: ","))}"
+    }
+
+    private func decode<Value: Decodable>(_ type: Value.Type, _ json: String) throws -> Value {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(PackageResultProvenance.self, from: Data(json.utf8))
+        return try decoder.decode(Value.self, from: Data(json.utf8))
+    }
+
+    private struct EnclosingResult: Decodable {
+        let name: String
+        let provenance: PackageResultProvenance?
     }
 }

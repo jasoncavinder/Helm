@@ -26,7 +26,7 @@ struct CoreInstalledPackage: Codable {
     let provenance: PackageResultProvenance?
 
     var validatedProvenance: PackageResultProvenance? {
-        provenance?.validated(for: package.manager)
+        provenance?.validated(for: package.manager, at: .managerSnapshot)
     }
 }
 
@@ -41,7 +41,7 @@ struct CoreOutdatedPackage: Codable {
     let provenance: PackageResultProvenance?
 
     var validatedProvenance: PackageResultProvenance? {
-        provenance?.validated(for: package.manager)
+        provenance?.validated(for: package.manager, at: .managerSnapshot)
     }
 }
 
@@ -136,7 +136,7 @@ struct CoreSearchResult: Codable {
     let provenance: PackageResultProvenance?
 
     var validatedProvenance: PackageResultProvenance? {
-        provenance?.validated(for: sourceManager)
+        provenance?.validated(for: sourceManager, at: .localCacheSearch)
     }
 }
 

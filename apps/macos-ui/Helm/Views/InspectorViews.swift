@@ -947,11 +947,13 @@ private struct InspectorPackageDetailView: View {
     }
 
     private var selectedManagerId: String {
-        if let preferredManagerId = core.preferredManagerId(for: livePackage),
-           managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
-            return preferredManagerId
-        }
-        return recommendedManagerPackage.managerId
+        PackageInspectorSelectionPolicy.managerId(
+            explicitManagerId: context.selectedManagerId,
+            selectedPackageManagerId: livePackage.managerId,
+            persistedManagerId: core.preferredManagerId(for: livePackage),
+            candidateManagerIds: Set(managerCandidates.map(\.managerId)),
+            fallbackManagerId: recommendedManagerPackage.managerId
+        )
     }
 
     private var activeManagerGroup: ManagerPackageGroup? {
@@ -1963,6 +1965,18 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func ensurePersistedManagerSelection() {
+        if let explicitManagerId = context.selectedManagerId,
+           managerCandidates.contains(where: { $0.managerId == explicitManagerId }) {
+            return
+        }
+        if PackageInspectorSelectionPolicy.hasExactPackageSelection(
+            selectedPackageId: context.selectedPackageId,
+            presentedPackageId: livePackage.id,
+            presentedManagerId: livePackage.managerId,
+            candidateManagerIds: Set(managerCandidates.map(\.managerId))
+        ) {
+            return
+        }
         if let preferredManagerId = core.preferredManagerId(for: livePackage),
            managerCandidates.contains(where: { $0.managerId == preferredManagerId }) {
             return
