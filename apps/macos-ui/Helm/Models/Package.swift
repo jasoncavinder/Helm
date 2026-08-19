@@ -52,6 +52,7 @@ struct PackageItem: Identifiable {
     var pinned: Bool = false
     var restartRequired: Bool = false
     var runtimeState: PackageRuntimeState = PackageRuntimeState()
+    let resultProvenance: PackageResultProvenance?
     private var statusOverride: PackageStatus?
 
     var status: PackageStatus {
@@ -59,7 +60,7 @@ struct PackageItem: Identifiable {
         return latestVersion != nil ? .upgradable : .installed
     }
 
-    init(id: String, name: String, packageIdentifier: String? = nil, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, runtimeState: PackageRuntimeState = PackageRuntimeState(), status: PackageStatus? = nil) {
+    init(id: String, name: String, packageIdentifier: String? = nil, version: String, latestVersion: String? = nil, managerId: String? = nil, manager: String, summary: String? = nil, pinned: Bool = false, restartRequired: Bool = false, runtimeState: PackageRuntimeState = PackageRuntimeState(), resultProvenance: PackageResultProvenance? = nil, status: PackageStatus? = nil) {
         self.id = id
         self.name = name
         if let packageIdentifier {
@@ -76,6 +77,7 @@ struct PackageItem: Identifiable {
         self.pinned = pinned
         self.restartRequired = restartRequired
         self.runtimeState = runtimeState
+        self.resultProvenance = resultProvenance
         self.statusOverride = status
     }
 

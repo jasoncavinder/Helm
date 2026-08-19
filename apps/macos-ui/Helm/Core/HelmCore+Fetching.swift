@@ -40,7 +40,8 @@ extension HelmCore {
                         managerId: pkg.package.manager,
                         manager: self.normalizedManagerName(pkg.package.manager),
                         pinned: pkg.pinned,
-                        runtimeState: pkg.runtimeState ?? PackageRuntimeState()
+                        runtimeState: pkg.runtimeState ?? PackageRuntimeState(),
+                        resultProvenance: pkg.validatedProvenance
                     )
                 }
             }
@@ -86,7 +87,8 @@ extension HelmCore {
                         manager: self.normalizedManagerName(pkg.package.manager),
                         pinned: pkg.pinned,
                         restartRequired: pkg.restartRequired,
-                        runtimeState: pkg.runtimeState ?? PackageRuntimeState()
+                        runtimeState: pkg.runtimeState ?? PackageRuntimeState(),
+                        resultProvenance: pkg.validatedProvenance
                     )
                 }
                 self.outdatedPackages = self.packagesIncludingHelmSelfUpdate(managerPackages)
@@ -503,6 +505,7 @@ extension HelmCore {
                         managerId: result.sourceManager,
                         manager: self.normalizedManagerName(result.sourceManager),
                         summary: result.summary,
+                        resultProvenance: result.validatedProvenance,
                         status: .available
                     )
                 }
@@ -593,6 +596,7 @@ extension HelmCore {
                         managerId: result.sourceManager,
                         manager: self.normalizedManagerName(result.sourceManager),
                         summary: result.summary,
+                        resultProvenance: result.validatedProvenance,
                         status: .available
                     )
 

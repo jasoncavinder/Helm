@@ -165,10 +165,11 @@ use helm_core::manager_instances::{
 };
 use helm_core::manager_policy::manager_enablement_eligibility;
 use helm_core::models::{
-    Capability, DetectionInfo, HomebrewKegPolicy, ManagerAction, ManagerAuthority, ManagerId,
-    ManagerInstallInstance, ManagerUninstallPreview, OutdatedPackage, PackageRef,
-    PackageRuntimeState, PinKind, PinRecord, SearchQuery, StrategyKind, TaskId, TaskLogLevel,
-    TaskLogRecord, TaskRecord, TaskStatus, TaskType,
+    CachedSearchResult, Capability, DetectionInfo, HomebrewKegPolicy, InstalledPackage,
+    LibraryResultProvenance, ManagerAction, ManagerAuthority, ManagerId, ManagerInstallInstance,
+    ManagerUninstallPreview, OutdatedPackage, PackageRef, PackageRuntimeState, PinKind, PinRecord,
+    SearchQuery, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskRecord, TaskStatus,
+    TaskType,
 };
 use helm_core::orchestration::adapter_runtime::AdapterRuntime;
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
@@ -788,6 +789,66 @@ struct FfiManagerInstallInstanceSummary {
     explanation_secondary: Option<String>,
     competing_provenance: Option<String>,
     competing_confidence: Option<f64>,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+struct FfiSearchResult {
+    manager: String,
+    name: String,
+    package_identifier: Option<String>,
+    version: Option<String>,
+    summary: Option<String>,
+    source_manager: String,
+    provenance: LibraryResultProvenance,
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+struct FfiInstalledPackage {
+    #[serde(flatten)]
+    package: InstalledPackage,
+    provenance: LibraryResultProvenance,
+}
+
+impl From<InstalledPackage> for FfiInstalledPackage {
+    fn from(package: InstalledPackage) -> Self {
+        let provenance = LibraryResultProvenance::manager_snapshot(package.package.manager);
+        Self {
+            package,
+            provenance,
+        }
+    }
+}
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+struct FfiOutdatedPackage {
+    #[serde(flatten)]
+    package: OutdatedPackage,
+    provenance: LibraryResultProvenance,
+}
+
+impl From<OutdatedPackage> for FfiOutdatedPackage {
+    fn from(package: OutdatedPackage) -> Self {
+        let provenance = LibraryResultProvenance::manager_snapshot(package.package.manager);
+        Self {
+            package,
+            provenance,
+        }
+    }
+}
+
+impl From<CachedSearchResult> for FfiSearchResult {
+    fn from(result: CachedSearchResult) -> Self {
+        let provenance = result.library_result_provenance();
+        Self {
+            manager: result.result.package.manager.as_str().to_string(),
+            name: result.result.package.name,
+            package_identifier: result.result.package_identifier,
+            version: result.result.version,
+            summary: result.result.summary,
+            source_manager: result.source_manager.as_str().to_string(),
+            provenance,
+        }
+    }
 }
 
 type FfiManagerUninstallPreview = ManagerUninstallPreview;
@@ -5738,6 +5799,11 @@ pub extern "C" fn helm_list_installed_packages() -> *mut c_char {
     })
     .collect::<Vec<_>>();
 
+    let packages = packages
+        .into_iter()
+        .map(FfiInstalledPackage::from)
+        .collect::<Vec<_>>();
+
     let json = match serde_json::to_string(&packages) {
         Ok(j) => j,
         Err(_) => return std::ptr::null_mut(),
@@ -5772,6 +5838,11 @@ pub extern "C" fn helm_list_outdated_packages() -> *mut c_char {
             && manager_is_enabled(&enabled_by_manager, package.package.manager)
     })
     .collect::<Vec<_>>();
+
+    let packages = packages
+        .into_iter()
+        .map(FfiOutdatedPackage::from)
+        .collect::<Vec<_>>();
 
     let json = match serde_json::to_string(&packages) {
         Ok(j) => j,
@@ -6511,27 +6582,8 @@ pub unsafe extern "C" fn helm_search_local(query: *const c_char) -> *mut c_char 
     })
     .collect::<Vec<_>>();
 
-    #[derive(serde::Serialize)]
-    struct FfiSearchResult {
-        manager: String,
-        name: String,
-        package_identifier: Option<String>,
-        version: Option<String>,
-        summary: Option<String>,
-        source_manager: String,
-    }
-
-    let ffi_results: Vec<FfiSearchResult> = results
-        .into_iter()
-        .map(|r| FfiSearchResult {
-            manager: r.result.package.manager.as_str().to_string(),
-            name: r.result.package.name,
-            package_identifier: r.result.package_identifier,
-            version: r.result.version,
-            summary: r.result.summary,
-            source_manager: r.source_manager.as_str().to_string(),
-        })
-        .collect();
+    let ffi_results: Vec<FfiSearchResult> =
+        results.into_iter().map(FfiSearchResult::from).collect();
 
     let json = match serde_json::to_string(&ffi_results) {
         Ok(j) => j,
@@ -11567,7 +11619,8 @@ pub unsafe extern "C" fn helm_free_string(s: *mut c_char) {
 mod tests {
     use super::{
         ALL_MANAGERS_UPGRADE_SCOPE, CoordinatorRequest, CoordinatorWorkflowRequest,
-        FfiUpgradePlanStep, HOMEBREW_CLEANUP_REASON_LABEL_KEY, SERVICE_ERROR_INVALID_INPUT,
+        FfiInstalledPackage, FfiOutdatedPackage, FfiSearchResult, FfiUpgradePlanStep,
+        HOMEBREW_CLEANUP_REASON_LABEL_KEY, SERVICE_ERROR_INVALID_INPUT,
         SERVICE_ERROR_UNSUPPORTED_CAPABILITY, UpgradeWorkflowControl, build_manager_statuses,
         build_manager_uninstall_plan, build_manager_uninstall_preview, build_visible_tasks,
         collect_upgrade_all_targets, homebrew_probe_candidates,
@@ -11590,10 +11643,11 @@ mod tests {
         PIP_SYSTEM_UNMANAGED_REASON_CODE, RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE,
     };
     use helm_core::models::{
-        ActionSafety, AutomationLevel, Capability, DetectionInfo, InstallProvenance,
-        InstalledPackage, ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor,
-        ManagerId, ManagerInstallInstance, OutdatedPackage, PackageRef, StrategyKind, TaskId,
-        TaskLogRecord, TaskRecord, TaskStatus, TaskType,
+        ActionSafety, AutomationLevel, CachedSearchResult, Capability, DetectionInfo,
+        InstallProvenance, InstalledPackage, LibraryResultDiscoverySource, LibraryResultOrigin,
+        ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId,
+        ManagerInstallInstance, OutdatedPackage, PackageCandidate, PackageRef, PackageRuntimeState,
+        StrategyKind, TaskId, TaskLogRecord, TaskRecord, TaskStatus, TaskType,
     };
     use helm_core::orchestration::adapter_runtime::AdapterRuntime;
     use helm_core::persistence::{
@@ -14505,6 +14559,80 @@ mod tests {
 
         let without_query = search_label_args(ManagerId::Npm, " ");
         assert_eq!(without_query, vec![("manager", "npm".to_string())]);
+    }
+
+    #[test]
+    fn ffi_search_result_keeps_cache_and_discovery_provenance_distinct() {
+        let result = FfiSearchResult::from(CachedSearchResult {
+            result: PackageCandidate {
+                package: PackageRef {
+                    manager: ManagerId::Cargo,
+                    name: "ripgrep".to_string(),
+                },
+                package_identifier: None,
+                version: Some("14.1.1".to_string()),
+                summary: Some("A fast search tool".to_string()),
+            },
+            source_manager: ManagerId::Cargo,
+            originating_query: "ripgrep".to_string(),
+            cached_at: UNIX_EPOCH + Duration::from_secs(1_800_000_000),
+        });
+
+        assert_eq!(result.source_manager, "cargo");
+        assert_eq!(result.provenance.origin, LibraryResultOrigin::LocalCache);
+        assert_eq!(
+            result.provenance.discovery_source,
+            LibraryResultDiscoverySource::ManagerSearch
+        );
+        assert_eq!(result.provenance.source_manager, ManagerId::Cargo);
+
+        let value = serde_json::to_value(result).expect("FFI result should serialize");
+        assert_eq!(value["provenance"]["schema_version"], 1);
+        assert_eq!(value["provenance"]["origin"], "local_cache");
+        assert_eq!(value["provenance"]["discovery_source"], "manager_search");
+        assert!(value["provenance"].get("cached_at_unix").is_none());
+    }
+
+    #[test]
+    fn ffi_package_snapshots_include_core_owned_local_provenance() {
+        let installed = FfiInstalledPackage::from(InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::Rustup,
+                name: "stable".to_string(),
+            },
+            package_identifier: None,
+            installed_version: Some("1.90.0".to_string()),
+            pinned: false,
+            runtime_state: PackageRuntimeState::default(),
+        });
+        let outdated = FfiOutdatedPackage::from(OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::Cargo,
+                name: "ripgrep".to_string(),
+            },
+            package_identifier: None,
+            installed_version: Some("14.1.0".to_string()),
+            candidate_version: "14.1.1".to_string(),
+            pinned: false,
+            restart_required: false,
+            runtime_state: PackageRuntimeState::default(),
+        });
+
+        for (value, manager) in [
+            (
+                serde_json::to_value(installed).expect("installed package should serialize"),
+                "rustup",
+            ),
+            (
+                serde_json::to_value(outdated).expect("outdated package should serialize"),
+                "cargo",
+            ),
+        ] {
+            assert_eq!(value["package"]["manager"], manager);
+            assert_eq!(value["provenance"]["origin"], "local");
+            assert_eq!(value["provenance"]["discovery_source"], "manager_snapshot");
+            assert_eq!(value["provenance"]["source_manager"], manager);
+        }
     }
 
     #[test]

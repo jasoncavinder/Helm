@@ -121,6 +121,14 @@ Preferred:
 
 **Constraint:** JSON schemas must remain stable or versioned.
 
+### 3.4 Library Search Result Provenance
+
+`helm_list_installed_packages`, `helm_list_outdated_packages`, and `helm_search_local` keep their existing result fields and add a nested, versioned `provenance` object. The object distinguishes logical result origin (`local`, `local_cache`, `remote`, or `deferred`) from discovery source (`manager_snapshot`, `catalog_sync`, or `manager_search`). Installed/outdated manager snapshots remain `local` when read from their persisted service representation; `local_cache` is reserved for search-cache results. The XPC service forwards these payloads without reclassifying them, and Swift treats the object as additive and optional for compatibility with older service responses.
+
+The core must never describe a persisted cache read as a live remote result, or use a non-empty query as proof that a manager used network discovery. Consumers loss-isolate nested decoding, then validate schema version, canonical source-manager identity, endpoint-specific origin/discovery rules, and query shape before presenting provenance. Unknown, malformed, or future values fail closed at presentation rather than invalidating the enclosing package result.
+
+The normative version 1 fields, combinations, and compatibility rules are defined in `docs/architecture/LIBRARY_RESULT_PROVENANCE.md`.
+
 ---
 
 ## 4. Core ↔ Adapter Contract
@@ -327,7 +335,7 @@ Source: `core/rust/crates/helm-core/src/sqlite/migrations.rs`
 | `outdated_packages` | v1 (+v3, v14, v16) | `(manager_id, package_name)` | Cached outdated package state |
 | `installed_package_versions` | v13 (+v16 identifiers) | `(manager_id, package_name, installed_version)` | Version-scoped installed package state |
 | `pin_records` | v1 (+v15 version scope) | version-scoped manager/package identity | Native and virtual pin records |
-| `search_cache` | v1 | none (indexed on `originating_query` + `cached_at_unix`) | Remote search result cache |
+| `search_cache` | v1 | none (indexed on `originating_query` + `cached_at_unix`) | Package-search cache for catalog and manager-query results |
 | `task_records` | v1 | `task_id INTEGER` | Task execution history |
 | `task_log_records` | v6 | `log_id INTEGER` | Persisted structured task logs |
 | `manager_detection` | v2 | `manager_id` | Manager install detection state |

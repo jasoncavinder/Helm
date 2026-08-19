@@ -23,6 +23,11 @@ struct CoreInstalledPackage: Codable {
     let installedVersion: String?
     let pinned: Bool
     let runtimeState: PackageRuntimeState?
+    let provenance: PackageResultProvenance?
+
+    var validatedProvenance: PackageResultProvenance? {
+        provenance?.validated(for: package.manager, at: .managerSnapshot)
+    }
 }
 
 struct CoreOutdatedPackage: Codable {
@@ -33,6 +38,11 @@ struct CoreOutdatedPackage: Codable {
     let pinned: Bool
     let restartRequired: Bool
     let runtimeState: PackageRuntimeState?
+    let provenance: PackageResultProvenance?
+
+    var validatedProvenance: PackageResultProvenance? {
+        provenance?.validated(for: package.manager, at: .managerSnapshot)
+    }
 }
 
 struct CoreTaskRecord: Codable {
@@ -123,6 +133,11 @@ struct CoreSearchResult: Codable {
     let version: String?
     let summary: String?
     let sourceManager: String
+    let provenance: PackageResultProvenance?
+
+    var validatedProvenance: PackageResultProvenance? {
+        provenance?.validated(for: sourceManager, at: .localCacheSearch)
+    }
 }
 
 struct CoreRustupToolchainDetailEntry: Codable, Hashable, Identifiable {
