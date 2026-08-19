@@ -79,4 +79,4 @@ All other combinations fail closed in the Swift presentation layer.
 
 No SQLite migration is required. Existing `search_cache.originating_query` contains the source fact needed for version 1. An empty query denotes catalog sync; a non-empty query denotes manager-search discovery. The existing cache timestamp is intentionally not exposed because adapters do not yet produce one consistent observation or persistence-time semantic.
 
-This contract does not complete the Slice 20.3 native table, remote-search cancellation, or 20,000-row performance work.
+This provenance contract is consumed by the Slice 20.3 native table, but it does not complete remote-search cancellation or the 20,000-row performance work.

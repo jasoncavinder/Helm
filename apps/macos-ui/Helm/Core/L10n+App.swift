@@ -40,6 +40,9 @@ extension L10n {
                 static let available = "app.packages.filter.available"
                 static let pinned = "app.packages.filter.pinned"
             }
+            struct Table {
+                static let package = "app.packages.table.package"
+            }
             struct State {
                 static let noPackagesFound = "app.packages.state.no_packages_found"
             }
@@ -89,6 +92,7 @@ extension L10n {
                 static let pin = "app.packages.action.pin"
                 static let unpin = "app.packages.action.unpin"
                 static let upgradePackage = "app.packages.action.upgrade_package"
+                static let viewDetails = "app.packages.action.view_details"
             }
             struct Alert {
                 static let uninstallTitle = "app.packages.alert.uninstall.title"
