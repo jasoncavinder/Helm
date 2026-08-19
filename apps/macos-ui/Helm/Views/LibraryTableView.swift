@@ -9,10 +9,19 @@ enum LibraryTableStatusTone: Equatable {
 }
 
 struct LibraryTableAction: Equatable {
+    let identity: LibraryTableActionIdentity
     let symbolName: String
     let title: String
     let isEnabled: Bool
     let isInFlight: Bool
+}
+
+enum LibraryTableActionIdentity: String, Equatable {
+    case install
+    case unpin
+    case upgrade
+    case openApplication
+    case researchInstall
 }
 
 struct LibraryTableRow: Equatable, Identifiable {
@@ -42,6 +51,7 @@ struct LibraryTableColumnLabels: Equatable {
     let latestVersion: String
     let pinned: String
     let restartRequired: String
+    let running: String
     let viewDetails: String
 }
 
@@ -60,6 +70,95 @@ enum LibraryTableSelectionPolicy {
     }
 }
 
+struct LibraryTableCommand: Equatable {
+    let rowID: String
+    let packageID: String
+    let actionIdentity: LibraryTableActionIdentity?
+}
+
+enum LibraryTableCommandPolicy {
+    static func resolvedRow(
+        for command: LibraryTableCommand,
+        in rowsByID: [String: LibraryTableRow]
+    ) -> LibraryTableRow? {
+        guard let row = rowsByID[command.rowID],
+              row.selectedPackageID == command.packageID else {
+            return nil
+        }
+        guard let actionIdentity = command.actionIdentity else { return row }
+        guard let action = row.action,
+              action.identity == actionIdentity,
+              action.isEnabled,
+              !action.isInFlight else {
+            return nil
+        }
+        return row
+    }
+}
+
+enum LibraryTableLayoutPolicy {
+    static let rowHeight: CGFloat = 50
+
+    static func configureRows(in tableView: NSTableView) {
+        tableView.style = .plain
+        tableView.rowSizeStyle = .custom
+        tableView.rowHeight = rowHeight
+    }
+
+    static func layoutOverhead(in tableView: NSTableView) -> CGFloat {
+        guard let lastColumnIndex = tableView.tableColumns.indices.last else { return 0 }
+        let columnWidth = tableView.tableColumns.reduce(CGFloat.zero) { $0 + $1.width }
+        let measuredExtent = tableView.rect(ofColumn: lastColumnIndex).maxX
+        return max(0, measuredExtent - columnWidth)
+    }
+
+    static func requiredContentWidth(in tableView: NSTableView) -> CGFloat {
+        tableView.tableColumns.reduce(CGFloat.zero) { $0 + $1.width }
+            + layoutOverhead(in: tableView)
+    }
+
+    static func fitLeadingColumn(in tableView: NSTableView, to viewportWidth: CGFloat) {
+        guard viewportWidth > 0, let leadingColumn = tableView.tableColumns.first else { return }
+        let fixedWidth = tableView.tableColumns.dropFirst().reduce(CGFloat.zero) { $0 + $1.width }
+        let leadingWidth = max(
+            leadingColumn.minWidth,
+            viewportWidth - fixedWidth - layoutOverhead(in: tableView)
+        )
+        guard abs(leadingColumn.width - leadingWidth) > 0.5 else { return }
+        leadingColumn.width = leadingWidth
+    }
+}
+
+enum LibraryTableAccessibilityPolicy {
+    static func packageDescription(
+        for row: LibraryTableRow,
+        labels: LibraryTableColumnLabels
+    ) -> String {
+        var parts = [row.name]
+        if row.isPinned {
+            parts.append(labels.pinned)
+        }
+        if let detail = row.detail, !detail.isEmpty {
+            parts.append(detail)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    static func versionDescription(
+        for row: LibraryTableRow,
+        labels: LibraryTableColumnLabels
+    ) -> String {
+        var parts = ["\(labels.currentVersion) \(row.currentVersion)"]
+        if let latestVersion = row.latestVersion {
+            parts.append("\(labels.latestVersion) \(latestVersion)")
+        }
+        if row.isRestartRequired {
+            parts.append(labels.restartRequired)
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
 struct LibraryTableView: NSViewRepresentable {
     let rows: [LibraryTableRow]
     let selectedRowID: String?
@@ -67,6 +166,7 @@ struct LibraryTableView: NSViewRepresentable {
     let accessibilityLabel: String
     let focusRequest: LibraryTableFocusRequest?
     let onSelectRow: (LibraryTableRow) -> Void
+    let onClearSelection: () -> Void
     let onShowDetails: (LibraryTableRow) -> Void
     let onPerformAction: (LibraryTableRow) -> Void
     let onFulfillFocusRequest: (Int) -> Void
@@ -89,10 +189,8 @@ struct LibraryTableView: NSViewRepresentable {
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
         tableView.gridStyleMask = []
         tableView.intercellSpacing = NSSize(width: 8, height: 2)
-        tableView.rowHeight = 50
-        tableView.rowSizeStyle = .medium
         tableView.selectionHighlightStyle = .regular
-        tableView.style = .plain
+        LibraryTableLayoutPolicy.configureRows(in: tableView)
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.setAccessibilityLabel(accessibilityLabel)
         tableView.contextMenuProvider = { [weak coordinator = context.coordinator] rowIndex in
@@ -136,14 +234,27 @@ struct LibraryTableView: NSViewRepresentable {
         }
 
         private final class RowActionButton: NSButton {
-            var rowID = ""
+            var command: LibraryTableCommand?
         }
 
         private final class RowMenuItem: NSMenuItem {
-            var rowID = ""
+            var command: LibraryTableCommand?
         }
 
-        private final class PackageCell: NSTableCellView {
+        private class SemanticTableCellView: NSTableCellView {
+            var semanticAccessibilityLabel: String?
+            var semanticAccessibilityChildren: [Any] = []
+
+            override func accessibilityLabel() -> String? {
+                semanticAccessibilityLabel
+            }
+
+            override func accessibilityChildren() -> [Any]? {
+                semanticAccessibilityChildren
+            }
+        }
+
+        private final class PackageCell: SemanticTableCellView {
             let statusImage = NSImageView()
             let titleLabel = NSTextField(labelWithString: "")
             let pinImage = NSImageView()
@@ -162,7 +273,7 @@ struct LibraryTableView: NSViewRepresentable {
                 titleLabel.maximumNumberOfLines = 1
                 titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-                pinImage.image = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: nil)
+                pinImage.image = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "")
                 pinImage.contentTintColor = .secondaryLabelColor
                 pinImage.imageScaling = .scaleProportionallyDown
                 pinImage.translatesAutoresizingMaskIntoConstraints = false
@@ -173,6 +284,7 @@ struct LibraryTableView: NSViewRepresentable {
                 detailLabel.textColor = .secondaryLabelColor
                 detailLabel.lineBreakMode = .byTruncatingTail
                 detailLabel.maximumNumberOfLines = 1
+                detailLabel.setAccessibilityElement(false)
 
                 let titleStack = NSStackView(views: [titleLabel, pinImage])
                 titleStack.orientation = .horizontal
@@ -209,7 +321,7 @@ struct LibraryTableView: NSViewRepresentable {
             }
         }
 
-        private final class VersionCell: NSTableCellView {
+        private final class VersionCell: SemanticTableCellView {
             let primaryLabel = NSTextField(labelWithString: "")
             let secondaryLabel = NSTextField(labelWithString: "")
             let restartImage = NSImageView()
@@ -230,10 +342,11 @@ struct LibraryTableView: NSViewRepresentable {
                 secondaryLabel.textColor = .secondaryLabelColor
                 secondaryLabel.lineBreakMode = .byTruncatingMiddle
                 secondaryLabel.maximumNumberOfLines = 1
+                secondaryLabel.setAccessibilityElement(false)
 
                 restartImage.image = NSImage(
                     systemSymbolName: "arrow.triangle.2.circlepath",
-                    accessibilityDescription: nil
+                    accessibilityDescription: ""
                 )
                 restartImage.contentTintColor = .systemOrange
                 restartImage.imageScaling = .scaleProportionallyDown
@@ -268,7 +381,7 @@ struct LibraryTableView: NSViewRepresentable {
             }
         }
 
-        private final class StatusCell: NSTableCellView {
+        private final class StatusCell: SemanticTableCellView {
             let statusLabel = NSTextField(labelWithString: "")
             let progressIndicator = NSProgressIndicator()
             let actionButton = RowActionButton(title: "", target: nil, action: nil)
@@ -331,7 +444,7 @@ struct LibraryTableView: NSViewRepresentable {
             self.parent = parent
         }
 
-        fileprivate func attach(_ tableView: LibraryNativeTableView) {
+        func attach(_ tableView: LibraryNativeTableView) {
             self.tableView = tableView
         }
 
@@ -430,14 +543,20 @@ struct LibraryTableView: NSViewRepresentable {
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
-            guard !isSynchronizingSelection,
-                  let tableView,
-                  rowModels.indices.contains(tableView.selectedRow) else {
+            guard !isSynchronizingSelection, let tableView else { return }
+            guard rowModels.indices.contains(tableView.selectedRow) else {
+                selectedRowID = nil
+                parent.onClearSelection()
                 return
             }
             let row = rowModels[tableView.selectedRow]
             selectedRowID = row.id
             parent.onSelectRow(row)
+        }
+
+        func tableViewColumnDidResize(_ notification: Notification) {
+            (tableView?.enclosingScrollView as? LibraryTableScrollView)?
+                .fitDocumentWidthToViewport()
         }
 
         func tableView(
@@ -459,7 +578,11 @@ struct LibraryTableView: NSViewRepresentable {
                 action: #selector(showDetailsFromMenu(_:)),
                 keyEquivalent: ""
             )
-            detailsItem.rowID = row.id
+            detailsItem.command = LibraryTableCommand(
+                rowID: row.id,
+                packageID: row.selectedPackageID,
+                actionIdentity: nil
+            )
             detailsItem.target = self
             menu.addItem(detailsItem)
 
@@ -470,7 +593,11 @@ struct LibraryTableView: NSViewRepresentable {
                     action: #selector(performActionFromMenu(_:)),
                     keyEquivalent: ""
                 )
-                actionItem.rowID = row.id
+                actionItem.command = LibraryTableCommand(
+                    rowID: row.id,
+                    packageID: row.selectedPackageID,
+                    actionIdentity: action.identity
+                )
                 actionItem.target = self
                 actionItem.isEnabled = action.isEnabled && !action.isInFlight
                 menu.addItem(actionItem)
@@ -507,19 +634,37 @@ struct LibraryTableView: NSViewRepresentable {
         }
 
         @objc private func actionPressed(_ sender: RowActionButton) {
-            guard let row = rowsByID[sender.rowID] else { return }
+            guard let command = sender.command,
+                  let row = LibraryTableCommandPolicy.resolvedRow(
+                      for: command,
+                      in: rowsByID
+                  ) else {
+                return
+            }
             parent.onSelectRow(row)
             parent.onPerformAction(row)
         }
 
         @objc private func showDetailsFromMenu(_ sender: RowMenuItem) {
-            guard let row = rowsByID[sender.rowID] else { return }
+            guard let command = sender.command,
+                  let row = LibraryTableCommandPolicy.resolvedRow(
+                      for: command,
+                      in: rowsByID
+                  ) else {
+                return
+            }
             parent.onSelectRow(row)
             parent.onShowDetails(row)
         }
 
         @objc private func performActionFromMenu(_ sender: RowMenuItem) {
-            guard let row = rowsByID[sender.rowID] else { return }
+            guard let command = sender.command,
+                  let row = LibraryTableCommandPolicy.resolvedRow(
+                      for: command,
+                      in: rowsByID
+                  ) else {
+                return
+            }
             parent.onSelectRow(row)
             parent.onPerformAction(row)
         }
@@ -570,12 +715,15 @@ struct LibraryTableView: NSViewRepresentable {
             cell.pinImage.toolTip = row.isPinned ? parent.columnLabels.pinned : nil
             cell.statusImage.image = NSImage(
                 systemSymbolName: row.statusSymbolName,
-                accessibilityDescription: nil
+                accessibilityDescription: ""
             )
             cell.statusImage.contentTintColor = row.statusTone.color
             cell.toolTip = row.detail
-            cell.setAccessibilityLabel(row.name)
-            cell.setAccessibilityValue(packageAccessibilityValue(for: row))
+            cell.semanticAccessibilityLabel = LibraryTableAccessibilityPolicy.packageDescription(
+                for: row,
+                labels: parent.columnLabels
+            )
+            cell.semanticAccessibilityChildren = []
             return cell
         }
 
@@ -584,8 +732,10 @@ struct LibraryTableView: NSViewRepresentable {
             identifier: NSUserInterfaceItemIdentifier,
             value: String
         ) -> NSView {
-            let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView
-                ?? NSTableCellView(frame: .zero)
+            let cell = tableView.makeView(
+                withIdentifier: identifier,
+                owner: nil
+            ) as? SemanticTableCellView ?? SemanticTableCellView(frame: .zero)
             cell.identifier = identifier
             let label: NSTextField
             if let existing = cell.textField {
@@ -607,7 +757,8 @@ struct LibraryTableView: NSViewRepresentable {
             }
             label.stringValue = value
             label.toolTip = value
-            cell.setAccessibilityLabel(value)
+            cell.semanticAccessibilityLabel = value
+            cell.semanticAccessibilityChildren = []
             return cell
         }
 
@@ -619,7 +770,6 @@ struct LibraryTableView: NSViewRepresentable {
             let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? VersionCell
                 ?? VersionCell(frame: .zero)
             cell.identifier = identifier
-            let versionAccessibilityValue: String
 
             if let latestVersion = row.latestVersion {
                 cell.primaryLabel.stringValue = latestVersion
@@ -632,14 +782,11 @@ struct LibraryTableView: NSViewRepresentable {
                     ]
                 )
                 cell.secondaryLabel.isHidden = false
-                versionAccessibilityValue = "\(parent.columnLabels.currentVersion) \(row.currentVersion), "
-                    + "\(parent.columnLabels.latestVersion) \(latestVersion)"
             } else {
                 cell.primaryLabel.stringValue = row.currentVersion
                 cell.primaryLabel.textColor = .labelColor
                 cell.secondaryLabel.stringValue = ""
                 cell.secondaryLabel.isHidden = true
-                versionAccessibilityValue = row.currentVersion
             }
             cell.primaryLabel.toolTip = row.latestVersion ?? row.currentVersion
             cell.secondaryLabel.toolTip = row.currentVersion
@@ -647,12 +794,11 @@ struct LibraryTableView: NSViewRepresentable {
             cell.restartImage.toolTip = row.isRestartRequired
                 ? parent.columnLabels.restartRequired
                 : nil
-            cell.setAccessibilityLabel(parent.columnLabels.version)
-            cell.setAccessibilityValue(
-                row.isRestartRequired
-                    ? "\(versionAccessibilityValue), \(parent.columnLabels.restartRequired)"
-                    : versionAccessibilityValue
+            cell.semanticAccessibilityLabel = LibraryTableAccessibilityPolicy.versionDescription(
+                for: row,
+                labels: parent.columnLabels
             )
+            cell.semanticAccessibilityChildren = []
             return cell
         }
 
@@ -669,7 +815,13 @@ struct LibraryTableView: NSViewRepresentable {
             cell.statusLabel.toolTip = row.status
 
             let action = row.action
-            cell.actionButton.rowID = row.id
+            cell.actionButton.command = action.map {
+                LibraryTableCommand(
+                    rowID: row.id,
+                    packageID: row.selectedPackageID,
+                    actionIdentity: $0.identity
+                )
+            }
             cell.actionButton.target = self
             cell.actionButton.action = #selector(actionPressed(_:))
             cell.actionButton.image = action.flatMap {
@@ -686,19 +838,13 @@ struct LibraryTableView: NSViewRepresentable {
             } else {
                 cell.progressIndicator.stopAnimation(nil)
             }
-            cell.setAccessibilityLabel(row.status)
+            cell.semanticAccessibilityLabel = action?.isInFlight == true
+                ? "\(row.status), \(parent.columnLabels.running)"
+                : row.status
+            cell.semanticAccessibilityChildren = cell.actionButton.isHidden
+                ? []
+                : cell.actionButton.cell.map { [$0] } ?? []
             return cell
-        }
-
-        private func packageAccessibilityValue(for row: LibraryTableRow) -> String {
-            var parts: [String] = []
-            if row.isPinned {
-                parts.append(parent.columnLabels.pinned)
-            }
-            if let detail = row.detail, !detail.isEmpty {
-                parts.append(detail)
-            }
-            return parts.joined(separator: ", ")
         }
     }
 }
@@ -718,7 +864,7 @@ private extension LibraryTableStatusTone {
     }
 }
 
-private final class LibraryTableScrollView: NSScrollView {
+final class LibraryTableScrollView: NSScrollView {
     override func tile() {
         super.tile()
         fitDocumentWidthToViewport()
@@ -726,24 +872,29 @@ private final class LibraryTableScrollView: NSScrollView {
 
     func fitDocumentWidthToViewport() {
         guard let tableView = documentView as? LibraryNativeTableView else { return }
-        let width = max(contentView.bounds.width, tableView.minimumContentWidth)
+        let viewportWidth = contentView.bounds.width
+        tableView.fitLeadingColumn(to: viewportWidth)
+        let width = max(viewportWidth, tableView.requiredContentWidth)
         guard width > 0, abs(tableView.frame.width - width) > 0.5 else {
-            tableView.fitColumnsToBounds()
             return
         }
         tableView.setFrameSize(NSSize(width: width, height: tableView.frame.height))
-        tableView.fitColumnsToBounds()
     }
 }
 
-private final class LibraryNativeTableView: NSTableView {
+final class LibraryNativeTableView: NSTableView {
     var contextMenuProvider: ((Int) -> NSMenu?)?
     var didMoveToWindow: (() -> Void)?
 
     var minimumContentWidth: CGFloat {
-        let columnWidth = tableColumns.reduce(CGFloat.zero) { $0 + $1.minWidth }
-        let spacingWidth = intercellSpacing.width * CGFloat(max(0, tableColumns.count - 1))
-        return columnWidth + spacingWidth
+        guard let leadingColumn = tableColumns.first else { return 0 }
+        let fixedWidth = tableColumns.dropFirst().reduce(CGFloat.zero) { $0 + $1.width }
+        return leadingColumn.minWidth + fixedWidth
+            + LibraryTableLayoutPolicy.layoutOverhead(in: self)
+    }
+
+    var requiredContentWidth: CGFloat {
+        LibraryTableLayoutPolicy.requiredContentWidth(in: self)
     }
 
     override func viewDidMoveToWindow() {
@@ -752,7 +903,8 @@ private final class LibraryNativeTableView: NSTableView {
     }
 
     override func layout() {
-        fitColumnsToBounds()
+        let viewportWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
+        fitLeadingColumn(to: viewportWidth)
         super.layout()
     }
 
@@ -766,15 +918,7 @@ private final class LibraryNativeTableView: NSTableView {
         return contextMenuProvider?(rowIndex)
     }
 
-    func fitColumnsToBounds() {
-        guard bounds.width > 0,
-              let packageColumn = tableColumns.first else {
-            return
-        }
-        let fixedWidth = tableColumns.dropFirst().reduce(CGFloat.zero) { $0 + $1.width }
-        let spacingWidth = intercellSpacing.width * CGFloat(max(0, tableColumns.count - 1))
-        let packageWidth = max(packageColumn.minWidth, bounds.width - fixedWidth - spacingWidth)
-        guard abs(packageColumn.width - packageWidth) > 0.5 else { return }
-        packageColumn.width = packageWidth
+    func fitLeadingColumn(to viewportWidth: CGFloat) {
+        LibraryTableLayoutPolicy.fitLeadingColumn(in: self, to: viewportWidth)
     }
 }

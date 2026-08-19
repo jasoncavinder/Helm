@@ -423,6 +423,7 @@ struct PackagesSectionView: View {
                 isPinned: package.pinned,
                 isRestartRequired: package.restartRequired,
                 action: LibraryTableAction(
+                    identity: action.identity,
                     symbolName: action.symbol,
                     title: action.tooltip,
                     isEnabled: action.enabled,
@@ -462,6 +463,7 @@ struct PackagesSectionView: View {
                 isRestartRequired: false,
                 action: hasInstallReview
                     ? LibraryTableAction(
+                        identity: .researchInstall,
                         symbolName: "arrow.down.circle",
                         title: L10n.App.Packages.Research.reviewInstall.localized,
                         isEnabled: true,
@@ -494,11 +496,13 @@ struct PackagesSectionView: View {
                 latestVersion: L10n.App.Packages.Detail.Version.latest.localized,
                 pinned: L10n.App.Packages.Label.pinned.localized,
                 restartRequired: L10n.App.Packages.Label.restartRequired.localized,
+                running: L10n.Service.Task.Status.running.localized,
                 viewDetails: L10n.App.Packages.Action.viewDetails.localized
             ),
             accessibilityLabel: ControlCenterSection.packages.title,
             focusRequest: focusRequest,
             onSelectRow: selectLibraryTableRow,
+            onClearSelection: clearLibraryTableSelection,
             onShowDetails: showLibraryTableDetails,
             onPerformAction: performLibraryTableAction,
             onFulfillFocusRequest: completeLibraryTableFocusRequest
@@ -536,6 +540,10 @@ struct PackagesSectionView: View {
         context.selectedUpgradePlanStepId = nil
     }
 
+    private func clearLibraryTableSelection() {
+        context.clearInspectorSelection()
+    }
+
     private func showLibraryTableDetails(_ row: LibraryTableRow) {
         selectLibraryTableRow(row)
         context.isInspectorVisible = true
@@ -543,9 +551,10 @@ struct PackagesSectionView: View {
 
     private func performLibraryTableAction(_ row: LibraryTableRow) {
         if let researchLibraryProjection {
-            guard let confirmation = researchLibraryProjection.installConfirmation(
-                forPackageID: row.selectedPackageID
-            ) else {
+            guard row.action?.identity == .researchInstall,
+                  let confirmation = researchLibraryProjection.installConfirmation(
+                      forPackageID: row.selectedPackageID
+                  ) else {
                 return
             }
             context.presentResearchInstallConfirmation(confirmation)
@@ -554,15 +563,20 @@ struct PackagesSectionView: View {
 
         guard let packageRow = displayedPackages.first(where: { $0.id == row.id }) else { return }
         let managerConstraint = selectedManagerId ?? context.managerFilterId
-        let package = packageRow.actionTarget(
-            preferredManagerId: managerConstraint ?? core.preferredManagerId(for: packageRow.package),
-            selectedPackageId: row.selectedPackageID
-        )
-        primaryPackageAction(
+        guard let package = packageRow.memberPackages.first(where: { $0.id == row.selectedPackageID }) else {
+            return
+        }
+        let currentAction = primaryPackageAction(
             for: packageRow,
             actionTarget: package,
             managerConstraint: managerConstraint
-        ).action?()
+        )
+        guard currentAction.identity == row.action?.identity,
+              currentAction.enabled,
+              !currentAction.inFlight else {
+            return
+        }
+        currentAction.action?()
     }
 
     private func completeLibraryTableFocusRequest(_ requestID: Int) {
@@ -694,6 +708,7 @@ struct PackagesSectionView: View {
         if package.pinned, core.canPinPackage(package) {
             let inFlight = core.pinActionPackageIds.contains(package.id)
             return PrimaryPackageAction(
+                identity: .unpin,
                 symbol: "pin.slash",
                 tooltip: L10n.App.Packages.Action.unpin.localized,
                 enabled: !inFlight,
@@ -709,6 +724,7 @@ struct PackagesSectionView: View {
                 ? installableAvailablePackageNames.contains(packageName)
                 : core.canInstallPackage(package, includeAlternates: false)
             return PrimaryPackageAction(
+                identity: .install,
                 symbol: "arrow.down.circle",
                 tooltip: L10n.App.Packages.Action.install.localized,
                 enabled: canInstall && !inFlight,
@@ -723,6 +739,7 @@ struct PackagesSectionView: View {
             forManagerId: package.managerId
         ) == .openApplication
         return PrimaryPackageAction(
+            identity: isExternalSparkle ? .openApplication : .upgrade,
             symbol: isExternalSparkle ? "arrow.up.forward.app" : "arrow.up.circle",
             tooltip: isExternalSparkle
                 ? L10n.App.Updates.openAppToUpdate.localized
@@ -887,17 +904,19 @@ struct PackagesSectionView: View {
             core.installPackage(candidate)
             return
         }
+        guard let initialSelection = PackageMemberSelectionPolicy.initialInstallSelection(
+            candidates: candidates.map {
+                PackageMemberIdentity(packageID: $0.id, managerID: $0.managerId)
+            },
+            managerConstraint: managerConstraint,
+            preferredManagerID: core.preferredManagerId(for: packageRow.package),
+            selectedPackageID: context.selectedPackageId
+        ) else {
+            return
+        }
         installSelectionRow = packageRow
-        selectedInstallManagerId = PackageConsolidationPolicy.preferredManagerId(
-            managerIds: candidates.map(\.managerId),
-            preferredManagerId: managerConstraint ?? core.preferredManagerId(for: packageRow.package)
-        ) ?? candidates.first?.managerId
-        let preferredPackageId = packageRow.containsPackageId(context.selectedPackageId)
-            ? context.selectedPackageId
-            : nil
-        let selectedManagerMembers = installSelectionMembersForManager(selectedInstallManagerId)
-        selectedInstallPackageId = selectedManagerMembers.first(where: { $0.id == preferredPackageId })?.id
-            ?? selectedManagerMembers.first?.id
+        selectedInstallManagerId = initialSelection.managerID
+        selectedInstallPackageId = initialSelection.packageID
         showInstallManagerSheet = true
     }
 
@@ -928,6 +947,7 @@ struct PackagesSectionView: View {
 }
 
 private struct PrimaryPackageAction {
+    let identity: LibraryTableActionIdentity
     let symbol: String
     let tooltip: String
     let enabled: Bool
