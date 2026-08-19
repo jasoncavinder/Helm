@@ -706,6 +706,76 @@ enum WholeWorkflowResearchLibraryResultOrigin: String, Equatable {
     case remote
 }
 
+enum WholeWorkflowResearchTaskThreeContract {
+    struct SearchResultContract {
+        let id: String
+        let managerID: String
+        let origin: WholeWorkflowResearchLibraryResultOrigin
+        let recommended: Bool
+        let recommendationReasonKey: String
+        let deferredWhenOffline: Bool
+
+        func matches(_ record: ResearchSearchResultRecord) -> Bool {
+            record.id == id
+                && record.managerID == managerID
+                && record.packageName == WholeWorkflowResearchTaskThreeContract.packageName
+                && record.resultOrigin == origin.rawValue
+                && record.recommended == recommended
+                && record.recommendationReasonKey == recommendationReasonKey
+                && record.deferredWhenOffline == deferredWhenOffline
+        }
+    }
+
+    static let scenarioID = "find-and-install-ripgrep"
+    static let startingSurface = "library"
+    static let packageName = "ripgrep"
+
+    static let recommendedResult = SearchResultContract(
+        id: "search-ripgrep-homebrew",
+        managerID: "homebrew_formula",
+        origin: .localCache,
+        recommended: true,
+        recommendationReasonKey: "research.search.recommendation.existing_authority",
+        deferredWhenOffline: false
+    )
+    static let alternateResult = SearchResultContract(
+        id: "search-ripgrep-cargo",
+        managerID: "cargo",
+        origin: .remote,
+        recommended: false,
+        recommendationReasonKey: "research.search.recommendation.alternate_source",
+        deferredWhenOffline: true
+    )
+    static let orderedSearchResults = [recommendedResult, alternateResult]
+    static let orderedSearchResultIDs = orderedSearchResults.map(\.id)
+
+    static let installProposalID = "install-ripgrep-homebrew"
+    static let orderedScenarioRecordIDs = orderedSearchResultIDs + [installProposalID]
+
+    static func matchesScenario(_ scenario: ResearchScenario) -> Bool {
+        scenario.taskNumber == 3
+            && scenario.scenarioID == scenarioID
+            && scenario.startingSurface == startingSurface
+            && scenario.recordIDs == orderedScenarioRecordIDs
+    }
+
+    static func matchesSearchResults(_ records: [ResearchSearchResultRecord]) -> Bool {
+        guard records.map(\.id) == orderedSearchResultIDs else { return false }
+        return zip(records, orderedSearchResults).allSatisfy { record, contract in
+            contract.matches(record)
+        }
+    }
+
+    static func matchesInstallProposalIdentity(
+        _ proposal: ResearchInstallProposalRecord
+    ) -> Bool {
+        proposal.id == installProposalID
+            && proposal.searchResultID == recommendedResult.id
+            && proposal.managerID == recommendedResult.managerID
+            && proposal.packageName == packageName
+    }
+}
+
 enum WholeWorkflowResearchLibraryResultState: Equatable {
     case local
     case cached
@@ -815,11 +885,17 @@ enum WholeWorkflowResearchLibraryProjector {
               !dataset.safety.allowsMachineScan,
               !dataset.safety.allowsMutation,
               let scenario = dataset.scenarios.first(where: { $0.taskNumber == 3 }),
-              scenario.startingSurface == "library" else {
+              WholeWorkflowResearchTaskThreeContract.matchesScenario(scenario),
+              WholeWorkflowResearchTaskThreeContract.matchesSearchResults(
+                  dataset.snapshot.searchResults
+              ) else {
             return nil
         }
 
         let proposal = dataset.snapshot.installProposal
+        guard WholeWorkflowResearchTaskThreeContract.matchesInstallProposalIdentity(proposal) else {
+            return nil
+        }
         var recordsByID: [String: ResearchSearchResultRecord] = [:]
         for record in dataset.snapshot.searchResults {
             guard recordsByID.updateValue(record, forKey: record.id) == nil else {

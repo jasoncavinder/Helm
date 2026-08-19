@@ -111,6 +111,16 @@ enum WholeWorkflowResearchDatasetValidator {
                 message: "Task \(scenario.taskNumber) must reference its complete canonical record set.",
                 into: &issues
             )
+            if scenario.taskNumber == 3 {
+                require(
+                    scenario.recordIDs
+                        == WholeWorkflowResearchTaskThreeContract.orderedScenarioRecordIDs,
+                    code: "scenarios.record_order",
+                    path: "scenarios[\(index)].recordIds",
+                    message: "Task 3 must preserve cached, remote, then install-proposal order.",
+                    into: &issues
+                )
+            }
         }
     }
 
@@ -147,14 +157,9 @@ enum WholeWorkflowResearchDatasetValidator {
             )
         case 3:
             return ScenarioContract(
-                scenarioID: "find-and-install-ripgrep",
-                startingSurface: "library",
-                recordIDs: Set(
-                    snapshot.searchResults
-                        .filter { $0.packageName == "ripgrep" }
-                        .map(\.id)
-                        + [snapshot.installProposal.id]
-                )
+                scenarioID: WholeWorkflowResearchTaskThreeContract.scenarioID,
+                startingSurface: WholeWorkflowResearchTaskThreeContract.startingSurface,
+                recordIDs: Set(WholeWorkflowResearchTaskThreeContract.orderedScenarioRecordIDs)
             )
         case 4:
             return ScenarioContract(
@@ -326,6 +331,23 @@ enum WholeWorkflowResearchDatasetValidator {
         into issues: inout [WholeWorkflowResearchDatasetIssue]
     ) {
         requireUnique(results.map(\.id), code: "search.duplicate_id", path: "snapshot.searchResults", into: &issues)
+        require(
+            results.map(\.id) == WholeWorkflowResearchTaskThreeContract.orderedSearchResultIDs,
+            code: "search.canonical_order",
+            path: "snapshot.searchResults",
+            message: "Task 3 requires exactly the ordered Homebrew and Cargo ripgrep results.",
+            into: &issues
+        )
+        for contract in WholeWorkflowResearchTaskThreeContract.orderedSearchResults {
+            let record = results.first { $0.id == contract.id }
+            require(
+                record.map(contract.matches) == true,
+                code: "search.canonical_result",
+                path: "snapshot.searchResults[\(contract.id)]",
+                message: "Task 3 result \(contract.id) does not match its canonical source contract.",
+                into: &issues
+            )
+        }
         let ripgrep = results.filter { $0.packageName == "ripgrep" }
         require(
             ripgrep.contains { $0.resultOrigin == "local_cache" && $0.recommended },
@@ -351,6 +373,13 @@ enum WholeWorkflowResearchDatasetValidator {
         results: [ResearchSearchResultRecord],
         into issues: inout [WholeWorkflowResearchDatasetIssue]
     ) {
+        require(
+            WholeWorkflowResearchTaskThreeContract.matchesInstallProposalIdentity(proposal),
+            code: "install.identity",
+            path: "snapshot.installProposal",
+            message: "Task 3 requires the canonical Homebrew ripgrep install proposal identity.",
+            into: &issues
+        )
         let result = results.first { $0.id == proposal.searchResultID }
         require(result != nil, code: "install.unknown_search_result", path: "snapshot.installProposal.searchResultId", message: "The proposal must reference a search result.", into: &issues)
         require(result?.recommended == true, code: "install.recommendation", path: "snapshot.installProposal", message: "Task 3 must confirm the recommended source.", into: &issues)

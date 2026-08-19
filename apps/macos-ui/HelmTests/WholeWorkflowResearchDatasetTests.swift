@@ -256,6 +256,72 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertNil(WholeWorkflowResearchLibraryProjector.project(dataset))
     }
 
+    func testTaskThreeRejectsCanonicalScenarioOrderDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let modified = try replacingFirst(
+            "\"search-ripgrep-homebrew\",\n        \"search-ripgrep-cargo\"",
+            with: "\"search-ripgrep-cargo\",\n        \"search-ripgrep-homebrew\"",
+            in: source
+        )
+        let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+        let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+        XCTAssertTrue(issues.contains { $0.code == "scenarios.record_order" })
+        XCTAssertNil(WholeWorkflowResearchLibraryProjector.project(dataset))
+    }
+
+    func testTaskThreeRejectsSwappedCanonicalSourceManagers() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        var modified = try replacingFirst(
+            "\"id\": \"search-ripgrep-homebrew\",\n        \"managerId\": \"homebrew_formula\"",
+            with: "\"id\": \"search-ripgrep-homebrew\",\n        \"managerId\": \"cargo\"",
+            in: source
+        )
+        modified = try replacingFirst(
+            "\"id\": \"search-ripgrep-cargo\",\n        \"managerId\": \"cargo\"",
+            with: "\"id\": \"search-ripgrep-cargo\",\n        \"managerId\": \"homebrew_formula\"",
+            in: modified
+        )
+        modified = try replacingFirst(
+            "\"searchResultId\": \"search-ripgrep-homebrew\",\n      \"managerId\": \"homebrew_formula\"",
+            with: "\"searchResultId\": \"search-ripgrep-homebrew\",\n      \"managerId\": \"cargo\"",
+            in: modified
+        )
+        let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+        let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+        XCTAssertTrue(issues.contains { $0.code == "search.canonical_result" })
+        XCTAssertNil(WholeWorkflowResearchLibraryProjector.project(dataset))
+    }
+
+    func testTaskThreeRejectsCanonicalRecommendationReasonDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let modified = try replacingFirst(
+            "\"recommendationReasonKey\": \"research.search.recommendation.existing_authority\"",
+            with: "\"recommendationReasonKey\": \"research.search.recommendation.alternate_source\"",
+            in: source
+        )
+        let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+        let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+        XCTAssertTrue(issues.contains { $0.code == "search.canonical_result" })
+        XCTAssertNil(WholeWorkflowResearchLibraryProjector.project(dataset))
+    }
+
+    func testTaskThreeRejectsCanonicalInstallProposalIdentityDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let modified = try replacingFirst(
+            "\"id\": \"install-ripgrep-homebrew\",\n      \"searchResultId\": \"search-ripgrep-homebrew\"",
+            with: "\"id\": \"install-ripgrep-drifted\",\n      \"searchResultId\": \"search-ripgrep-homebrew\"",
+            in: source
+        )
+        let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+        let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+        XCTAssertTrue(issues.contains { $0.code == "install.identity" })
+        XCTAssertNil(WholeWorkflowResearchLibraryProjector.project(dataset))
+    }
+
     func testTaskThreeProjectionFailsClosedForDuplicateSearchResultIdentifiers() throws {
         let source = try String(contentsOf: fixtureURL, encoding: .utf8)
         let duplicateRecord = """
