@@ -96,6 +96,9 @@
 		R492000000000000000000003 /* WholeWorkflowResearchDatasetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */; };
 		R492000000000000000000004 /* WholeWorkflowResearchDatasetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */; };
 		R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */; };
+		R513000000000000000000001 /* LibraryResultProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = R513000000000000000000011 /* LibraryResultProvenance.swift */; };
+		R513000000000000000000002 /* LibraryResultProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = R513000000000000000000011 /* LibraryResultProvenance.swift */; };
+		R513000000000000000000003 /* LibraryResultProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R513000000000000000000012 /* LibraryResultProvenanceTests.swift */; };
 		R494000000000000000000001 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R495000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R495000000000000000000011 /* UpgradePlanOutlineView.swift */; };
@@ -283,6 +286,8 @@
 		R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDataset.swift; sourceTree = "<group>"; };
 		R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetValidator.swift; sourceTree = "<group>"; };
 		R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetTests.swift; sourceTree = "<group>"; };
+		R513000000000000000000011 /* LibraryResultProvenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryResultProvenance.swift; sourceTree = "<group>"; };
+		R513000000000000000000012 /* LibraryResultProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryResultProvenanceTests.swift; sourceTree = "<group>"; };
 		R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeSheetPresentationSupport.swift; sourceTree = "<group>"; };
 		R495000000000000000000011 /* UpgradePlanOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePlanOutlineView.swift; sourceTree = "<group>"; };
 		W100000000000000000000001 /* EnvironmentBriefProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjection.swift; sourceTree = "<group>"; };
@@ -403,6 +408,7 @@
 				Q100000000000000000000001 /* WayfinderPresentationProjection.swift */,
 				R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */,
 				R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */,
+				R513000000000000000000011 /* LibraryResultProvenance.swift */,
 				R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */,
 			);
 			path = Core;
@@ -581,6 +587,7 @@
 				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
 				Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */,
 				R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */,
+				R513000000000000000000012 /* LibraryResultProvenanceTests.swift */,
 			);
 			path = HelmTests;
 			sourceTree = "<group>";
@@ -821,6 +828,7 @@
 				C42400000000000000000001 /* ServiceConnectionRetryPolicy.swift in Sources */,
 				A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */,
 				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
+				R513000000000000000000001 /* LibraryResultProvenance.swift in Sources */,
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
@@ -926,6 +934,8 @@
 				R492000000000000000000002 /* WholeWorkflowResearchDataset.swift in Sources */,
 				R492000000000000000000004 /* WholeWorkflowResearchDatasetValidator.swift in Sources */,
 				R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */,
+				R513000000000000000000002 /* LibraryResultProvenance.swift in Sources */,
+				R513000000000000000000003 /* LibraryResultProvenanceTests.swift in Sources */,
 				R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */,
 			);
 		};

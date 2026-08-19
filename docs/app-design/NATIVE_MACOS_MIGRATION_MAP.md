@@ -370,7 +370,8 @@ Implementation checkpoint:
 
 - Task 3's exact Homebrew cached result, delayed Cargo remote result, existing-authority recommendation, source-specific inspector selection, and install proposal now project through the shipping Library and global-search path. Accepting a global result deliberately routes to that exact Library entity instead of changing destinations while the user types.
 - The Debug-only offline variant keeps the cached result usable, marks the remote result and network-backed proposal Deferred, and never starts service, database, network, updater, or mutation work. Its bounded install confirmation is explicitly read-only.
-- Focused projection and routing tests cover exact record scope, progressive visibility, offline deferral, bounded confirmation requirements, and fail-closed scenario drift. The current-host owner minimum/expanded Light/Dark, Full Keyboard Access, and VoiceOver gate is complete. The production native table migration, explicit production-result provenance contract, remote cancellation, and 20,000-row performance budget remain later Slice 20.3 work.
+- Focused projection and routing tests cover exact record scope, progressive visibility, offline deferral, bounded confirmation requirements, and fail-closed scenario drift. The current-host owner minimum/expanded Light/Dark, Full Keyboard Access, and VoiceOver gate is complete.
+- The production result-provenance contract is now explicit and versioned across Rust, FFI/XPC JSON, and Swift. It separates current read origin from discovery source, preserves source-manager/query/observation facts, keeps older payloads decodable, and fails closed for unknown or internally inconsistent provenance without discarding the package result. The production native table migration, remote cancellation, and 20,000-row performance budget remain later Slice 20.3 work.
 
 ### Slice 20.4: Activity, diagnostics, and workflow continuity
 

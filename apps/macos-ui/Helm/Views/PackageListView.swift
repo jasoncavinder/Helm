@@ -696,6 +696,10 @@ struct PackagesSectionView: View {
         guard !managerPackages.isEmpty else { return [] }
 
         var badges: [String] = []
+        if package.status == .available,
+           let originLabel = package.resultProvenance?.origin.localizedLabel {
+            badges.append(originLabel)
+        }
         let distinctVersions = Set(
             managerPackages.compactMap { candidate -> String? in
                 let normalizedVersion = candidate.version.trimmingCharacters(in: .whitespacesAndNewlines)

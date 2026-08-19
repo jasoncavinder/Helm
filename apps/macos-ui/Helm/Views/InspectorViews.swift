@@ -1122,6 +1122,13 @@ private struct InspectorPackageDetailView: View {
                 }
             }
 
+            if let originLabel = activePackage.resultProvenance?.origin.localizedLabel {
+                InspectorField(label: L10n.App.Packages.Research.resultOrigin.localized) {
+                    Text(originLabel)
+                        .font(.caption)
+                }
+            }
+
             Group {
                 if let renderedPackageDescription {
                     switch renderedPackageDescription {

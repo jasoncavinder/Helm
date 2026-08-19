@@ -121,6 +121,14 @@ Preferred:
 
 **Constraint:** JSON schemas must remain stable or versioned.
 
+### 3.4 Library Search Result Provenance
+
+`helm_list_installed_packages`, `helm_list_outdated_packages`, and `helm_search_local` keep their existing result fields and add a nested, versioned `provenance` object. The object distinguishes current delivery origin (`local`, `local_cache`, `remote`, or `deferred`) from discovery source (`manager_snapshot`, `catalog_sync`, or `remote_search`). The XPC service forwards these payloads without reclassifying them, and Swift treats the object as additive and optional for compatibility with older service responses.
+
+The core must never describe a persisted cache read as a live remote result. Consumers validate the schema version, source-manager identity, and origin/discovery/query combination before presenting provenance. Unknown future values fail closed at presentation rather than invalidating the enclosing package result.
+
+The normative version 1 fields, combinations, and compatibility rules are defined in `docs/architecture/LIBRARY_RESULT_PROVENANCE.md`.
+
 ---
 
 ## 4. Core ↔ Adapter Contract

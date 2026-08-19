@@ -19,6 +19,9 @@ pub use package::{
     InstalledPackage, OutdatedPackage, PackageCandidate, PackageRef, PackageRuntimeState,
 };
 pub use pin::{PinKind, PinRecord};
-pub use search::{CachedSearchResult, SearchQuery};
+pub use search::{
+    CachedSearchResult, LIBRARY_RESULT_PROVENANCE_SCHEMA_VERSION, LibraryResultDiscoverySource,
+    LibraryResultOrigin, LibraryResultProvenance, SearchQuery,
+};
 pub use task::{TaskId, TaskRecord, TaskStatus, TaskType};
 pub use task_log::{NewTaskLogRecord, TaskLogLevel, TaskLogRecord};

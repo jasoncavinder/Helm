@@ -812,6 +812,23 @@ extension L10n {
     }
 }
 
+extension PackageResultOrigin {
+    var localizedLabel: String? {
+        switch self {
+        case .local:
+            return L10n.App.Packages.Research.local.localized
+        case .localCache:
+            return L10n.App.Packages.Research.cached.localized
+        case .remote:
+            return L10n.App.Packages.Research.remote.localized
+        case .deferred:
+            return L10n.App.Packages.Research.deferred.localized
+        case .unknown:
+            return nil
+        }
+    }
+}
+
 extension L10n.App {
     struct Tasks {
         static let noRecentTasks = "app.tasks.no_recent_tasks"
