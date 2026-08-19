@@ -133,9 +133,10 @@ final class LibraryTableViewTests: XCTestCase {
         tableView.dataSource = dataSource
         tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("package")))
 
-        LibraryTableLayoutPolicy.configureRows(in: tableView)
+        LibraryTableLayoutPolicy.configure(in: tableView)
         tableView.reloadData()
 
+        XCTAssertFalse(tableView.autoresizingMask.contains(.width))
         XCTAssertEqual(tableView.rowSizeStyle, .custom)
         XCTAssertEqual(tableView.rowHeight, 50, accuracy: 0.1)
         XCTAssertGreaterThanOrEqual(tableView.rect(ofRow: 0).height, 50)
@@ -161,6 +162,24 @@ final class LibraryTableViewTests: XCTestCase {
                     "width: \(width)"
                 )
             }
+
+            scrollView.setFrameSize(NSSize(width: width + 1, height: 120))
+            scrollView.tile()
+            let resizedTrailingExtent = tableView.rect(
+                ofColumn: tableView.numberOfColumns - 1
+            ).maxX
+            XCTAssertGreaterThanOrEqual(
+                tableView.frame.width,
+                resizedTrailingExtent,
+                "resized width: \(width)"
+            )
+            if width <= 552 {
+                XCTAssertGreaterThan(
+                    tableView.frame.width,
+                    scrollView.contentView.bounds.width,
+                    "resized width: \(width)"
+                )
+            }
         }
 
         let tableView = makeNativeTable(width: 500)
@@ -178,6 +197,18 @@ final class LibraryTableViewTests: XCTestCase {
         )
     }
 
+    func testAutoFittedPackageColumnDoesNotAdvertiseUserResize() throws {
+        let parent = makeTable(rows: [], selectedRowID: nil)
+        let coordinator = parent.makeCoordinator()
+        let tableView = LibraryNativeTableView()
+
+        coordinator.installColumns(in: tableView)
+
+        let packageColumn = try XCTUnwrap(tableView.tableColumns.first)
+        XCTAssertTrue(packageColumn.resizingMask.contains(.autoresizingMask))
+        XCTAssertFalse(packageColumn.resizingMask.contains(.userResizingMask))
+    }
+
     func testUserDeselectionClearsOwnerSelection() {
         let row = makeRow(id: "ripgrep", representedPackageIDs: ["homebrew_formula:ripgrep"])
         var clearCount = 0
@@ -189,7 +220,7 @@ final class LibraryTableViewTests: XCTestCase {
         tableView.allowsEmptySelection = true
         tableView.dataSource = coordinator
         tableView.delegate = coordinator
-        LibraryTableLayoutPolicy.configureRows(in: tableView)
+        LibraryTableLayoutPolicy.configure(in: tableView)
         coordinator.installColumns(in: tableView)
         coordinator.attach(tableView)
         coordinator.update(parent: parent)
@@ -216,7 +247,7 @@ final class LibraryTableViewTests: XCTestCase {
         let tableView = LibraryNativeTableView(frame: NSRect(x: 0, y: 0, width: 700, height: 100))
         tableView.dataSource = coordinator
         tableView.delegate = coordinator
-        LibraryTableLayoutPolicy.configureRows(in: tableView)
+        LibraryTableLayoutPolicy.configure(in: tableView)
         coordinator.installColumns(in: tableView)
         coordinator.attach(tableView)
         coordinator.update(parent: parent)
@@ -246,6 +277,90 @@ final class LibraryTableViewTests: XCTestCase {
         XCTAssertEqual(statusCell.accessibilityLabel(), "Installed")
         let actionCell = try XCTUnwrap(statusCell.accessibilityChildren()?.first as? NSButtonCell)
         XCTAssertEqual(actionCell.image?.accessibilityDescription, "Upgrade")
+    }
+
+    func testAppKitAccessibilityProxyExportsSemanticFactsAndAction() throws {
+        let row = makeRow(
+            id: "ripgrep",
+            representedPackageIDs: ["homebrew_formula:ripgrep"],
+            detail: "Cached, Recommended",
+            latestVersion: "2.0.0",
+            isPinned: true,
+            isRestartRequired: true,
+            action: makeAction(identity: .upgrade, title: "Upgrade")
+        )
+        let parent = makeTable(rows: [row], selectedRowID: row.id)
+        let coordinator = parent.makeCoordinator()
+        let tableView = LibraryNativeTableView(
+            frame: NSRect(x: 0, y: 0, width: 700, height: 100)
+        )
+        tableView.dataSource = coordinator
+        tableView.delegate = coordinator
+        LibraryTableLayoutPolicy.configure(in: tableView)
+        coordinator.installColumns(in: tableView)
+        coordinator.attach(tableView)
+        coordinator.update(parent: parent)
+
+        let scrollView = LibraryTableScrollView(
+            frame: NSRect(x: 0, y: 0, width: 700, height: 100)
+        )
+        scrollView.documentView = tableView
+        tableView.reloadData()
+        scrollView.layoutSubtreeIfNeeded()
+        for column in tableView.tableColumns.indices {
+            _ = tableView.view(atColumn: column, row: 0, makeIfNecessary: true)
+        }
+        tableView.layoutSubtreeIfNeeded()
+
+        let accessibilityRows = try XCTUnwrap(
+            accessibilityAttribute(.rows, from: tableView) as? NSArray
+        )
+        XCTAssertEqual(accessibilityRows.count, 1)
+        let accessibilityRow = try XCTUnwrap(accessibilityRows.firstObject)
+        let accessibilityCells = try XCTUnwrap(
+            accessibilityAttribute(.children, from: accessibilityRow) as? NSArray
+        )
+        XCTAssertEqual(accessibilityCells.count, 4)
+
+        let packageCell = accessibilityCells[0]
+        let versionCell = accessibilityCells[2]
+        let statusCell = accessibilityCells[3]
+        XCTAssertEqual(
+            accessibilityAttribute(.role, from: packageCell) as? String,
+            NSAccessibility.Role.cell.rawValue
+        )
+        XCTAssertEqual(
+            accessibilityAttribute(.description, from: packageCell) as? String,
+            "ripgrep, Pinned, Cached, Recommended"
+        )
+        XCTAssertNil(accessibilityAttribute(.value, from: packageCell))
+        XCTAssertEqual(
+            (accessibilityAttribute(.children, from: packageCell) as? NSArray)?.count,
+            0
+        )
+        XCTAssertEqual(
+            accessibilityAttribute(.description, from: versionCell) as? String,
+            "Current 1.0.0, Latest 2.0.0, Restart required"
+        )
+        XCTAssertNil(accessibilityAttribute(.value, from: versionCell))
+        XCTAssertEqual(
+            (accessibilityAttribute(.children, from: versionCell) as? NSArray)?.count,
+            0
+        )
+
+        let statusChildren = try XCTUnwrap(
+            accessibilityAttribute(.children, from: statusCell) as? NSArray
+        )
+        XCTAssertEqual(statusChildren.count, 1)
+        let action = try XCTUnwrap(statusChildren.firstObject)
+        XCTAssertEqual(
+            accessibilityAttribute(.role, from: action) as? String,
+            NSAccessibility.Role.button.rawValue
+        )
+        XCTAssertEqual(
+            accessibilityAttribute(.description, from: action) as? String,
+            "Upgrade"
+        )
     }
 
     func testInFlightSemanticStatusExposesRunningWithoutHiddenAction() throws {
@@ -290,8 +405,19 @@ final class LibraryTableViewTests: XCTestCase {
         )
     }
 
+    private func accessibilityAttribute(
+        _ attribute: NSAccessibility.Attribute,
+        from object: Any
+    ) -> Any? {
+        guard let object = object as? NSObject else { return nil }
+        let selector = NSSelectorFromString("accessibilityAttributeValue:")
+        guard object.responds(to: selector) else { return nil }
+        return object.perform(selector, with: attribute.rawValue)?.takeUnretainedValue()
+    }
+
     private func makeNativeTable(width: CGFloat) -> LibraryNativeTableView {
         let tableView = LibraryNativeTableView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
+        LibraryTableLayoutPolicy.configure(in: tableView)
         tableView.intercellSpacing = NSSize(width: 8, height: 2)
         let dimensions: [(width: CGFloat, minimum: CGFloat)] = [
             (330, 180),

@@ -99,7 +99,8 @@ enum LibraryTableCommandPolicy {
 enum LibraryTableLayoutPolicy {
     static let rowHeight: CGFloat = 50
 
-    static func configureRows(in tableView: NSTableView) {
+    static func configure(in tableView: NSTableView) {
+        tableView.autoresizingMask = []
         tableView.style = .plain
         tableView.rowSizeStyle = .custom
         tableView.rowHeight = rowHeight
@@ -184,13 +185,12 @@ struct LibraryTableView: NSViewRepresentable {
         tableView.allowsColumnReordering = false
         tableView.allowsColumnResizing = true
         tableView.allowsTypeSelect = true
-        tableView.autoresizingMask = [.width]
         tableView.backgroundColor = .clear
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
         tableView.gridStyleMask = []
         tableView.intercellSpacing = NSSize(width: 8, height: 2)
         tableView.selectionHighlightStyle = .regular
-        LibraryTableLayoutPolicy.configureRows(in: tableView)
+        LibraryTableLayoutPolicy.configure(in: tableView)
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.setAccessibilityLabel(accessibilityLabel)
         tableView.contextMenuProvider = { [weak coordinator = context.coordinator] rowIndex in
@@ -463,7 +463,7 @@ struct LibraryTableView: NSViewRepresentable {
             let packageColumn = NSTableColumn(identifier: ColumnID.package)
             packageColumn.minWidth = 180
             packageColumn.width = 330
-            packageColumn.resizingMask = [.autoresizingMask, .userResizingMask]
+            packageColumn.resizingMask = .autoresizingMask
             tableView.addTableColumn(packageColumn)
 
             let managerColumn = NSTableColumn(identifier: ColumnID.manager)
