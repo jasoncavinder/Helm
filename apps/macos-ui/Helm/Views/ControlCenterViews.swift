@@ -7,6 +7,7 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
     private let sidebarWidth: CGFloat = 232
+    private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
     let onFirstRunComplete: () -> Void
 
     init(onFirstRunComplete: @escaping () -> Void = {}) {
@@ -32,10 +33,17 @@ struct ControlCenterWindowView: View {
         Binding(
             get: { context.searchQuery },
             set: { newValue in
-                context.searchQuery = newValue
-                core.searchText = newValue
-                if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    context.selectedSection = .packages
+                context.updateGlobalSearchQuery(
+                    newValue,
+                    presentsResults: selectedSection != .updates && selectedSection != .packages
+                )
+                if let researchLibraryProjection {
+                    context.updateResearchSearchPresentation(
+                        query: newValue,
+                        isOfflineVariant: researchLibraryProjection.isOfflineVariant
+                    )
+                } else {
+                    core.searchText = newValue
                 }
             }
         )
@@ -65,6 +73,72 @@ struct ControlCenterWindowView: View {
                 .filter(core.isManagerEnabled)
         )
         return [HelmCore.allManagersScopeId] + managers.sorted()
+    }
+
+    private var globalSearchResults: [ControlCenterGlobalSearchResult] {
+        let query = context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return [] }
+
+        if let researchLibraryProjection {
+            return researchLibraryProjection.visibleResults(
+                matching: query,
+                includeRemoteResults: context.researchRemoteSearchResultsAvailable
+            ).map { result in
+                ControlCenterGlobalSearchResult(
+                    id: result.id,
+                    title: result.packageName,
+                    managerID: result.managerID,
+                    version: result.version,
+                    state: researchLibraryProjection.resultState(for: result),
+                    detail: localizedResearchRecommendation(
+                        key: result.recommendationReasonKey,
+                        managerID: result.managerID
+                    ),
+                    recommended: result.recommended
+                )
+            }
+        }
+
+        return core.filteredPackages(
+            query: query,
+            managerId: nil,
+            statusFilter: nil
+        ).prefix(8).map { packageRow in
+            let package = packageRow.actionTarget(
+                preferredManagerId: core.preferredManagerId(for: packageRow.package),
+                selectedPackageId: nil
+            )
+            return ControlCenterGlobalSearchResult(
+                id: package.id,
+                title: package.displayName,
+                managerID: package.managerId,
+                version: package.version,
+                state: package.status == .available ? .cached : .local,
+                detail: package.summary,
+                recommended: false
+            )
+        }
+    }
+
+    private var presentsGlobalSearchResults: Bool {
+        let hasQuery = !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !presentsFirstRun
+            && context.isGlobalSearchResultsPresented
+            && hasQuery
+            && selectedSection != .updates
+            && selectedSection != .packages
+    }
+
+    private var globalSearchIsEnriching: Bool {
+        guard let researchLibraryProjection else { return core.isSearching }
+        return !researchLibraryProjection.isOfflineVariant
+            && !context.researchRemoteSearchResultsAvailable
+            && !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func acceptFirstGlobalSearchResult() -> Bool {
+        guard presentsGlobalSearchResults, let result = globalSearchResults.first else { return false }
+        return context.acceptGlobalSearchResult(packageID: result.id)
     }
 
     private func navigateToSection(for anchor: String) {
@@ -114,7 +188,8 @@ struct ControlCenterWindowView: View {
                 text: toolbarSearchQuery,
                 isPresented: $context.isControlCenterSearchPresented,
                 prompt: toolbarSearchPlaceholder,
-                isEnabled: !presentsFirstRun
+                isEnabled: !presentsFirstRun,
+                onSubmit: acceptFirstGlobalSearchResult
             )
         )
         .toolbar {
@@ -153,7 +228,12 @@ struct ControlCenterWindowView: View {
                         ControlCenterToolbarSearchField(
                             text: toolbarSearchQuery,
                             placeholder: toolbarSearchPlaceholder,
-                            focusRouter: context.controlCenterSearchFocusRouter
+                            focusRouter: context.controlCenterSearchFocusRouter,
+                            onSubmit: acceptFirstGlobalSearchResult,
+                            onCancel: {
+                                toolbarSearchQuery.wrappedValue = ""
+                                context.isControlCenterSearchPresented = false
+                            }
                         )
                         .frame(width: selectedSection == .updates ? 250 : 320)
                     }
@@ -206,6 +286,19 @@ struct ControlCenterWindowView: View {
                 }
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if presentsGlobalSearchResults {
+                ControlCenterGlobalSearchResultsOverlay(
+                    results: globalSearchResults,
+                    isEnriching: globalSearchIsEnriching,
+                    onAccept: { result in
+                        context.acceptGlobalSearchResult(packageID: result.id)
+                    }
+                )
+                .padding(.top, 8)
+                .padding(.trailing, 20)
+            }
+        }
         .sheet(
             isPresented: Binding(
                 get: { context.showUpgradeSheet && context.upgradeSheetHost == .controlCenter },
@@ -221,16 +314,34 @@ struct ControlCenterWindowView: View {
                     .environmentObject(context)
             }
         }
+        .sheet(item: $context.researchInstallConfirmation) { confirmation in
+            ResearchLibraryInstallConfirmationSheet(
+                confirmation: confirmation,
+                onDismiss: context.dismissResearchInstallConfirmation
+            )
+        }
         .onChange(of: walkthrough.currentStepIndex) { _ in
             guard walkthrough.isControlCenterWalkthroughActive,
                   let step = walkthrough.currentStep else { return }
             navigateToSection(for: step.targetAnchor)
         }
         .onChange(of: context.selectedSection) { newSection in
+            context.dismissGlobalSearchResults()
             deferInspectorAlignment(for: newSection)
+        }
+        .onChange(of: context.isControlCenterSearchPresented) { isPresented in
+            context.synchronizeGlobalSearchPresentation(
+                isSearchFieldPresented: isPresented
+            )
         }
         .onAppear {
             deferInspectorAlignment(for: context.selectedSection)
+            if let researchLibraryProjection {
+                context.updateResearchSearchPresentation(
+                    query: context.searchQuery,
+                    isOfflineVariant: researchLibraryProjection.isOfflineVariant
+                )
+            }
             if core.hasCompletedOnboarding && !presentsFirstRun && !core.isRefreshing {
                 core.triggerRefresh()
             }
@@ -275,6 +386,7 @@ private struct ControlCenterNativeSearchModifier: ViewModifier {
     @Binding var isPresented: Bool
     let prompt: String
     let isEnabled: Bool
+    let onSubmit: () -> Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -285,9 +397,201 @@ private struct ControlCenterNativeSearchModifier: ViewModifier {
                 placement: .automatic,
                 prompt: Text(prompt)
             )
+            .onSubmit(of: .search) {
+                _ = onSubmit()
+            }
         } else {
             content
         }
+    }
+}
+
+private struct ControlCenterGlobalSearchResult: Identifiable {
+    let id: String
+    let title: String
+    let managerID: String
+    let version: String
+    let state: WholeWorkflowResearchLibraryResultState
+    let detail: String?
+    let recommended: Bool
+}
+
+private struct ControlCenterGlobalSearchResultsOverlay: View {
+    let results: [ControlCenterGlobalSearchResult]
+    let isEnriching: Bool
+    let onAccept: (ControlCenterGlobalSearchResult) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(L10n.App.Packages.Research.searchResults.localized)
+                    .font(.headline)
+                Spacer(minLength: 12)
+                if isEnriching {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(
+                            L10n.App.Packages.Research.remoteSearchInProgress.localized
+                        )
+                }
+            }
+
+            if results.isEmpty {
+                Text(
+                    isEnriching
+                        ? L10n.App.Packages.Research.remoteSearchInProgress.localized
+                        : L10n.App.Packages.State.noPackagesFound.localized
+                )
+                .font(.callout)
+                .foregroundColor(HelmTheme.textSecondary)
+                .padding(.vertical, 8)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(results) { result in
+                            Button {
+                                onAccept(result)
+                            } label: {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: result.state.symbolName)
+                                        .foregroundColor(result.state.tintColor)
+                                        .frame(width: 18)
+
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack(spacing: 6) {
+                                            Text(result.title)
+                                                .font(.body.weight(.semibold))
+                                            if result.recommended {
+                                                Text(L10n.App.Packages.Research.recommended.localized)
+                                                    .font(.caption2.weight(.semibold))
+                                                    .foregroundColor(HelmTheme.stateHealthy)
+                                            }
+                                        }
+                                        Text(
+                                            "\(localizedManagerDisplayName(result.managerID)) · "
+                                                + "\(result.state.localizedLabel) · \(result.version)"
+                                        )
+                                        .font(.caption)
+                                        .foregroundColor(HelmTheme.textSecondary)
+                                        .lineLimit(1)
+                                        if let detail = result.detail, !detail.isEmpty {
+                                            Text(detail)
+                                                .font(.caption2)
+                                                .foregroundColor(HelmTheme.textSecondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "arrow.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(HelmTheme.textSecondary)
+                                }
+                                .padding(9)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .helmPointer()
+                        }
+                    }
+                }
+                .frame(maxHeight: 400)
+            }
+        }
+        .padding(12)
+        .frame(width: 360)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(HelmTheme.surfacePanel)
+                .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(HelmTheme.borderSubtle, lineWidth: 0.8)
+        )
+        .padding(1)
+    }
+}
+
+private struct ResearchLibraryInstallConfirmationSheet: View {
+    let confirmation: WholeWorkflowResearchInstallConfirmation
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(
+                    L10n.App.Packages.Research.confirmationTitle.localized(
+                        with: ["package": confirmation.packageName]
+                    )
+                )
+                .font(.title2.weight(.semibold))
+                Text(L10n.App.Packages.Research.confirmationSubtitle.localized)
+                    .font(.callout)
+                    .foregroundColor(HelmTheme.textSecondary)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                confirmationRow(
+                    L10n.App.Inspector.manager.localized,
+                    localizedManagerDisplayName(confirmation.managerID)
+                )
+                confirmationRow(
+                    L10n.App.Packages.Research.resultOrigin.localized,
+                    confirmation.resultState.localizedLabel
+                )
+                confirmationRow(
+                    L10n.App.Packages.Research.network.localized,
+                    confirmation.requiresNetwork
+                        ? L10n.App.Packages.Research.required.localized
+                        : L10n.App.Packages.Research.notRequired.localized
+                )
+                confirmationRow(
+                    L10n.App.Packages.Research.authorization.localized,
+                    confirmation.requiresPrivilege
+                        ? L10n.App.Packages.Research.required.localized
+                        : L10n.App.Packages.Research.notRequired.localized
+                )
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(HelmTheme.surfaceElevated)
+            )
+
+            if confirmation.isDeferred {
+                Label(
+                    L10n.App.Packages.Research.installDeferred.localized,
+                    systemImage: "wifi.slash"
+                )
+                .font(.callout.weight(.medium))
+                .foregroundColor(HelmTheme.stateUnavailable)
+            }
+
+            Text(L10n.App.Packages.Research.readOnlyNotice.localized)
+                .font(.caption)
+                .foregroundColor(HelmTheme.textSecondary)
+
+            HStack {
+                Spacer()
+                Button(L10n.Common.done.localized, action: onDismiss)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+    }
+
+    private func confirmationRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            Text(label)
+                .foregroundColor(HelmTheme.textSecondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .fontWeight(.medium)
+                .multilineTextAlignment(.trailing)
+        }
+        .font(.callout)
     }
 }
 
@@ -412,6 +716,7 @@ private struct ControlCenterHostedInspectorView: View {
 private final class ControlCenterNativeSearchField: NSSearchField, ControlCenterSearchFocusTarget {
     private var focusRequestPending = false
     private var focusCompletion: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     func requestSearchFocus(completion: @escaping () -> Void) {
         focusRequestPending = true
@@ -422,6 +727,14 @@ private final class ControlCenterNativeSearchField: NSSearchField, ControlCenter
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         fulfillFocusRequestIfPossible()
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        let hadText = !stringValue.isEmpty
+        super.cancelOperation(sender)
+        if hadText {
+            onCancel?()
+        }
     }
 
     private func fulfillFocusRequestIfPossible() {
@@ -440,14 +753,24 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
     let focusRouter: ControlCenterSearchFocusRouter
+    let onSubmit: () -> Bool
+    let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, focusRouter: focusRouter)
+        Coordinator(
+            text: $text,
+            focusRouter: focusRouter,
+            onSubmit: onSubmit,
+            onCancel: onCancel
+        )
     }
 
     func makeNSView(context: Context) -> ControlCenterNativeSearchField {
         let searchField = ControlCenterNativeSearchField()
         searchField.delegate = context.coordinator
+        searchField.target = context.coordinator
+        searchField.action = #selector(Coordinator.submitSearch(_:))
+        searchField.onCancel = context.coordinator.cancelSearch
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
         focusRouter.attach(searchField)
@@ -456,6 +779,9 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
 
     func updateNSView(_ searchField: ControlCenterNativeSearchField, context: Context) {
         context.coordinator.text = $text
+        context.coordinator.onSubmit = onSubmit
+        context.coordinator.onCancel = onCancel
+        searchField.onCancel = context.coordinator.cancelSearch
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
 
@@ -472,6 +798,8 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         coordinator: Coordinator
     ) {
         searchField.delegate = nil
+        searchField.target = nil
+        searchField.onCancel = nil
         coordinator.focusRouter?.detach(searchField)
     }
 
@@ -479,10 +807,38 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         var text: Binding<String>
         let updateGate = ControlCenterSearchTextUpdateGate()
         weak var focusRouter: ControlCenterSearchFocusRouter?
+        var onSubmit: () -> Bool
+        var onCancel: () -> Void
 
-        init(text: Binding<String>, focusRouter: ControlCenterSearchFocusRouter) {
+        init(
+            text: Binding<String>,
+            focusRouter: ControlCenterSearchFocusRouter,
+            onSubmit: @escaping () -> Bool,
+            onCancel: @escaping () -> Void
+        ) {
             self.text = text
             self.focusRouter = focusRouter
+            self.onSubmit = onSubmit
+            self.onCancel = onCancel
+        }
+
+        lazy var cancelSearch: () -> Void = { [weak self] in
+            guard let self else { return }
+            if !text.wrappedValue.isEmpty {
+                text.wrappedValue = ""
+            }
+            onCancel()
+        }
+
+        @objc func submitSearch(_ sender: NSSearchField) {
+            if text.wrappedValue != sender.stringValue {
+                text.wrappedValue = sender.stringValue
+            }
+            if sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                onCancel()
+            } else if onSubmit() {
+                sender.window?.makeFirstResponder(nil)
+            }
         }
 
         func controlTextDidChange(_ notification: Notification) {

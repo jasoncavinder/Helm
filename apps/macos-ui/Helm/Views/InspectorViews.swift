@@ -7,6 +7,7 @@ struct ControlCenterInspectorView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
     private let researchPlanProjection = WholeWorkflowResearchDatasetProvider.activePlanProjection()
+    private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
 
     private var selectedTask: TaskItem? {
         guard let taskId = context.selectedTaskId else { return nil }
@@ -15,6 +16,16 @@ struct ControlCenterInspectorView: View {
 
     private var selectedPackage: PackageItem? {
         guard let packageId = context.selectedPackageId else { return nil }
+        if let researchLibraryProjection,
+           let result = researchLibraryProjection.visibleResults(
+               matching: context.searchQuery,
+               includeRemoteResults: context.researchRemoteSearchResultsAvailable
+           ).first(where: { $0.id == packageId }) {
+            return result.packageItem
+        }
+        if researchLibraryProjection != nil {
+            return nil
+        }
         return core.knownPackage(withId: packageId)
     }
 
@@ -837,6 +848,11 @@ private struct InspectorPackageDetailView: View {
     @State private var loadingPackageUninstallPreview = false
     @State private var inspectorAlert: InspectorPackageAlert?
     let package: PackageItem
+    private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
+
+    private var researchResult: WholeWorkflowResearchLibraryResult? {
+        researchLibraryProjection?.result(withID: package.id)
+    }
 
     private static let unknownVersionTokens: Set<String> = {
         var tokens: Set<String> = ["unknown"]
@@ -1063,7 +1079,16 @@ private struct InspectorPackageDetailView: View {
         }
     }
 
+    @ViewBuilder
     var body: some View {
+        if let researchLibraryProjection, let researchResult {
+            researchBody(researchResult, projection: researchLibraryProjection)
+        } else {
+            productionBody
+        }
+    }
+
+    private var productionBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(activePackage.displayName)
@@ -1221,6 +1246,115 @@ private struct InspectorPackageDetailView: View {
                 )
             }
         }
+    }
+
+    private func researchBody(
+        _ result: WholeWorkflowResearchLibraryResult,
+        projection: WholeWorkflowResearchLibraryProjection
+    ) -> some View {
+        let state = projection.resultState(for: result)
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(result.packageName)
+                    .font(.title3.weight(.semibold))
+                Text(result.version)
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(HelmTheme.textSecondary)
+                HStack(spacing: 6) {
+                    Label(state.localizedLabel, systemImage: state.symbolName)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(state.tintColor)
+                    if result.recommended {
+                        Text(L10n.App.Packages.Research.recommended.localized)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(HelmTheme.stateHealthy)
+                    }
+                }
+            }
+
+            Text(
+                localizedResearchRecommendation(
+                    key: result.recommendationReasonKey,
+                    managerID: result.managerID
+                )
+            )
+            .font(.callout)
+            .foregroundColor(HelmTheme.textSecondary)
+
+            if let confirmation = projection.installConfirmation(forPackageID: result.id) {
+                Button {
+                    context.presentResearchInstallConfirmation(confirmation)
+                } label: {
+                    Label(
+                        L10n.App.Packages.Research.reviewInstall.localized,
+                        systemImage: "arrow.down.circle"
+                    )
+                }
+                .buttonStyle(HelmPrimaryButtonStyle())
+                .helmPointer()
+            }
+
+            InspectorField(label: L10n.App.Packages.Research.source.localized) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(
+                        projection.visibleResults(
+                            matching: context.searchQuery,
+                            includeRemoteResults: context.researchRemoteSearchResultsAvailable
+                        )
+                    ) { candidate in
+                        let candidateState = projection.resultState(for: candidate)
+                        let isSelected = candidate.id == result.id
+                        Button {
+                            context.selectedPackageId = candidate.id
+                            context.selectedManagerId = candidate.managerID
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(
+                                        isSelected ? HelmTheme.proAccent : HelmTheme.textSecondary
+                                    )
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(localizedManagerDisplayName(candidate.managerID))
+                                        .foregroundColor(.primary)
+                                    Text(candidateState.localizedLabel)
+                                        .font(.caption2)
+                                        .foregroundColor(candidateState.tintColor)
+                                }
+                                Spacer(minLength: 0)
+                                if candidate.recommended {
+                                    Text(L10n.App.Packages.Research.recommended.localized)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundColor(HelmTheme.stateHealthy)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isSelected)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .helmPointer(enabled: !isSelected)
+                    }
+                }
+            }
+
+            InspectorField(label: L10n.App.Packages.Research.resultOrigin.localized) {
+                Text(state.localizedLabel)
+                    .font(.callout)
+            }
+
+            InspectorField(label: L10n.App.Inspector.packageId.localized) {
+                Text(result.id)
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(HelmTheme.textSecondary)
+            }
+
+            Text(L10n.App.Packages.Research.readOnlyNotice.localized)
+                .font(.caption2)
+                .foregroundColor(HelmTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -1534,6 +1668,7 @@ private struct InspectorPackageDetailView: View {
                             Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
                                 .foregroundColor(isActive ? HelmTheme.proAccent : HelmTheme.textSecondary)
                                 .font(.caption)
+                                .accessibilityHidden(true)
                             Text(localizedManagerDisplayName(candidate.managerId))
                                 .font(.callout)
                                 .foregroundColor(.primary)
@@ -1543,6 +1678,7 @@ private struct InspectorPackageDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isActive)
+                    .accessibilityAddTraits(isActive ? .isSelected : [])
                     .helmPointer(enabled: !isActive)
                 }
 

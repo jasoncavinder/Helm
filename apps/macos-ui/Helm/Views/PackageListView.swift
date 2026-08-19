@@ -3,6 +3,7 @@ import SwiftUI
 struct PackagesSectionView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
     @State private var selectedStatusFilter: PackageStatus?
     @State private var showPinnedOnly = false
     @State private var selectedManagerId: String?
@@ -14,8 +15,32 @@ struct PackagesSectionView: View {
     @State private var displayedPackages: [ConsolidatedPackageItem] = []
     @State private var installableAvailablePackageNames: Set<String> = []
     @State private var installActionPackageNames: Set<String> = []
+    @FocusState private var focusedPackageRowID: String?
+    @AccessibilityFocusState private var accessibilityFocusedPackageRowID: String?
 
+    @ViewBuilder
     var body: some View {
+        ScrollViewReader { scrollProxy in
+            Group {
+                if let researchLibraryProjection {
+                    researchBody(researchLibraryProjection)
+                } else {
+                    productionBody
+                }
+            }
+            .onAppear {
+                fulfillPendingPackageFocusRequest(using: scrollProxy)
+            }
+            .onChange(of: context.pendingLibraryPackageFocusRequest) { _ in
+                fulfillPendingPackageFocusRequest(using: scrollProxy)
+            }
+            .onChange(of: focusablePackageRowIDs) { _ in
+                fulfillPendingPackageFocusRequest(using: scrollProxy)
+            }
+        }
+    }
+
+    private var productionBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(ControlCenterSection.packages.title)
@@ -123,22 +148,29 @@ struct PackagesSectionView: View {
                                 actionTarget: package,
                                 managerConstraint: activeManagerFilterId
                             )
+                            let isSelected = packageRow.containsPackageId(context.selectedPackageId)
                             HStack(spacing: 8) {
-                                PackageRowView(
-                                    package: package,
-                                    managerDisplayNames: packageRow.managerDisplayNames,
-                                    detailBadges: rowDetailBadges(for: packageRow, actionTarget: package),
-                                    isSelected: packageRow.containsPackageId(context.selectedPackageId)
-                                )
-                                .id("\(package.id)|\(package.pinned ? 1 : 0)")
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    context.selectedPackageId = package.id
-                                    context.selectedManagerId = package.managerId
-                                    context.selectedTaskId = nil
-                                    context.selectedUpgradePlanStepId = nil
+                                Button {
+                                    selectProductionPackage(package)
+                                } label: {
+                                    PackageRowView(
+                                        package: package,
+                                        managerDisplayNames: packageRow.managerDisplayNames,
+                                        detailBadges: rowDetailBadges(for: packageRow, actionTarget: package),
+                                        isSelected: isSelected
+                                    )
+                                    .id("\(package.id)|\(package.pinned ? 1 : 0)")
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                .focused($focusedPackageRowID, equals: packageRow.id)
+                                .accessibilityFocused(
+                                    $accessibilityFocusedPackageRowID,
+                                    equals: packageRow.id
+                                )
+                                .accessibilityAddTraits(isSelected ? .isSelected : [])
                                 .helmPointer()
+                                .id(packageRow.id)
 
                                 primaryActionButton(for: primaryAction)
                             }
@@ -193,6 +225,338 @@ struct PackagesSectionView: View {
         .onChange(of: context.managerFilterId) { _ in refreshPackageSnapshots() }
         .sheet(isPresented: $showInstallManagerSheet) {
             installManagerSheet
+        }
+    }
+
+    private func researchBody(
+        _ projection: WholeWorkflowResearchLibraryProjection
+    ) -> some View {
+        let results = researchResults(in: projection)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(ControlCenterSection.packages.title)
+                        .font(.title2.weight(.semibold))
+                    Text(L10n.App.Packages.Research.librarySubtitle.localized)
+                        .font(.callout)
+                        .foregroundColor(HelmTheme.textSecondary)
+                }
+                Spacer()
+                if researchSearchIsEnriching(projection) {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
+                        Text(L10n.App.Packages.Research.remoteSearchInProgress.localized)
+                            .font(.caption)
+                            .foregroundColor(HelmTheme.textSecondary)
+                    }
+                } else if projection.isOfflineVariant,
+                          !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Label(
+                        L10n.App.Packages.Research.offlineDeferred.localized,
+                        systemImage: "wifi.slash"
+                    )
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(HelmTheme.stateUnavailable)
+                }
+            }
+
+            researchFilterBar(projection)
+
+            if context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundColor(HelmTheme.textSecondary)
+                    Text(L10n.App.Packages.Research.searchPrompt.localized)
+                        .font(.headline)
+                    Text(L10n.App.Packages.Research.searchPromptDetail.localized)
+                        .font(.callout)
+                        .foregroundColor(HelmTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if results.isEmpty {
+                Text(L10n.App.Packages.State.noPackagesFound.localized)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(results) { result in
+                            let package = result.packageItem
+                            HStack(spacing: 8) {
+                                Button {
+                                    selectResearchResult(result)
+                                } label: {
+                                    PackageRowView(
+                                        package: package,
+                                        managerDisplayNames: [localizedManagerDisplayName(result.managerID)],
+                                        detailBadges: researchBadges(for: result, in: projection),
+                                        secondaryText: localizedResearchRecommendation(
+                                            key: result.recommendationReasonKey,
+                                            managerID: result.managerID
+                                        ),
+                                        isSelected: context.selectedPackageId == result.id
+                                    )
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .focused($focusedPackageRowID, equals: result.id)
+                                .accessibilityFocused(
+                                    $accessibilityFocusedPackageRowID,
+                                    equals: result.id
+                                )
+                                .accessibilityAddTraits(
+                                    context.selectedPackageId == result.id ? .isSelected : []
+                                )
+                                .helmPointer()
+                                .id(result.id)
+
+                                if let confirmation = projection.installConfirmation(
+                                    forPackageID: result.id
+                                ) {
+                                    Button {
+                                        selectResearchResult(result)
+                                        context.presentResearchInstallConfirmation(confirmation)
+                                    } label: {
+                                        Image(systemName: "arrow.down.circle")
+                                    }
+                                    .buttonStyle(HelmIconButtonStyle())
+                                    .help(L10n.App.Packages.Research.reviewInstall.localized)
+                                    .accessibilityLabel(
+                                        L10n.App.Packages.Research.reviewInstall.localized
+                                    )
+                                    .helmPointer()
+                                    .padding(.trailing, 4)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.trailing, 8)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .padding(20)
+        .onAppear {
+            context.updateResearchSearchPresentation(
+                query: context.searchQuery,
+                isOfflineVariant: projection.isOfflineVariant
+            )
+            reconcileResearchPresentation(projection)
+        }
+        .onChange(of: context.searchQuery) { _ in
+            reconcileResearchPresentation(projection)
+        }
+        .onChange(of: context.researchRemoteSearchResultsAvailable) { _ in
+            reconcileResearchPresentation(projection)
+        }
+    }
+
+    private func researchFilterBar(
+        _ projection: WholeWorkflowResearchLibraryProjection
+    ) -> some View {
+        let managerIDs = researchVisibleManagerIDs(in: projection)
+        return HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(PackageStatus.allCases, id: \.self) { status in
+                        FilterButton(
+                            title: status.displayName,
+                            isSelected: selectedStatusFilter == status,
+                            action: {
+                                selectedStatusFilter = selectedStatusFilter == status ? nil : status
+                                showPinnedOnly = false
+                            }
+                        )
+                    }
+                    FilterButton(
+                        title: L10n.App.Packages.Filter.pinned.localized,
+                        isSelected: showPinnedOnly,
+                        action: {
+                            showPinnedOnly.toggle()
+                            if showPinnedOnly {
+                                selectedStatusFilter = nil
+                            }
+                        }
+                    )
+                }
+                .padding(.vertical, 1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Menu {
+                Button(L10n.App.Packages.Filter.allManagers.localized) {
+                    selectedManagerId = nil
+                    context.managerFilterId = nil
+                }
+                Divider()
+                ForEach(managerIDs, id: \.self) { managerID in
+                    Button(localizedManagerDisplayName(managerID)) {
+                        selectedManagerId = managerID
+                        context.managerFilterId = managerID
+                    }
+                }
+            } label: {
+                Label(managerLabel, systemImage: "square.stack.3d.up")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(
+                                (selectedManagerId ?? context.managerFilterId) == nil
+                                    ? HelmTheme.surfaceElevated
+                                    : HelmTheme.selectionFill
+                            )
+                    )
+            }
+            .menuStyle(.borderlessButton)
+            .helmPointer()
+            .accessibilityLabel(managerLabel)
+        }
+    }
+
+    private func researchResults(
+        in projection: WholeWorkflowResearchLibraryProjection
+    ) -> [WholeWorkflowResearchLibraryResult] {
+        guard !showPinnedOnly,
+              selectedStatusFilter == nil || selectedStatusFilter == .available else {
+            return []
+        }
+        return projection.visibleResults(
+            matching: context.searchQuery,
+            managerID: selectedManagerId ?? context.managerFilterId,
+            includeRemoteResults: context.researchRemoteSearchResultsAvailable
+        )
+    }
+
+    private func researchPresentationResults(
+        in projection: WholeWorkflowResearchLibraryProjection
+    ) -> [WholeWorkflowResearchLibraryResult] {
+        projection.visibleResults(
+            matching: context.searchQuery,
+            includeRemoteResults: context.researchRemoteSearchResultsAvailable
+        )
+    }
+
+    private func researchVisibleManagerIDs(
+        in projection: WholeWorkflowResearchLibraryProjection
+    ) -> [String] {
+        Array(Set(researchPresentationResults(in: projection).map(\.managerID))).sorted {
+            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(
+                localizedManagerDisplayName($1)
+            ) == .orderedAscending
+        }
+    }
+
+    private func reconcileResearchPresentation(
+        _ projection: WholeWorkflowResearchLibraryProjection
+    ) {
+        let visibleResults = researchPresentationResults(in: projection)
+        let visibleResultIDs = Set(visibleResults.map(\.id))
+        if let selectedPackageID = context.selectedPackageId,
+           projection.result(withID: selectedPackageID) != nil,
+           !visibleResultIDs.contains(selectedPackageID) {
+            context.selectedPackageId = nil
+            context.selectedManagerId = nil
+        }
+
+        let visibleManagerIDs = Set(visibleResults.map(\.managerID))
+        if let selectedManagerId, !visibleManagerIDs.contains(selectedManagerId) {
+            self.selectedManagerId = nil
+        }
+        if let managerFilterID = context.managerFilterId,
+           !visibleManagerIDs.contains(managerFilterID) {
+            context.managerFilterId = nil
+        }
+    }
+
+    private func researchSearchIsEnriching(
+        _ projection: WholeWorkflowResearchLibraryProjection
+    ) -> Bool {
+        !projection.isOfflineVariant
+            && !context.researchRemoteSearchResultsAvailable
+            && !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func researchBadges(
+        for result: WholeWorkflowResearchLibraryResult,
+        in projection: WholeWorkflowResearchLibraryProjection
+    ) -> [String] {
+        var badges = [projection.resultState(for: result).localizedLabel]
+        if result.recommended {
+            badges.append(L10n.App.Packages.Research.recommended.localized)
+        }
+        return badges
+    }
+
+    private func selectResearchResult(_ result: WholeWorkflowResearchLibraryResult) {
+        context.selectedPackageId = result.id
+        context.selectedManagerId = result.managerID
+        context.selectedTaskId = nil
+        context.selectedUpgradePlanStepId = nil
+    }
+
+    private func selectProductionPackage(_ package: PackageItem) {
+        context.selectedPackageId = package.id
+        context.selectedManagerId = package.managerId
+        context.selectedTaskId = nil
+        context.selectedUpgradePlanStepId = nil
+    }
+
+    private var focusablePackageRowIDs: [String] {
+        if let researchLibraryProjection {
+            return researchResults(in: researchLibraryProjection).map(\.id)
+        }
+        return displayedPackages.map(\.id)
+    }
+
+    private func focusTargetRowID(for packageID: String) -> String? {
+        if let researchLibraryProjection {
+            return researchResults(in: researchLibraryProjection)
+                .first(where: { $0.id == packageID })?.id
+        }
+        return displayedPackages.first(where: { $0.containsPackageId(packageID) })?.id
+    }
+
+    private func fulfillPendingPackageFocusRequest(using scrollProxy: ScrollViewProxy) {
+        guard let request = context.pendingLibraryPackageFocusRequest else { return }
+
+        var filtersChanged = false
+        if selectedStatusFilter != nil {
+            selectedStatusFilter = nil
+            filtersChanged = true
+        }
+        if showPinnedOnly {
+            showPinnedOnly = false
+            filtersChanged = true
+        }
+        if selectedManagerId != nil {
+            selectedManagerId = nil
+            filtersChanged = true
+        }
+        if context.managerFilterId != nil {
+            context.managerFilterId = nil
+            filtersChanged = true
+        }
+        if filtersChanged, researchLibraryProjection == nil {
+            refreshPackageSnapshots()
+        }
+
+        guard let rowID = focusTargetRowID(for: request.packageID) else { return }
+        DispatchQueue.main.async {
+            guard context.pendingLibraryPackageFocusRequest == request else { return }
+            scrollProxy.scrollTo(rowID, anchor: .center)
+            focusedPackageRowID = rowID
+            accessibilityFocusedPackageRowID = rowID
+            context.completeLibraryPackageFocusRequest(request, focusSucceeded: true)
         }
     }
 
@@ -532,6 +896,77 @@ private struct PrimaryPackageAction {
     let enabled: Bool
     let inFlight: Bool
     let action: (() -> Void)?
+}
+
+extension WholeWorkflowResearchLibraryResult {
+    var packageItem: PackageItem {
+        PackageItem(
+            id: id,
+            name: packageName,
+            version: version,
+            managerId: managerID,
+            manager: localizedManagerDisplayName(managerID),
+            summary: localizedResearchRecommendation(
+                key: recommendationReasonKey,
+                managerID: managerID
+            ),
+            status: .available
+        )
+    }
+}
+
+extension WholeWorkflowResearchLibraryResultState {
+    var localizedLabel: String {
+        switch self {
+        case .local:
+            return L10n.App.Packages.Research.local.localized
+        case .cached:
+            return L10n.App.Packages.Research.cached.localized
+        case .remote:
+            return L10n.App.Packages.Research.remote.localized
+        case .deferred:
+            return L10n.App.Packages.Research.deferred.localized
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .local:
+            return "externaldrive.fill.badge.checkmark"
+        case .cached:
+            return "internaldrive.fill"
+        case .remote:
+            return "network"
+        case .deferred:
+            return "wifi.slash"
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .local:
+            return HelmTheme.stateHealthy
+        case .cached:
+            return HelmTheme.actionSecondaryText
+        case .remote:
+            return HelmTheme.stateRunning
+        case .deferred:
+            return HelmTheme.stateUnavailable
+        }
+    }
+}
+
+func localizedResearchRecommendation(key: String, managerID: String) -> String {
+    switch key {
+    case "research.search.recommendation.existing_authority":
+        return L10n.App.Packages.Research.existingAuthorityRecommendation.localized(
+            with: ["manager": localizedManagerDisplayName(managerID)]
+        )
+    case "research.search.recommendation.alternate_source":
+        return L10n.App.Packages.Research.alternateSourceRecommendation.localized
+    default:
+        return key.localized
+    }
 }
 
 // Backward compatibility wrapper for legacy references.

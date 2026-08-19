@@ -257,7 +257,7 @@ Implementation checkpoint on `dev`:
 - Deep links preserve originating condition, destination, focus, route domain, and affected manager. Owner QA verified the corrected visible Environment filter for all four route stages before PR #490 merged.
 - Library, Plan, Activity, Environment, and Dashboard own detail, confirmation, recovery, and search rather than hosting those workflows inside the transient panel.
 - A debug-only six-state `HELM_WAYFINDER_POPOVER_FIXTURE` seam uses the production projectors/view and suppresses refresh plus Helm update-check submission while active. It is a state-validation seam, not a whole-workflow synthetic dataset.
-- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector now projects Task 2 through the shipping Plan path; the other six tasks remain unprojected, and each remaining workflow slice owns that work.
+- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector now projects Task 2 through the shipping Plan path and Task 3 through the shipping Library/global-search path; the other five tasks remain unprojected, and each remaining workflow slice owns that work.
 
 Affected files/components:
 
@@ -365,6 +365,12 @@ Validation:
 Rollback/incremental strategy:
 
 - New Library table behind the destination route; contextual detail reuses current action methods until contract migration.
+
+Implementation checkpoint:
+
+- Task 3's exact Homebrew cached result, delayed Cargo remote result, existing-authority recommendation, source-specific inspector selection, and install proposal now project through the shipping Library and global-search path. Accepting a global result deliberately routes to that exact Library entity instead of changing destinations while the user types.
+- The Debug-only offline variant keeps the cached result usable, marks the remote result and network-backed proposal Deferred, and never starts service, database, network, updater, or mutation work. Its bounded install confirmation is explicitly read-only.
+- Focused projection and routing tests cover exact record scope, progressive visibility, offline deferral, bounded confirmation requirements, and fail-closed scenario drift. Owner visual, Full Keyboard Access, and VoiceOver validation remain open. The production native table migration, explicit production-result provenance contract, remote cancellation, and 20,000-row performance budget remain later Slice 20.3 work.
 
 ### Slice 20.4: Activity, diagnostics, and workflow continuity
 

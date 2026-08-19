@@ -43,6 +43,32 @@ extension L10n {
             struct State {
                 static let noPackagesFound = "app.packages.state.no_packages_found"
             }
+            struct Research {
+                static let librarySubtitle = "app.packages.research.library_subtitle"
+                static let searchPrompt = "app.packages.research.search_prompt"
+                static let searchPromptDetail = "app.packages.research.search_prompt_detail"
+                static let searchResults = "app.packages.research.search_results"
+                static let remoteSearchInProgress = "app.packages.research.remote_search_in_progress"
+                static let offlineDeferred = "app.packages.research.offline_deferred"
+                static let local = "app.packages.research.origin.local"
+                static let cached = "app.packages.research.origin.cached"
+                static let remote = "app.packages.research.origin.remote"
+                static let deferred = "app.packages.research.origin.deferred"
+                static let recommended = "app.packages.research.recommended"
+                static let existingAuthorityRecommendation = "research.search.recommendation.existing_authority"
+                static let alternateSourceRecommendation = "research.search.recommendation.alternate_source"
+                static let reviewInstall = "app.packages.research.review_install"
+                static let confirmationTitle = "app.packages.research.confirmation.title"
+                static let confirmationSubtitle = "app.packages.research.confirmation.subtitle"
+                static let resultOrigin = "app.packages.research.confirmation.result_origin"
+                static let network = "app.packages.research.confirmation.network"
+                static let authorization = "app.packages.research.confirmation.authorization"
+                static let required = "app.packages.research.confirmation.required"
+                static let notRequired = "app.packages.research.confirmation.not_required"
+                static let installDeferred = "app.packages.research.confirmation.install_deferred"
+                static let readOnlyNotice = "app.packages.research.confirmation.read_only_notice"
+                static let source = "app.packages.research.source"
+            }
             struct Detail {
                 struct Version {
                     static let current = "app.packages.detail.version.current"

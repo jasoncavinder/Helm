@@ -1,5 +1,136 @@
 import Foundation
 
+struct GlobalSearchNavigationDecision {
+    let deepLink: WayfinderDeepLink
+    let managerFilterID: String?
+}
+
+enum GlobalSearchNavigationPolicy {
+    static func acceptedResultNavigation(
+        packageID: String
+    ) -> GlobalSearchNavigationDecision? {
+        guard let deepLink = acceptedResultDeepLink(packageID: packageID) else { return nil }
+        return GlobalSearchNavigationDecision(
+            deepLink: deepLink,
+            managerFilterID: nil
+        )
+    }
+
+    static func acceptedResultDeepLink(packageID: String) -> WayfinderDeepLink? {
+        let packageID = packageID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageID.isEmpty else { return nil }
+        return WayfinderDeepLink(
+            destination: .library,
+            entityID: packageID,
+            focus: .selectedEntity
+        )
+    }
+}
+
+struct ControlCenterGlobalSearchSessionState {
+    private(set) var isResultsPresented = false
+
+    mutating func updateQuery(
+        _ query: String,
+        presentsResults: Bool
+    ) {
+        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        isResultsPresented = presentsResults && hasQuery
+    }
+
+    mutating func synchronize(
+        isSearchFieldPresented: Bool,
+        supportsGlobalResults: Bool,
+        query: String
+    ) {
+        let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        isResultsPresented = isSearchFieldPresented && supportsGlobalResults && hasQuery
+    }
+
+    mutating func dismiss() {
+        isResultsPresented = false
+    }
+}
+
+struct ResearchSearchPresentationState {
+    private struct Identity: Equatable {
+        let normalizedQuery: String
+        let isOfflineVariant: Bool
+    }
+
+    private(set) var remoteResultsAvailable = false
+    private var identity: Identity?
+    private var generation = 0
+
+    mutating func update(
+        query: String,
+        isOfflineVariant: Bool
+    ) -> Int? {
+        let normalizedQuery = query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let nextIdentity = Identity(
+            normalizedQuery: normalizedQuery,
+            isOfflineVariant: isOfflineVariant
+        )
+        guard identity != nextIdentity else { return nil }
+
+        identity = nextIdentity
+        generation &+= 1
+        let hasQuery = !normalizedQuery.isEmpty
+        remoteResultsAvailable = hasQuery && isOfflineVariant
+        return hasQuery && !isOfflineVariant ? generation : nil
+    }
+
+    mutating func revealRemoteResults(for generation: Int) -> Bool {
+        guard self.generation == generation,
+              let identity,
+              !identity.normalizedQuery.isEmpty,
+              !identity.isOfflineVariant,
+              !remoteResultsAvailable else {
+            return false
+        }
+        remoteResultsAvailable = true
+        return true
+    }
+}
+
+struct LibraryPackageFocusRequest: Equatable {
+    let id: Int
+    let packageID: String
+}
+
+struct LibraryPackageFocusRequestState: Equatable {
+    private(set) var pendingRequest: LibraryPackageFocusRequest?
+    private(set) var lastCompletedRequestID: Int?
+    private var nextRequestID = 0
+
+    @discardableResult
+    mutating func request(packageID: String) -> LibraryPackageFocusRequest? {
+        let packageID = packageID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageID.isEmpty else { return nil }
+
+        nextRequestID &+= 1
+        let request = LibraryPackageFocusRequest(
+            id: nextRequestID,
+            packageID: packageID
+        )
+        pendingRequest = request
+        return request
+    }
+
+    @discardableResult
+    mutating func complete(
+        _ request: LibraryPackageFocusRequest,
+        focusSucceeded: Bool
+    ) -> Bool {
+        guard focusSucceeded, pendingRequest == request else { return false }
+        pendingRequest = nil
+        lastCompletedRequestID = request.id
+        return true
+    }
+}
+
 protocol ControlCenterSearchFocusTarget: AnyObject {
     func requestSearchFocus(completion: @escaping () -> Void)
 }

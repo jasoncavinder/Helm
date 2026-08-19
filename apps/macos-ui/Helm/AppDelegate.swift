@@ -523,9 +523,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func focusControlCenterSearch() {
         openControlCenter()
-        if #available(macOS 26.0, *) {
-            controlCenterContext.isControlCenterSearchPresented = true
-        } else {
+        controlCenterContext.isControlCenterSearchPresented = true
+        if #unavailable(macOS 26.0) {
             controlCenterContext.controlCenterSearchFocusRouter.requestFocus()
         }
     }

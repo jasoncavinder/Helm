@@ -518,6 +518,7 @@ enum WholeWorkflowResearchDatasetLoader {
 
 enum WholeWorkflowResearchDatasetProvider {
     static let environmentKey = "HELM_WAYFINDER_RESEARCH_DATASET"
+    static let offlineEnvironmentKey = "HELM_WAYFINDER_RESEARCH_OFFLINE"
 
     static func isSelected(
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -537,6 +538,30 @@ enum WholeWorkflowResearchDatasetProvider {
     ) -> WholeWorkflowResearchPlanProjection? {
         guard let dataset = active(environment: environment) else { return nil }
         return WholeWorkflowResearchPlanProjector.project(dataset)
+    }
+
+    static func activeLibraryProjection(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> WholeWorkflowResearchLibraryProjection? {
+        guard let dataset = active(environment: environment) else { return nil }
+        return WholeWorkflowResearchLibraryProjector.project(
+            dataset,
+            isOfflineVariant: isOfflineVariantSelected(environment: environment)
+        )
+    }
+
+    static func isOfflineVariantSelected(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        #if DEBUG
+        guard isSelected(environment: environment) else { return false }
+        let value = environment[offlineEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return value == "1" || value == "true" || value == "yes" || value == "offline"
+        #else
+        return false
+        #endif
     }
 
     static func selectedURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
@@ -673,6 +698,267 @@ enum WholeWorkflowResearchPlanProjector {
             arguments["toolchain"] = update.packageName
         }
         return arguments
+    }
+}
+
+enum WholeWorkflowResearchLibraryResultOrigin: String, Equatable {
+    case localCache = "local_cache"
+    case remote
+}
+
+enum WholeWorkflowResearchTaskThreeContract {
+    struct SearchResultContract {
+        let id: String
+        let managerID: String
+        let origin: WholeWorkflowResearchLibraryResultOrigin
+        let recommended: Bool
+        let recommendationReasonKey: String
+        let deferredWhenOffline: Bool
+
+        func matches(_ record: ResearchSearchResultRecord) -> Bool {
+            record.id == id
+                && record.managerID == managerID
+                && record.packageName == WholeWorkflowResearchTaskThreeContract.packageName
+                && record.resultOrigin == origin.rawValue
+                && record.recommended == recommended
+                && record.recommendationReasonKey == recommendationReasonKey
+                && record.deferredWhenOffline == deferredWhenOffline
+        }
+    }
+
+    static let scenarioID = "find-and-install-ripgrep"
+    static let startingSurface = "library"
+    static let packageName = "ripgrep"
+
+    static let recommendedResult = SearchResultContract(
+        id: "search-ripgrep-homebrew",
+        managerID: "homebrew_formula",
+        origin: .localCache,
+        recommended: true,
+        recommendationReasonKey: "research.search.recommendation.existing_authority",
+        deferredWhenOffline: false
+    )
+    static let alternateResult = SearchResultContract(
+        id: "search-ripgrep-cargo",
+        managerID: "cargo",
+        origin: .remote,
+        recommended: false,
+        recommendationReasonKey: "research.search.recommendation.alternate_source",
+        deferredWhenOffline: true
+    )
+    static let orderedSearchResults = [recommendedResult, alternateResult]
+    static let orderedSearchResultIDs = orderedSearchResults.map(\.id)
+
+    static let installProposalID = "install-ripgrep-homebrew"
+    static let orderedScenarioRecordIDs = orderedSearchResultIDs + [installProposalID]
+
+    static func matchesScenario(_ scenario: ResearchScenario) -> Bool {
+        scenario.taskNumber == 3
+            && scenario.scenarioID == scenarioID
+            && scenario.startingSurface == startingSurface
+            && scenario.recordIDs == orderedScenarioRecordIDs
+    }
+
+    static func matchesSearchResults(_ records: [ResearchSearchResultRecord]) -> Bool {
+        guard records.map(\.id) == orderedSearchResultIDs else { return false }
+        return zip(records, orderedSearchResults).allSatisfy { record, contract in
+            contract.matches(record)
+        }
+    }
+
+    static func matchesInstallProposalIdentity(
+        _ proposal: ResearchInstallProposalRecord
+    ) -> Bool {
+        proposal.id == installProposalID
+            && proposal.searchResultID == recommendedResult.id
+            && proposal.managerID == recommendedResult.managerID
+            && proposal.packageName == packageName
+    }
+}
+
+enum WholeWorkflowResearchLibraryResultState: Equatable {
+    case local
+    case cached
+    case remote
+    case deferred
+}
+
+struct WholeWorkflowResearchLibraryResult: Identifiable, Equatable {
+    let id: String
+    let managerID: String
+    let packageName: String
+    let version: String
+    let origin: WholeWorkflowResearchLibraryResultOrigin
+    let recommended: Bool
+    let recommendationReasonKey: String
+    let deferredWhenOffline: Bool
+}
+
+struct WholeWorkflowResearchInstallConfirmation: Identifiable, Equatable {
+    let id: String
+    let packageID: String
+    let packageName: String
+    let managerID: String
+    let resultState: WholeWorkflowResearchLibraryResultState
+    let recommendationReasonKey: String
+    let requiresNetwork: Bool
+    let requiresPrivilege: Bool
+    let isDeferred: Bool
+}
+
+struct WholeWorkflowResearchLibraryProjection: Equatable {
+    let scenarioID: String
+    let query: String
+    let results: [WholeWorkflowResearchLibraryResult]
+    let installProposal: ResearchInstallProposalRecord
+    let isOfflineVariant: Bool
+
+    func result(withID id: String?) -> WholeWorkflowResearchLibraryResult? {
+        guard let id else { return nil }
+        return results.first { $0.id == id }
+    }
+
+    func resultState(
+        for result: WholeWorkflowResearchLibraryResult
+    ) -> WholeWorkflowResearchLibraryResultState {
+        switch result.origin {
+        case .localCache:
+            return .cached
+        case .remote:
+            return isOfflineVariant && result.deferredWhenOffline ? .deferred : .remote
+        }
+    }
+
+    func visibleResults(
+        matching rawQuery: String,
+        managerID: String? = nil,
+        includeRemoteResults: Bool
+    ) -> [WholeWorkflowResearchLibraryResult] {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return [] }
+
+        return results.filter { result in
+            let matchesQuery = result.packageName.lowercased().contains(query)
+                || result.managerID.lowercased().contains(query)
+                || result.version.lowercased().contains(query)
+            let matchesManager = managerID == nil || result.managerID == managerID
+            let remoteIsVisible = result.origin != .remote
+                || includeRemoteResults
+                || (isOfflineVariant && result.deferredWhenOffline)
+            return matchesQuery && matchesManager && remoteIsVisible
+        }
+    }
+
+    func installConfirmation(
+        forPackageID packageID: String
+    ) -> WholeWorkflowResearchInstallConfirmation? {
+        guard packageID == installProposal.searchResultID,
+              let result = result(withID: packageID),
+              result.managerID == installProposal.managerID,
+              result.packageName == installProposal.packageName else {
+            return nil
+        }
+
+        return WholeWorkflowResearchInstallConfirmation(
+            id: installProposal.id,
+            packageID: result.id,
+            packageName: result.packageName,
+            managerID: result.managerID,
+            resultState: resultState(for: result),
+            recommendationReasonKey: result.recommendationReasonKey,
+            requiresNetwork: installProposal.requiresNetwork,
+            requiresPrivilege: installProposal.requiresPrivilege,
+            isDeferred: isOfflineVariant
+                && installProposal.requiresNetwork
+                && installProposal.offlineBehavior == "deferred"
+        )
+    }
+}
+
+enum WholeWorkflowResearchLibraryProjector {
+    static func project(
+        _ dataset: WholeWorkflowResearchDataset,
+        isOfflineVariant: Bool = false
+    ) -> WholeWorkflowResearchLibraryProjection? {
+        guard dataset.safety.syntheticOnly,
+              dataset.safety.localOnly,
+              !dataset.safety.allowsMachineScan,
+              !dataset.safety.allowsMutation,
+              let scenario = dataset.scenarios.first(where: { $0.taskNumber == 3 }),
+              WholeWorkflowResearchTaskThreeContract.matchesScenario(scenario),
+              WholeWorkflowResearchTaskThreeContract.matchesSearchResults(
+                  dataset.snapshot.searchResults
+              ) else {
+            return nil
+        }
+
+        let proposal = dataset.snapshot.installProposal
+        guard WholeWorkflowResearchTaskThreeContract.matchesInstallProposalIdentity(proposal) else {
+            return nil
+        }
+        var recordsByID: [String: ResearchSearchResultRecord] = [:]
+        for record in dataset.snapshot.searchResults {
+            guard recordsByID.updateValue(record, forKey: record.id) == nil else {
+                return nil
+            }
+        }
+        let scenarioResultIDs = scenario.recordIDs.filter { $0 != proposal.id }
+        guard scenario.recordIDs.last == proposal.id,
+              scenarioResultIDs.count == scenario.recordIDs.count - 1,
+              Set(scenarioResultIDs).count == scenarioResultIDs.count,
+              Set(scenario.recordIDs) == Set(scenarioResultIDs + [proposal.id]),
+              scenarioResultIDs.allSatisfy({ recordsByID[$0] != nil }) else {
+            return nil
+        }
+
+        let managerIDs = Set(dataset.snapshot.managers.map(\.id))
+        var projectedResults: [WholeWorkflowResearchLibraryResult] = []
+        for resultID in scenarioResultIDs {
+            guard let record = recordsByID[resultID],
+                  managerIDs.contains(record.managerID),
+                  let origin = WholeWorkflowResearchLibraryResultOrigin(rawValue: record.resultOrigin) else {
+                return nil
+            }
+            projectedResults.append(
+                WholeWorkflowResearchLibraryResult(
+                    id: record.id,
+                    managerID: record.managerID,
+                    packageName: record.packageName,
+                    version: record.version,
+                    origin: origin,
+                    recommended: record.recommended,
+                    recommendationReasonKey: record.recommendationReasonKey,
+                    deferredWhenOffline: record.deferredWhenOffline
+                )
+            )
+        }
+
+        guard projectedResults.filter(\.recommended).count == 1,
+              let recommended = projectedResults.first(where: \.recommended),
+              projectedResults.count == 2,
+              projectedResults.allSatisfy({ $0.packageName == proposal.packageName }),
+              recommended.id == proposal.searchResultID,
+              recommended.managerID == proposal.managerID,
+              recommended.packageName == proposal.packageName,
+              recommended.origin == .localCache,
+              !recommended.deferredWhenOffline,
+              projectedResults.contains(where: {
+                  !$0.recommended && $0.origin == .remote && $0.deferredWhenOffline
+              }),
+              proposal.state == "awaiting_confirmation",
+              proposal.requiresNetwork,
+              !proposal.requiresPrivilege,
+              proposal.offlineBehavior == "deferred" else {
+            return nil
+        }
+
+        return WholeWorkflowResearchLibraryProjection(
+            scenarioID: scenario.scenarioID,
+            query: proposal.packageName,
+            results: projectedResults,
+            installProposal: proposal,
+            isOfflineVariant: isOfflineVariant
+        )
     }
 }
 

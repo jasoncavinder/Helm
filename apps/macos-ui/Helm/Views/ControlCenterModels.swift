@@ -167,12 +167,16 @@ final class ControlCenterContext: ObservableObject {
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
     @Published var isControlCenterSearchPresented: Bool = false
+    @Published private(set) var isGlobalSearchResultsPresented = false
+    @Published private(set) var researchRemoteSearchResultsAvailable = false
+    @Published var researchInstallConfirmation: WholeWorkflowResearchInstallConfirmation?
     @Published var planManagerScopeId: String = HelmCore.allManagersScopeId
     @Published var planPackageFilter: String = ""
     @Published var managerFilterId: String?
     @Published private var environmentRouteFilterState = WayfinderEnvironmentRouteFilterState()
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     @Published private var upgradePlanConfirmationRequestState = UpgradePlanConfirmationRequestState()
+    @Published private var libraryPackageFocusRequestState = LibraryPackageFocusRequestState()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isSidebarVisible: Bool = true
@@ -183,6 +187,17 @@ final class ControlCenterContext: ObservableObject {
     @Published private(set) var dashboardFocusRequestToken: Int = 0
     @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
     private var pendingDashboardFocusTarget: WayfinderFocusTarget?
+    private var globalSearchSessionState = ControlCenterGlobalSearchSessionState()
+    private var researchSearchPresentationState = ResearchSearchPresentationState()
+    private let researchSearchRevealScheduler: (@escaping () -> Void) -> Void
+
+    init(
+        researchSearchRevealScheduler: @escaping (@escaping () -> Void) -> Void = { completion in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: completion)
+        }
+    ) {
+        self.researchSearchRevealScheduler = researchSearchRevealScheduler
+    }
 
     var showUpgradeSheet: Bool {
         upgradeSheetPresentation.isPresented
@@ -198,6 +213,10 @@ final class ControlCenterContext: ObservableObject {
 
     var pendingUpgradePlanConfirmationRequest: UpgradePlanConfirmationRequest? {
         upgradePlanConfirmationRequestState.pendingRequest
+    }
+
+    var pendingLibraryPackageFocusRequest: LibraryPackageFocusRequest? {
+        libraryPackageFocusRequestState.pendingRequest
     }
 
     var environmentRouteStage: WayfinderPopoverRouteStage? {
@@ -262,6 +281,86 @@ final class ControlCenterContext: ObservableObject {
     func select(_ section: ControlCenterSection) {
         environmentRouteFilterState.clear()
         selectedSection = section
+    }
+
+    @discardableResult
+    func acceptGlobalSearchResult(packageID: String) -> Bool {
+        guard let decision = GlobalSearchNavigationPolicy.acceptedResultNavigation(
+            packageID: packageID
+        ), let acceptedPackageID = decision.deepLink.entityID else { return false }
+        managerFilterId = decision.managerFilterID
+        navigate(to: decision.deepLink)
+        libraryPackageFocusRequestState.request(packageID: acceptedPackageID)
+        dismissGlobalSearchResults()
+        isControlCenterSearchPresented = false
+        return true
+    }
+
+    func completeLibraryPackageFocusRequest(
+        _ request: LibraryPackageFocusRequest,
+        focusSucceeded: Bool
+    ) {
+        libraryPackageFocusRequestState.complete(
+            request,
+            focusSucceeded: focusSucceeded
+        )
+    }
+
+    func updateGlobalSearchQuery(
+        _ query: String,
+        presentsResults: Bool
+    ) {
+        searchQuery = query
+        globalSearchSessionState.updateQuery(query, presentsResults: presentsResults)
+        isGlobalSearchResultsPresented = globalSearchSessionState.isResultsPresented
+    }
+
+    func synchronizeGlobalSearchPresentation(isSearchFieldPresented: Bool) {
+        let section = selectedSection ?? .overview
+        let supportsGlobalResults = section != .updates && section != .packages
+        globalSearchSessionState.synchronize(
+            isSearchFieldPresented: isSearchFieldPresented,
+            supportsGlobalResults: supportsGlobalResults,
+            query: searchQuery
+        )
+        isGlobalSearchResultsPresented = globalSearchSessionState.isResultsPresented
+    }
+
+    func dismissGlobalSearchResults() {
+        globalSearchSessionState.dismiss()
+        isGlobalSearchResultsPresented = globalSearchSessionState.isResultsPresented
+    }
+
+    func updateResearchSearchPresentation(
+        query: String,
+        isOfflineVariant: Bool
+    ) {
+        let revealGeneration = researchSearchPresentationState.update(
+            query: query,
+            isOfflineVariant: isOfflineVariant
+        )
+        researchRemoteSearchResultsAvailable = researchSearchPresentationState.remoteResultsAvailable
+        guard let revealGeneration else { return }
+
+        researchSearchRevealScheduler { [weak self] in
+            guard let self,
+                  self.researchSearchPresentationState.revealRemoteResults(
+                      for: revealGeneration
+                  ) else { return }
+            self.researchRemoteSearchResultsAvailable = self
+                .researchSearchPresentationState
+                .remoteResultsAvailable
+        }
+    }
+
+    func presentResearchInstallConfirmation(
+        _ confirmation: WholeWorkflowResearchInstallConfirmation
+    ) {
+        researchInstallConfirmation = confirmation
+    }
+
+    func dismissResearchInstallConfirmation() {
+        researchInstallConfirmation = nil
     }
 
     func clearEnvironmentRouteStage() {

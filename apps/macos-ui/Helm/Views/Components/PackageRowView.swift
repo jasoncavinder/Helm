@@ -4,6 +4,7 @@ struct PackageRowView: View {
     let package: PackageItem
     var managerDisplayNames: [String]?
     var detailBadges: [String] = []
+    var secondaryText: String?
     var isSelected: Bool = false
 
     private var accessibilityDescription: String {
@@ -21,6 +22,9 @@ struct PackageRowView: View {
         }
         if !detailBadges.isEmpty {
             parts.append(detailBadges.joined(separator: ", "))
+        }
+        if let secondaryText, !secondaryText.isEmpty {
+            parts.append(secondaryText)
         }
         parts.append(managerList)
         return parts.joined(separator: ", ")
@@ -54,6 +58,12 @@ struct PackageRowView: View {
                             .help(L10n.App.Packages.Label.pinned.localized)
                             .accessibilityHidden(true)
                     }
+                }
+                if let secondaryText, !secondaryText.isEmpty {
+                    Text(secondaryText)
+                        .font(.caption)
+                        .foregroundColor(HelmTheme.textSecondary)
+                        .lineLimit(2)
                 }
                 HStack(spacing: 4) {
                     ForEach(Array(displayedManagerNames.enumerated()), id: \.offset) { _, managerName in
@@ -110,6 +120,7 @@ struct PackageRowView: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func managerBadge(_ text: String) -> some View {
