@@ -120,6 +120,7 @@ struct PackageRowView: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func managerBadge(_ text: String) -> some View {

@@ -95,6 +95,42 @@ struct ResearchSearchPresentationState {
     }
 }
 
+struct LibraryPackageFocusRequest: Equatable {
+    let id: Int
+    let packageID: String
+}
+
+struct LibraryPackageFocusRequestState: Equatable {
+    private(set) var pendingRequest: LibraryPackageFocusRequest?
+    private(set) var lastCompletedRequestID: Int?
+    private var nextRequestID = 0
+
+    @discardableResult
+    mutating func request(packageID: String) -> LibraryPackageFocusRequest? {
+        let packageID = packageID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !packageID.isEmpty else { return nil }
+
+        nextRequestID &+= 1
+        let request = LibraryPackageFocusRequest(
+            id: nextRequestID,
+            packageID: packageID
+        )
+        pendingRequest = request
+        return request
+    }
+
+    @discardableResult
+    mutating func complete(
+        _ request: LibraryPackageFocusRequest,
+        focusSucceeded: Bool
+    ) -> Bool {
+        guard focusSucceeded, pendingRequest == request else { return false }
+        pendingRequest = nil
+        lastCompletedRequestID = request.id
+        return true
+    }
+}
+
 protocol ControlCenterSearchFocusTarget: AnyObject {
     func requestSearchFocus(completion: @escaping () -> Void)
 }

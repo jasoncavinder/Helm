@@ -114,6 +114,40 @@ final class ResearchSearchPresentationStateTests: XCTestCase {
     }
 }
 
+final class LibraryPackageFocusRequestStateTests: XCTestCase {
+    func testRequestWaitsForSuccessfulFocusAndIsConsumedOnlyOnce() throws {
+        var state = LibraryPackageFocusRequestState()
+        let request = try XCTUnwrap(state.request(packageID: " search-ripgrep-homebrew "))
+
+        XCTAssertEqual(request.packageID, "search-ripgrep-homebrew")
+        XCTAssertEqual(state.pendingRequest, request)
+        XCTAssertFalse(state.complete(request, focusSucceeded: false))
+        XCTAssertEqual(state.pendingRequest, request)
+
+        XCTAssertTrue(state.complete(request, focusSucceeded: true))
+        XCTAssertNil(state.pendingRequest)
+        XCTAssertEqual(state.lastCompletedRequestID, request.id)
+        XCTAssertFalse(state.complete(request, focusSucceeded: true))
+    }
+
+    func testStaleCompletionCannotConsumeAReplacementRequest() throws {
+        var state = LibraryPackageFocusRequestState()
+        let firstRequest = try XCTUnwrap(state.request(packageID: "first"))
+        let replacementRequest = try XCTUnwrap(state.request(packageID: "replacement"))
+
+        XCTAssertFalse(state.complete(firstRequest, focusSucceeded: true))
+        XCTAssertEqual(state.pendingRequest, replacementRequest)
+        XCTAssertTrue(state.complete(replacementRequest, focusSucceeded: true))
+    }
+
+    func testEmptyPackageIdentifierDoesNotIssueARequest() {
+        var state = LibraryPackageFocusRequestState()
+
+        XCTAssertNil(state.request(packageID: "  \n "))
+        XCTAssertNil(state.pendingRequest)
+    }
+}
+
 final class ControlCenterSearchFocusRouterTests: XCTestCase {
     func testRequestBeforeAttachmentIsDeliveredWhenTargetAttaches() {
         let router = ControlCenterSearchFocusRouter()

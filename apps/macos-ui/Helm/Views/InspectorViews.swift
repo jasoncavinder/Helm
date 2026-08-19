@@ -1313,6 +1313,7 @@ private struct InspectorPackageDetailView: View {
                                     .foregroundColor(
                                         isSelected ? HelmTheme.proAccent : HelmTheme.textSecondary
                                     )
+                                    .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(localizedManagerDisplayName(candidate.managerID))
                                         .foregroundColor(.primary)
@@ -1332,6 +1333,7 @@ private struct InspectorPackageDetailView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(isSelected)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                         .helmPointer(enabled: !isSelected)
                     }
                 }
@@ -1666,6 +1668,7 @@ private struct InspectorPackageDetailView: View {
                             Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
                                 .foregroundColor(isActive ? HelmTheme.proAccent : HelmTheme.textSecondary)
                                 .font(.caption)
+                                .accessibilityHidden(true)
                             Text(localizedManagerDisplayName(candidate.managerId))
                                 .font(.callout)
                                 .foregroundColor(.primary)
@@ -1675,6 +1678,7 @@ private struct InspectorPackageDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isActive)
+                    .accessibilityAddTraits(isActive ? .isSelected : [])
                     .helmPointer(enabled: !isActive)
                 }
 

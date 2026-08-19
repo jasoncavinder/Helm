@@ -15,13 +15,28 @@ struct PackagesSectionView: View {
     @State private var displayedPackages: [ConsolidatedPackageItem] = []
     @State private var installableAvailablePackageNames: Set<String> = []
     @State private var installActionPackageNames: Set<String> = []
+    @FocusState private var focusedPackageRowID: String?
+    @AccessibilityFocusState private var accessibilityFocusedPackageRowID: String?
 
     @ViewBuilder
     var body: some View {
-        if let researchLibraryProjection {
-            researchBody(researchLibraryProjection)
-        } else {
-            productionBody
+        ScrollViewReader { scrollProxy in
+            Group {
+                if let researchLibraryProjection {
+                    researchBody(researchLibraryProjection)
+                } else {
+                    productionBody
+                }
+            }
+            .onAppear {
+                fulfillPendingPackageFocusRequest(using: scrollProxy)
+            }
+            .onChange(of: context.pendingLibraryPackageFocusRequest) { _ in
+                fulfillPendingPackageFocusRequest(using: scrollProxy)
+            }
+            .onChange(of: focusablePackageRowIDs) { _ in
+                fulfillPendingPackageFocusRequest(using: scrollProxy)
+            }
         }
     }
 
@@ -133,22 +148,29 @@ struct PackagesSectionView: View {
                                 actionTarget: package,
                                 managerConstraint: activeManagerFilterId
                             )
+                            let isSelected = packageRow.containsPackageId(context.selectedPackageId)
                             HStack(spacing: 8) {
-                                PackageRowView(
-                                    package: package,
-                                    managerDisplayNames: packageRow.managerDisplayNames,
-                                    detailBadges: rowDetailBadges(for: packageRow, actionTarget: package),
-                                    isSelected: packageRow.containsPackageId(context.selectedPackageId)
-                                )
-                                .id("\(package.id)|\(package.pinned ? 1 : 0)")
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    context.selectedPackageId = package.id
-                                    context.selectedManagerId = package.managerId
-                                    context.selectedTaskId = nil
-                                    context.selectedUpgradePlanStepId = nil
+                                Button {
+                                    selectProductionPackage(package)
+                                } label: {
+                                    PackageRowView(
+                                        package: package,
+                                        managerDisplayNames: packageRow.managerDisplayNames,
+                                        detailBadges: rowDetailBadges(for: packageRow, actionTarget: package),
+                                        isSelected: isSelected
+                                    )
+                                    .id("\(package.id)|\(package.pinned ? 1 : 0)")
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                .focused($focusedPackageRowID, equals: packageRow.id)
+                                .accessibilityFocused(
+                                    $accessibilityFocusedPackageRowID,
+                                    equals: packageRow.id
+                                )
+                                .accessibilityAddTraits(isSelected ? .isSelected : [])
                                 .helmPointer()
+                                .id(packageRow.id)
 
                                 primaryActionButton(for: primaryAction)
                             }
@@ -284,7 +306,16 @@ struct PackagesSectionView: View {
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .focused($focusedPackageRowID, equals: result.id)
+                                .accessibilityFocused(
+                                    $accessibilityFocusedPackageRowID,
+                                    equals: result.id
+                                )
+                                .accessibilityAddTraits(
+                                    context.selectedPackageId == result.id ? .isSelected : []
+                                )
                                 .helmPointer()
+                                .id(result.id)
 
                                 if let confirmation = projection.installConfirmation(
                                     forPackageID: result.id
@@ -471,6 +502,62 @@ struct PackagesSectionView: View {
         context.selectedManagerId = result.managerID
         context.selectedTaskId = nil
         context.selectedUpgradePlanStepId = nil
+    }
+
+    private func selectProductionPackage(_ package: PackageItem) {
+        context.selectedPackageId = package.id
+        context.selectedManagerId = package.managerId
+        context.selectedTaskId = nil
+        context.selectedUpgradePlanStepId = nil
+    }
+
+    private var focusablePackageRowIDs: [String] {
+        if let researchLibraryProjection {
+            return researchResults(in: researchLibraryProjection).map(\.id)
+        }
+        return displayedPackages.map(\.id)
+    }
+
+    private func focusTargetRowID(for packageID: String) -> String? {
+        if let researchLibraryProjection {
+            return researchResults(in: researchLibraryProjection)
+                .first(where: { $0.id == packageID })?.id
+        }
+        return displayedPackages.first(where: { $0.containsPackageId(packageID) })?.id
+    }
+
+    private func fulfillPendingPackageFocusRequest(using scrollProxy: ScrollViewProxy) {
+        guard let request = context.pendingLibraryPackageFocusRequest else { return }
+
+        var filtersChanged = false
+        if selectedStatusFilter != nil {
+            selectedStatusFilter = nil
+            filtersChanged = true
+        }
+        if showPinnedOnly {
+            showPinnedOnly = false
+            filtersChanged = true
+        }
+        if selectedManagerId != nil {
+            selectedManagerId = nil
+            filtersChanged = true
+        }
+        if context.managerFilterId != nil {
+            context.managerFilterId = nil
+            filtersChanged = true
+        }
+        if filtersChanged, researchLibraryProjection == nil {
+            refreshPackageSnapshots()
+        }
+
+        guard let rowID = focusTargetRowID(for: request.packageID) else { return }
+        DispatchQueue.main.async {
+            guard context.pendingLibraryPackageFocusRequest == request else { return }
+            scrollProxy.scrollTo(rowID, anchor: .center)
+            focusedPackageRowID = rowID
+            accessibilityFocusedPackageRowID = rowID
+            context.completeLibraryPackageFocusRequest(request, focusSucceeded: true)
+        }
     }
 
     private var managerLabel: String {

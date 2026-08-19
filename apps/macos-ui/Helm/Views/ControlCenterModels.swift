@@ -176,6 +176,7 @@ final class ControlCenterContext: ObservableObject {
     @Published private var environmentRouteFilterState = WayfinderEnvironmentRouteFilterState()
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     @Published private var upgradePlanConfirmationRequestState = UpgradePlanConfirmationRequestState()
+    @Published private var libraryPackageFocusRequestState = LibraryPackageFocusRequestState()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isSidebarVisible: Bool = true
@@ -212,6 +213,10 @@ final class ControlCenterContext: ObservableObject {
 
     var pendingUpgradePlanConfirmationRequest: UpgradePlanConfirmationRequest? {
         upgradePlanConfirmationRequestState.pendingRequest
+    }
+
+    var pendingLibraryPackageFocusRequest: LibraryPackageFocusRequest? {
+        libraryPackageFocusRequestState.pendingRequest
     }
 
     var environmentRouteStage: WayfinderPopoverRouteStage? {
@@ -278,14 +283,27 @@ final class ControlCenterContext: ObservableObject {
         selectedSection = section
     }
 
-    func acceptGlobalSearchResult(packageID: String) {
+    @discardableResult
+    func acceptGlobalSearchResult(packageID: String) -> Bool {
         guard let decision = GlobalSearchNavigationPolicy.acceptedResultNavigation(
             packageID: packageID
-        ) else { return }
+        ), let acceptedPackageID = decision.deepLink.entityID else { return false }
         managerFilterId = decision.managerFilterID
         navigate(to: decision.deepLink)
+        libraryPackageFocusRequestState.request(packageID: acceptedPackageID)
         dismissGlobalSearchResults()
         isControlCenterSearchPresented = false
+        return true
+    }
+
+    func completeLibraryPackageFocusRequest(
+        _ request: LibraryPackageFocusRequest,
+        focusSucceeded: Bool
+    ) {
+        libraryPackageFocusRequestState.complete(
+            request,
+            focusSucceeded: focusSucceeded
+        )
     }
 
     func updateGlobalSearchQuery(

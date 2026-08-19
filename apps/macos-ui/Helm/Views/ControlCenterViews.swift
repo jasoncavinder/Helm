@@ -136,9 +136,9 @@ struct ControlCenterWindowView: View {
             && !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func acceptFirstGlobalSearchResult() {
-        guard presentsGlobalSearchResults, let result = globalSearchResults.first else { return }
-        context.acceptGlobalSearchResult(packageID: result.id)
+    private func acceptFirstGlobalSearchResult() -> Bool {
+        guard presentsGlobalSearchResults, let result = globalSearchResults.first else { return false }
+        return context.acceptGlobalSearchResult(packageID: result.id)
     }
 
     private func navigateToSection(for anchor: String) {
@@ -386,7 +386,7 @@ private struct ControlCenterNativeSearchModifier: ViewModifier {
     @Binding var isPresented: Bool
     let prompt: String
     let isEnabled: Bool
-    let onSubmit: () -> Void
+    let onSubmit: () -> Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -397,7 +397,9 @@ private struct ControlCenterNativeSearchModifier: ViewModifier {
                 placement: .automatic,
                 prompt: Text(prompt)
             )
-            .onSubmit(of: .search, onSubmit)
+            .onSubmit(of: .search) {
+                _ = onSubmit()
+            }
         } else {
             content
         }
@@ -444,51 +446,56 @@ private struct ControlCenterGlobalSearchResultsOverlay: View {
                 .foregroundColor(HelmTheme.textSecondary)
                 .padding(.vertical, 8)
             } else {
-                ForEach(results) { result in
-                    Button {
-                        onAccept(result)
-                    } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: result.state.symbolName)
-                                .foregroundColor(result.state.tintColor)
-                                .frame(width: 18)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(results) { result in
+                            Button {
+                                onAccept(result)
+                            } label: {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: result.state.symbolName)
+                                        .foregroundColor(result.state.tintColor)
+                                        .frame(width: 18)
 
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    Text(result.title)
-                                        .font(.body.weight(.semibold))
-                                    if result.recommended {
-                                        Text(L10n.App.Packages.Research.recommended.localized)
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundColor(HelmTheme.stateHealthy)
-                                    }
-                                }
-                                Text(
-                                    "\(localizedManagerDisplayName(result.managerID)) · "
-                                        + "\(result.state.localizedLabel) · \(result.version)"
-                                )
-                                .font(.caption)
-                                .foregroundColor(HelmTheme.textSecondary)
-                                .lineLimit(1)
-                                if let detail = result.detail, !detail.isEmpty {
-                                    Text(detail)
-                                        .font(.caption2)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack(spacing: 6) {
+                                            Text(result.title)
+                                                .font(.body.weight(.semibold))
+                                            if result.recommended {
+                                                Text(L10n.App.Packages.Research.recommended.localized)
+                                                    .font(.caption2.weight(.semibold))
+                                                    .foregroundColor(HelmTheme.stateHealthy)
+                                            }
+                                        }
+                                        Text(
+                                            "\(localizedManagerDisplayName(result.managerID)) · "
+                                                + "\(result.state.localizedLabel) · \(result.version)"
+                                        )
+                                        .font(.caption)
                                         .foregroundColor(HelmTheme.textSecondary)
-                                        .lineLimit(2)
+                                        .lineLimit(1)
+                                        if let detail = result.detail, !detail.isEmpty {
+                                            Text(detail)
+                                                .font(.caption2)
+                                                .foregroundColor(HelmTheme.textSecondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "arrow.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(HelmTheme.textSecondary)
                                 }
+                                .padding(9)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
-                            Spacer(minLength: 0)
-                            Image(systemName: "arrow.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(HelmTheme.textSecondary)
+                            .buttonStyle(.plain)
+                            .helmPointer()
                         }
-                        .padding(9)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .helmPointer()
                 }
+                .frame(maxHeight: 400)
             }
         }
         .padding(12)
@@ -746,7 +753,7 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
     let focusRouter: ControlCenterSearchFocusRouter
-    let onSubmit: () -> Void
+    let onSubmit: () -> Bool
     let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -800,13 +807,13 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
         var text: Binding<String>
         let updateGate = ControlCenterSearchTextUpdateGate()
         weak var focusRouter: ControlCenterSearchFocusRouter?
-        var onSubmit: () -> Void
+        var onSubmit: () -> Bool
         var onCancel: () -> Void
 
         init(
             text: Binding<String>,
             focusRouter: ControlCenterSearchFocusRouter,
-            onSubmit: @escaping () -> Void,
+            onSubmit: @escaping () -> Bool,
             onCancel: @escaping () -> Void
         ) {
             self.text = text
@@ -829,8 +836,8 @@ private struct ControlCenterToolbarSearchField: NSViewRepresentable {
             }
             if sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 onCancel()
-            } else {
-                onSubmit()
+            } else if onSubmit() {
+                sender.window?.makeFirstResponder(nil)
             }
         }
 
