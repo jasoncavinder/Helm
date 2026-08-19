@@ -281,13 +281,17 @@ struct ConsolidatedPackageItem: Identifiable {
     }
 
     func actionTarget(preferredManagerId: String?, selectedPackageId: String? = nil) -> PackageItem {
-        guard let managerId = PackageConsolidationPolicy.preferredManagerId(
-            managerIds: managerIds,
-            preferredManagerId: preferredManagerId
+        guard let targetIdentity = PackageMemberSelectionPolicy.actionTarget(
+            members: memberPackages.map {
+                PackageMemberIdentity(packageID: $0.id, managerID: $0.managerId)
+            },
+            orderedManagerIDs: managerIds,
+            preferredManagerID: preferredManagerId,
+            selectedPackageID: selectedPackageId
         ) else {
             return package
         }
-        return preferredPackage(forManagerId: managerId, selectedPackageId: selectedPackageId) ?? package
+        return memberPackages.first(where: { $0.id == targetIdentity.packageID }) ?? package
     }
 
     static func consolidate(
