@@ -579,7 +579,9 @@ final class HelmCore: ObservableObject {
     }
     var searchDebounceTimer: Timer?
     var localSearchRequestGeneration: UInt64 = 0
-    var activeRemoteSearchTaskIds: Set<Int64> = []
+    var remoteSearchSession = RemoteSearchSessionState() {
+        didSet { isSearching = remoteSearchSession.isSearching }
+    }
     var managerActionTaskDescriptions: [UInt64: String] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
     var managerActionTaskTypes: [UInt64: String] = [:]
@@ -990,7 +992,7 @@ final class HelmCore: ObservableObject {
         let now = Date()
         let hasInFlightWork = isRefreshing
             || activeTasks.contains(where: \.isRunning)
-            || !activeRemoteSearchTaskIds.isEmpty
+            || isSearching
         let interactiveSurfaceVisible = isPopoverVisibleForPolling || isControlCenterVisibleForPolling
 
         let taskSnapshotInterval: TimeInterval = {
@@ -1326,6 +1328,7 @@ final class HelmCore: ObservableObject {
                     self?.packageKegPolicyOverrides = [:]
                     self?.packageManagerPreferencesByFamilyKey = [:]
                     self?.homebrewKegAutoCleanupEnabled = false
+                    self?.clearSearchState()
                     self?.searchText = ""
                     self?.isRefreshing = false
                     self?.onboardingDetectionInProgress = false
@@ -1350,7 +1353,6 @@ final class HelmCore: ObservableObject {
                     self?.descriptionLookupTaskIdsByPackage = [:]
                     self?.descriptionLookupStartedAtByPackage = [:]
                     self?.descriptionLookupPackageById = [:]
-                    self?.activeRemoteSearchTaskIds = []
                     self?.managerActionTaskDescriptions = [:]
                     self?.managerActionTaskByManager = [:]
                     self?.managerActionTaskTypes = [:]
