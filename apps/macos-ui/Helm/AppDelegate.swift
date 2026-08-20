@@ -311,7 +311,160 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private struct LibraryTableBenchmarkResult {
         let frameSamples: [Double]
         let framesWithinSixteenMilliseconds: Int
-        let realizedRowViewCount: Int
+        let maximumRetainedRowViewCount: Int
+    }
+
+    private struct ColdLibraryBenchmarkResult {
+        let indexedDerivationSamples: [Double]
+        let snapshotApplySamples: [Double]
+        let endToEndSamples: [Double]
+        let resultCount: Int
+        let sourceFingerprint: Int
+        let snapshot: LibraryTableSnapshot
+        let revisionGeneration: UInt64
+    }
+
+    private final class LibraryTableBenchmarkHarness {
+        static let retainedRowViewBudget = 20
+        static let coldSnapshotApplyP95Budget = 350.0
+        static let coldEndToEndP95Budget = 500.0
+
+        private let coordinator: LibraryTableView.Coordinator
+        private let tableView: LibraryNativeTableView
+        private let scrollView: LibraryTableScrollView
+        private let window: NSWindow
+        private(set) var maximumRetainedRowViewCount = 0
+
+        init() {
+            let parent = Self.makeParent(
+                snapshot: .empty(namespace: "benchmark-library")
+            )
+            let coordinator = parent.makeCoordinator()
+            let tableView = LibraryNativeTableView(
+                frame: NSRect(x: 0, y: 0, width: 1_000, height: 620)
+            )
+            tableView.dataSource = coordinator
+            tableView.delegate = coordinator
+            tableView.intercellSpacing = NSSize(width: 8, height: 2)
+            LibraryTableLayoutPolicy.configure(in: tableView)
+            coordinator.installColumns(in: tableView)
+            coordinator.attach(tableView)
+
+            let scrollView = LibraryTableScrollView(
+                frame: NSRect(x: 0, y: 0, width: 1_000, height: 620)
+            )
+            scrollView.hasVerticalScroller = true
+            scrollView.documentView = tableView
+            let window = NSWindow(
+                contentRect: scrollView.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = scrollView
+
+            self.coordinator = coordinator
+            self.tableView = tableView
+            self.scrollView = scrollView
+            self.window = window
+            coordinator.update(parent: parent)
+        }
+
+        func apply(snapshot: LibraryTableSnapshot) {
+            coordinator.update(parent: Self.makeParent(snapshot: snapshot))
+            scrollView.contentView.scroll(to: .zero)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            scrollView.layoutSubtreeIfNeeded()
+            realizeVisibleCells()
+            tableView.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            recordRetainedRowViews()
+        }
+
+        func benchmarkScroll(rowCount: Int) -> LibraryTableBenchmarkResult {
+            let lastRowMaxY = rowCount == 0
+                ? 0
+                : tableView.rect(ofRow: rowCount - 1).maxY
+            let maximumOffset = max(
+                0,
+                lastRowMaxY - scrollView.contentView.bounds.height
+            )
+            let frameCount = 120
+            var frameSamples: [Double] = []
+            frameSamples.reserveCapacity(frameCount)
+            var framesWithinBudget = 0
+
+            for frame in 0..<frameCount {
+                let progress = Double(frame + 1) / Double(frameCount)
+                let startedAt = ProcessInfo.processInfo.systemUptime
+                scrollView.contentView.scroll(
+                    to: NSPoint(x: 0, y: maximumOffset * progress)
+                )
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                realizeVisibleCells()
+                tableView.layoutSubtreeIfNeeded()
+                scrollView.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+                recordRetainedRowViews()
+                let elapsed = (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
+                frameSamples.append(elapsed)
+                if elapsed <= 16.7 {
+                    framesWithinBudget += 1
+                }
+            }
+
+            return LibraryTableBenchmarkResult(
+                frameSamples: frameSamples,
+                framesWithinSixteenMilliseconds: framesWithinBudget,
+                maximumRetainedRowViewCount: maximumRetainedRowViewCount
+            )
+        }
+
+        func finish() {
+            coordinator.detach()
+            window.contentView = nil
+        }
+
+        private static func makeParent(snapshot: LibraryTableSnapshot) -> LibraryTableView {
+            LibraryTableView(
+                snapshot: snapshot,
+                selectedRowID: nil,
+                columnLabels: LibraryTableColumnLabels(
+                    package: "Package",
+                    manager: "Manager",
+                    version: "Version",
+                    status: "Status",
+                    currentVersion: "Current",
+                    latestVersion: "Latest",
+                    pinned: "Pinned",
+                    restartRequired: "Restart required",
+                    running: "Running",
+                    viewDetails: "View details"
+                ),
+                accessibilityLabel: "Library performance fixture",
+                focusRequest: nil,
+                onSelectRow: { _ in },
+                onClearSelection: {},
+                onShowDetails: { _ in },
+                onPerformAction: { _ in },
+                onFulfillFocusRequest: { _ in }
+            )
+        }
+
+        private func realizeVisibleCells() {
+            let visibleRows = tableView.rows(in: tableView.visibleRect)
+            guard visibleRows.location != NSNotFound, visibleRows.length > 0 else { return }
+            for row in visibleRows.location..<(visibleRows.location + visibleRows.length) {
+                for column in tableView.tableColumns.indices {
+                    _ = tableView.view(atColumn: column, row: row, makeIfNecessary: true)
+                }
+            }
+        }
+
+        private func recordRetainedRowViews() {
+            let retainedCount = tableView.subviews.lazy.filter { $0 is NSTableRowView }.count
+            maximumRetainedRowViewCount = max(maximumRetainedRowViewCount, retainedCount)
+        }
     }
 
     private func runLibraryPerformanceBenchmarkIfRequested() -> Bool {
@@ -323,63 +476,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             let sourceCount = 30
             let rowCount = 20_000
             let query = "package"
-            let packages = (0..<rowCount).map { index in
-                PackageItem(
-                    id: "manager-\(index % sourceCount):package-\(index)",
-                    name: "package-\(index)",
-                    version: "1.0.0",
-                    managerId: "manager-\(index % sourceCount)",
-                    manager: "Manager \(index % sourceCount)",
-                    summary: "Package \(index) summary marker"
-                )
-            }
+            let overlaySummary = "Remote same-ID overlay summary marker"
+            let packages = self.libraryBenchmarkPackages(rowCount: rowCount, sourceCount: sourceCount)
             core.cachedAllKnownPackagesUnsorted = packages
             core.cachedAllKnownPackagesSorted = packages
             core.cachedKnownPackageById = Dictionary(
                 uniqueKeysWithValues: packages.map { ($0.id, $0) }
             )
+            var overlayPackage = packages[0]
+            overlayPackage.summary = overlaySummary
+            core.searchResults = [overlayPackage]
             core.cachedLibraryPackageIndex = nil
 
-            var coldSamples: [Double] = []
-            coldSamples.reserveCapacity(iterations)
-            var resultCount = 0
-            for _ in 0..<iterations {
-                core.cachedLibraryPackageIndex = nil
-                let startedAt = ProcessInfo.processInfo.systemUptime
-                let results = core.filteredPackages(
-                    query: query,
-                    managerId: nil,
-                    statusFilter: nil
+            let harness = LibraryTableBenchmarkHarness()
+            let actionLabels = LibraryTableActionLabels()
+            let inFlightPackageIDs = Set(
+                packages.indices.filter { $0.isMultiple(of: 17) }.map { packages[$0].id }
+            )
+            let actionProjection: (ConsolidatedPackageItem, PackageItem) -> LibraryTableAction? = { _, package in
+                let identity: LibraryTableActionIdentity
+                let symbolName: String
+                let title: String
+                let canPerform: Bool
+                if package.pinned {
+                    (identity, symbolName, title, canPerform) = (.unpin, "pin.slash", actionLabels.unpin, true)
+                } else if package.status == .available {
+                    (identity, symbolName, title, canPerform) = (.install, "arrow.down.circle", actionLabels.install, true)
+                } else {
+                    (identity, symbolName, title, canPerform) = (.upgrade, "arrow.up.circle", actionLabels.upgrade, package.status == .upgradable)
+                }
+                let isInFlight = inFlightPackageIDs.contains(package.id)
+                return LibraryTableAction(
+                    identity: identity, symbolName: symbolName, title: title,
+                    isEnabled: canPerform && !isInFlight, isInFlight: isInFlight
                 )
-                coldSamples.append((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000)
-                resultCount = results.count
             }
+            let coldResult = self.runColdLibraryBenchmark(
+                iterations: iterations, query: query,
+                core: core,
+                harness: harness,
+                actionProjection: actionProjection
+            )
+            var revisionGeneration = coldResult.revisionGeneration
+            var resultCount = coldResult.resultCount
+            var latestSourceFingerprint = coldResult.sourceFingerprint
+            var latestSnapshot = coldResult.snapshot
+            var projectedRowCount = latestSnapshot.rows.count
 
             _ = core.filteredPackages(
                 query: query,
                 managerId: nil,
                 statusFilter: nil
             )
-            var warmSamples: [Double] = []
-            warmSamples.reserveCapacity(iterations)
-            var latestResults: [ConsolidatedPackageItem] = []
+            var warmIndexedDerivationSamples: [Double] = []
+            var warmEndToEndSamples: [Double] = []
+            warmIndexedDerivationSamples.reserveCapacity(iterations)
+            warmEndToEndSamples.reserveCapacity(iterations)
+            var warmProjectionCacheHits = 0
             for _ in 0..<iterations {
                 let startedAt = ProcessInfo.processInfo.systemUptime
-                latestResults = core.filteredPackages(
+                let results = core.filteredPackages(
                     query: query,
                     managerId: nil,
                     statusFilter: nil
                 )
-                resultCount = latestResults.count
-                warmSamples.append((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000)
+                let filteredAt = ProcessInfo.processInfo.systemUptime
+                warmIndexedDerivationSamples.append((filteredAt - startedAt) * 1_000)
+                let sourceFingerprint = LibraryTableRowProjector.sourceFingerprint(
+                    for: results
+                )
+                if latestSourceFingerprint == sourceFingerprint {
+                    warmProjectionCacheHits += 1
+                } else {
+                    revisionGeneration &+= 1
+                    latestSnapshot = LibraryTableRowProjector.project(
+                        revision: LibraryTableModelRevision(
+                            namespace: "benchmark-library",
+                            generation: revisionGeneration
+                        ),
+                        packageRows: results,
+                        selectedPackageID: nil,
+                        managerConstraint: nil,
+                        preferredManagerID: { _ in nil },
+                        action: actionProjection
+                    )
+                    latestSourceFingerprint = sourceFingerprint
+                }
+                harness.apply(snapshot: latestSnapshot)
+                resultCount = results.count
+                projectedRowCount = latestSnapshot.rows.count
+                warmEndToEndSamples.append((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000)
             }
 
-            guard let coldSummary = LibraryPerformanceSampleSummary(samples: coldSamples),
-                  let warmSummary = LibraryPerformanceSampleSummary(samples: warmSamples) else {
+            guard let coldIndexedSummary = LibraryPerformanceSampleSummary(
+                samples: coldResult.indexedDerivationSamples
+            ), let coldSnapshotSummary = LibraryPerformanceSampleSummary(
+                samples: coldResult.snapshotApplySamples
+            ), let coldEndToEndSummary = LibraryPerformanceSampleSummary(
+                samples: coldResult.endToEndSamples
+            ), let warmIndexedSummary = LibraryPerformanceSampleSummary(
+                samples: warmIndexedDerivationSamples
+            ), let warmEndToEndSummary = LibraryPerformanceSampleSummary(
+                samples: warmEndToEndSamples
+            ) else {
+                harness.finish()
                 NSApp.terminate(nil)
                 return
             }
-            let tableResult = self.benchmarkLibraryTable(results: latestResults)
+            let tableResult = harness.benchmarkScroll(rowCount: projectedRowCount)
+            harness.finish()
             guard let frameSummary = LibraryPerformanceSampleSummary(
                 samples: tableResult.frameSamples
             ) else {
@@ -388,10 +593,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             let framePassRatio = Double(tableResult.framesWithinSixteenMilliseconds)
                 / Double(tableResult.frameSamples.count)
+            let actionRowCount = latestSnapshot.rows.lazy.filter { $0.action != nil }.count
+            let inFlightRowCount = latestSnapshot.rows.lazy.filter {
+                $0.action?.isInFlight == true
+            }.count
+            let actionIdentityCounts = latestSnapshot.rows.reduce(into: [String: Int]()) {
+                guard let identity = $1.action?.identity else { return }
+                $0[identity.rawValue, default: 0] += 1
+            }
+            let appliedSameIDOverlayCount = latestSnapshot.rows.lazy.filter {
+                $0.representedPackageIDs.contains(overlayPackage.id)
+                    && $0.detail?.contains(overlaySummary) == true
+            }.count
+            let requiredActions: [LibraryTableActionIdentity] = [.install, .unpin, .upgrade]
+            let mixedActionsPassed = requiredActions.allSatisfy { actionIdentityCounts[$0.rawValue, default: 0] > 0 }
+            let retainedRowsPassed = tableResult.maximumRetainedRowViewCount
+                <= LibraryTableBenchmarkHarness.retainedRowViewBudget
             let passed = resultCount == rowCount
-                && coldSummary.p95Milliseconds <= 150
-                && warmSummary.medianMilliseconds <= 50
-                && warmSummary.p95Milliseconds <= 100
+                && projectedRowCount == rowCount
+                && actionRowCount == rowCount
+                && inFlightRowCount > 0
+                && mixedActionsPassed
+                && appliedSameIDOverlayCount == 1
+                && warmProjectionCacheHits == iterations
+                && retainedRowsPassed
+                && coldIndexedSummary.p95Milliseconds <= 150
+                && coldSnapshotSummary.p95Milliseconds <= LibraryTableBenchmarkHarness.coldSnapshotApplyP95Budget
+                && coldEndToEndSummary.p95Milliseconds <= LibraryTableBenchmarkHarness.coldEndToEndP95Budget
+                && warmIndexedSummary.medianMilliseconds <= 50
+                && warmIndexedSummary.p95Milliseconds <= 100
+                && warmEndToEndSummary.p95Milliseconds <= 100
                 && framePassRatio >= 0.95
                 && frameSummary.worstMilliseconds <= 50
             let payload: [String: Any] = [
@@ -400,19 +631,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 "sources": sourceCount,
                 "rows": rowCount,
                 "query": query,
+                "timed_path": "query_fingerprint_projection_cache_to_first_visible_cell",
                 "result_count": resultCount,
-                "cold_complete_ms": [
-                    "median": coldSummary.medianMilliseconds,
-                    "p95": coldSummary.p95Milliseconds,
-                    "worst": coldSummary.worstMilliseconds,
-                    "samples": coldSamples,
-                ],
-                "warm_projection_ms": [
-                    "median": warmSummary.medianMilliseconds,
-                    "p95": warmSummary.p95Milliseconds,
-                    "worst": warmSummary.worstMilliseconds,
-                    "samples": warmSamples,
-                ],
+                "projected_row_count": projectedRowCount,
+                "action_row_count": actionRowCount,
+                "action_identity_counts": actionIdentityCounts,
+                "mixed_actions_passed": mixedActionsPassed,
+                "in_flight_row_count": inFlightRowCount,
+                "applied_same_id_overlay_count": appliedSameIDOverlayCount,
+                "warm_projection_cache_hits": warmProjectionCacheHits,
+                "cold_indexed_derivation_ms": libraryBenchmarkSummary(coldIndexedSummary, samples: coldResult.indexedDerivationSamples),
+                "cold_snapshot_apply_ms": libraryBenchmarkSummary(coldSnapshotSummary, samples: coldResult.snapshotApplySamples),
+                "cold_end_to_end_ms": libraryBenchmarkSummary(coldEndToEndSummary, samples: coldResult.endToEndSamples),
+                "warm_indexed_derivation_ms": libraryBenchmarkSummary(warmIndexedSummary, samples: warmIndexedDerivationSamples),
+                "warm_production_end_to_end_ms": libraryBenchmarkSummary(warmEndToEndSummary, samples: warmEndToEndSamples),
                 "scroll_frame_ms": [
                     "median": frameSummary.medianMilliseconds,
                     "p95": frameSummary.p95Milliseconds,
@@ -421,12 +653,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                     "within_16_7_ms": tableResult.framesWithinSixteenMilliseconds,
                     "sample_count": tableResult.frameSamples.count,
                     "pass_ratio": framePassRatio,
-                    "realized_row_views": tableResult.realizedRowViewCount,
+                    "realized_row_views": tableResult.maximumRetainedRowViewCount,
+                    "retained_row_view_budget": LibraryTableBenchmarkHarness.retainedRowViewBudget,
+                    "retained_row_views_passed": retainedRowsPassed,
                 ],
                 "budgets_ms": [
-                    "cold_complete_p95": 150,
-                    "warm_median": 50,
-                    "warm_p95": 100,
+                    "cold_indexed_derivation_p95": 150,
+                    "cold_snapshot_apply_p95": LibraryTableBenchmarkHarness
+                        .coldSnapshotApplyP95Budget,
+                    "cold_end_to_end_p95": LibraryTableBenchmarkHarness
+                        .coldEndToEndP95Budget,
+                    "warm_indexed_derivation_median": 50,
+                    "warm_indexed_derivation_p95": 100,
+                    "warm_production_end_to_end_p95": 100,
                     "scroll_frame_p95_target": 16.7,
                     "scroll_frame_worst": 50,
                 ],
@@ -442,123 +681,98 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         return true
     }
 
-    private func benchmarkLibraryTable(
-        results: [ConsolidatedPackageItem]
-    ) -> LibraryTableBenchmarkResult {
-        let rows = results.map { packageRow in
-            let package = packageRow.package
-            return LibraryTableRow(
-                id: packageRow.id,
-                representedPackageIDs: packageRow.memberPackages.map(\.id),
-                selectedPackageID: package.id,
-                selectedManagerID: package.managerId,
-                name: package.displayName,
-                detail: package.summary,
-                manager: packageRow.managerDisplayText,
-                currentVersion: package.version,
-                latestVersion: package.latestVersion,
-                status: package.status.rawValue,
-                statusSymbolName: package.status.iconName,
-                statusTone: package.status == .upgradable ? .updatesReady : .healthy,
-                isPinned: package.pinned,
-                isRestartRequired: package.restartRequired,
-                action: nil
+    private func libraryBenchmarkSummary(
+        _ summary: LibraryPerformanceSampleSummary,
+        samples: [Double]
+    ) -> [String: Any] {
+        [
+            "median": summary.medianMilliseconds,
+            "p95": summary.p95Milliseconds,
+            "worst": summary.worstMilliseconds,
+            "samples": samples,
+        ]
+    }
+
+    private func runColdLibraryBenchmark(
+        iterations: Int,
+        query: String,
+        core: HelmCore,
+        harness: LibraryTableBenchmarkHarness,
+        actionProjection: (ConsolidatedPackageItem, PackageItem) -> LibraryTableAction?
+    ) -> ColdLibraryBenchmarkResult {
+        var indexedSamples: [Double] = []
+        var snapshotSamples: [Double] = []
+        var endToEndSamples: [Double] = []
+        var resultCount = 0
+        var sourceFingerprint = 0
+        var snapshot = LibraryTableSnapshot.empty(namespace: "benchmark-library")
+
+        for generation in 1...iterations {
+            core.cachedLibraryPackageIndex = nil
+            let endToEndStartedAt = ProcessInfo.processInfo.systemUptime
+            let results = core.filteredPackages(
+                query: query,
+                managerId: nil,
+                statusFilter: nil
             )
-        }
-        let parent = LibraryTableView(
-            rows: rows,
-            selectedRowID: nil,
-            columnLabels: LibraryTableColumnLabels(
-                package: "Package",
-                manager: "Manager",
-                version: "Version",
-                status: "Status",
-                currentVersion: "Current",
-                latestVersion: "Latest",
-                pinned: "Pinned",
-                restartRequired: "Restart required",
-                running: "Running",
-                viewDetails: "View details"
-            ),
-            accessibilityLabel: "Library performance fixture",
-            focusRequest: nil,
-            onSelectRow: { _ in },
-            onClearSelection: {},
-            onShowDetails: { _ in },
-            onPerformAction: { _ in },
-            onFulfillFocusRequest: { _ in }
-        )
-        let coordinator = parent.makeCoordinator()
-        let tableView = LibraryNativeTableView(
-            frame: NSRect(x: 0, y: 0, width: 1_000, height: 620)
-        )
-        tableView.dataSource = coordinator
-        tableView.delegate = coordinator
-        tableView.intercellSpacing = NSSize(width: 8, height: 2)
-        LibraryTableLayoutPolicy.configure(in: tableView)
-        coordinator.installColumns(in: tableView)
-        coordinator.attach(tableView)
-
-        let scrollView = LibraryTableScrollView(
-            frame: NSRect(x: 0, y: 0, width: 1_000, height: 620)
-        )
-        scrollView.hasVerticalScroller = true
-        scrollView.documentView = tableView
-        let window = NSWindow(
-            contentRect: scrollView.frame,
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        window.contentView = scrollView
-        coordinator.update(parent: parent)
-        scrollView.layoutSubtreeIfNeeded()
-        realizeVisibleLibraryCells(in: tableView)
-        tableView.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-
-        let lastRowMaxY = rows.isEmpty ? 0 : tableView.rect(ofRow: rows.count - 1).maxY
-        let maximumOffset = max(0, lastRowMaxY - scrollView.contentView.bounds.height)
-        let frameCount = 120
-        var frameSamples: [Double] = []
-        frameSamples.reserveCapacity(frameCount)
-        var framesWithinBudget = 0
-
-        for frame in 0..<frameCount {
-            let progress = Double(frame + 1) / Double(frameCount)
-            let startedAt = ProcessInfo.processInfo.systemUptime
-            scrollView.contentView.scroll(
-                to: NSPoint(x: 0, y: maximumOffset * progress)
+            let snapshotStartedAt = ProcessInfo.processInfo.systemUptime
+            indexedSamples.append((snapshotStartedAt - endToEndStartedAt) * 1_000)
+            sourceFingerprint = LibraryTableRowProjector.sourceFingerprint(for: results)
+            snapshot = LibraryTableRowProjector.project(
+                revision: LibraryTableModelRevision(
+                    namespace: "benchmark-library",
+                    generation: UInt64(generation)
+                ),
+                packageRows: results,
+                selectedPackageID: nil,
+                managerConstraint: nil,
+                preferredManagerID: { _ in nil },
+                action: actionProjection
             )
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-            realizeVisibleLibraryCells(in: tableView)
-            tableView.layoutSubtreeIfNeeded()
-            scrollView.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
-            let elapsed = (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
-            frameSamples.append(elapsed)
-            if elapsed <= 16.7 {
-                framesWithinBudget += 1
-            }
+            harness.apply(snapshot: snapshot)
+            let completedAt = ProcessInfo.processInfo.systemUptime
+            snapshotSamples.append((completedAt - snapshotStartedAt) * 1_000)
+            endToEndSamples.append((completedAt - endToEndStartedAt) * 1_000)
+            resultCount = results.count
         }
-
-        let realizedRowViewCount = tableView.subviews.count
-        coordinator.detach()
-        window.contentView = nil
-        return LibraryTableBenchmarkResult(
-            frameSamples: frameSamples,
-            framesWithinSixteenMilliseconds: framesWithinBudget,
-            realizedRowViewCount: realizedRowViewCount
+        return ColdLibraryBenchmarkResult(
+            indexedDerivationSamples: indexedSamples,
+            snapshotApplySamples: snapshotSamples,
+            endToEndSamples: endToEndSamples,
+            resultCount: resultCount,
+            sourceFingerprint: sourceFingerprint,
+            snapshot: snapshot,
+            revisionGeneration: UInt64(iterations)
         )
     }
 
-    private func realizeVisibleLibraryCells(in tableView: NSTableView) {
-        let visibleRows = tableView.rows(in: tableView.visibleRect)
-        guard visibleRows.location != NSNotFound, visibleRows.length > 0 else { return }
-        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) {
-            for column in tableView.tableColumns.indices {
-                _ = tableView.view(atColumn: column, row: row, makeIfNecessary: true)
+    private func libraryBenchmarkPackages(
+        rowCount: Int,
+        sourceCount: Int
+    ) -> [PackageItem] {
+        (0..<rowCount).map { index in
+            let status: PackageStatus = switch index % 4 {
+            case 0: .available
+            case 1: .upgradable
+            default: .installed
             }
+            return PackageItem(
+                id: "manager-\(index % sourceCount):package-\(index)",
+                name: "package-\(index)",
+                version: "1.0.0",
+                latestVersion: status == .upgradable ? "2.0.0" : nil,
+                managerId: "manager-\(index % sourceCount)",
+                manager: "Manager \(index % sourceCount)",
+                summary: index == 0 ? nil : "Package \(index) summary marker",
+                pinned: index % 4 == 2,
+                restartRequired: index % 19 == 0,
+                runtimeState: PackageRuntimeState(
+                    isActive: index % 7 == 0,
+                    isDefault: index % 11 == 0,
+                    hasOverride: index % 13 == 0
+                ),
+                status: status
+            )
         }
     }
 

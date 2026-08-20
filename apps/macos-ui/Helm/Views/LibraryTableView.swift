@@ -1,14 +1,80 @@
 import AppKit
 import SwiftUI
 
-enum LibraryTableStatusTone: Equatable {
+struct LibraryTableModelRevision: Equatable, Hashable {
+    let namespace: String
+    let generation: UInt64
+}
+
+struct LibraryTableSnapshot {
+    let revision: LibraryTableModelRevision
+    let rows: [LibraryTableRow]
+    let rowIndexesByID: [String: Int]
+    private let rowIDsByPackageID: [String: String]
+
+    init(revision: LibraryTableModelRevision, rows: [LibraryTableRow]) {
+        self.revision = revision
+        self.rows = rows
+
+        var rowIndexesByID: [String: Int] = [:]
+        rowIndexesByID.reserveCapacity(rows.count)
+        var rowIDsByPackageID: [String: String] = [:]
+        rowIDsByPackageID.reserveCapacity(rows.count)
+
+        for (index, row) in rows.enumerated() {
+            rowIndexesByID[row.id] = index
+            for packageID in row.representedPackageIDs {
+                rowIDsByPackageID[packageID] = row.id
+            }
+        }
+
+        self.rowIndexesByID = rowIndexesByID
+        self.rowIDsByPackageID = rowIDsByPackageID
+    }
+
+    init(
+        revision: LibraryTableModelRevision,
+        rows: [LibraryTableRow],
+        rowIndexesByID: [String: Int],
+        rowIDsByPackageID: [String: String]
+    ) {
+        self.revision = revision
+        self.rows = rows
+        self.rowIndexesByID = rowIndexesByID
+        self.rowIDsByPackageID = rowIDsByPackageID
+    }
+
+    static func empty(namespace: String) -> LibraryTableSnapshot {
+        LibraryTableSnapshot(
+            revision: LibraryTableModelRevision(namespace: namespace, generation: 0),
+            rows: []
+        )
+    }
+
+    static func semantic(namespace: String, rows: [LibraryTableRow]) -> LibraryTableSnapshot {
+        var hasher = Hasher()
+        hasher.combine(rows)
+        let generation = UInt64(bitPattern: Int64(hasher.finalize()))
+        return LibraryTableSnapshot(
+            revision: LibraryTableModelRevision(namespace: namespace, generation: generation),
+            rows: rows
+        )
+    }
+
+    func rowID(forPackageID packageID: String?) -> String? {
+        guard let packageID else { return nil }
+        return rowIDsByPackageID[packageID]
+    }
+}
+
+enum LibraryTableStatusTone: Hashable {
     case healthy
     case updatesReady
     case available
     case neutral
 }
 
-struct LibraryTableAction: Equatable {
+struct LibraryTableAction: Equatable, Hashable {
     let identity: LibraryTableActionIdentity
     let symbolName: String
     let title: String
@@ -16,7 +82,7 @@ struct LibraryTableAction: Equatable {
     let isInFlight: Bool
 }
 
-enum LibraryTableActionIdentity: String, Equatable {
+enum LibraryTableActionIdentity: String, Hashable {
     case install
     case unpin
     case upgrade
@@ -24,7 +90,7 @@ enum LibraryTableActionIdentity: String, Equatable {
     case researchInstall
 }
 
-struct LibraryTableRow: Equatable, Identifiable {
+struct LibraryTableRow: Equatable, Hashable, Identifiable {
     let id: String
     let representedPackageIDs: [String]
     let selectedPackageID: String
@@ -81,7 +147,14 @@ enum LibraryTableCommandPolicy {
         for command: LibraryTableCommand,
         in rowsByID: [String: LibraryTableRow]
     ) -> LibraryTableRow? {
-        guard let row = rowsByID[command.rowID],
+        resolvedRow(for: command, row: rowsByID[command.rowID])
+    }
+
+    static func resolvedRow(
+        for command: LibraryTableCommand,
+        row: LibraryTableRow?
+    ) -> LibraryTableRow? {
+        guard let row,
               row.selectedPackageID == command.packageID else {
             return nil
         }
@@ -161,7 +234,7 @@ enum LibraryTableAccessibilityPolicy {
 }
 
 struct LibraryTableView: NSViewRepresentable {
-    let rows: [LibraryTableRow]
+    let snapshot: LibraryTableSnapshot
     let selectedRowID: String?
     let columnLabels: LibraryTableColumnLabels
     let accessibilityLabel: String
@@ -431,8 +504,8 @@ struct LibraryTableView: NSViewRepresentable {
 
         private weak var tableView: LibraryNativeTableView?
         private var parent: LibraryTableView
+        private var modelRevision: LibraryTableModelRevision?
         private var rowModels: [LibraryTableRow] = []
-        private var rowsByID: [String: LibraryTableRow] = [:]
         private var rowIndexesByID: [String: Int] = [:]
         private var columnLabels: LibraryTableColumnLabels?
         private var selectedRowID: String?
@@ -454,8 +527,8 @@ struct LibraryTableView: NSViewRepresentable {
             tableView?.contextMenuProvider = nil
             tableView?.didMoveToWindow = nil
             tableView = nil
+            modelRevision = nil
             rowModels = []
-            rowsByID = [:]
             rowIndexesByID = [:]
         }
 
@@ -485,7 +558,8 @@ struct LibraryTableView: NSViewRepresentable {
             tableView.addTableColumn(statusColumn)
         }
 
-        func update(parent: LibraryTableView) {
+        @discardableResult
+        func update(parent: LibraryTableView) -> Bool {
             self.parent = parent
             tableView?.setAccessibilityLabel(parent.accessibilityLabel)
 
@@ -494,13 +568,11 @@ struct LibraryTableView: NSViewRepresentable {
                 updateColumnLabels()
             }
 
-            let modelChanged = rowModels != parent.rows
+            let modelChanged = modelRevision != parent.snapshot.revision
             if modelChanged {
-                rowModels = parent.rows
-                rowsByID = Dictionary(uniqueKeysWithValues: parent.rows.map { ($0.id, $0) })
-                rowIndexesByID = Dictionary(
-                    uniqueKeysWithValues: parent.rows.enumerated().map { ($0.element.id, $0.offset) }
-                )
+                modelRevision = parent.snapshot.revision
+                rowModels = parent.snapshot.rows
+                rowIndexesByID = parent.snapshot.rowIndexesByID
                 tableView?.reloadData()
             }
 
@@ -509,6 +581,7 @@ struct LibraryTableView: NSViewRepresentable {
                 synchronizeSelection()
             }
             fulfillFocusRequestIfPossible()
+            return modelChanged
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -635,10 +708,7 @@ struct LibraryTableView: NSViewRepresentable {
 
         @objc private func actionPressed(_ sender: RowActionButton) {
             guard let command = sender.command,
-                  let row = LibraryTableCommandPolicy.resolvedRow(
-                      for: command,
-                      in: rowsByID
-                  ) else {
+                  let row = resolvedRow(for: command) else {
                 return
             }
             parent.onSelectRow(row)
@@ -647,10 +717,7 @@ struct LibraryTableView: NSViewRepresentable {
 
         @objc private func showDetailsFromMenu(_ sender: RowMenuItem) {
             guard let command = sender.command,
-                  let row = LibraryTableCommandPolicy.resolvedRow(
-                      for: command,
-                      in: rowsByID
-                  ) else {
+                  let row = resolvedRow(for: command) else {
                 return
             }
             parent.onSelectRow(row)
@@ -659,14 +726,22 @@ struct LibraryTableView: NSViewRepresentable {
 
         @objc private func performActionFromMenu(_ sender: RowMenuItem) {
             guard let command = sender.command,
-                  let row = LibraryTableCommandPolicy.resolvedRow(
-                      for: command,
-                      in: rowsByID
-                  ) else {
+                  let row = resolvedRow(for: command) else {
                 return
             }
             parent.onSelectRow(row)
             parent.onPerformAction(row)
+        }
+
+        private func resolvedRow(for command: LibraryTableCommand) -> LibraryTableRow? {
+            guard let rowIndex = rowIndexesByID[command.rowID],
+                  rowModels.indices.contains(rowIndex) else {
+                return nil
+            }
+            return LibraryTableCommandPolicy.resolvedRow(
+                for: command,
+                row: rowModels[rowIndex]
+            )
         }
 
         private func synchronizeSelection() {

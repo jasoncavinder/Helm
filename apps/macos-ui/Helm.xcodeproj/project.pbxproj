@@ -114,6 +114,8 @@
 		R519000000000000000000004 /* LibraryPackageIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519000000000000000000012 /* LibraryPackageIndexTests.swift */; };
 		R519100000000000000000001 /* LibraryPackageIndexState.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519100000000000000000011 /* LibraryPackageIndexState.swift */; };
 		R519100000000000000000002 /* LibraryPackageIndexState.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519100000000000000000011 /* LibraryPackageIndexState.swift */; };
+		R519200000000000000000001 /* LibraryTableRowProjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519200000000000000000011 /* LibraryTableRowProjector.swift */; };
+		R519200000000000000000003 /* LibraryTableProjectionAndReuseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519200000000000000000012 /* LibraryTableProjectionAndReuseTests.swift */; };
 		R494000000000000000000001 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R495000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R495000000000000000000011 /* UpgradePlanOutlineView.swift */; };
@@ -311,6 +313,8 @@
 		R519000000000000000000011 /* LibraryPackageIndexTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndexTestSupport.swift; sourceTree = "<group>"; };
 		R519000000000000000000012 /* LibraryPackageIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndexTests.swift; sourceTree = "<group>"; };
 		R519100000000000000000011 /* LibraryPackageIndexState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndexState.swift; sourceTree = "<group>"; };
+		R519200000000000000000011 /* LibraryTableRowProjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableRowProjector.swift; sourceTree = "<group>"; };
+		R519200000000000000000012 /* LibraryTableProjectionAndReuseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableProjectionAndReuseTests.swift; sourceTree = "<group>"; };
 		R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeSheetPresentationSupport.swift; sourceTree = "<group>"; };
 		R495000000000000000000011 /* UpgradePlanOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePlanOutlineView.swift; sourceTree = "<group>"; };
 		W100000000000000000000001 /* EnvironmentBriefProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjection.swift; sourceTree = "<group>"; };
@@ -455,6 +459,7 @@
 				F10000000000000000000003 /* ControlCenterSectionViews.swift */,
 				R495000000000000000000011 /* UpgradePlanOutlineView.swift */,
 				R515000000000000000000011 /* LibraryTableView.swift */,
+				R519200000000000000000011 /* LibraryTableRowProjector.swift */,
 				R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */,
 				B10000000000000000000008 /* DashboardView.swift */,
 				E10000000000000000000001 /* InspectorViews.swift */,
@@ -619,6 +624,7 @@
 				R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */,
 				R513000000000000000000012 /* LibraryResultProvenanceTests.swift */,
 				R515000000000000000000012 /* LibraryTableViewTests.swift */,
+				R519200000000000000000012 /* LibraryTableProjectionAndReuseTests.swift */,
 			);
 			path = HelmTests;
 			sourceTree = "<group>";
@@ -914,6 +920,7 @@
 					F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */,
 					R495000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */,
 					R515000000000000000000001 /* LibraryTableView.swift in Sources */,
+					R519200000000000000000001 /* LibraryTableRowProjector.swift in Sources */,
 					G20000000000000000000001 /* L10n+App.swift in Sources */,
 				G20000000000000000000002 /* AppDelegate+Windows.swift in Sources */,
 				G20000000000000000000003 /* AppDelegate+StatusBadge.swift in Sources */,
@@ -981,6 +988,7 @@
 					R513000000000000000000003 /* LibraryResultProvenanceTests.swift in Sources */,
 					R515000000000000000000002 /* LibraryTableView.swift in Sources */,
 					R515000000000000000000003 /* LibraryTableViewTests.swift in Sources */,
+					R519200000000000000000003 /* LibraryTableProjectionAndReuseTests.swift in Sources */,
 					R518000000000000000000002 /* LibraryPerformanceBenchmark.swift in Sources */,
 					R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */,
 			);

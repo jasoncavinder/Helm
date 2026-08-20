@@ -250,45 +250,6 @@ final class LibraryTableViewTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(tableView.rect(ofRow: 0).height, 50)
     }
 
-    func testTwentyThousandRowTableRealizesOnlyVisibleViewport() throws {
-        let rows = (0..<20_000).map { index in
-            makeRow(
-                id: "package-\(index)",
-                representedPackageIDs: ["manager-\(index % 30):package-\(index)"]
-            )
-        }
-        let parent = makeTable(rows: rows, selectedRowID: nil)
-        let coordinator = parent.makeCoordinator()
-        let tableView = LibraryNativeTableView(
-            frame: NSRect(x: 0, y: 0, width: 900, height: 600)
-        )
-        tableView.dataSource = coordinator
-        tableView.delegate = coordinator
-        LibraryTableLayoutPolicy.configure(in: tableView)
-        coordinator.installColumns(in: tableView)
-        coordinator.attach(tableView)
-
-        let scrollView = LibraryTableScrollView(
-            frame: NSRect(x: 0, y: 0, width: 900, height: 600)
-        )
-        scrollView.documentView = tableView
-        coordinator.update(parent: parent)
-        scrollView.layoutSubtreeIfNeeded()
-
-        XCTAssertEqual(tableView.numberOfRows, 20_000)
-        let visibleRows = tableView.rows(in: scrollView.contentView.bounds)
-        XCTAssertGreaterThan(visibleRows.length, 0)
-        XCTAssertLessThan(visibleRows.length, 20)
-        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) {
-            for column in tableView.tableColumns.indices {
-                _ = tableView.view(atColumn: column, row: row, makeIfNecessary: true)
-            }
-        }
-
-        XCTAssertNil(tableView.rowView(atRow: 19_999, makeIfNecessary: false))
-        XCTAssertLessThan(tableView.subviews.count, 20)
-    }
-
     func testConstrainedTableDocumentContainsTrailingActionColumn() {
         for width in [480, 520, 552, 800] as [CGFloat] {
             let tableView = makeNativeTable(width: width)
@@ -539,7 +500,7 @@ final class LibraryTableViewTests: XCTestCase {
         onClearSelection: @escaping () -> Void = {}
     ) -> LibraryTableView {
         LibraryTableView(
-            rows: rows,
+            snapshot: .semantic(namespace: "library-table-tests", rows: rows),
             selectedRowID: selectedRowID,
             columnLabels: makeColumnLabels(),
             accessibilityLabel: "Library",
