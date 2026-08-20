@@ -1918,10 +1918,15 @@ extension HelmCore {
     private func requestRemoteSearchCancellation(for taskIDs: Set<Int64>) {
         guard !taskIDs.isEmpty, let remoteSearchService = service() else { return }
         for taskID in taskIDs {
-            remoteSearchService.cancelTask(taskId: taskID) { success in
-                if !success {
-                    // Graceful cancellation can legitimately lose a race to completion.
-                    logger.info("cancelTask(\(taskID)) returned false for remote search")
+            remoteSearchService.cancelTask(taskId: taskID) { [weak self] success in
+                guard !success else { return }
+                DispatchQueue.main.async {
+                    logger.warning("cancelTask(\(taskID)) returned false for remote search")
+                    self?.recordLastError(
+                        source: "core.actions",
+                        action: "cancelTask",
+                        taskType: "search"
+                    )
                 }
             }
         }

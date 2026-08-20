@@ -288,7 +288,8 @@ extension HelmCore {
                     }
                 }
 
-                let terminalOwnedRemoteSearchTaskIDs = Set(
+                let visibleTaskIDs = Set(coreTasks.compactMap { Int64(exactly: $0.id) })
+                let terminalRemoteSearchTaskIDs = Set(
                     coreTasks.compactMap { task -> Int64? in
                         let taskType = task.taskType.lowercased()
                         let status = task.status.lowercased()
@@ -296,11 +297,13 @@ extension HelmCore {
                               status != "queued" && status != "running" else {
                             return nil
                         }
-                        let taskID = Int64(task.id)
-                        return self.remoteSearchSession.activeTaskIDs.contains(taskID) ? taskID : nil
+                        return Int64(exactly: task.id)
                     }
                 )
-                self.remoteSearchSession.finish(taskIDs: terminalOwnedRemoteSearchTaskIDs)
+                self.remoteSearchSession.reconcileTaskSnapshot(
+                    visibleTaskIDs: visibleTaskIDs,
+                    terminalTaskIDs: terminalRemoteSearchTaskIDs
+                )
             }
         }
     }

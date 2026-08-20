@@ -114,6 +114,8 @@ enum RemoteSearchSubmissionResolution: Equatable {
 }
 
 struct RemoteSearchSessionState: Equatable {
+    private static let missingTaskSnapshotGraceCount = 2
+
     private(set) var token: RemoteSearchSessionToken?
     private(set) var activeTaskIDs: Set<Int64> = []
     private(set) var pendingSubmissionCount = 0
@@ -121,6 +123,7 @@ struct RemoteSearchSessionState: Equatable {
     private var generation: UInt64 = 0
     private var queryIdentity = ""
     private var hasSubmittedCurrentQuery = false
+    private var missingTaskSnapshotCounts: [Int64: Int] = [:]
 
     var isSearching: Bool {
         token != nil && (pendingSubmissionCount > 0 || !activeTaskIDs.isEmpty)
@@ -146,6 +149,7 @@ struct RemoteSearchSessionState: Equatable {
         activeTaskIDs = []
         pendingSubmissionCount = 0
         hasSubmittedCurrentQuery = false
+        missingTaskSnapshotCounts = [:]
 
         return RemoteSearchQueryTransition(
             token: token,
@@ -158,7 +162,7 @@ struct RemoteSearchSessionState: Equatable {
         for token: RemoteSearchSessionToken,
         count: Int
     ) -> Bool {
-        guard count > 0,
+        guard count >= 1,
               self.token == token,
               !hasSubmittedCurrentQuery else {
             return false
@@ -183,11 +187,38 @@ struct RemoteSearchSessionState: Equatable {
         guard taskID >= 0 else { return .currentFailure }
 
         activeTaskIDs.insert(taskID)
+        missingTaskSnapshotCounts.removeValue(forKey: taskID)
         return .tracked
     }
 
     mutating func finish(taskIDs: Set<Int64>) {
         activeTaskIDs.subtract(taskIDs)
+        for taskID in taskIDs {
+            missingTaskSnapshotCounts.removeValue(forKey: taskID)
+        }
+    }
+
+    mutating func reconcileTaskSnapshot(
+        visibleTaskIDs: Set<Int64>,
+        terminalTaskIDs: Set<Int64>
+    ) {
+        finish(taskIDs: activeTaskIDs.intersection(terminalTaskIDs))
+
+        var taskIDsToRetire: Set<Int64> = []
+        for taskID in activeTaskIDs {
+            guard !visibleTaskIDs.contains(taskID) else {
+                missingTaskSnapshotCounts.removeValue(forKey: taskID)
+                continue
+            }
+
+            let missingSnapshotCount = missingTaskSnapshotCounts[taskID, default: 0] + 1
+            if missingSnapshotCount >= Self.missingTaskSnapshotGraceCount {
+                taskIDsToRetire.insert(taskID)
+            } else {
+                missingTaskSnapshotCounts[taskID] = missingSnapshotCount
+            }
+        }
+        finish(taskIDs: taskIDsToRetire)
     }
 
     @discardableResult
@@ -199,6 +230,7 @@ struct RemoteSearchSessionState: Equatable {
         activeTaskIDs = []
         pendingSubmissionCount = 0
         hasSubmittedCurrentQuery = false
+        missingTaskSnapshotCounts = [:]
         return taskIDsToCancel
     }
 }

@@ -206,19 +206,65 @@ final class RemoteSearchSessionStateTests: XCTestCase {
         XCTAssertTrue(state.activeTaskIDs.isEmpty)
     }
 
-    func testTaskSnapshotsCanOnlyFinishExplicitlyOwnedTasks() throws {
+    func testTerminalTaskSnapshotsCanOnlyFinishExplicitlyOwnedTasks() throws {
         var state = RemoteSearchSessionState()
         let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
         XCTAssertTrue(state.beginSubmissions(for: token, count: 2))
         XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
         XCTAssertEqual(state.resolveSubmission(for: token, taskID: 42), .tracked)
 
-        state.finish(taskIDs: [42, 99])
+        state.reconcileTaskSnapshot(
+            visibleTaskIDs: [41, 42, 99],
+            terminalTaskIDs: [42, 99]
+        )
 
         XCTAssertEqual(state.activeTaskIDs, [41])
         XCTAssertTrue(state.isSearching)
-        state.finish(taskIDs: [41])
+        state.reconcileTaskSnapshot(
+            visibleTaskIDs: [41],
+            terminalTaskIDs: [41]
+        )
         XCTAssertFalse(state.isSearching)
+    }
+
+    func testOneMissingSnapshotCannotRetireAJustReturnedTask() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 1))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+
+        // This can be an older listTasks request that began before task 41 was submitted.
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+
+        XCTAssertEqual(state.activeTaskIDs, [41])
+        XCTAssertTrue(state.isSearching)
+    }
+
+    func testConsecutiveMissingSnapshotsRetireAnOwnedTask() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 1))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+
+        XCTAssertTrue(state.activeTaskIDs.isEmpty)
+        XCTAssertFalse(state.isSearching)
+    }
+
+    func testVisibleTaskResetsMissingSnapshotGrace() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 1))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+        state.reconcileTaskSnapshot(visibleTaskIDs: [41], terminalTaskIDs: [])
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+
+        XCTAssertEqual(state.activeTaskIDs, [41])
+        XCTAssertTrue(state.isSearching)
     }
 
     func testResetInvalidatesPendingCallbacksAndReturnsOwnedTasks() throws {

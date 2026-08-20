@@ -579,9 +579,7 @@ final class HelmCore: ObservableObject {
     }
     var searchDebounceTimer: Timer?
     var localSearchRequestGeneration: UInt64 = 0
-    var remoteSearchSession = RemoteSearchSessionState() {
-        didSet { isSearching = remoteSearchSession.isSearching }
-    }
+    var remoteSearchSession = RemoteSearchSessionState() { didSet { isSearching = remoteSearchSession.isSearching } }
     var managerActionTaskDescriptions: [UInt64: String] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
     var managerActionTaskTypes: [UInt64: String] = [:]
