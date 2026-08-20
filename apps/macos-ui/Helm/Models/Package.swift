@@ -335,15 +335,49 @@ struct ConsolidatedPackageItem: Identifiable {
                 managerDisplayNames: managerDisplayNames
             )
         }
-        return items.sorted { lhs, rhs in
-            isOrderedBefore(
-                lhs,
-                rhs,
+        var indexedItems = items.map { item in
+            (
+                item: item,
+                sortKey: item.package.displayName.folding(
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    locale: locale
+                )
+            )
+        }
+        indexedItems.sort { lhs, rhs in
+            if lhs.sortKey != rhs.sortKey {
+                return lhs.sortKey < rhs.sortKey
+            }
+            return isOrderedBefore(
+                lhs.item,
+                rhs.item,
                 locale: locale,
                 localizedManagerName: localizedManagerName,
                 priorityRank: priorityRank
             )
         }
+
+        let hasLocaleInversion = zip(indexedItems, indexedItems.dropFirst()).contains { pair in
+            isOrderedBefore(
+                pair.1.item,
+                pair.0.item,
+                locale: locale,
+                localizedManagerName: localizedManagerName,
+                priorityRank: priorityRank
+            )
+        }
+        if hasLocaleInversion {
+            indexedItems.sort { lhs, rhs in
+                isOrderedBefore(
+                    lhs.item,
+                    rhs.item,
+                    locale: locale,
+                    localizedManagerName: localizedManagerName,
+                    priorityRank: priorityRank
+                )
+            }
+        }
+        return indexedItems.map(\.item)
     }
 
     static func isOrderedBefore(

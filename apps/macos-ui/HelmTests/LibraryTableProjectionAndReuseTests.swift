@@ -227,3 +227,78 @@ final class LibraryTableProjectionAndReuseTests: XCTestCase {
         )
     }
 }
+
+final class PackageOrderingOptimizationTests: XCTestCase {
+    func testASCIIOrderingMatchesExactLocaleComparator() {
+        let locale = Locale(identifier: "en_US")
+        let packages = [
+            package(id: "cargo:zoxide", name: "zoxide"),
+            package(id: "cargo:bat", name: "bat"),
+            package(id: "cargo:Delta", name: "Delta"),
+            package(id: "cargo:alpha", name: "alpha"),
+            package(id: "cargo:fd", name: "fd"),
+        ]
+        let actual = consolidate(packages, locale: locale)
+        let exact = packages
+            .compactMap { consolidate([$0], locale: locale).first }
+            .sorted { lhs, rhs in
+                ConsolidatedPackageItem.isOrderedBefore(
+                    lhs,
+                    rhs,
+                    locale: locale,
+                    localizedManagerName: { $0 },
+                    priorityRank: { _ in 0 }
+                )
+            }
+
+        XCTAssertEqual(actual.map(\.package.id), exact.map(\.package.id))
+    }
+
+    func testLocaleInversionFallsBackToExactOrdering() {
+        let locale = Locale(identifier: "en_US")
+        let ordered = consolidate(
+            [
+                package(id: "cargo:zulu", name: "Zulu"),
+                package(id: "cargo:aether", name: "Æther"),
+            ],
+            locale: locale
+        )
+
+        XCTAssertEqual(ordered.map { $0.package.name }, ["Æther", "Zulu"])
+    }
+
+    func testMemberTieBreakersRemainDeterministicAcrossInputOrder() throws {
+        let first = package(id: "cargo:tool", name: "tool")
+        let second = package(id: "homebrew_formula:tool", name: "tool")
+
+        let forward = try XCTUnwrap(consolidate([second, first]).first)
+        let reversed = try XCTUnwrap(consolidate([first, second]).first)
+
+        XCTAssertEqual(forward.package.id, first.id)
+        XCTAssertEqual(forward.memberPackages.map(\.id), reversed.memberPackages.map(\.id))
+        XCTAssertEqual(forward.memberPackages.map(\.id), [first.id, second.id])
+    }
+
+    private func consolidate(
+        _ packages: [PackageItem],
+        locale: Locale = Locale(identifier: "en_US")
+    ) -> [ConsolidatedPackageItem] {
+        ConsolidatedPackageItem.consolidate(
+            packages,
+            locale: locale,
+            localizedManagerName: { _ in "Manager" },
+            priorityRank: { _ in 0 }
+        )
+    }
+
+    private func package(id: String, name: String) -> PackageItem {
+        PackageItem(
+            id: id,
+            name: name,
+            version: "",
+            managerId: String(id.split(separator: ":").first ?? "manager"),
+            manager: "Manager",
+            status: .available
+        )
+    }
+}
