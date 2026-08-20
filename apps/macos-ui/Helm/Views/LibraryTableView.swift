@@ -1,6 +1,27 @@
 import AppKit
 import SwiftUI
 
+enum LibraryManagerFilterOrdering {
+    static func sortedManagerIDs(
+        _ managerIDs: [String],
+        localeIdentifier: String,
+        localizedManagerName: (String) -> String
+    ) -> [String] {
+        Array(Set(managerIDs)).sorted { lhs, rhs in
+            let nameOrder = localizedManagerName(lhs).compare(
+                localizedManagerName(rhs),
+                options: [.caseInsensitive],
+                range: nil,
+                locale: Locale(identifier: localeIdentifier)
+            )
+            if nameOrder != .orderedSame {
+                return nameOrder == .orderedAscending
+            }
+            return lhs < rhs
+        }
+    }
+}
+
 struct LibraryTableModelRevision: Equatable, Hashable {
     let namespace: String
     let generation: UInt64

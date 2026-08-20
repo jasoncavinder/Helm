@@ -183,6 +183,7 @@ struct PackagesSectionView: View {
             refreshProductionLibraryTableProjection()
         }
         .onChange(of: localization.currentLocale) { _ in
+            refreshAvailableManagerIDs()
             refreshDisplayedPackages()
         }
         .onChange(of: context.selectedPackageId) { _ in
@@ -620,12 +621,7 @@ struct PackagesSectionView: View {
         let candidateSourcePackages = core.searchResults.isEmpty
             ? allPackages
             : mergeCandidatePackages(primary: allPackages, secondary: core.searchResults)
-        let nextAvailableManagerIDs = Array(Set(candidateSourcePackages.map(\.managerId))).sorted {
-            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
-        }
-        if availableManagerIds != nextAvailableManagerIDs {
-            availableManagerIds = nextAvailableManagerIDs
-        }
+        refreshAvailableManagerIDs(from: candidateSourcePackages.map(\.managerId))
         var installableNames = Set<String>()
         for package in candidateSourcePackages {
             let normalizedName = normalizedPackageIdentity(package)
@@ -643,6 +639,17 @@ struct PackagesSectionView: View {
             installActionPackageNames = nextInstallActionPackageNames
         }
         refreshDisplayedPackages()
+    }
+
+    private func refreshAvailableManagerIDs(from managerIDs: [String]? = nil) {
+        let nextAvailableManagerIDs = LibraryManagerFilterOrdering.sortedManagerIDs(
+            managerIDs ?? availableManagerIds,
+            localeIdentifier: localization.currentLocale,
+            localizedManagerName: localizedManagerDisplayName
+        )
+        if availableManagerIds != nextAvailableManagerIDs {
+            availableManagerIds = nextAvailableManagerIDs
+        }
     }
 
     private func refreshDisplayedPackages() {

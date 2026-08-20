@@ -2,6 +2,27 @@ import AppKit
 import XCTest
 
 final class LibraryTableProjectionAndReuseTests: XCTestCase {
+    func testManagerFilterOrderingRecomputesLocalizedNameOrder() {
+        let managerIDs = ["cargo", "homebrew_formula"]
+        let englishOrder = LibraryManagerFilterOrdering.sortedManagerIDs(
+            managerIDs,
+            localeIdentifier: "en_US",
+            localizedManagerName: { managerID in
+                managerID == "cargo" ? "Cargo" : "Homebrew"
+            }
+        )
+        let alternateLocaleOrder = LibraryManagerFilterOrdering.sortedManagerIDs(
+            englishOrder,
+            localeIdentifier: "en_US",
+            localizedManagerName: { managerID in
+                managerID == "cargo" ? "Zulu" : "Alpha"
+            }
+        )
+
+        XCTAssertEqual(englishOrder, ["cargo", "homebrew_formula"])
+        XCTAssertEqual(alternateLocaleOrder, ["homebrew_formula", "cargo"])
+    }
+
     func testCoordinatorUsesRevisionWhileSelectionAndActionDriftRemainCorrect() throws {
         let initialRow = makeRow(id: "ripgrep", action: makeAction(identity: .install))
         let initialSnapshot = LibraryTableSnapshot(
