@@ -11,6 +11,23 @@ private let logger = Logger(subsystem: "com.jasoncavinder.Helm", category: "core
 extension HelmCore {
     static let allManagersScopeId = UpgradePreviewPlanner.allManagersScopeId
 
+    static func requiresLicenseTermsAcceptance(
+        channel: HelmDistributionChannel,
+        acceptedVersion: String?
+    ) -> Bool {
+        AppUpdateConfiguration.requiresLicenseTermsAcceptance(
+            channel: channel,
+            acceptedVersion: acceptedVersion
+        )
+    }
+
+    var requiresLicenseTermsAcceptance: Bool {
+        Self.requiresLicenseTermsAcceptance(
+            channel: HelmDistributionChannel.from(),
+            acceptedVersion: acceptedLicenseTermsVersion
+        )
+    }
+
     // MARK: - App Lifecycle
 
     func refreshLaunchAtLogin() {

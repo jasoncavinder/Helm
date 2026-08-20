@@ -11,6 +11,13 @@ struct PackageDescriptionLookupCandidate {
 }
 
 extension HelmCore {
+    func invalidateKnownPackageCaches() {
+        cachedAllKnownPackagesUnsorted = nil
+        cachedAllKnownPackagesSorted = nil
+        cachedKnownPackageById = [:]
+        cachedLibraryPackageIndex = nil
+    }
+
     static let managerActionTaskMissingGraceSeconds: TimeInterval = 12
     static let packageDescriptionLookupTaskStaleSeconds: TimeInterval = 20
     static let localManagerActionTaskIdPrefix = "local-manager-action-"

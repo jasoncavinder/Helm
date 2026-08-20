@@ -760,30 +760,6 @@ final class HelmCore: ObservableObject {
         return decoded
     }
 
-    func invalidateKnownPackageCaches() {
-        cachedAllKnownPackagesUnsorted = nil
-        cachedAllKnownPackagesSorted = nil
-        cachedKnownPackageById = [:]
-        cachedLibraryPackageIndex = nil
-    }
-
-    static func requiresLicenseTermsAcceptance(
-        channel: HelmDistributionChannel,
-        acceptedVersion: String?
-    ) -> Bool {
-        AppUpdateConfiguration.requiresLicenseTermsAcceptance(
-            channel: channel,
-            acceptedVersion: acceptedVersion
-        )
-    }
-
-    var requiresLicenseTermsAcceptance: Bool {
-        Self.requiresLicenseTermsAcceptance(
-            channel: HelmDistributionChannel.from(),
-            acceptedVersion: acceptedLicenseTermsVersion
-        )
-    }
-
     private func persistSharedOnboardingCompleted(_ completed: Bool) {
         guard let service = service() else { return }
         service.setSharedOnboardingCompleted(completed: completed) { [weak self] success in
