@@ -43,6 +43,48 @@ final class LibraryPackageIndexTests: XCTestCase {
         XCTAssertEqual(row.memberPackages.first?.resultProvenance?.origin, .local)
     }
 
+    func testSameIDOverlaySummaryMatchRetainsAuthoritativeLocalMember() throws {
+        let local = package(
+            id: "homebrew_formula:ripgrep",
+            name: "ripgrep",
+            version: "14.1.0",
+            managerID: "homebrew_formula",
+            provenance: try provenance(origin: "local", discovery: "manager_snapshot")
+        )
+        let remote = package(
+            id: local.id,
+            name: local.name,
+            version: "",
+            managerID: local.managerId,
+            summary: "Fast recursive search",
+            provenance: try provenance(
+                origin: "remote",
+                discovery: "manager_search",
+                managerID: local.managerId
+            ),
+            status: .available
+        )
+
+        let rows = makeIndex([local]).filteredPackages(
+            query: "recursive",
+            managerID: nil,
+            statusFilter: .installed,
+            pinnedOnly: false,
+            overlay: LibraryPackageSearchOverlay(packages: [remote]),
+            managerParticipatesInSearch: { _ in true },
+            localizedManagerName: { $0 }
+        )
+
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(row.package.id, local.id)
+        XCTAssertEqual(row.memberPackages.map(\.id), [local.id])
+        XCTAssertEqual(row.package.summary, remote.summary)
+        XCTAssertEqual(row.package.status, .installed)
+        XCTAssertEqual(row.package.resultProvenance?.origin, .local)
+        XCTAssertEqual(row.memberPackages.first?.resultProvenance?.origin, .local)
+    }
+
     func testNewIdentityOverlayKeepsRemoteMemberAndProvenance() throws {
         let remote = package(
             id: "cargo:fd",

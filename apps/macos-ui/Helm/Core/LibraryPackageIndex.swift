@@ -163,7 +163,9 @@ struct LibraryPackageIndex {
             var canReuseProjection = true
 
             for member in group.members {
-                guard matchesQuery(
+                var package = group.projection.memberPackages[member.packageIndex]
+                let remote = remainingRemoteByID.removeValue(forKey: package.id)
+                guard remote != nil || matchesQuery(
                     member,
                     queryToken: queryToken,
                     normalizedQueryToken: normalizedQueryToken,
@@ -173,8 +175,7 @@ struct LibraryPackageIndex {
                     continue
                 }
 
-                var package = group.projection.memberPackages[member.packageIndex]
-                if let remote = remainingRemoteByID.removeValue(forKey: package.id) {
+                if let remote {
                     if mergeSearchMetadata(into: &package, from: remote) {
                         canReuseProjection = false
                     }
