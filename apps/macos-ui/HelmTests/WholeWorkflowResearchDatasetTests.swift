@@ -414,12 +414,72 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         )
 
         let diagnostics = projection.redactedDiagnostics(for: activity)
-        XCTAssertTrue(diagnostics.contains("scenario_id=recover-from-failure"))
-        XCTAssertTrue(diagnostics.contains("activity_id=activity-npm-verification"))
-        XCTAssertTrue(diagnostics.contains("apply_result=applied"))
-        XCTAssertTrue(diagnostics.contains("verification_result=failed"))
-        XCTAssertTrue(diagnostics.contains("redaction_class=strict"))
-        XCTAssertFalse(diagnostics.lowercased().contains("/users/"))
+        XCTAssertEqual(
+            diagnostics.components(separatedBy: "\n"),
+            [
+                "dataset_id=v0.20-whole-workflow-v1",
+                "scenario_id=recover-from-failure",
+                "activity_id=activity-npm-verification",
+                "task_id=7001",
+                "manager_id=npm",
+                "state=failed_verification",
+                "apply_result=applied",
+                "verification_result=failed",
+                "source_started=true",
+                "rollback_eligible=false",
+                "redaction_class=strict",
+            ]
+        )
+    }
+
+    func testTaskFourProjectionFailsClosedForPersonalDataSafetyDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let modified = try replacingFirst(
+            "\"containsPersonalData\": false",
+            with: "\"containsPersonalData\": true",
+            in: source
+        )
+        let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+
+        XCTAssertTrue(
+            WholeWorkflowResearchDatasetValidator.validate(dataset).contains {
+                $0.code == "safety.personal_data"
+            }
+        )
+        XCTAssertNil(WholeWorkflowResearchActivityProjector.project(dataset))
+    }
+
+    func testTaskFourProjectionFailsClosedForNoncanonicalDatasetIdentity() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let mutations = [
+            (
+                target: "\"schemaVersion\": \"1.0.0\"",
+                replacement: "\"schemaVersion\": \"2.0.0\"",
+                issueCode: "dataset.schema_version"
+            ),
+            (
+                target: "\"datasetId\": \"v0.20-whole-workflow-v1\"",
+                replacement: "\"datasetId\": \"v0.20-whole-workflow-drifted\"",
+                issueCode: "dataset.identifier"
+            ),
+        ]
+
+        for mutation in mutations {
+            let modified = try replacingFirst(
+                mutation.target,
+                with: mutation.replacement,
+                in: source
+            )
+            let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+
+            XCTAssertTrue(
+                WholeWorkflowResearchDatasetValidator.validate(dataset).contains {
+                    $0.code == mutation.issueCode
+                },
+                "Expected \(mutation.issueCode) for \(mutation.target)"
+            )
+            XCTAssertNil(WholeWorkflowResearchActivityProjector.project(dataset))
+        }
     }
 
     func testTaskFourProjectionFailsClosedForScenarioAndRecoveryDrift() throws {

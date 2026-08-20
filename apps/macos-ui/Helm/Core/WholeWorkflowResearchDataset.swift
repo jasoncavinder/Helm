@@ -1019,6 +1019,7 @@ struct WholeWorkflowResearchActivity: Identifiable, Equatable {
 }
 
 struct WholeWorkflowResearchActivityProjection: Equatable {
+    let datasetID: String
     let scenarioID: String
     let activities: [WholeWorkflowResearchActivity]
     let recoveryActionsByActivityID: [String: [WholeWorkflowResearchRecoveryAction]]
@@ -1036,7 +1037,7 @@ struct WholeWorkflowResearchActivityProjection: Equatable {
 
     func redactedDiagnostics(for activity: WholeWorkflowResearchActivity) -> String {
         [
-            "dataset_id=\(WholeWorkflowResearchDataset.currentDatasetID)",
+            "dataset_id=\(datasetID)",
             "scenario_id=\(scenarioID)",
             "activity_id=\(activity.id)",
             "task_id=\(activity.taskID)",
@@ -1064,6 +1065,18 @@ enum WholeWorkflowResearchTaskFourContract {
         "recovery-copy-diagnostics",
     ]
     static let orderedScenarioRecordIDs = orderedActivityIDs + orderedRecoveryActionIDs
+
+    static func matchesCurrentIdentityAndSafety(
+        _ dataset: WholeWorkflowResearchDataset
+    ) -> Bool {
+        dataset.schemaVersion == WholeWorkflowResearchDataset.currentSchemaVersion
+            && dataset.datasetID == WholeWorkflowResearchDataset.currentDatasetID
+            && dataset.safety.syntheticOnly
+            && dataset.safety.localOnly
+            && !dataset.safety.allowsMachineScan
+            && !dataset.safety.allowsMutation
+            && !dataset.safety.containsPersonalData
+    }
 
     static func matchesScenario(_ scenario: ResearchScenario) -> Bool {
         scenario.taskNumber == 4
@@ -1127,10 +1140,7 @@ enum WholeWorkflowResearchActivityProjector {
     static func project(
         _ dataset: WholeWorkflowResearchDataset
     ) -> WholeWorkflowResearchActivityProjection? {
-        guard dataset.safety.syntheticOnly,
-              dataset.safety.localOnly,
-              !dataset.safety.allowsMachineScan,
-              !dataset.safety.allowsMutation,
+        guard WholeWorkflowResearchTaskFourContract.matchesCurrentIdentityAndSafety(dataset),
               let scenario = dataset.scenarios.first(where: { $0.taskNumber == 4 }),
               WholeWorkflowResearchTaskFourContract.matchesScenario(scenario),
               WholeWorkflowResearchTaskFourContract.matchesActivities(
@@ -1199,6 +1209,7 @@ enum WholeWorkflowResearchActivityProjector {
         }
 
         return WholeWorkflowResearchActivityProjection(
+            datasetID: dataset.datasetID,
             scenarioID: scenario.scenarioID,
             activities: activities,
             recoveryActionsByActivityID: actionsByActivityID
