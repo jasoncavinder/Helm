@@ -282,6 +282,40 @@ final class RemoteSearchSessionStateTests: XCTestCase {
     }
 }
 
+final class HelmServiceRemoteSearchContractTests: XCTestCase {
+    func testProtocolKeepsDescriptionSubmissionAndInteractiveCancellationExplicit() {
+        let descriptionSelector = #selector(
+            HelmServiceProtocol.triggerPackageDescriptionSearchForManager(
+                managerId:query:withReply:
+            )
+        )
+        let cancellationSelector = #selector(
+            HelmServiceProtocol.cancelRemoteSearchTask(taskId:withReply:)
+        )
+
+        XCTAssertTrue(
+            NSStringFromSelector(descriptionSelector)
+                .contains("triggerPackageDescriptionSearchForManager")
+        )
+        XCTAssertTrue(
+            NSStringFromSelector(cancellationSelector)
+                .contains("cancelRemoteSearchTask")
+        )
+        XCTAssertNotEqual(
+            descriptionSelector,
+            #selector(
+                HelmServiceProtocol.triggerRemoteSearchForManager(
+                    managerId:query:withReply:
+                )
+            )
+        )
+        XCTAssertNotEqual(
+            cancellationSelector,
+            #selector(HelmServiceProtocol.cancelTask(taskId:withReply:))
+        )
+    }
+}
+
 final class LibraryPackageFocusRequestStateTests: XCTestCase {
     func testRequestWaitsForSuccessfulFocusAndIsConsumedOnlyOnce() throws {
         var state = LibraryPackageFocusRequestState()

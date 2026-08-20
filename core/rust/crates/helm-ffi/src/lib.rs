@@ -34,9 +34,12 @@
 //! | `helm_trigger_detection` | Task management |
 //! | `helm_trigger_detection_for_manager` | Task management |
 //! | `helm_cancel_task` | Task management |
+//! | `helm_cancel_remote_search_task` | Task management |
 //! | `helm_dismiss_task` | Task management |
 //! | `helm_search_local` | Search |
 //! | `helm_trigger_remote_search` | Search |
+//! | `helm_trigger_remote_search_for_manager` | Search |
+//! | `helm_trigger_package_description_search_for_manager` | Search |
 //! | `helm_list_manager_status` | Manager control |
 //! | `helm_doctor_scan` | Diagnostics |
 //! | `helm_set_manager_enabled` | Manager control |
@@ -200,6 +203,22 @@ struct HelmState {
 struct TaskLabel {
     key: String,
     args: std::collections::BTreeMap<String, String>,
+    dedupe_discriminator: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RemoteSearchPurpose {
+    Interactive,
+    PackageDescription,
+}
+
+impl RemoteSearchPurpose {
+    fn dedupe_discriminator(self) -> &'static str {
+        match self {
+            Self::Interactive => "interactive",
+            Self::PackageDescription => "package_description",
+        }
+    }
 }
 
 struct UpgradeWorkflowControl {
@@ -2269,6 +2288,15 @@ fn build_install_instance_summary(
 }
 
 fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, String)]) {
+    set_task_label_with_dedupe_discriminator(task_id, key, args, None);
+}
+
+fn set_task_label_with_dedupe_discriminator(
+    task_id: helm_core::models::TaskId,
+    key: &str,
+    args: &[(&str, String)],
+    dedupe_discriminator: Option<&str>,
+) {
     let mut args_map = std::collections::BTreeMap::new();
     for (arg_key, arg_value) in args {
         args_map.insert((*arg_key).to_string(), arg_value.clone());
@@ -2278,6 +2306,7 @@ fn set_task_label(task_id: helm_core::models::TaskId, key: &str, args: &[(&str, 
         TaskLabel {
             key: key.to_string(),
             args: args_map,
+            dedupe_discriminator: dedupe_discriminator.map(str::to_string),
         },
     );
 }
@@ -2505,6 +2534,10 @@ fn task_signature_key(
         .get(&task.id.0)
         .map(|label| {
             let mut encoded = format!("{:?}:{:?}:{}", task.manager, task.task_type, label.key);
+            if let Some(discriminator) = &label.dedupe_discriminator {
+                encoded.push_str("|dedupe_discriminator=");
+                encoded.push_str(discriminator);
+            }
             for (arg_key, arg_value) in &label.args {
                 encoded.push('|');
                 encoded.push_str(arg_key);
@@ -2564,6 +2597,22 @@ fn find_matching_inflight_task(
     label_key: Option<&str>,
     label_args: &[(&str, String)],
 ) -> Option<helm_core::models::TaskId> {
+    find_matching_inflight_task_with_discriminator(
+        store, runtime, rt_handle, manager, task_type, label_key, label_args, None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn find_matching_inflight_task_with_discriminator(
+    store: &SqliteStore,
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    manager: ManagerId,
+    task_type: TaskType,
+    label_key: Option<&str>,
+    label_args: &[(&str, String)],
+    dedupe_discriminator: Option<&str>,
+) -> Option<helm_core::models::TaskId> {
     let tasks = store.list_recent_tasks(TASK_RECENT_FETCH_LIMIT).ok()?;
     let labels = lock_or_recover(&TASK_LABELS, "task_labels");
 
@@ -2585,7 +2634,10 @@ fn find_matching_inflight_task(
         };
 
         let label = labels.get(&task.id.0)?;
-        if label.key != expected_label_key || label.args.len() != label_args.len() {
+        if label.key != expected_label_key
+            || label.args.len() != label_args.len()
+            || label.dedupe_discriminator.as_deref() != dedupe_discriminator
+        {
             return None;
         }
 
@@ -3093,7 +3145,15 @@ fn queue_catalog_sync_task_if_needed(
         return None;
     }
 
-    queue_remote_search_task(store, runtime, rt_handle, manager, "").ok()
+    queue_remote_search_task(
+        store,
+        runtime,
+        rt_handle,
+        manager,
+        "",
+        RemoteSearchPurpose::Interactive,
+    )
+    .ok()
 }
 
 fn schedule_catalog_sync_for_managers(
@@ -3187,6 +3247,7 @@ fn queue_remote_search_task(
     rt_handle: &tokio::runtime::Handle,
     manager: ManagerId,
     query: &str,
+    purpose: RemoteSearchPurpose,
 ) -> Result<helm_core::models::TaskId, &'static str> {
     let normalized_query = query.trim();
 
@@ -3198,7 +3259,7 @@ fn queue_remote_search_task(
     let label_args = search_label_args(manager, normalized_query);
     let task_type = search_task_type_for_query(normalized_query);
 
-    if let Some(existing) = find_matching_inflight_task(
+    if let Some(existing) = find_matching_inflight_task_with_discriminator(
         store,
         runtime,
         rt_handle,
@@ -3206,6 +3267,7 @@ fn queue_remote_search_task(
         task_type,
         Some(label_key),
         &label_args,
+        Some(purpose.dedupe_discriminator()),
     ) {
         return Ok(existing);
     }
@@ -3219,7 +3281,12 @@ fn queue_remote_search_task(
 
     match rt_handle.block_on(runtime.submit(manager, request)) {
         Ok(task_id) => {
-            set_task_label(task_id, label_key, &label_args);
+            set_task_label_with_dedupe_discriminator(
+                task_id,
+                label_key,
+                &label_args,
+                Some(purpose.dedupe_discriminator()),
+            );
             Ok(task_id)
         }
         Err(error) => {
@@ -6648,6 +6715,7 @@ pub unsafe extern "C" fn helm_trigger_remote_search(query: *const c_char) -> i64
             &rt_handle,
             manager,
             query_str,
+            RemoteSearchPurpose::Interactive,
         ) {
             Ok(task_id) => {
                 if first_task_id.is_none() {
@@ -6677,6 +6745,44 @@ pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
     query: *const c_char,
 ) -> i64 {
     clear_last_error_key();
+    unsafe {
+        trigger_remote_search_for_manager_with_purpose(
+            manager_id,
+            query,
+            RemoteSearchPurpose::Interactive,
+        )
+    }
+}
+
+/// Submit a package-description search request for a specific manager.
+///
+/// Package-description requests use a distinct in-flight dedupe identity from interactive
+/// searches, so an identical manager/query pair cannot share task ownership across the two
+/// callers. Returns the task ID, or -1 on error.
+///
+/// # Safety
+///
+/// `manager_id` and `query` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_trigger_package_description_search_for_manager(
+    manager_id: *const c_char,
+    query: *const c_char,
+) -> i64 {
+    clear_last_error_key();
+    unsafe {
+        trigger_remote_search_for_manager_with_purpose(
+            manager_id,
+            query,
+            RemoteSearchPurpose::PackageDescription,
+        )
+    }
+}
+
+unsafe fn trigger_remote_search_for_manager_with_purpose(
+    manager_id: *const c_char,
+    query: *const c_char,
+    purpose: RemoteSearchPurpose,
+) -> i64 {
     if manager_id.is_null() || query.is_null() {
         return return_error_i64(SERVICE_ERROR_INVALID_INPUT);
     }
@@ -6727,10 +6833,77 @@ pub unsafe extern "C" fn helm_trigger_remote_search_for_manager(
         &rt_handle,
         manager,
         query_str,
+        purpose,
     ) {
         Ok(task_id) => task_id.0 as i64,
         Err(error_key) => return_error_i64(error_key),
     }
+}
+
+const REMOTE_SEARCH_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_millis(500);
+
+fn remote_search_cancellation_mode() -> CancellationMode {
+    CancellationMode::Graceful {
+        grace_period: REMOTE_SEARCH_CANCELLATION_GRACE_PERIOD,
+    }
+}
+
+fn cancel_remote_search_task_on_local_runtime(
+    runtime: &AdapterRuntime,
+    rt_handle: &tokio::runtime::Handle,
+    task_id: TaskId,
+) -> bool {
+    let snapshot = match rt_handle.block_on(runtime.snapshot(task_id)) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            eprintln!(
+                "Failed to inspect remote search task {} before cancellation: {}",
+                task_id.0, error
+            );
+            return false;
+        }
+    };
+
+    if snapshot.runtime.task_type != TaskType::Search {
+        eprintln!(
+            "Refusing remote search cancellation for task {} with type {:?}",
+            task_id.0, snapshot.runtime.task_type
+        );
+        return false;
+    }
+
+    match rt_handle.block_on(runtime.cancel(task_id, remote_search_cancellation_mode())) {
+        Ok(()) => true,
+        Err(error) => {
+            eprintln!(
+                "Failed to cancel remote search task {}: {}",
+                task_id.0, error
+            );
+            false
+        }
+    }
+}
+
+/// Cancel a local remote-search task by ID with a 500 ms graceful completion window.
+///
+/// This path intentionally ignores legacy external coordinator mode because GUI remote-search
+/// submissions are owned by the in-process adapter runtime. Non-search task IDs are rejected.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_cancel_remote_search_task(task_id: i64) -> bool {
+    if task_id < 0 {
+        return false;
+    }
+
+    let (runtime, rt_handle) = {
+        let guard = lock_or_recover(&STATE, "state");
+        let state = match guard.as_ref() {
+            Some(state) => state,
+            None => return false,
+        };
+        (state.runtime.clone(), state.rt_handle.clone())
+    };
+
+    cancel_remote_search_task_on_local_runtime(runtime.as_ref(), &rt_handle, TaskId(task_id as u64))
 }
 
 /// Cancel a running task by ID. Returns true on success.
@@ -11637,7 +11810,8 @@ mod tests {
         upgrade_task_label_for, upgrade_workflow_request,
     };
     use helm_core::adapters::{
-        AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, UninstallRequest,
+        AdapterRequest, AdapterResponse, ManagerAdapter, MutationResult, RefreshRequest,
+        UninstallRequest,
     };
     use helm_core::manager_policy::{
         PIP_SYSTEM_UNMANAGED_REASON_CODE, RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE,
@@ -11647,7 +11821,7 @@ mod tests {
         InstallProvenance, InstalledPackage, LibraryResultDiscoverySource, LibraryResultOrigin,
         ManagerAction, ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId,
         ManagerInstallInstance, OutdatedPackage, PackageCandidate, PackageRef, PackageRuntimeState,
-        StrategyKind, TaskId, TaskLogRecord, TaskRecord, TaskStatus, TaskType,
+        SearchQuery, StrategyKind, TaskId, TaskLogRecord, TaskRecord, TaskStatus, TaskType,
     };
     use helm_core::orchestration::adapter_runtime::AdapterRuntime;
     use helm_core::persistence::{
@@ -11664,6 +11838,7 @@ mod tests {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::Path;
     use std::process::Command;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -11814,6 +11989,54 @@ mod tests {
     }
 
     const RECORDING_UPGRADE_CAPABILITIES: &[Capability] = &[Capability::Upgrade];
+    const BLOCKING_SEARCH_CAPABILITIES: &[Capability] = &[Capability::Search, Capability::Refresh];
+
+    struct BlockingSearchAdapter {
+        descriptor: ManagerDescriptor,
+        release: Arc<AtomicBool>,
+    }
+
+    impl BlockingSearchAdapter {
+        fn new(manager: ManagerId, release: Arc<AtomicBool>) -> Self {
+            Self {
+                descriptor: ManagerDescriptor {
+                    id: manager,
+                    display_name: "Blocking Search Adapter",
+                    category: ManagerCategory::Language,
+                    authority: ManagerAuthority::Standard,
+                    capabilities: BLOCKING_SEARCH_CAPABILITIES,
+                },
+                release,
+            }
+        }
+    }
+
+    impl ManagerAdapter for BlockingSearchAdapter {
+        fn descriptor(&self) -> &ManagerDescriptor {
+            &self.descriptor
+        }
+
+        fn action_safety(&self, action: ManagerAction) -> ActionSafety {
+            action.safety()
+        }
+
+        fn execute(
+            &self,
+            request: AdapterRequest,
+        ) -> helm_core::adapters::AdapterResult<AdapterResponse> {
+            match request {
+                AdapterRequest::Search(_) => {
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while !self.release.load(Ordering::Acquire) && Instant::now() < deadline {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Ok(AdapterResponse::SearchResults(Vec::new()))
+                }
+                AdapterRequest::Refresh(_) => Ok(AdapterResponse::Refreshed),
+                _ => panic!("blocking search adapter received an unsupported request"),
+            }
+        }
+    }
 
     struct RecordingUpgradeAdapter {
         descriptor: ManagerDescriptor,
@@ -12345,10 +12568,180 @@ mod tests {
             tokio_runtime.handle(),
             ManagerId::Npm,
             "   ",
+            super::RemoteSearchPurpose::Interactive,
         );
         assert_eq!(result, Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY));
 
         let _ = fs::remove_file(store.database_path());
+    }
+
+    #[test]
+    fn remote_search_dedupe_keeps_interactive_and_description_ownership_separate() {
+        let store = Arc::new(temp_sqlite_store("remote-search-purpose-dedupe"));
+        store
+            .migrate_to_latest()
+            .expect("sqlite migrations should apply");
+
+        let release = Arc::new(AtomicBool::new(false));
+        let adapter: Arc<dyn ManagerAdapter> =
+            Arc::new(BlockingSearchAdapter::new(ManagerId::Npm, release.clone()));
+        let runtime = AdapterRuntime::with_all_stores(
+            [adapter],
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+        )
+        .expect("search runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let interactive = super::queue_remote_search_task(
+            store.as_ref(),
+            &runtime,
+            tokio_runtime.handle(),
+            ManagerId::Npm,
+            "typescript",
+            super::RemoteSearchPurpose::Interactive,
+        )
+        .expect("interactive search should queue");
+        let repeated_interactive = super::queue_remote_search_task(
+            store.as_ref(),
+            &runtime,
+            tokio_runtime.handle(),
+            ManagerId::Npm,
+            "typescript",
+            super::RemoteSearchPurpose::Interactive,
+        )
+        .expect("matching interactive search should dedupe");
+        let description = super::queue_remote_search_task(
+            store.as_ref(),
+            &runtime,
+            tokio_runtime.handle(),
+            ManagerId::Npm,
+            "typescript",
+            super::RemoteSearchPurpose::PackageDescription,
+        )
+        .expect("package-description search should queue independently");
+        let repeated_description = super::queue_remote_search_task(
+            store.as_ref(),
+            &runtime,
+            tokio_runtime.handle(),
+            ManagerId::Npm,
+            "typescript",
+            super::RemoteSearchPurpose::PackageDescription,
+        )
+        .expect("matching package-description search should dedupe");
+
+        let visible_ids = {
+            let labels = super::lock_or_recover(&super::TASK_LABELS, "task_labels");
+            let interactive_label = labels
+                .get(&interactive.0)
+                .expect("interactive search should have a task label");
+            let description_label = labels
+                .get(&description.0)
+                .expect("description search should have a task label");
+            assert_eq!(
+                interactive_label.dedupe_discriminator.as_deref(),
+                Some("interactive")
+            );
+            assert_eq!(
+                description_label.dedupe_discriminator.as_deref(),
+                Some("package_description")
+            );
+            assert_eq!(interactive_label.args, description_label.args);
+
+            super::build_visible_tasks(
+                store
+                    .list_recent_tasks(10)
+                    .expect("search tasks should be persisted"),
+                &labels,
+            )
+            .into_iter()
+            .map(|task| task.id)
+            .collect::<Vec<_>>()
+        };
+
+        release.store(true, Ordering::Release);
+
+        assert_eq!(repeated_interactive, interactive);
+        assert_eq!(repeated_description, description);
+        assert_ne!(interactive, description);
+        assert!(visible_ids.contains(&interactive));
+        assert!(visible_ids.contains(&description));
+
+        tokio_runtime
+            .handle()
+            .block_on(runtime.wait_for_terminal(interactive, Some(Duration::from_secs(2))))
+            .expect("interactive search should finish");
+        tokio_runtime
+            .handle()
+            .block_on(runtime.wait_for_terminal(description, Some(Duration::from_secs(2))))
+            .expect("description search should finish");
+
+        {
+            let mut labels = super::lock_or_recover(&super::TASK_LABELS, "task_labels");
+            labels.remove(&interactive.0);
+            labels.remove(&description.0);
+        }
+
+        let database_path = store.database_path().to_path_buf();
+        drop(runtime);
+        drop(store);
+        let _ = fs::remove_file(database_path);
+    }
+
+    #[test]
+    fn remote_search_cancellation_is_graceful_and_rejects_non_search_tasks() {
+        assert_eq!(
+            super::remote_search_cancellation_mode(),
+            helm_core::orchestration::CancellationMode::Graceful {
+                grace_period: Duration::from_millis(500),
+            }
+        );
+
+        let release = Arc::new(AtomicBool::new(true));
+        let adapter: Arc<dyn ManagerAdapter> =
+            Arc::new(BlockingSearchAdapter::new(ManagerId::Npm, release));
+        let runtime = AdapterRuntime::new([adapter]).expect("search runtime should initialize");
+        let tokio_runtime =
+            tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
+
+        let search_task = tokio_runtime
+            .handle()
+            .block_on(runtime.submit(
+                ManagerId::Npm,
+                AdapterRequest::Search(helm_core::adapters::SearchRequest {
+                    query: SearchQuery {
+                        text: "typescript".to_string(),
+                        issued_at: SystemTime::now(),
+                    },
+                }),
+            ))
+            .expect("search task should submit");
+        tokio_runtime
+            .handle()
+            .block_on(runtime.wait_for_terminal(search_task, Some(Duration::from_secs(2))))
+            .expect("search task should finish");
+        assert!(super::cancel_remote_search_task_on_local_runtime(
+            &runtime,
+            tokio_runtime.handle(),
+            search_task,
+        ));
+
+        let refresh_task = tokio_runtime
+            .handle()
+            .block_on(runtime.submit(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest)))
+            .expect("refresh task should submit");
+        tokio_runtime
+            .handle()
+            .block_on(runtime.wait_for_terminal(refresh_task, Some(Duration::from_secs(2))))
+            .expect("refresh task should finish");
+        assert!(!super::cancel_remote_search_task_on_local_runtime(
+            &runtime,
+            tokio_runtime.handle(),
+            refresh_task,
+        ));
     }
 
     #[test]
@@ -14395,6 +14788,7 @@ mod tests {
                         ("manager".to_string(), "npm".to_string()),
                         ("package".to_string(), "typescript".to_string()),
                     ]),
+                    dedupe_discriminator: None,
                 },
             ),
             (
@@ -14405,6 +14799,7 @@ mod tests {
                         ("manager".to_string(), "npm".to_string()),
                         ("package".to_string(), "eslint".to_string()),
                     ]),
+                    dedupe_discriminator: None,
                 },
             ),
         ]);

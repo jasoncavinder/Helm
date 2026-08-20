@@ -279,6 +279,22 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(taskId)
     }
 
+    func triggerPackageDescriptionSearchForManager(managerId: String, query: String, withReply reply: @escaping (Int64) -> Void) {
+        let taskId = managerId.withCString { manager in
+            query.withCString { searchQuery in
+                helm_trigger_package_description_search_for_manager(manager, searchQuery)
+            }
+        }
+        logger.info("helm_trigger_package_description_search_for_manager(\(managerId)) result: \(taskId)")
+        reply(taskId)
+    }
+
+    func cancelRemoteSearchTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void) {
+        let result = helm_cancel_remote_search_task(taskId)
+        logger.info("helm_cancel_remote_search_task(\(taskId)) result: \(result)")
+        reply(result)
+    }
+
     func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void) {
         let result = helm_cancel_task(taskId)
         logger.info("helm_cancel_task(\(taskId)) result: \(result)")

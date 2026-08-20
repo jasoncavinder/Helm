@@ -103,6 +103,28 @@ int64_t helm_trigger_remote_search(const char *query);
 int64_t helm_trigger_remote_search_for_manager(const char *manager_id, const char *query);
 
 /**
+ * Submit a package-description search request for a specific manager.
+ *
+ * Package-description requests use a distinct in-flight dedupe identity from interactive
+ * searches, so an identical manager/query pair cannot share task ownership across the two
+ * callers. Returns the task ID, or -1 on error.
+ *
+ * # Safety
+ *
+ * `manager_id` and `query` must be valid, non-null pointers to NUL-terminated UTF-8 C strings.
+ */
+int64_t helm_trigger_package_description_search_for_manager(const char *manager_id,
+                                                            const char *query);
+
+/**
+ * Cancel a local remote-search task by ID with a 500 ms graceful completion window.
+ *
+ * This path intentionally ignores legacy external coordinator mode because GUI remote-search
+ * submissions are owned by the in-process adapter runtime. Non-search task IDs are rejected.
+ */
+bool helm_cancel_remote_search_task(int64_t task_id);
+
+/**
  * Cancel a running task by ID. Returns true on success.
  */
 bool helm_cancel_task(int64_t task_id);
