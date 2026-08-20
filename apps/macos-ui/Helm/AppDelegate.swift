@@ -319,9 +319,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let snapshotApplySamples: [Double]
         let endToEndSamples: [Double]
         let resultCount: Int
-        let sourceFingerprint: Int
-        let snapshot: LibraryTableSnapshot
-        let revisionGeneration: UInt64
+        let projectionCacheMisses: Int
+        let projectionCache: ProductionLibraryTableProjectionCache
+    }
+
+    private struct LibraryBenchmarkProjectionFixture {
+        let action: (ConsolidatedPackageItem, PackageItem) -> LibraryTableAction?
+        let identity: (Int) -> ProductionLibraryTableProjectionIdentity
     }
 
     private final class LibraryTableBenchmarkHarness {
@@ -489,38 +493,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             core.cachedLibraryPackageIndex = nil
 
             let harness = LibraryTableBenchmarkHarness()
-            let actionLabels = LibraryTableActionLabels()
-            let inFlightPackageIDs = Set(
-                packages.indices.filter { $0.isMultiple(of: 17) }.map { packages[$0].id }
+            let projectionFixture = self.libraryBenchmarkProjectionFixture(
+                packages: packages,
+                sourceCount: sourceCount
             )
-            let actionProjection: (ConsolidatedPackageItem, PackageItem) -> LibraryTableAction? = { _, package in
-                let identity: LibraryTableActionIdentity
-                let symbolName: String
-                let title: String
-                let canPerform: Bool
-                if package.pinned {
-                    (identity, symbolName, title, canPerform) = (.unpin, "pin.slash", actionLabels.unpin, true)
-                } else if package.status == .available {
-                    (identity, symbolName, title, canPerform) = (.install, "arrow.down.circle", actionLabels.install, true)
-                } else {
-                    (identity, symbolName, title, canPerform) = (.upgrade, "arrow.up.circle", actionLabels.upgrade, package.status == .upgradable)
-                }
-                let isInFlight = inFlightPackageIDs.contains(package.id)
-                return LibraryTableAction(
-                    identity: identity, symbolName: symbolName, title: title,
-                    isEnabled: canPerform && !isInFlight, isInFlight: isInFlight
-                )
-            }
             let coldResult = self.runColdLibraryBenchmark(
                 iterations: iterations, query: query,
                 core: core,
                 harness: harness,
-                actionProjection: actionProjection
+                projectionFixture: projectionFixture
             )
-            var revisionGeneration = coldResult.revisionGeneration
             var resultCount = coldResult.resultCount
-            var latestSourceFingerprint = coldResult.sourceFingerprint
-            var latestSnapshot = coldResult.snapshot
+            var projectionCache = coldResult.projectionCache
+            var latestSnapshot = projectionCache.snapshot
             var projectedRowCount = latestSnapshot.rows.count
 
             _ = core.filteredPackages(
@@ -545,23 +530,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 let sourceFingerprint = LibraryTableRowProjector.sourceFingerprint(
                     for: results
                 )
-                if latestSourceFingerprint == sourceFingerprint {
-                    warmProjectionCacheHits += 1
-                } else {
-                    revisionGeneration &+= 1
-                    latestSnapshot = LibraryTableRowProjector.project(
-                        revision: LibraryTableModelRevision(
-                            namespace: "benchmark-library",
-                            generation: revisionGeneration
-                        ),
+                let projection = projectionCache.resolve(
+                    identity: projectionFixture.identity(sourceFingerprint)
+                ) { revision in
+                    LibraryTableRowProjector.project(
+                        revision: revision,
                         packageRows: results,
                         selectedPackageID: nil,
                         managerConstraint: nil,
                         preferredManagerID: { _ in nil },
-                        action: actionProjection
+                        action: projectionFixture.action
                     )
-                    latestSourceFingerprint = sourceFingerprint
                 }
+                if projection.cacheHit {
+                    warmProjectionCacheHits += 1
+                }
+                latestSnapshot = projection.snapshot
                 harness.apply(snapshot: latestSnapshot)
                 resultCount = results.count
                 projectedRowCount = latestSnapshot.rows.count
@@ -615,6 +599,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 && inFlightRowCount > 0
                 && mixedActionsPassed
                 && appliedSameIDOverlayCount == 1
+                && coldResult.projectionCacheMisses == iterations
                 && warmProjectionCacheHits == iterations
                 && retainedRowsPassed
                 && coldIndexedSummary.p95Milliseconds <= 150
@@ -631,7 +616,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 "sources": sourceCount,
                 "rows": rowCount,
                 "query": query,
-                "timed_path": "query_fingerprint_projection_cache_to_first_visible_cell",
+                "timed_path": "query_shared_production_projection_cache_to_first_visible_cell",
                 "result_count": resultCount,
                 "projected_row_count": projectedRowCount,
                 "action_row_count": actionRowCount,
@@ -639,6 +624,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                 "mixed_actions_passed": mixedActionsPassed,
                 "in_flight_row_count": inFlightRowCount,
                 "applied_same_id_overlay_count": appliedSameIDOverlayCount,
+                "cold_projection_cache_misses": coldResult.projectionCacheMisses,
                 "warm_projection_cache_hits": warmProjectionCacheHits,
                 "cold_indexed_derivation_ms": libraryBenchmarkSummary(coldIndexedSummary, samples: coldResult.indexedDerivationSamples),
                 "cold_snapshot_apply_ms": libraryBenchmarkSummary(coldSnapshotSummary, samples: coldResult.snapshotApplySamples),
@@ -693,22 +679,132 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         ]
     }
 
+    private func libraryBenchmarkProjectionFixture(
+        packages: [PackageItem],
+        sourceCount: Int
+    ) -> LibraryBenchmarkProjectionFixture {
+        let actionLabels = LibraryTableActionLabels()
+        let inFlightPackages = packages.indices
+            .filter { $0.isMultiple(of: 17) }
+            .map { packages[$0] }
+        let pinActionPackageIDs = Set(
+            inFlightPackages.filter(\.pinned).map(\.id)
+        )
+        let upgradeActionPackageIDs = Set(
+            inFlightPackages.filter {
+                !$0.pinned && $0.status != .available
+            }.map(\.id)
+        )
+        let installActionPackageNames = Set(
+            inFlightPackages.filter { $0.status == .available }.map {
+                PackageActionTracking.normalizedPackageIdentityKey(
+                    name: $0.name,
+                    version: $0.version
+                )
+            }
+        )
+        let installablePackageNames = Set(
+            packages.filter { $0.status == .available }.map {
+                PackageActionTracking.normalizedPackageIdentityKey(
+                    name: $0.name,
+                    version: $0.version
+                )
+            }
+        )
+        let managerCapabilities = (0..<sourceCount).map { index in
+            ProductionLibraryManagerCapability(
+                managerID: "manager-\(index)",
+                enabled: true,
+                supportsPackageInstall: true,
+                supportsPackageUpgrade: true,
+                supportsRemoteSearch: true,
+                isUninstalling: false
+            )
+        }
+        let identity: (Int) -> ProductionLibraryTableProjectionIdentity = { sourceFingerprint in
+            ProductionLibraryTableProjectionIdentity(
+                sourceFingerprint: sourceFingerprint,
+                managerConstraint: nil,
+                selectedPackageID: nil,
+                managerPreferences: [:],
+                pinActionPackageIDs: pinActionPackageIDs,
+                upgradeActionPackageIDs: upgradeActionPackageIDs,
+                installablePackageNames: installablePackageNames,
+                installActionPackageNames: installActionPackageNames,
+                managerCapabilities: managerCapabilities,
+                appUpdateCapability: ProductionLibraryAppUpdateCapability(
+                    updateAvailable: false,
+                    canCheckForUpdates: false
+                ),
+                networkOperationsAvailable: true,
+                locale: LocalizationManager.shared.currentLocale
+            )
+        }
+        let action: (ConsolidatedPackageItem, PackageItem) -> LibraryTableAction? = { _, package in
+            let identity: LibraryTableActionIdentity
+            let symbolName: String
+            let title: String
+            let canPerform: Bool
+            let isInFlight: Bool
+            if package.pinned {
+                (identity, symbolName, title, canPerform, isInFlight) = (
+                    .unpin,
+                    "pin.slash",
+                    actionLabels.unpin,
+                    true,
+                    pinActionPackageIDs.contains(package.id)
+                )
+            } else if package.status == .available {
+                let packageName = PackageActionTracking.normalizedPackageIdentityKey(
+                    name: package.name,
+                    version: package.version
+                )
+                (identity, symbolName, title, canPerform, isInFlight) = (
+                    .install,
+                    "arrow.down.circle",
+                    actionLabels.install,
+                    installablePackageNames.contains(packageName),
+                    installActionPackageNames.contains(packageName)
+                )
+            } else {
+                (identity, symbolName, title, canPerform, isInFlight) = (
+                    .upgrade,
+                    "arrow.up.circle",
+                    actionLabels.upgrade,
+                    package.status == .upgradable,
+                    upgradeActionPackageIDs.contains(package.id)
+                )
+            }
+            return LibraryTableAction(
+                identity: identity,
+                symbolName: symbolName,
+                title: title,
+                isEnabled: canPerform && !isInFlight,
+                isInFlight: isInFlight
+            )
+        }
+        return LibraryBenchmarkProjectionFixture(action: action, identity: identity)
+    }
+
     private func runColdLibraryBenchmark(
         iterations: Int,
         query: String,
         core: HelmCore,
         harness: LibraryTableBenchmarkHarness,
-        actionProjection: (ConsolidatedPackageItem, PackageItem) -> LibraryTableAction?
+        projectionFixture: LibraryBenchmarkProjectionFixture
     ) -> ColdLibraryBenchmarkResult {
         var indexedSamples: [Double] = []
         var snapshotSamples: [Double] = []
         var endToEndSamples: [Double] = []
         var resultCount = 0
-        var sourceFingerprint = 0
-        var snapshot = LibraryTableSnapshot.empty(namespace: "benchmark-library")
+        var projectionCacheMisses = 0
+        var projectionCache = ProductionLibraryTableProjectionCache(
+            namespace: "benchmark-library"
+        )
 
-        for generation in 1...iterations {
+        for _ in 1...iterations {
             core.cachedLibraryPackageIndex = nil
+            projectionCache.invalidate()
             let endToEndStartedAt = ProcessInfo.processInfo.systemUptime
             let results = core.filteredPackages(
                 query: query,
@@ -717,19 +813,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             )
             let snapshotStartedAt = ProcessInfo.processInfo.systemUptime
             indexedSamples.append((snapshotStartedAt - endToEndStartedAt) * 1_000)
-            sourceFingerprint = LibraryTableRowProjector.sourceFingerprint(for: results)
-            snapshot = LibraryTableRowProjector.project(
-                revision: LibraryTableModelRevision(
-                    namespace: "benchmark-library",
-                    generation: UInt64(generation)
-                ),
-                packageRows: results,
-                selectedPackageID: nil,
-                managerConstraint: nil,
-                preferredManagerID: { _ in nil },
-                action: actionProjection
-            )
-            harness.apply(snapshot: snapshot)
+            let sourceFingerprint = LibraryTableRowProjector.sourceFingerprint(for: results)
+            let projection = projectionCache.resolve(
+                identity: projectionFixture.identity(sourceFingerprint)
+            ) { revision in
+                LibraryTableRowProjector.project(
+                    revision: revision,
+                    packageRows: results,
+                    selectedPackageID: nil,
+                    managerConstraint: nil,
+                    preferredManagerID: { _ in nil },
+                    action: projectionFixture.action
+                )
+            }
+            if !projection.cacheHit {
+                projectionCacheMisses += 1
+            }
+            harness.apply(snapshot: projection.snapshot)
             let completedAt = ProcessInfo.processInfo.systemUptime
             snapshotSamples.append((completedAt - snapshotStartedAt) * 1_000)
             endToEndSamples.append((completedAt - endToEndStartedAt) * 1_000)
@@ -740,9 +840,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             snapshotApplySamples: snapshotSamples,
             endToEndSamples: endToEndSamples,
             resultCount: resultCount,
-            sourceFingerprint: sourceFingerprint,
-            snapshot: snapshot,
-            revisionGeneration: UInt64(iterations)
+            projectionCacheMisses: projectionCacheMisses,
+            projectionCache: projectionCache
         )
     }
 

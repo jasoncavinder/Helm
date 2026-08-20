@@ -18,9 +18,7 @@ struct PackagesSectionView: View {
     @State private var displayedPackageFingerprint: Int?
     @State private var installableAvailablePackageNames: Set<String> = []
     @State private var installActionPackageNames: Set<String> = []
-    @State private var productionLibraryTableIdentity: ProductionLibraryTableProjectionIdentity?
-    @State private var productionLibraryTableGeneration: UInt64 = 0
-    @State private var productionLibraryTableSnapshot = LibraryTableSnapshot.empty(
+    @State private var productionLibraryTableProjection = ProductionLibraryTableProjectionCache(
         namespace: "production-library"
     )
     @ViewBuilder
@@ -129,7 +127,7 @@ struct PackagesSectionView: View {
                     .padding(.top, 4)
                 Spacer()
             } else {
-                libraryTable(snapshot: productionLibraryTableSnapshot)
+                libraryTable(snapshot: productionLibraryTableProjection.snapshot)
             }
         }
         .padding(20)
@@ -696,33 +694,28 @@ struct PackagesSectionView: View {
             locale: localization.currentLocale
         )
 
-        guard productionLibraryTableIdentity != identity else { return }
-        var nextGeneration = productionLibraryTableGeneration &+ 1
-        if nextGeneration == 0 {
-            nextGeneration = 1
-        }
         let actionLabels = LibraryTableActionLabels()
-        let nextSnapshot = LibraryTableRowProjector.project(
-            revision: LibraryTableModelRevision(
-                namespace: "production-library",
-                generation: nextGeneration
-            ),
-            packageRows: packageRows,
-            selectedPackageID: context.selectedPackageId,
-            managerConstraint: managerConstraint,
-            preferredManagerID: core.preferredManagerId(for:),
-            action: { packageRow, package in
-                libraryTableAction(
-                    for: packageRow,
-                    actionTarget: package,
-                    managerConstraint: managerConstraint,
-                    labels: actionLabels
-                )
-            }
-        )
-        productionLibraryTableGeneration = nextGeneration
-        productionLibraryTableIdentity = identity
-        productionLibraryTableSnapshot = nextSnapshot
+        var projection = productionLibraryTableProjection
+        let resolution = projection.resolve(identity: identity) { revision in
+            LibraryTableRowProjector.project(
+                revision: revision,
+                packageRows: packageRows,
+                selectedPackageID: context.selectedPackageId,
+                managerConstraint: managerConstraint,
+                preferredManagerID: core.preferredManagerId(for:),
+                action: { packageRow, package in
+                    libraryTableAction(
+                        for: packageRow,
+                        actionTarget: package,
+                        managerConstraint: managerConstraint,
+                        labels: actionLabels
+                    )
+                }
+            )
+        }
+        if !resolution.cacheHit {
+            productionLibraryTableProjection = projection
+        }
     }
 
     private func libraryTableAction(
@@ -983,35 +976,6 @@ struct PackagesSectionView: View {
         }
         return candidate.displayName
     }
-}
-
-private struct ProductionLibraryManagerCapability: Equatable {
-    let managerID: String
-    let enabled: Bool
-    let supportsPackageInstall: Bool
-    let supportsPackageUpgrade: Bool
-    let supportsRemoteSearch: Bool
-    let isUninstalling: Bool
-}
-
-private struct ProductionLibraryAppUpdateCapability: Equatable {
-    let updateAvailable: Bool
-    let canCheckForUpdates: Bool
-}
-
-private struct ProductionLibraryTableProjectionIdentity: Equatable {
-    let sourceFingerprint: Int
-    let managerConstraint: String?
-    let selectedPackageID: String?
-    let managerPreferences: [String: String]
-    let pinActionPackageIDs: Set<String>
-    let upgradeActionPackageIDs: Set<String>
-    let installablePackageNames: Set<String>
-    let installActionPackageNames: Set<String>
-    let managerCapabilities: [ProductionLibraryManagerCapability]
-    let appUpdateCapability: ProductionLibraryAppUpdateCapability
-    let networkOperationsAvailable: Bool
-    let locale: String
 }
 
 private struct PrimaryPackageAction {

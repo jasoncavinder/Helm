@@ -23,6 +23,82 @@ final class LibraryTableProjectionAndReuseTests: XCTestCase {
         XCTAssertEqual(alternateLocaleOrder, ["homebrew_formula", "cargo"])
     }
 
+    func testProductionProjectionCacheReusesUnchangedSnapshot() {
+        var cache = ProductionLibraryTableProjectionCache(namespace: "production-test")
+        let identity = makeProjectionIdentity()
+        var projectionCount = 0
+
+        let first = cache.resolve(identity: identity) { revision in
+            projectionCount += 1
+            return LibraryTableSnapshot(
+                revision: revision,
+                rows: [makeRow(id: "ripgrep")]
+            )
+        }
+        let second = cache.resolve(identity: identity) { revision in
+            projectionCount += 1
+            return LibraryTableSnapshot(
+                revision: revision,
+                rows: [makeRow(id: "should-not-project")]
+            )
+        }
+
+        XCTAssertFalse(first.cacheHit)
+        XCTAssertTrue(second.cacheHit)
+        XCTAssertEqual(projectionCount, 1)
+        XCTAssertEqual(first.snapshot.revision, second.snapshot.revision)
+        XCTAssertEqual(second.snapshot.rows.map(\.id), ["ripgrep"])
+    }
+
+    func testProductionProjectionCacheMissesForLocaleActionAndUpdaterMutations() {
+        var cache = ProductionLibraryTableProjectionCache(namespace: "production-test")
+        var projectionCount = 0
+        let initial = makeProjectionIdentity()
+        let initialResult = cache.resolve(identity: initial) { revision in
+            projectionCount += 1
+            return LibraryTableSnapshot(revision: revision, rows: [])
+        }
+
+        let localeResult = cache.resolve(
+            identity: makeProjectionIdentity(locale: "de")
+        ) { revision in
+            projectionCount += 1
+            return LibraryTableSnapshot(revision: revision, rows: [])
+        }
+        let actionResult = cache.resolve(
+            identity: makeProjectionIdentity(
+                locale: "de",
+                upgradeActionPackageIDs: ["homebrew_formula:ripgrep"]
+            )
+        ) { revision in
+            projectionCount += 1
+            return LibraryTableSnapshot(revision: revision, rows: [])
+        }
+        let updaterResult = cache.resolve(
+            identity: makeProjectionIdentity(
+                locale: "de",
+                upgradeActionPackageIDs: ["homebrew_formula:ripgrep"],
+                appUpdateCapability: ProductionLibraryAppUpdateCapability(
+                    updateAvailable: true,
+                    canCheckForUpdates: true
+                )
+            )
+        ) { revision in
+            projectionCount += 1
+            return LibraryTableSnapshot(revision: revision, rows: [])
+        }
+
+        XCTAssertFalse(initialResult.cacheHit)
+        XCTAssertFalse(localeResult.cacheHit)
+        XCTAssertFalse(actionResult.cacheHit)
+        XCTAssertFalse(updaterResult.cacheHit)
+        XCTAssertEqual(projectionCount, 4)
+        XCTAssertEqual(initialResult.snapshot.revision.generation, 1)
+        XCTAssertEqual(localeResult.snapshot.revision.generation, 2)
+        XCTAssertEqual(actionResult.snapshot.revision.generation, 3)
+        XCTAssertEqual(updaterResult.snapshot.revision.generation, 4)
+    }
+
     func testCoordinatorUsesRevisionWhileSelectionAndActionDriftRemainCorrect() throws {
         let initialRow = makeRow(id: "ripgrep", action: makeAction(identity: .install))
         let initialSnapshot = LibraryTableSnapshot(
@@ -227,6 +303,40 @@ final class LibraryTableProjectionAndReuseTests: XCTestCase {
             title: identity.rawValue.capitalized,
             isEnabled: !isInFlight,
             isInFlight: isInFlight
+        )
+    }
+
+    private func makeProjectionIdentity(
+        locale: String = "en",
+        upgradeActionPackageIDs: Set<String> = [],
+        appUpdateCapability: ProductionLibraryAppUpdateCapability =
+            ProductionLibraryAppUpdateCapability(
+                updateAvailable: false,
+                canCheckForUpdates: false
+            )
+    ) -> ProductionLibraryTableProjectionIdentity {
+        ProductionLibraryTableProjectionIdentity(
+            sourceFingerprint: 42,
+            managerConstraint: nil,
+            selectedPackageID: nil,
+            managerPreferences: [:],
+            pinActionPackageIDs: [],
+            upgradeActionPackageIDs: upgradeActionPackageIDs,
+            installablePackageNames: [],
+            installActionPackageNames: [],
+            managerCapabilities: [
+                ProductionLibraryManagerCapability(
+                    managerID: "homebrew_formula",
+                    enabled: true,
+                    supportsPackageInstall: true,
+                    supportsPackageUpgrade: true,
+                    supportsRemoteSearch: true,
+                    isUninstalling: false
+                )
+            ],
+            appUpdateCapability: appUpdateCapability,
+            networkOperationsAvailable: true,
+            locale: locale
         )
     }
 
