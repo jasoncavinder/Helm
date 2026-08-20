@@ -2,6 +2,8 @@ import SwiftUI
 
 struct PackagesSectionView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var localization = LocalizationManager.shared
+    @ObservedObject private var appUpdate = AppUpdateCoordinator.shared
     @EnvironmentObject private var context: ControlCenterContext
     private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
     @State private var selectedStatusFilter: PackageStatus?
@@ -13,8 +15,12 @@ struct PackagesSectionView: View {
     @State private var selectedInstallPackageId: String?
     @State private var availableManagerIds: [String] = []
     @State private var displayedPackages: [ConsolidatedPackageItem] = []
+    @State private var displayedPackageFingerprint: Int?
     @State private var installableAvailablePackageNames: Set<String> = []
     @State private var installActionPackageNames: Set<String> = []
+    @State private var productionLibraryTableProjection = ProductionLibraryTableProjectionCache(
+        namespace: "production-library"
+    )
     @ViewBuilder
     var body: some View {
         Group {
@@ -28,9 +34,6 @@ struct PackagesSectionView: View {
             preparePendingPackageFocusRequest()
         }
         .onChange(of: context.pendingLibraryPackageFocusRequest) { _ in
-            preparePendingPackageFocusRequest()
-        }
-        .onChange(of: focusablePackageRowIDs) { _ in
             preparePendingPackageFocusRequest()
         }
     }
@@ -124,7 +127,7 @@ struct PackagesSectionView: View {
                     .padding(.top, 4)
                 Spacer()
             } else {
-                libraryTable(rows: productionLibraryTableRows)
+                libraryTable(snapshot: productionLibraryTableProjection.snapshot)
             }
         }
         .padding(20)
@@ -136,38 +139,59 @@ struct PackagesSectionView: View {
             if context.searchQuery != core.searchText {
                 context.searchQuery = core.searchText
             }
-            refreshPackageSnapshots()
+            refreshPackageSourceSnapshots()
             if normalizeManagerSelection() {
-                refreshPackageSnapshots()
+                refreshDisplayedPackages()
             }
         }
-        .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
-            refreshPackageSnapshots()
+        .onChange(of: productionManagerActionCapabilities) { _ in
+            refreshPackageSourceSnapshots()
             if normalizeManagerSelection() {
-                refreshPackageSnapshots()
+                refreshDisplayedPackages()
             }
         }
         .onChange(of: availableManagerIds) { _ in
             if normalizeManagerSelection() {
-                refreshPackageSnapshots()
+                refreshDisplayedPackages()
             }
         }
-        .onReceive(core.$installedPackages) { _ in refreshPackageSnapshots() }
-        .onReceive(core.$outdatedPackages) { _ in refreshPackageSnapshots() }
-        .onReceive(core.$cachedAvailablePackages) { _ in refreshPackageSnapshots() }
+        .onReceive(core.$installedPackages) { _ in refreshPackageSourceSnapshots() }
+        .onReceive(core.$outdatedPackages) { _ in refreshPackageSourceSnapshots() }
+        .onReceive(core.$cachedAvailablePackages) { _ in refreshPackageSourceSnapshots() }
         .onReceive(core.$searchResults) { _ in
             let hasQuery = !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if hasQuery {
-                refreshPackageSnapshots()
+                refreshPackageSourceSnapshots()
             }
         }
-        .onChange(of: core.installActionPackageIds) { _ in refreshPackageSnapshots() }
-        .onChange(of: core.pinActionPackageIds) { _ in refreshPackageSnapshots() }
-        .onChange(of: context.searchQuery) { _ in refreshPackageSnapshots() }
-        .onChange(of: selectedStatusFilter) { _ in refreshPackageSnapshots() }
-        .onChange(of: showPinnedOnly) { _ in refreshPackageSnapshots() }
-        .onChange(of: selectedManagerId) { _ in refreshPackageSnapshots() }
-        .onChange(of: context.managerFilterId) { _ in refreshPackageSnapshots() }
+        .onChange(of: core.installActionPackageIds) { _ in refreshPackageSourceSnapshots() }
+        .onChange(of: core.pinActionPackageIds) { _ in
+            refreshProductionLibraryTableProjection()
+        }
+        .onChange(of: core.upgradeActionPackageIds) { _ in
+            refreshProductionLibraryTableProjection()
+        }
+        .onChange(of: core.packageManagerPreferencesByFamilyKey) { _ in
+            refreshProductionLibraryTableProjection()
+        }
+        .onChange(of: core.managerPriorityOverrides) { _ in refreshDisplayedPackages() }
+        .onChange(of: core.managerOperations) { _ in refreshPackageSourceSnapshots() }
+        .onChange(of: core.networkOperationsAvailable) { _ in refreshPackageSourceSnapshots() }
+        .onChange(of: productionAppUpdateCapability) { _ in
+            refreshProductionLibraryTableProjection()
+        }
+        .onChange(of: localization.currentLocale) { _ in
+            refreshAvailableManagerIDs()
+            refreshDisplayedPackages()
+        }
+        .onChange(of: context.selectedPackageId) { _ in
+            refreshProductionLibraryTableProjection()
+        }
+        .onChange(of: context.searchQuery) { _ in refreshDisplayedPackages() }
+        .onChange(of: selectedStatusFilter) { _ in refreshDisplayedPackages() }
+        .onChange(of: showPinnedOnly) { _ in refreshDisplayedPackages() }
+        .onChange(of: selectedManagerId) { _ in refreshDisplayedPackages() }
+        .onChange(of: context.managerFilterId) { _ in refreshDisplayedPackages() }
         .sheet(isPresented: $showInstallManagerSheet) {
             installManagerSheet
         }
@@ -230,7 +254,12 @@ struct PackagesSectionView: View {
                     .padding(.top, 4)
                 Spacer()
             } else {
-                libraryTable(rows: researchLibraryTableRows(results, in: projection))
+                libraryTable(
+                    snapshot: .semantic(
+                        namespace: "research-library",
+                        rows: researchLibraryTableRows(results, in: projection)
+                    )
+                )
             }
         }
         .padding(20)
@@ -387,52 +416,6 @@ struct PackagesSectionView: View {
         return badges
     }
 
-    private var productionLibraryTableRows: [LibraryTableRow] {
-        let activeManagerFilterId = selectedManagerId ?? context.managerFilterId
-        return displayedPackages.map { packageRow in
-            let preferredManagerId = activeManagerFilterId
-                ?? core.preferredManagerId(for: packageRow.package)
-            let exactSelectedPackageId = packageRow.containsPackageId(context.selectedPackageId)
-                ? context.selectedPackageId
-                : nil
-            let package = packageRow.actionTarget(
-                preferredManagerId: preferredManagerId,
-                selectedPackageId: exactSelectedPackageId
-            )
-            let action = primaryPackageAction(
-                for: packageRow,
-                actionTarget: package,
-                managerConstraint: activeManagerFilterId
-            )
-            return LibraryTableRow(
-                id: packageRow.id,
-                representedPackageIDs: packageRow.memberPackages.map(\.id),
-                selectedPackageID: package.id,
-                selectedManagerID: package.managerId,
-                name: package.displayName,
-                detail: libraryTableDetail(
-                    secondaryText: package.summary,
-                    badges: rowDetailBadges(for: packageRow, actionTarget: package)
-                ),
-                manager: packageRow.managerDisplayText,
-                currentVersion: package.version,
-                latestVersion: package.latestVersion,
-                status: package.status.displayName,
-                statusSymbolName: package.status.iconName,
-                statusTone: libraryTableStatusTone(for: package.status),
-                isPinned: package.pinned,
-                isRestartRequired: package.restartRequired,
-                action: LibraryTableAction(
-                    identity: action.identity,
-                    symbolName: action.symbol,
-                    title: action.tooltip,
-                    isEnabled: action.enabled,
-                    isInFlight: action.inFlight
-                )
-            )
-        }
-    }
-
     private func researchLibraryTableRows(
         _ results: [WholeWorkflowResearchLibraryResult],
         in projection: WholeWorkflowResearchLibraryProjection
@@ -446,7 +429,7 @@ struct PackagesSectionView: View {
                 selectedPackageID: result.id,
                 selectedManagerID: result.managerID,
                 name: package.displayName,
-                detail: libraryTableDetail(
+                detail: LibraryTableRowProjector.detail(
                     secondaryText: localizedResearchRecommendation(
                         key: result.recommendationReasonKey,
                         managerID: result.managerID
@@ -458,7 +441,7 @@ struct PackagesSectionView: View {
                 latestVersion: nil,
                 status: package.status.displayName,
                 statusSymbolName: package.status.iconName,
-                statusTone: libraryTableStatusTone(for: package.status),
+                statusTone: LibraryTableRowProjector.statusTone(for: package.status),
                 isPinned: false,
                 isRestartRequired: false,
                 action: hasInstallReview
@@ -474,18 +457,15 @@ struct PackagesSectionView: View {
         }
     }
 
-    private func libraryTable(rows: [LibraryTableRow]) -> some View {
-        let selectedRowID = LibraryTableSelectionPolicy.selectedRowID(
-            forPackageID: context.selectedPackageId,
-            in: rows
-        )
+    private func libraryTable(snapshot: LibraryTableSnapshot) -> some View {
+        let selectedRowID = snapshot.rowID(forPackageID: context.selectedPackageId)
         let focusRequest = context.pendingLibraryPackageFocusRequest.flatMap { request in
-            LibraryTableSelectionPolicy.selectedRowID(forPackageID: request.packageID, in: rows).map {
+            snapshot.rowID(forPackageID: request.packageID).map {
                 LibraryTableFocusRequest(requestID: request.id, rowID: $0)
             }
         }
         return LibraryTableView(
-            rows: rows,
+            snapshot: snapshot,
             selectedRowID: selectedRowID,
             columnLabels: LibraryTableColumnLabels(
                 package: L10n.App.Packages.Table.package.localized,
@@ -508,29 +488,6 @@ struct PackagesSectionView: View {
             onFulfillFocusRequest: completeLibraryTableFocusRequest
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func libraryTableDetail(secondaryText: String?, badges: [String]) -> String? {
-        var parts: [String] = []
-        if let secondaryText {
-            let trimmed = secondaryText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                parts.append(trimmed)
-            }
-        }
-        parts.append(contentsOf: badges.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-        return parts.isEmpty ? nil : parts.joined(separator: " • ")
-    }
-
-    private func libraryTableStatusTone(for status: PackageStatus) -> LibraryTableStatusTone {
-        switch status {
-        case .installed:
-            return .healthy
-        case .upgradable:
-            return .updatesReady
-        case .available:
-            return .available
-        }
     }
 
     private func selectLibraryTableRow(_ row: LibraryTableRow) {
@@ -587,13 +544,6 @@ struct PackagesSectionView: View {
         context.completeLibraryPackageFocusRequest(request, focusSucceeded: true)
     }
 
-    private var focusablePackageRowIDs: [String] {
-        if let researchLibraryProjection {
-            return researchResults(in: researchLibraryProjection).map(\.id)
-        }
-        return displayedPackages.map(\.id)
-    }
-
     private func preparePendingPackageFocusRequest() {
         guard context.pendingLibraryPackageFocusRequest != nil else { return }
 
@@ -615,7 +565,7 @@ struct PackagesSectionView: View {
             filtersChanged = true
         }
         if filtersChanged, researchLibraryProjection == nil {
-            refreshPackageSnapshots()
+            refreshDisplayedPackages()
         }
     }
 
@@ -627,6 +577,28 @@ struct PackagesSectionView: View {
             return localizedManagerDisplayName(managerFilterId)
         }
         return L10n.App.Packages.Filter.allManagers.localized
+    }
+
+    private var productionManagerActionCapabilities: [ProductionLibraryManagerCapability] {
+        let managerIDs = Set(core.managerStatuses.keys).union(core.managerOperations.keys)
+        return managerIDs.sorted().map { managerID in
+            let status = core.managerStatuses[managerID]
+            return ProductionLibraryManagerCapability(
+                managerID: managerID,
+                enabled: status?.enabled ?? true,
+                supportsPackageInstall: status?.supportsPackageInstall ?? false,
+                supportsPackageUpgrade: status?.supportsPackageUpgrade ?? false,
+                supportsRemoteSearch: status?.supportsRemoteSearch ?? false,
+                isUninstalling: core.isManagerUninstalling(managerID)
+            )
+        }
+    }
+
+    private var productionAppUpdateCapability: ProductionLibraryAppUpdateCapability {
+        ProductionLibraryAppUpdateCapability(
+            updateAvailable: appUpdate.availableUpdate != nil,
+            canCheckForUpdates: appUpdate.canCheckForUpdates
+        )
     }
 
     private func normalizeManagerSelection() -> Bool {
@@ -642,15 +614,12 @@ struct PackagesSectionView: View {
         return changed
     }
 
-    private func refreshPackageSnapshots() {
+    private func refreshPackageSourceSnapshots() {
         let allPackages = core.allKnownPackages
-        let candidateSourcePackages = mergeCandidatePackages(
-            primary: allPackages,
-            secondary: core.searchResults
-        )
-        availableManagerIds = Array(Set(candidateSourcePackages.map(\.managerId))).sorted {
-            localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
-        }
+        let candidateSourcePackages = core.searchResults.isEmpty
+            ? allPackages
+            : mergeCandidatePackages(primary: allPackages, secondary: core.searchResults)
+        refreshAvailableManagerIDs(from: candidateSourcePackages.map(\.managerId))
         var installableNames = Set<String>()
         for package in candidateSourcePackages {
             let normalizedName = normalizedPackageIdentity(package)
@@ -658,14 +627,115 @@ struct PackagesSectionView: View {
                 installableNames.insert(normalizedName)
             }
         }
-        installableAvailablePackageNames = installableNames
-        installActionPackageNames = core.installActionInFlightPackageNames(knownPackages: allPackages)
-        displayedPackages = core.filteredPackages(
+        if installableAvailablePackageNames != installableNames {
+            installableAvailablePackageNames = installableNames
+        }
+        let nextInstallActionPackageNames = core.installActionInFlightPackageNames(
+            knownPackages: allPackages
+        )
+        if installActionPackageNames != nextInstallActionPackageNames {
+            installActionPackageNames = nextInstallActionPackageNames
+        }
+        refreshDisplayedPackages()
+    }
+
+    private func refreshAvailableManagerIDs(from managerIDs: [String]? = nil) {
+        let nextAvailableManagerIDs = LibraryManagerFilterOrdering.sortedManagerIDs(
+            managerIDs ?? availableManagerIds,
+            localeIdentifier: localization.currentLocale,
+            localizedManagerName: localizedManagerDisplayName
+        )
+        if availableManagerIds != nextAvailableManagerIDs {
+            availableManagerIds = nextAvailableManagerIDs
+        }
+    }
+
+    private func refreshDisplayedPackages() {
+        let nextDisplayedPackages = core.filteredPackages(
             query: context.searchQuery,
             managerId: selectedManagerId ?? context.managerFilterId,
             statusFilter: selectedStatusFilter,
-            pinnedOnly: showPinnedOnly,
-            knownPackages: allPackages
+            pinnedOnly: showPinnedOnly
+        )
+        let sourceFingerprint = LibraryTableRowProjector.sourceFingerprint(
+            for: nextDisplayedPackages
+        )
+        if displayedPackageFingerprint != sourceFingerprint {
+            displayedPackages = nextDisplayedPackages
+            displayedPackageFingerprint = sourceFingerprint
+        }
+        refreshProductionLibraryTableProjection(
+            packageRows: nextDisplayedPackages,
+            sourceFingerprint: sourceFingerprint
+        )
+    }
+
+    private func refreshProductionLibraryTableProjection(
+        packageRows: [ConsolidatedPackageItem]? = nil,
+        sourceFingerprint: Int? = nil
+    ) {
+        let packageRows = packageRows ?? displayedPackages
+        let sourceFingerprint = sourceFingerprint
+            ?? displayedPackageFingerprint
+            ?? LibraryTableRowProjector.sourceFingerprint(for: packageRows)
+        let managerConstraint = selectedManagerId ?? context.managerFilterId
+        let identity = ProductionLibraryTableProjectionIdentity(
+            sourceFingerprint: sourceFingerprint,
+            managerConstraint: managerConstraint,
+            selectedPackageID: context.selectedPackageId,
+            managerPreferences: core.packageManagerPreferencesByFamilyKey,
+            pinActionPackageIDs: core.pinActionPackageIds,
+            upgradeActionPackageIDs: core.upgradeActionPackageIds,
+            installablePackageNames: installableAvailablePackageNames,
+            installActionPackageNames: installActionPackageNames,
+            managerCapabilities: productionManagerActionCapabilities,
+            appUpdateCapability: productionAppUpdateCapability,
+            networkOperationsAvailable: core.networkOperationsAvailable,
+            locale: localization.currentLocale
+        )
+
+        let actionLabels = LibraryTableActionLabels()
+        var projection = productionLibraryTableProjection
+        let resolution = projection.resolve(identity: identity) { revision in
+            LibraryTableRowProjector.project(
+                revision: revision,
+                packageRows: packageRows,
+                selectedPackageID: context.selectedPackageId,
+                managerConstraint: managerConstraint,
+                preferredManagerID: core.preferredManagerId(for:),
+                action: { packageRow, package in
+                    libraryTableAction(
+                        for: packageRow,
+                        actionTarget: package,
+                        managerConstraint: managerConstraint,
+                        labels: actionLabels
+                    )
+                }
+            )
+        }
+        if !resolution.cacheHit {
+            productionLibraryTableProjection = projection
+        }
+    }
+
+    private func libraryTableAction(
+        for packageRow: ConsolidatedPackageItem,
+        actionTarget package: PackageItem,
+        managerConstraint: String?,
+        labels: LibraryTableActionLabels
+    ) -> LibraryTableAction {
+        let action = primaryPackageAction(
+            for: packageRow,
+            actionTarget: package,
+            managerConstraint: managerConstraint,
+            labels: labels
+        )
+        return LibraryTableAction(
+            identity: action.identity,
+            symbolName: action.symbol,
+            title: action.tooltip,
+            isEnabled: action.enabled,
+            isInFlight: action.inFlight
         )
     }
 
@@ -703,14 +773,15 @@ struct PackagesSectionView: View {
     private func primaryPackageAction(
         for packageRow: ConsolidatedPackageItem,
         actionTarget package: PackageItem,
-        managerConstraint: String?
+        managerConstraint: String?,
+        labels: LibraryTableActionLabels = LibraryTableActionLabels()
     ) -> PrimaryPackageAction {
         if package.pinned, core.canPinPackage(package) {
             let inFlight = core.pinActionPackageIds.contains(package.id)
             return PrimaryPackageAction(
                 identity: .unpin,
                 symbol: "pin.slash",
-                tooltip: L10n.App.Packages.Action.unpin.localized,
+                tooltip: labels.unpin,
                 enabled: !inFlight,
                 inFlight: inFlight,
                 action: { core.unpinPackage(package) }
@@ -726,7 +797,7 @@ struct PackagesSectionView: View {
             return PrimaryPackageAction(
                 identity: .install,
                 symbol: "arrow.down.circle",
-                tooltip: L10n.App.Packages.Action.install.localized,
+                tooltip: labels.install,
                 enabled: canInstall && !inFlight,
                 inFlight: inFlight,
                 action: { startInstallAction(for: packageRow, managerConstraint: managerConstraint) }
@@ -742,51 +813,12 @@ struct PackagesSectionView: View {
             identity: isExternalSparkle ? .openApplication : .upgrade,
             symbol: isExternalSparkle ? "arrow.up.forward.app" : "arrow.up.circle",
             tooltip: isExternalSparkle
-                ? L10n.App.Updates.openAppToUpdate.localized
-                : L10n.App.Packages.Action.upgradePackage.localized,
+                ? labels.openApplication
+                : labels.upgrade,
             enabled: canUpgrade && !inFlight,
             inFlight: inFlight,
             action: { core.upgradePackage(package) }
         )
-    }
-
-    private func rowDetailBadges(
-        for packageRow: ConsolidatedPackageItem,
-        actionTarget package: PackageItem
-    ) -> [String] {
-        let managerPackages = packageRow.packages(forManagerId: package.managerId)
-        guard !managerPackages.isEmpty else { return [] }
-
-        var badges: [String] = []
-        if package.status == .available,
-           let originLabel = package.resultProvenance?.origin.localizedLabel {
-            badges.append(originLabel)
-        }
-        let distinctVersions = Set(
-            managerPackages.compactMap { candidate -> String? in
-                let normalizedVersion = candidate.version.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard PackageIdentity.hasKnownVersion(normalizedVersion) else { return nil }
-                return normalizedVersion
-            }
-        )
-        let versionCount = distinctVersions.isEmpty ? managerPackages.count : distinctVersions.count
-        if versionCount > 1 {
-            badges.append(
-                L10n.App.Packages.Label.versionCount.localized(with: [
-                    "count": "\(versionCount)"
-                ])
-            )
-        }
-        if managerPackages.contains(where: { $0.runtimeState.isActive }) {
-            badges.append(L10n.App.Inspector.packageRuntimeStateActive.localized)
-        }
-        if managerPackages.contains(where: { $0.runtimeState.isDefault }) {
-            badges.append(L10n.App.Inspector.packageRuntimeStateDefault.localized)
-        }
-        if managerPackages.contains(where: { $0.runtimeState.hasOverride }) {
-            badges.append(L10n.App.Inspector.packageRuntimeStateOverride.localized)
-        }
-        return badges
     }
 
     private var installSelectionCandidates: [PackageItem] {

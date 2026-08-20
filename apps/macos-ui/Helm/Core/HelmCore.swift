@@ -480,7 +480,9 @@ final class HelmCore: ObservableObject {
     @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
-    @Published var searchResults: [PackageItem] = []
+    @Published var searchResults: [PackageItem] = [] {
+        didSet { invalidateSearchOverlayIfNeeded(previousResults: oldValue) }
+    }
     @Published var cachedAvailablePackages: [PackageItem] = [] {
         didSet {
             invalidateKnownPackageCaches()
@@ -497,18 +499,20 @@ final class HelmCore: ObservableObject {
     @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = [] {
         didSet {
-            invalidateKnownPackageCaches()
             scheduleDerivedViewStateRefresh()
         }
     }
     @Published var managerStatuses: [String: ManagerStatus] = [:] {
         didSet {
-            invalidateKnownPackageCaches()
+            invalidateKnownPackagesIfManagerEnablementChanged(previousStatuses: oldValue)
             scheduleDerivedViewStateRefresh()
         }
     }
     @Published var managerPriorityOverrides: [String: Int] = HelmCore.loadManagerPriorityOverrides() {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var managerOperations: [String: String] = [:] {
         didSet { scheduleDerivedViewStateRefresh() }
@@ -629,6 +633,14 @@ final class HelmCore: ObservableObject {
     var cachedAllKnownPackagesUnsorted: [PackageItem]?
     var cachedAllKnownPackagesSorted: [PackageItem]?
     var cachedKnownPackageById: [String: PackageItem] = [:]
+    var packageIndexSourceRevision: UInt64 = 0
+    var searchResultsRevision: UInt64 = 0
+    var libraryPackageIndexCache = LibraryPackageIndexCache()
+    var libraryPackageSearchOverlayCache = LibraryPackageSearchOverlayCache()
+    var cachedLibraryPackageIndex: LibraryPackageIndex? {
+        get { libraryPackageIndexCache.cachedIndex }
+        set { libraryPackageIndexCache.replace(newValue, sourceRevision: packageIndexSourceRevision) }
+    }
     private var packageDescriptionRenderCache: [String: PackageDescriptionRenderCacheEntry] = [:]
     private var packageDescriptionRenderCacheOrder: [String] = []
     private static let maxPackageDescriptionRenderCacheEntries = 256
@@ -639,6 +651,14 @@ final class HelmCore: ObservableObject {
     }
 
     private init() {
+        #if DEBUG
+        if LibraryPerformanceBenchmarkConfiguration.iterations() != nil {
+            isInitialized = true
+            isConnected = true
+            networkAvailability = .available
+            return
+        }
+        #endif
         appUpdateAvailabilityCancellable = AppUpdateCoordinator.shared.$availableUpdate
             .receive(on: DispatchQueue.main)
             .sink { [weak self] availability in
@@ -746,29 +766,6 @@ final class HelmCore: ObservableObject {
             return [:]
         }
         return decoded
-    }
-
-    func invalidateKnownPackageCaches() {
-        cachedAllKnownPackagesUnsorted = nil
-        cachedAllKnownPackagesSorted = nil
-        cachedKnownPackageById = [:]
-    }
-
-    static func requiresLicenseTermsAcceptance(
-        channel: HelmDistributionChannel,
-        acceptedVersion: String?
-    ) -> Bool {
-        AppUpdateConfiguration.requiresLicenseTermsAcceptance(
-            channel: channel,
-            acceptedVersion: acceptedVersion
-        )
-    }
-
-    var requiresLicenseTermsAcceptance: Bool {
-        Self.requiresLicenseTermsAcceptance(
-            channel: HelmDistributionChannel.from(),
-            acceptedVersion: acceptedLicenseTermsVersion
-        )
     }
 
     private func persistSharedOnboardingCompleted(_ completed: Bool) {

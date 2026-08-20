@@ -2,6 +2,114 @@ import AppKit
 import XCTest
 
 final class LibraryTableViewTests: XCTestCase {
+    func testPerformanceBenchmarkIterationConfigurationIsDebugOnlyAndBounded() {
+        XCTAssertNil(LibraryPerformanceBenchmarkConfiguration.iterations(environment: [:]))
+        XCTAssertNil(
+            LibraryPerformanceBenchmarkConfiguration.iterations(
+                environment: [
+                    LibraryPerformanceBenchmarkConfiguration.iterationsEnvironmentKey: "29"
+                ]
+            )
+        )
+        XCTAssertNil(
+            LibraryPerformanceBenchmarkConfiguration.iterations(
+                environment: [
+                    LibraryPerformanceBenchmarkConfiguration.iterationsEnvironmentKey: "101"
+                ]
+            )
+        )
+        #if DEBUG
+        XCTAssertEqual(
+            LibraryPerformanceBenchmarkConfiguration.iterations(
+                environment: [
+                    LibraryPerformanceBenchmarkConfiguration.iterationsEnvironmentKey: " 30 "
+                ]
+            ),
+            30
+        )
+        #else
+        XCTAssertNil(
+            LibraryPerformanceBenchmarkConfiguration.iterations(
+                environment: [
+                    LibraryPerformanceBenchmarkConfiguration.iterationsEnvironmentKey: "30"
+                ]
+            )
+        )
+        #endif
+    }
+
+    func testPerformanceSummaryUsesMedianNearestRankP95AndWorst() throws {
+        let summary = try XCTUnwrap(
+            LibraryPerformanceSampleSummary(samples: Array(1...30).map(Double.init))
+        )
+
+        XCTAssertEqual(summary.medianMilliseconds, 15.5)
+        XCTAssertEqual(summary.p95Milliseconds, 29)
+        XCTAssertEqual(summary.worstMilliseconds, 30)
+        XCTAssertNil(LibraryPerformanceSampleSummary(samples: []))
+    }
+
+    func testIndexedSearchPolicyPreservesQueryAndManagerSemantics() {
+        let member = LibraryPackageIndexMemberFacts(
+            managerID: "cargo",
+            status: "available",
+            isPinned: false,
+            normalizedIdentityKey: "ripgrep@nightly",
+            managerSearchText: "cargo",
+            summarySearchText: "fast recursive search"
+        )
+
+        XCTAssertTrue(matchesIndexedMember(member, query: "ripgrep"))
+        XCTAssertTrue(
+            matchesIndexedMember(
+                member,
+                query: "ripgrep@nightly-2026-08-19",
+                normalizedQuery: "ripgrep@nightly"
+            )
+        )
+        XCTAssertTrue(matchesIndexedMember(member, query: "cargo"))
+        XCTAssertTrue(matchesIndexedMember(member, query: "recursive"))
+        XCTAssertFalse(matchesIndexedMember(member, query: "missing"))
+        XCTAssertFalse(matchesIndexedMember(member, query: "ripgrep", managerID: "npm"))
+        XCTAssertFalse(
+            matchesIndexedMember(member, query: "ripgrep", participatesInSearch: false)
+        )
+    }
+
+    func testIndexedSearchPolicyPreservesPinnedAndStatusFilters() {
+        let pinnedUpgrade = LibraryPackageIndexMemberFacts(
+            managerID: "homebrew_formula",
+            status: "upgradable",
+            isPinned: true,
+            normalizedIdentityKey: "ripgrep",
+            managerSearchText: "homebrew",
+            summarySearchText: ""
+        )
+        let unpinnedUpgrade = LibraryPackageIndexMemberFacts(
+            managerID: pinnedUpgrade.managerID,
+            status: pinnedUpgrade.status,
+            isPinned: false,
+            normalizedIdentityKey: pinnedUpgrade.normalizedIdentityKey,
+            managerSearchText: pinnedUpgrade.managerSearchText,
+            summarySearchText: pinnedUpgrade.summarySearchText
+        )
+
+        XCTAssertFalse(
+            matchesIndexedMember(pinnedUpgrade, query: "", statusFilter: "upgradable")
+        )
+        XCTAssertTrue(
+            matchesIndexedMember(unpinnedUpgrade, query: "", statusFilter: "upgradable")
+        )
+        XCTAssertTrue(
+            matchesIndexedMember(pinnedUpgrade, query: "", statusFilter: "installed")
+        )
+        XCTAssertTrue(matchesIndexedMember(pinnedUpgrade, query: "", pinnedOnly: true))
+        XCTAssertFalse(matchesIndexedMember(unpinnedUpgrade, query: "", pinnedOnly: true))
+        XCTAssertFalse(
+            matchesIndexedMember(unpinnedUpgrade, query: "", statusFilter: "available")
+        )
+    }
+
     func testSelectionFindsConsolidatedRowForExactMemberPackage() {
         let rows = [
             makeRow(
@@ -392,7 +500,7 @@ final class LibraryTableViewTests: XCTestCase {
         onClearSelection: @escaping () -> Void = {}
     ) -> LibraryTableView {
         LibraryTableView(
-            rows: rows,
+            snapshot: .semantic(namespace: "library-table-tests", rows: rows),
             selectedRowID: selectedRowID,
             columnLabels: makeColumnLabels(),
             accessibilityLabel: "Library",
@@ -402,6 +510,26 @@ final class LibraryTableViewTests: XCTestCase {
             onShowDetails: { _ in },
             onPerformAction: { _ in },
             onFulfillFocusRequest: { _ in }
+        )
+    }
+
+    private func matchesIndexedMember(
+        _ member: LibraryPackageIndexMemberFacts,
+        query: String,
+        normalizedQuery: String? = nil,
+        managerID: String? = nil,
+        statusFilter: String? = nil,
+        pinnedOnly: Bool = false,
+        participatesInSearch: Bool = true
+    ) -> Bool {
+        LibraryPackageIndexMatchPolicy.matches(
+            member,
+            queryToken: query,
+            normalizedQueryToken: normalizedQuery ?? query,
+            managerID: managerID,
+            statusFilter: statusFilter,
+            pinnedOnly: pinnedOnly,
+            managerParticipatesInSearch: { _ in participatesInSearch }
         )
     }
 
