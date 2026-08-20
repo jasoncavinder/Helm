@@ -824,6 +824,7 @@ extension L10n {
                 static let restore = "app.activity.research.action.restore"
                 static let keep = "app.activity.research.action.keep"
                 static let copyDiagnostics = "app.activity.research.action.copy_diagnostics"
+                static let explainUnavailable = "app.activity.research.action.explain_unavailable"
                 static let reviewTitle = "app.activity.research.review.title"
                 static let readOnlyNotice = "app.activity.research.read_only_notice"
                 static let diagnosticsCopied = "app.activity.research.diagnostics_copied"

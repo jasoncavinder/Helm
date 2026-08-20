@@ -3,6 +3,7 @@ import AppKit
 
 struct TasksSectionView: View {
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var localization = LocalizationManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     private let researchActivityProjection = WholeWorkflowResearchDatasetProvider
         .activeActivityProjection()
@@ -190,6 +191,7 @@ private struct ResearchActivityRow: View {
         .accessibilityValue(
             "\(activity.localizedStatus). \(activity.localizedSummary)"
         )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -292,6 +294,7 @@ struct ResearchActivityInspectorView: View {
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .disabled(!action.allowed)
                 .helmPointer(enabled: action.allowed)
+                .accessibilityValue(action.reasonKey.localized)
             } else {
                 Button(action.localizedTitle) {
                     handle(action)
@@ -299,12 +302,25 @@ struct ResearchActivityInspectorView: View {
                 .buttonStyle(HelmSecondaryButtonStyle())
                 .disabled(!action.allowed)
                 .helmPointer(enabled: action.allowed)
+                .accessibilityValue(action.reasonKey.localized)
+            }
+
+            if ResearchRecoveryInteractionPolicy.interaction(
+                for: action
+            ) == .unavailableExplanation {
+                Button(unavailableExplanationTitle(for: action)) {
+                    handle(action)
+                }
+                .buttonStyle(HelmTertiaryButtonStyle())
+                .helmPointer()
+                .accessibilityValue(action.reasonKey.localized)
             }
 
             Text(action.reasonKey.localized)
                 .font(.caption)
                 .foregroundColor(HelmTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
 
             if action.kind == .copyDiagnostics, copiedDiagnostics {
                 Label(
@@ -319,17 +335,30 @@ struct ResearchActivityInspectorView: View {
     }
 
     private func handle(_ action: WholeWorkflowResearchRecoveryAction) {
-        guard action.allowed else { return }
-        if action.kind == .copyDiagnostics {
+        switch ResearchRecoveryInteractionPolicy.interaction(for: action) {
+        case .copyDiagnostics:
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             copiedDiagnostics = pasteboard.setString(
                 projection.redactedDiagnostics(for: activity),
                 forType: .string
             )
-        } else {
+            if copiedDiagnostics {
+                HelmCore.shared.postAccessibilityAnnouncement(
+                    L10n.App.Activity.Research.diagnosticsCopied.localized
+                )
+            }
+        case .readOnlyReview, .unavailableExplanation:
             reviewedAction = action
         }
+    }
+
+    private func unavailableExplanationTitle(
+        for action: WholeWorkflowResearchRecoveryAction
+    ) -> String {
+        L10n.App.Activity.Research.explainUnavailable.localized(with: [
+            "action": action.localizedTitle,
+        ])
     }
 }
 
@@ -345,6 +374,7 @@ private struct ResearchInspectorField<Content: View>: View {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -354,12 +384,8 @@ private struct ResearchRecoveryReviewSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(
-                L10n.App.Activity.Research.reviewTitle.localized(with: [
-                    "action": action.localizedTitle,
-                ])
-            )
-            .font(.title2.weight(.semibold))
+            Text(title)
+                .font(.title2.weight(.semibold))
 
             Text(action.reasonKey.localized)
                 .font(.body)
@@ -382,6 +408,19 @@ private struct ResearchRecoveryReviewSheet: View {
         }
         .padding(24)
         .frame(width: 420)
+    }
+
+    private var title: String {
+        switch ResearchRecoveryInteractionPolicy.interaction(for: action) {
+        case .unavailableExplanation:
+            return L10n.App.Activity.Research.explainUnavailable.localized(with: [
+                "action": action.localizedTitle,
+            ])
+        case .readOnlyReview, .copyDiagnostics:
+            return L10n.App.Activity.Research.reviewTitle.localized(with: [
+                "action": action.localizedTitle,
+            ])
+        }
     }
 }
 

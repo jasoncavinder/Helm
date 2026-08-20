@@ -423,6 +423,7 @@
   "app.activity.research.action.restore": "Restore",
   "app.activity.research.action.keep": "Keep Change",
   "app.activity.research.action.copy_diagnostics": "Copy Diagnostics",
+  "app.activity.research.action.explain_unavailable": "Why {action} Is Unavailable",
   "app.activity.research.review.title": "Review {action}",
   "app.activity.research.read_only_notice": "Research fixture: this review is read-only and will not run recovery work or change your Mac.",
   "app.activity.research.diagnostics_copied": "Redacted diagnostics copied",

@@ -999,6 +999,23 @@ struct WholeWorkflowResearchRecoveryAction: Identifiable, Equatable {
     let reasonKey: String
 }
 
+enum WholeWorkflowResearchRecoveryInteraction: Equatable {
+    case readOnlyReview
+    case unavailableExplanation
+    case copyDiagnostics
+}
+
+enum ResearchRecoveryInteractionPolicy {
+    static func interaction(
+        for action: WholeWorkflowResearchRecoveryAction
+    ) -> WholeWorkflowResearchRecoveryInteraction {
+        guard action.allowed else {
+            return .unavailableExplanation
+        }
+        return action.kind == .copyDiagnostics ? .copyDiagnostics : .readOnlyReview
+    }
+}
+
 struct WholeWorkflowResearchActivity: Identifiable, Equatable {
     let id: String
     let taskID: UInt64

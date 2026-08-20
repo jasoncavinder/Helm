@@ -482,6 +482,24 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         }
     }
 
+    func testTaskFourRecoveryInteractionsAreReadOnly() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            WholeWorkflowResearchActivityProjector.project(dataset)
+        )
+        let activity = try XCTUnwrap(
+            projection.activity(withSelectionID: "7001")
+        )
+        let interactions = projection.recoveryActions(for: activity).map {
+            ResearchRecoveryInteractionPolicy.interaction(for: $0)
+        }
+
+        XCTAssertEqual(
+            interactions,
+            [.readOnlyReview, .unavailableExplanation, .readOnlyReview, .copyDiagnostics]
+        )
+    }
+
     func testTaskFourProjectionFailsClosedForScenarioAndRecoveryDrift() throws {
         let source = try String(contentsOf: fixtureURL, encoding: .utf8)
         let wrongSurface = try replacingFirst(

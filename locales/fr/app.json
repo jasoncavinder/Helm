@@ -423,6 +423,7 @@
   "app.activity.research.action.restore": "Restaurer",
   "app.activity.research.action.keep": "Conserver la modification",
   "app.activity.research.action.copy_diagnostics": "Copier le diagnostic",
+  "app.activity.research.action.explain_unavailable": "Pourquoi {action} est indisponible",
   "app.activity.research.review.title": "Examiner : {action}",
   "app.activity.research.read_only_notice": "Données de recherche : cet examen est en lecture seule et n’exécutera aucune récupération ni modification du Mac.",
   "app.activity.research.diagnostics_copied": "Diagnostic expurgé copié",

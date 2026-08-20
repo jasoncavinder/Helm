@@ -423,6 +423,7 @@
   "app.activity.research.action.restore": "復元",
   "app.activity.research.action.keep": "変更を保持",
   "app.activity.research.action.copy_diagnostics": "診断情報をコピー",
+  "app.activity.research.action.explain_unavailable": "「{action}」を利用できない理由",
   "app.activity.research.review.title": "{action} を確認",
   "app.activity.research.read_only_notice": "調査用データです。この確認は読み取り専用で、復旧処理の実行や Mac の変更は行いません。",
   "app.activity.research.diagnostics_copied": "秘匿化された診断情報をコピーしました",

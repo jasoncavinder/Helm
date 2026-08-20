@@ -423,6 +423,7 @@
   "app.activity.research.action.restore": "Visszaállítás",
   "app.activity.research.action.keep": "Módosítás megtartása",
   "app.activity.research.action.copy_diagnostics": "Diagnosztika másolása",
+  "app.activity.research.action.explain_unavailable": "{action}: miért nem érhető el?",
   "app.activity.research.review.title": "{action} áttekintése",
   "app.activity.research.read_only_notice": "Kutatási adatkészlet: ez az áttekintés csak olvasható, nem futtat helyreállítást és nem módosítja a Macet.",
   "app.activity.research.diagnostics_copied": "Kitakart diagnosztika másolva",

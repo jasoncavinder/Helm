@@ -423,6 +423,7 @@
   "app.activity.research.action.restore": "Restaurar",
   "app.activity.research.action.keep": "Conservar cambio",
   "app.activity.research.action.copy_diagnostics": "Copiar diagnóstico",
+  "app.activity.research.action.explain_unavailable": "Por qué {action} no está disponible",
   "app.activity.research.review.title": "Revisar {action}",
   "app.activity.research.read_only_notice": "Datos de investigación: esta revisión es de solo lectura y no ejecutará la recuperación ni cambiará el Mac.",
   "app.activity.research.diagnostics_copied": "Diagnóstico redactado copiado",
