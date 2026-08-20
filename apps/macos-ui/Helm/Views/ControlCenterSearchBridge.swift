@@ -95,6 +95,146 @@ struct ResearchSearchPresentationState {
     }
 }
 
+struct RemoteSearchSessionToken: Equatable {
+    let generation: UInt64
+    let query: String
+}
+
+struct RemoteSearchQueryTransition: Equatable {
+    let token: RemoteSearchSessionToken?
+    let taskIDsToCancel: Set<Int64>
+    let didChange: Bool
+}
+
+enum RemoteSearchSubmissionResolution: Equatable {
+    case tracked
+    case cancelStaleTask(Int64)
+    case currentFailure
+    case staleFailure
+}
+
+struct RemoteSearchSessionState: Equatable {
+    private static let missingTaskSnapshotGraceCount = 2
+
+    private(set) var token: RemoteSearchSessionToken?
+    private(set) var activeTaskIDs: Set<Int64> = []
+    private(set) var pendingSubmissionCount = 0
+
+    private var generation: UInt64 = 0
+    private var queryIdentity = ""
+    private var hasSubmittedCurrentQuery = false
+    private var missingTaskSnapshotCounts: [Int64: Int] = [:]
+
+    var isSearching: Bool {
+        token != nil && (pendingSubmissionCount > 0 || !activeTaskIDs.isEmpty)
+    }
+
+    mutating func updateQuery(_ query: String) -> RemoteSearchQueryTransition {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextIdentity = normalizedQuery.lowercased()
+        guard nextIdentity != queryIdentity else {
+            return RemoteSearchQueryTransition(
+                token: token,
+                taskIDsToCancel: [],
+                didChange: false
+            )
+        }
+
+        let taskIDsToCancel = activeTaskIDs
+        generation &+= 1
+        queryIdentity = nextIdentity
+        token = normalizedQuery.isEmpty
+            ? nil
+            : RemoteSearchSessionToken(generation: generation, query: normalizedQuery)
+        activeTaskIDs = []
+        pendingSubmissionCount = 0
+        hasSubmittedCurrentQuery = false
+        missingTaskSnapshotCounts = [:]
+
+        return RemoteSearchQueryTransition(
+            token: token,
+            taskIDsToCancel: taskIDsToCancel,
+            didChange: true
+        )
+    }
+
+    mutating func beginSubmissions(
+        for token: RemoteSearchSessionToken,
+        count: Int
+    ) -> Bool {
+        guard count >= 1,
+              self.token == token,
+              !hasSubmittedCurrentQuery else {
+            return false
+        }
+
+        hasSubmittedCurrentQuery = true
+        pendingSubmissionCount = count
+        return true
+    }
+
+    mutating func resolveSubmission(
+        for token: RemoteSearchSessionToken,
+        taskID: Int64
+    ) -> RemoteSearchSubmissionResolution {
+        guard self.token == token else {
+            return taskID >= 0 ? .cancelStaleTask(taskID) : .staleFailure
+        }
+
+        if pendingSubmissionCount > 0 {
+            pendingSubmissionCount -= 1
+        }
+        guard taskID >= 0 else { return .currentFailure }
+
+        activeTaskIDs.insert(taskID)
+        missingTaskSnapshotCounts.removeValue(forKey: taskID)
+        return .tracked
+    }
+
+    mutating func finish(taskIDs: Set<Int64>) {
+        activeTaskIDs.subtract(taskIDs)
+        for taskID in taskIDs {
+            missingTaskSnapshotCounts.removeValue(forKey: taskID)
+        }
+    }
+
+    mutating func reconcileTaskSnapshot(
+        visibleTaskIDs: Set<Int64>,
+        terminalTaskIDs: Set<Int64>
+    ) {
+        finish(taskIDs: activeTaskIDs.intersection(terminalTaskIDs))
+
+        var taskIDsToRetire: Set<Int64> = []
+        for taskID in activeTaskIDs {
+            guard !visibleTaskIDs.contains(taskID) else {
+                missingTaskSnapshotCounts.removeValue(forKey: taskID)
+                continue
+            }
+
+            let missingSnapshotCount = missingTaskSnapshotCounts[taskID, default: 0] + 1
+            if missingSnapshotCount >= Self.missingTaskSnapshotGraceCount {
+                taskIDsToRetire.insert(taskID)
+            } else {
+                missingTaskSnapshotCounts[taskID] = missingSnapshotCount
+            }
+        }
+        finish(taskIDs: taskIDsToRetire)
+    }
+
+    @discardableResult
+    mutating func reset() -> Set<Int64> {
+        let taskIDsToCancel = activeTaskIDs
+        generation &+= 1
+        queryIdentity = ""
+        token = nil
+        activeTaskIDs = []
+        pendingSubmissionCount = 0
+        hasSubmittedCurrentQuery = false
+        missingTaskSnapshotCounts = [:]
+        return taskIDsToCancel
+    }
+}
+
 struct LibraryPackageFocusRequest: Equatable {
     let id: Int
     let packageID: String

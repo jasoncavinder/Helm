@@ -1859,53 +1859,41 @@ extension HelmCore {
     func onSearchTextChanged(_ query: String) {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // 1. Instant local cache query
+        // Local results remain instant while the remote generation is debounced.
         fetchSearchResults(query: normalizedQuery)
 
-        // 2. Cancel in-flight remote search
-        cancelActiveRemoteSearch()
+        let transition = remoteSearchSession.updateQuery(normalizedQuery)
+        guard transition.didChange else { return }
 
-        // 3. Invalidate debounce timer
         searchDebounceTimer?.invalidate()
         searchDebounceTimer = nil
+        requestRemoteSearchCancellation(for: transition.taskIDsToCancel)
 
-        // 4. If empty, clear state and return
-        guard !normalizedQuery.isEmpty else {
-            isSearching = false
-            return
-        }
+        guard let token = transition.token else { return }
 
-        // 5. Start 300ms debounce timer for remote search
         searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            self?.triggerRemoteSearch(query: normalizedQuery)
+            self?.searchDebounceTimer = nil
+            self?.triggerRemoteSearch(for: token)
         }
     }
 
-    func triggerRemoteSearch(query: String) {
-        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedQuery.isEmpty else {
-            isSearching = false
-            return
-        }
-        guard networkOperationsAvailable else {
-            isSearching = false
-            return
-        }
+    func triggerRemoteSearch(for token: RemoteSearchSessionToken) {
+        guard networkOperationsAvailable, let remoteSearchService = service() else { return }
 
         let managerIds = remoteSearchManagerIds()
-        guard !managerIds.isEmpty else {
-            isSearching = false
-            return
-        }
+        guard remoteSearchSession.beginSubmissions(for: token, count: managerIds.count) else { return }
 
-        isSearching = true
         for managerId in managerIds {
-            service()?.triggerRemoteSearchForManager(managerId: managerId, query: normalizedQuery) { [weak self] taskId in
+            remoteSearchService.triggerRemoteSearchForManager(managerId: managerId, query: token.query) { [weak self] taskId in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
-                    if taskId >= 0 {
-                        self.activeRemoteSearchTaskIds.insert(taskId)
-                    } else {
+
+                    switch self.remoteSearchSession.resolveSubmission(for: token, taskID: taskId) {
+                    case .tracked:
+                        break
+                    case .cancelStaleTask(let staleTaskID):
+                        self.requestRemoteSearchCancellation(for: [staleTaskID])
+                    case .currentFailure:
                         logger.warning("triggerRemoteSearchForManager(\(managerId)) returned error")
                         self.recordLastError(
                             source: "core.actions",
@@ -1913,6 +1901,8 @@ extension HelmCore {
                             managerId: managerId,
                             taskType: "search"
                         )
+                    case .staleFailure:
+                        logger.debug("Ignoring stale remote search submission failure for \(managerId)")
                     }
                 }
             }
@@ -1920,23 +1910,21 @@ extension HelmCore {
     }
 
     func cancelActiveRemoteSearch() {
-        let inFlightTaskIds = Set(
-            activeTasks.compactMap { task -> Int64? in
-                guard task.taskType?.lowercased() == "search", task.isRunning else { return nil }
-                return Int64(task.id)
-            }
-        )
-        let taskIdsToCancel = activeRemoteSearchTaskIds.union(inFlightTaskIds)
-        activeRemoteSearchTaskIds = []
-        isSearching = false
+        searchDebounceTimer?.invalidate()
+        searchDebounceTimer = nil
+        requestRemoteSearchCancellation(for: remoteSearchSession.reset())
+    }
 
-        for taskId in taskIdsToCancel {
-            service()?.cancelTask(taskId: taskId) { success in
-                if !success {
-                    logger.warning("cancelTask(\(taskId)) returned false")
-                    self.recordLastError(
+    private func requestRemoteSearchCancellation(for taskIDs: Set<Int64>) {
+        guard !taskIDs.isEmpty, let remoteSearchService = service() else { return }
+        for taskID in taskIDs {
+            remoteSearchService.cancelRemoteSearchTask(taskId: taskID) { [weak self] success in
+                guard !success else { return }
+                DispatchQueue.main.async {
+                    logger.warning("cancelRemoteSearchTask(\(taskID)) returned false")
+                    self?.recordLastError(
                         source: "core.actions",
-                        action: "cancelTask",
+                        action: "cancelRemoteSearchTask",
                         taskType: "search"
                     )
                 }
@@ -1945,8 +1933,9 @@ extension HelmCore {
     }
 
     func clearSearchState() {
-        activeRemoteSearchTaskIds = []
-        isSearching = false
+        searchDebounceTimer?.invalidate()
+        searchDebounceTimer = nil
+        remoteSearchSession.reset()
     }
 
     func ensurePackageDescription(for package: PackageItem) {
@@ -2034,7 +2023,10 @@ extension HelmCore {
 
         let tracker = DescriptionLookupSubmissionTracker(remaining: lookupCandidates.count)
         for candidate in lookupCandidates {
-            service.triggerRemoteSearchForManager(managerId: candidate.managerId, query: package.name) { [weak self] taskId in
+            service.triggerPackageDescriptionSearchForManager(
+                managerId: candidate.managerId,
+                query: package.name
+            ) { [weak self] taskId in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
 
@@ -2042,12 +2034,11 @@ extension HelmCore {
                         var taskIds = self.descriptionLookupTaskIdsByPackage[package.id] ?? Set<UInt64>()
                         taskIds.insert(UInt64(taskId))
                         self.descriptionLookupTaskIdsByPackage[package.id] = taskIds
-                        self.activeRemoteSearchTaskIds.insert(taskId)
                         tracker.queuedTaskCount += 1
                     } else {
                         self.recordLastError(
                             source: "core.actions",
-                            action: "ensurePackageDescription.triggerRemoteSearchForManager",
+                            action: "ensurePackageDescription.triggerPackageDescriptionSearchForManager",
                             managerId: candidate.managerId,
                             taskType: "search"
                         )

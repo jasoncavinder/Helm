@@ -21,6 +21,7 @@
 		8CE1FDCB2F3D2AD8000A3945 /* HelmService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 8CE1FDC02F3D2AD7000A3945 /* HelmService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
 		8CE1FDD32F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
+		R51700000000000000000001 /* HelmServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD12F3D2B84000A3945 /* HelmServiceProtocol.swift */; };
 		8CE1FDD82F3D2BAA000A3945 /* HelmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD52F3D2BA9000A3945 /* HelmService.swift */; };
 		8CE1FDD92F3D2BAA000A3945 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD62F3D2BA9000A3945 /* main.swift */; };
 		8CE1FDDA2F3D2BAA000A3945 /* HelmServiceDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE1FDD72F3D2BA9000A3945 /* HelmServiceDelegate.swift */; };
@@ -908,6 +909,7 @@
 		C10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				R51700000000000000000001 /* HelmServiceProtocol.swift in Sources */,
 				R43000000000000000000002 /* PrivilegedHelperRegistration.swift in Sources */,
 				R43000000000000000000003 /* PrivilegedHelperRegistrationTests.swift in Sources */,
 				R4281000000000000000000A /* PrivilegedHelperModels.swift in Sources */,

@@ -24,6 +24,8 @@ import Foundation
     func searchLocal(query: String, withReply reply: @escaping (String?) -> Void)
     func triggerRemoteSearch(query: String, withReply reply: @escaping (Int64) -> Void)
     func triggerRemoteSearchForManager(managerId: String, query: String, withReply reply: @escaping (Int64) -> Void)
+    func triggerPackageDescriptionSearchForManager(managerId: String, query: String, withReply reply: @escaping (Int64) -> Void)
+    func cancelRemoteSearchTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func cancelTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func dismissTask(taskId: Int64, withReply reply: @escaping (Bool) -> Void)
     func listManagerStatus(withReply reply: @escaping (String?) -> Void)

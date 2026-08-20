@@ -288,33 +288,22 @@ extension HelmCore {
                     }
                 }
 
-                let inFlightSearchTaskIds = Set(
+                let visibleTaskIDs = Set(coreTasks.compactMap { Int64(exactly: $0.id) })
+                let terminalRemoteSearchTaskIDs = Set(
                     coreTasks.compactMap { task -> Int64? in
                         let taskType = task.taskType.lowercased()
                         let status = task.status.lowercased()
                         guard taskType == "search",
-                              status == "queued" || status == "running" else {
+                              status != "queued" && status != "running" else {
                             return nil
                         }
-                        return Int64(task.id)
+                        return Int64(exactly: task.id)
                     }
                 )
-                let inFlightInteractiveSearchTaskIds = Set(
-                    coreTasks.compactMap { task -> Int64? in
-                        let taskType = task.taskType.lowercased()
-                        let status = task.status.lowercased()
-                        guard taskType == "search",
-                              status == "queued" || status == "running" else {
-                            return nil
-                        }
-                        let query = task.labelArgs?["query"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard let query, !query.isEmpty else { return nil }
-                        return Int64(task.id)
-                    }
+                self.remoteSearchSession.reconcileTaskSnapshot(
+                    visibleTaskIDs: visibleTaskIDs,
+                    terminalTaskIDs: terminalRemoteSearchTaskIDs
                 )
-                self.activeRemoteSearchTaskIds = inFlightSearchTaskIds
-                let hasQuery = !self.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                self.isSearching = hasQuery && !inFlightInteractiveSearchTaskIds.isEmpty
             }
         }
     }

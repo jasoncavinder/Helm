@@ -114,6 +114,208 @@ final class ResearchSearchPresentationStateTests: XCTestCase {
     }
 }
 
+final class RemoteSearchSessionStateTests: XCTestCase {
+    func testQueryStartsIdleUntilItsSubmissionsBegin() throws {
+        var state = RemoteSearchSessionState()
+
+        let transition = state.updateQuery("  Ripgrep  ")
+        let token = try XCTUnwrap(transition.token)
+
+        XCTAssertTrue(transition.didChange)
+        XCTAssertEqual(token.query, "Ripgrep")
+        XCTAssertTrue(transition.taskIDsToCancel.isEmpty)
+        XCTAssertFalse(state.isSearching)
+
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 2))
+        XCTAssertTrue(state.isSearching)
+        XCTAssertEqual(state.pendingSubmissionCount, 2)
+    }
+
+    func testSameNormalizedQueryPreservesTheCurrentSession() throws {
+        var state = RemoteSearchSessionState()
+        let firstToken = try XCTUnwrap(state.updateQuery("Ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: firstToken, count: 1))
+        XCTAssertEqual(state.resolveSubmission(for: firstToken, taskID: 41), .tracked)
+
+        let transition = state.updateQuery("  RIPGREP  ")
+
+        XCTAssertFalse(transition.didChange)
+        XCTAssertEqual(transition.token, firstToken)
+        XCTAssertTrue(transition.taskIDsToCancel.isEmpty)
+        XCTAssertEqual(state.activeTaskIDs, [41])
+        XCTAssertTrue(state.isSearching)
+    }
+
+    func testNewQueryCancelsOnlyTasksOwnedByThePreviousSession() throws {
+        var state = RemoteSearchSessionState()
+        let firstToken = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: firstToken, count: 2))
+        XCTAssertEqual(state.resolveSubmission(for: firstToken, taskID: 41), .tracked)
+        XCTAssertEqual(state.resolveSubmission(for: firstToken, taskID: 42), .tracked)
+
+        let transition = state.updateQuery("cargo")
+
+        XCTAssertEqual(transition.taskIDsToCancel, [41, 42])
+        XCTAssertTrue(state.activeTaskIDs.isEmpty)
+        XCTAssertEqual(state.pendingSubmissionCount, 0)
+        XCTAssertFalse(state.isSearching)
+    }
+
+    func testLateSubmissionIsCancelledInsteadOfJoiningTheReplacementSession() throws {
+        var state = RemoteSearchSessionState()
+        let staleToken = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: staleToken, count: 1))
+        let currentToken = try XCTUnwrap(state.updateQuery("cargo").token)
+        XCTAssertTrue(state.beginSubmissions(for: currentToken, count: 1))
+
+        XCTAssertEqual(
+            state.resolveSubmission(for: staleToken, taskID: 41),
+            .cancelStaleTask(41)
+        )
+        XCTAssertTrue(state.activeTaskIDs.isEmpty)
+        XCTAssertEqual(state.pendingSubmissionCount, 1)
+
+        XCTAssertEqual(state.resolveSubmission(for: currentToken, taskID: 42), .tracked)
+        XCTAssertEqual(state.activeTaskIDs, [42])
+    }
+
+    func testStaleFailureDoesNotAffectTheCurrentSession() throws {
+        var state = RemoteSearchSessionState()
+        let staleToken = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: staleToken, count: 1))
+        let currentToken = try XCTUnwrap(state.updateQuery("cargo").token)
+        XCTAssertTrue(state.beginSubmissions(for: currentToken, count: 1))
+
+        XCTAssertEqual(
+            state.resolveSubmission(for: staleToken, taskID: -1),
+            .staleFailure
+        )
+        XCTAssertEqual(state.pendingSubmissionCount, 1)
+        XCTAssertTrue(state.isSearching)
+    }
+
+    func testCurrentFailuresFinishPendingSubmissionsWithoutInventingTasks() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 2))
+
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: -1), .currentFailure)
+        XCTAssertTrue(state.isSearching)
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: -1), .currentFailure)
+        XCTAssertFalse(state.isSearching)
+        XCTAssertTrue(state.activeTaskIDs.isEmpty)
+    }
+
+    func testTerminalTaskSnapshotsCanOnlyFinishExplicitlyOwnedTasks() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 2))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 42), .tracked)
+
+        state.reconcileTaskSnapshot(
+            visibleTaskIDs: [41, 42, 99],
+            terminalTaskIDs: [42, 99]
+        )
+
+        XCTAssertEqual(state.activeTaskIDs, [41])
+        XCTAssertTrue(state.isSearching)
+        state.reconcileTaskSnapshot(
+            visibleTaskIDs: [41],
+            terminalTaskIDs: [41]
+        )
+        XCTAssertFalse(state.isSearching)
+    }
+
+    func testOneMissingSnapshotCannotRetireAJustReturnedTask() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 1))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+
+        // This can be an older listTasks request that began before task 41 was submitted.
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+
+        XCTAssertEqual(state.activeTaskIDs, [41])
+        XCTAssertTrue(state.isSearching)
+    }
+
+    func testConsecutiveMissingSnapshotsRetireAnOwnedTask() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 1))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+
+        XCTAssertTrue(state.activeTaskIDs.isEmpty)
+        XCTAssertFalse(state.isSearching)
+    }
+
+    func testVisibleTaskResetsMissingSnapshotGrace() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 1))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+        state.reconcileTaskSnapshot(visibleTaskIDs: [41], terminalTaskIDs: [])
+        state.reconcileTaskSnapshot(visibleTaskIDs: [], terminalTaskIDs: [])
+
+        XCTAssertEqual(state.activeTaskIDs, [41])
+        XCTAssertTrue(state.isSearching)
+    }
+
+    func testResetInvalidatesPendingCallbacksAndReturnsOwnedTasks() throws {
+        var state = RemoteSearchSessionState()
+        let token = try XCTUnwrap(state.updateQuery("ripgrep").token)
+        XCTAssertTrue(state.beginSubmissions(for: token, count: 2))
+        XCTAssertEqual(state.resolveSubmission(for: token, taskID: 41), .tracked)
+
+        XCTAssertEqual(state.reset(), [41])
+        XCTAssertFalse(state.isSearching)
+        XCTAssertEqual(
+            state.resolveSubmission(for: token, taskID: 42),
+            .cancelStaleTask(42)
+        )
+    }
+}
+
+final class HelmServiceRemoteSearchContractTests: XCTestCase {
+    func testProtocolKeepsDescriptionSubmissionAndInteractiveCancellationExplicit() {
+        let descriptionSelector = #selector(
+            HelmServiceProtocol.triggerPackageDescriptionSearchForManager(
+                managerId:query:withReply:
+            )
+        )
+        let cancellationSelector = #selector(
+            HelmServiceProtocol.cancelRemoteSearchTask(taskId:withReply:)
+        )
+
+        XCTAssertTrue(
+            NSStringFromSelector(descriptionSelector)
+                .contains("triggerPackageDescriptionSearchForManager")
+        )
+        XCTAssertTrue(
+            NSStringFromSelector(cancellationSelector)
+                .contains("cancelRemoteSearchTask")
+        )
+        XCTAssertNotEqual(
+            descriptionSelector,
+            #selector(
+                HelmServiceProtocol.triggerRemoteSearchForManager(
+                    managerId:query:withReply:
+                )
+            )
+        )
+        XCTAssertNotEqual(
+            cancellationSelector,
+            #selector(HelmServiceProtocol.cancelTask(taskId:withReply:))
+        )
+    }
+}
+
 final class LibraryPackageFocusRequestStateTests: XCTestCase {
     func testRequestWaitsForSuccessfulFocusAndIsConsumedOnlyOnce() throws {
         var state = LibraryPackageFocusRequestState()
