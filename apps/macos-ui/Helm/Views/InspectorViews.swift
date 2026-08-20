@@ -5,7 +5,6 @@ import AppKit
 
 struct ControlCenterInspectorView: View {
     @ObservedObject private var core = HelmCore.shared
-    @ObservedObject private var localization = LocalizationManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     private let researchPlanProjection = WholeWorkflowResearchDatasetProvider.activePlanProjection()
     private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()

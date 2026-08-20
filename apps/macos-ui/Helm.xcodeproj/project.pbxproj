@@ -60,6 +60,8 @@
 			V200000000000000000000001 /* SettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = V100000000000000000000001 /* SettingsPane.swift */; };
 			V200000000000000000000002 /* SettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = V100000000000000000000001 /* SettingsPane.swift */; };
 			D20000000000000000000001 /* ControlCenterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000001 /* ControlCenterModels.swift */; };
+		R520400000000000000000001 /* ControlCenterContextBase.swift in Sources */ = {isa = PBXBuildFile; fileRef = R520400000000000000000011 /* ControlCenterContextBase.swift */; };
+		R520400000000000000000002 /* ControlCenterContextBase.swift in Sources */ = {isa = PBXBuildFile; fileRef = R520400000000000000000011 /* ControlCenterContextBase.swift */; };
 		D20000000000000000000002 /* HelmButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000002 /* HelmButtonStyles.swift */; };
 		D20000000000000000000003 /* ControlCenterViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000003 /* ControlCenterViews.swift */; };
 		D20000000000000000000004 /* HelmCore+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000004 /* HelmCore+Dashboard.swift */; };
@@ -277,6 +279,7 @@
 			U100000000000000000000001 /* SettingsPaneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPaneTests.swift; sourceTree = "<group>"; };
 			V100000000000000000000001 /* SettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPane.swift; sourceTree = "<group>"; };
 			D10000000000000000000001 /* ControlCenterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterModels.swift; sourceTree = "<group>"; };
+		R520400000000000000000011 /* ControlCenterContextBase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterContextBase.swift; sourceTree = "<group>"; };
 		D10000000000000000000002 /* HelmButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmButtonStyles.swift; sourceTree = "<group>"; };
 		D10000000000000000000003 /* ControlCenterViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlCenterViews.swift; sourceTree = "<group>"; };
 		D10000000000000000000004 /* HelmCore+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Dashboard.swift"; sourceTree = "<group>"; };
@@ -455,6 +458,7 @@
 				B30000000000000000000002 /* Onboarding */,
 				B30000000000000000000003 /* Walkthrough */,
 				D10000000000000000000001 /* ControlCenterModels.swift */,
+				R520400000000000000000011 /* ControlCenterContextBase.swift */,
 				S100000000000000000000001 /* ControlCenterSearchBridge.swift */,
 				T100000000000000000000001 /* SettingsOpeningBridge.swift */,
 				C38200000000000000000011 /* ControlCenterSplitViewBridge.swift */,
@@ -908,6 +912,7 @@
 				D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */,
 				Y200000000000000000000001 /* EnvironmentBriefFirstRunView.swift in Sources */,
 				D20000000000000000000001 /* ControlCenterModels.swift in Sources */,
+				R520400000000000000000001 /* ControlCenterContextBase.swift in Sources */,
 				S200000000000000000000001 /* ControlCenterSearchBridge.swift in Sources */,
 				T200000000000000000000001 /* SettingsOpeningBridge.swift in Sources */,
 				C38200000000000000000001 /* ControlCenterSplitViewBridge.swift in Sources */,
@@ -964,6 +969,7 @@
 				S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */,
 				S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
 				C38300000000000000000003 /* ControlCenterContextTests.swift in Sources */,
+				R520400000000000000000002 /* ControlCenterContextBase.swift in Sources */,
 				T200000000000000000000002 /* SettingsOpeningBridge.swift in Sources */,
 				T200000000000000000000003 /* SettingsOpeningBridgeTests.swift in Sources */,
 				V200000000000000000000002 /* SettingsPane.swift in Sources */,

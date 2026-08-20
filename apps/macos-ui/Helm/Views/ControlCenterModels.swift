@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 enum ControlCenterSection: String, CaseIterable, Identifiable {
@@ -159,11 +160,10 @@ extension WayfinderDestination {
     }
 }
 
-final class ControlCenterContext: ObservableObject {
+final class ControlCenterContext: ControlCenterContextBase {
     @Published var selectedSection: ControlCenterSection? = .overview
     @Published var selectedManagerId: String?
     @Published var selectedPackageId: String?
-    @Published var selectedTaskId: String?
     @Published var selectedUpgradePlanStepId: String?
     @Published var searchQuery: String = ""
     @Published var isControlCenterSearchPresented: Bool = false
@@ -192,11 +192,15 @@ final class ControlCenterContext: ObservableObject {
     private let researchSearchRevealScheduler: (@escaping () -> Void) -> Void
 
     init(
+        localizationChanges: AnyPublisher<Void, Never> = LocalizationManager.shared
+            .objectWillChange
+            .eraseToAnyPublisher(),
         researchSearchRevealScheduler: @escaping (@escaping () -> Void) -> Void = { completion in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: completion)
         }
     ) {
         self.researchSearchRevealScheduler = researchSearchRevealScheduler
+        super.init(localizationChanges: localizationChanges)
     }
 
     var showUpgradeSheet: Bool {

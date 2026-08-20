@@ -3,7 +3,6 @@ import AppKit
 
 struct TasksSectionView: View {
     @ObservedObject private var core = HelmCore.shared
-    @ObservedObject private var localization = LocalizationManager.shared
     @EnvironmentObject private var context: ControlCenterContext
     private let researchActivityProjection = WholeWorkflowResearchDatasetProvider
         .activeActivityProjection()
