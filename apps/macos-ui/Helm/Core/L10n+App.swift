@@ -801,6 +801,34 @@ extension L10n {
         struct TasksSection {
             static let empty = "app.tasks.empty"
         }
+        struct Activity {
+            struct Research {
+                static let subtitle = "app.activity.research.subtitle"
+                static let title = "app.activity.research.title"
+                static let verificationFailed = "app.activity.research.status.verification_failed"
+                static let sourceNotStarted = "app.activity.research.status.source_not_started"
+                static let appliedUnverified = "app.activity.research.summary.applied_unverified"
+                static let sourceUnchanged = "app.activity.research.summary.source_unchanged"
+                static let whatChanged = "app.activity.research.what_changed"
+                static let before = "app.activity.research.before"
+                static let after = "app.activity.research.after"
+                static let applyResult = "app.activity.research.apply_result"
+                static let verificationResult = "app.activity.research.verification_result"
+                static let rollback = "app.activity.research.rollback"
+                static let recoveryOptions = "app.activity.research.recovery_options"
+                static let applied = "app.activity.research.apply.applied"
+                static let notStarted = "app.activity.research.apply.not_started"
+                static let failed = "app.activity.research.verification.failed"
+                static let notRun = "app.activity.research.verification.not_run"
+                static let retryVerification = "app.activity.research.action.retry_verification"
+                static let restore = "app.activity.research.action.restore"
+                static let keep = "app.activity.research.action.keep"
+                static let copyDiagnostics = "app.activity.research.action.copy_diagnostics"
+                static let reviewTitle = "app.activity.research.review.title"
+                static let readOnlyNotice = "app.activity.research.read_only_notice"
+                static let diagnosticsCopied = "app.activity.research.diagnostics_copied"
+            }
+        }
         struct ManagersSection {
             static let empty = "app.managers.empty"
         }

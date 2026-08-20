@@ -358,6 +358,131 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertNil(WholeWorkflowResearchLibraryProjector.project(dataset))
     }
 
+    func testTaskFourProjectsAppliedUnverifiedAndUnstartedActivity() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            WholeWorkflowResearchActivityProjector.project(dataset)
+        )
+
+        XCTAssertEqual(projection.scenarioID, "recover-from-failure")
+        XCTAssertEqual(
+            projection.activities.map(\.id),
+            ["activity-npm-verification", "activity-mas-not-started"]
+        )
+
+        let failed = try XCTUnwrap(
+            projection.activity(withSelectionID: "7001")
+        )
+        XCTAssertEqual(failed.managerID, "npm")
+        XCTAssertEqual(failed.packageName, "prettier")
+        XCTAssertEqual(failed.state, .failedVerification)
+        XCTAssertEqual(failed.applyResult, .applied)
+        XCTAssertEqual(failed.verificationResult, .failed)
+        XCTAssertTrue(failed.sourceStarted)
+        XCTAssertFalse(failed.rollbackEligible)
+
+        let unstarted = try XCTUnwrap(
+            projection.activity(withSelectionID: "7002")
+        )
+        XCTAssertEqual(unstarted.managerID, "mas")
+        XCTAssertEqual(unstarted.packageName, "Pages")
+        XCTAssertEqual(unstarted.state, .deferred)
+        XCTAssertEqual(unstarted.applyResult, .notStarted)
+        XCTAssertEqual(unstarted.verificationResult, .notRun)
+        XCTAssertFalse(unstarted.sourceStarted)
+        XCTAssertFalse(unstarted.rollbackEligible)
+    }
+
+    func testTaskFourProjectsExactRecoveryAvailabilityAndRedactedDiagnostics() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            WholeWorkflowResearchActivityProjector.project(dataset)
+        )
+        let activity = try XCTUnwrap(
+            projection.activity(withSelectionID: "7001")
+        )
+        let actions = projection.recoveryActions(for: activity)
+
+        XCTAssertEqual(
+            actions.map(\.kind),
+            [.retryVerification, .restore, .keep, .copyDiagnostics]
+        )
+        XCTAssertEqual(actions.map(\.allowed), [true, false, true, true])
+        XCTAssertEqual(
+            projection.recoveryActions(for: projection.activities[1]),
+            []
+        )
+
+        let diagnostics = projection.redactedDiagnostics(for: activity)
+        XCTAssertTrue(diagnostics.contains("scenario_id=recover-from-failure"))
+        XCTAssertTrue(diagnostics.contains("activity_id=activity-npm-verification"))
+        XCTAssertTrue(diagnostics.contains("apply_result=applied"))
+        XCTAssertTrue(diagnostics.contains("verification_result=failed"))
+        XCTAssertTrue(diagnostics.contains("redaction_class=strict"))
+        XCTAssertFalse(diagnostics.lowercased().contains("/users/"))
+    }
+
+    func testTaskFourProjectionFailsClosedForScenarioAndRecoveryDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let wrongSurface = try replacingFirst(
+            "\"scenarioId\": \"recover-from-failure\",\n      \"startingSurface\": \"activity\"",
+            with: "\"scenarioId\": \"recover-from-failure\",\n      \"startingSurface\": \"dashboard\"",
+            in: source
+        )
+        let wrongSurfaceDataset = try WholeWorkflowResearchDatasetLoader.decode(
+            Data(wrongSurface.utf8)
+        )
+        XCTAssertNil(
+            WholeWorkflowResearchActivityProjector.project(wrongSurfaceDataset)
+        )
+
+        let wrongAction = try replacingFirst(
+            "\"action\": \"restore\",\n        \"allowed\": false",
+            with: "\"action\": \"restore\",\n        \"allowed\": true",
+            in: source
+        )
+        let wrongActionDataset = try WholeWorkflowResearchDatasetLoader.decode(
+            Data(wrongAction.utf8)
+        )
+        let issues = WholeWorkflowResearchDatasetValidator.validate(wrongActionDataset)
+        XCTAssertTrue(issues.contains { $0.code == "recovery.canonical_actions" })
+        XCTAssertNil(
+            WholeWorkflowResearchActivityProjector.project(wrongActionDataset)
+        )
+
+        let wrongOrder = try replacingFirst(
+            "\"activity-npm-verification\",\n        \"activity-mas-not-started\"",
+            with: "\"activity-mas-not-started\",\n        \"activity-npm-verification\"",
+            in: source
+        )
+        let wrongOrderDataset = try WholeWorkflowResearchDatasetLoader.decode(
+            Data(wrongOrder.utf8)
+        )
+        let wrongOrderIssues = WholeWorkflowResearchDatasetValidator.validate(
+            wrongOrderDataset
+        )
+        XCTAssertTrue(
+            wrongOrderIssues.contains { $0.code == "scenarios.record_order" }
+        )
+        XCTAssertNil(
+            WholeWorkflowResearchActivityProjector.project(wrongOrderDataset)
+        )
+    }
+
+    func testTaskFourProjectionFailsClosedForActivityStateDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let modified = try replacingFirst(
+            "\"state\": \"failed_verification\"",
+            with: "\"state\": \"failed\"",
+            in: source
+        )
+        let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+        let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+        XCTAssertTrue(issues.contains { $0.code == "activity.canonical_records" })
+        XCTAssertNil(WholeWorkflowResearchActivityProjector.project(dataset))
+    }
+
     func testWholeWorkflowSelectionFailsClosedForLiveOperations() throws {
         let environment = [WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path]
 
@@ -369,6 +494,9 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         )
         XCTAssertNotNil(
             WholeWorkflowResearchDatasetProvider.activeLibraryProjection(environment: environment)
+        )
+        XCTAssertNotNil(
+            WholeWorkflowResearchDatasetProvider.activeActivityProjection(environment: environment)
         )
         XCTAssertFalse(
             WholeWorkflowResearchDatasetProvider.isOfflineVariantSelected(environment: environment)

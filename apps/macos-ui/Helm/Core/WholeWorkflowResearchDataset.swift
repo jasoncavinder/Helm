@@ -550,6 +550,13 @@ enum WholeWorkflowResearchDatasetProvider {
         )
     }
 
+    static func activeActivityProjection(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> WholeWorkflowResearchActivityProjection? {
+        guard let dataset = active(environment: environment) else { return nil }
+        return WholeWorkflowResearchActivityProjector.project(dataset)
+    }
+
     static func isOfflineVariantSelected(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
@@ -958,6 +965,243 @@ enum WholeWorkflowResearchLibraryProjector {
             results: projectedResults,
             installProposal: proposal,
             isOfflineVariant: isOfflineVariant
+        )
+    }
+}
+
+enum WholeWorkflowResearchActivityState: String, Equatable {
+    case failedVerification = "failed_verification"
+    case deferred
+}
+
+enum WholeWorkflowResearchApplyResult: String, Equatable {
+    case applied
+    case notStarted = "not_started"
+}
+
+enum WholeWorkflowResearchVerificationResult: String, Equatable {
+    case failed
+    case notRun = "not_run"
+}
+
+enum WholeWorkflowResearchRecoveryActionKind: String, Equatable {
+    case retryVerification = "retry_verification"
+    case restore
+    case keep
+    case copyDiagnostics = "copy_diagnostics"
+}
+
+struct WholeWorkflowResearchRecoveryAction: Identifiable, Equatable {
+    let id: String
+    let activityID: String
+    let kind: WholeWorkflowResearchRecoveryActionKind
+    let allowed: Bool
+    let reasonKey: String
+}
+
+struct WholeWorkflowResearchActivity: Identifiable, Equatable {
+    let id: String
+    let taskID: UInt64
+    let managerID: String
+    let packageName: String
+    let state: WholeWorkflowResearchActivityState
+    let applyResult: WholeWorkflowResearchApplyResult
+    let verificationResult: WholeWorkflowResearchVerificationResult
+    let sourceStarted: Bool
+    let beforeKey: String
+    let afterKey: String
+    let rollbackEligible: Bool
+    let recoveryLimitsKey: String
+
+    var selectionID: String {
+        String(taskID)
+    }
+}
+
+struct WholeWorkflowResearchActivityProjection: Equatable {
+    let scenarioID: String
+    let activities: [WholeWorkflowResearchActivity]
+    let recoveryActionsByActivityID: [String: [WholeWorkflowResearchRecoveryAction]]
+
+    func activity(withSelectionID selectionID: String?) -> WholeWorkflowResearchActivity? {
+        guard let selectionID else { return nil }
+        return activities.first { $0.selectionID == selectionID }
+    }
+
+    func recoveryActions(
+        for activity: WholeWorkflowResearchActivity
+    ) -> [WholeWorkflowResearchRecoveryAction] {
+        recoveryActionsByActivityID[activity.id] ?? []
+    }
+
+    func redactedDiagnostics(for activity: WholeWorkflowResearchActivity) -> String {
+        [
+            "dataset_id=\(WholeWorkflowResearchDataset.currentDatasetID)",
+            "scenario_id=\(scenarioID)",
+            "activity_id=\(activity.id)",
+            "task_id=\(activity.taskID)",
+            "manager_id=\(activity.managerID)",
+            "state=\(activity.state.rawValue)",
+            "apply_result=\(activity.applyResult.rawValue)",
+            "verification_result=\(activity.verificationResult.rawValue)",
+            "source_started=\(activity.sourceStarted)",
+            "rollback_eligible=\(activity.rollbackEligible)",
+            "redaction_class=strict",
+        ].joined(separator: "\n")
+    }
+}
+
+enum WholeWorkflowResearchTaskFourContract {
+    static let scenarioID = "recover-from-failure"
+    static let startingSurface = "activity"
+    static let failedActivityID = "activity-npm-verification"
+    static let unstartedActivityID = "activity-mas-not-started"
+    static let orderedActivityIDs = [failedActivityID, unstartedActivityID]
+    static let orderedRecoveryActionIDs = [
+        "recovery-retry-verification",
+        "recovery-restore",
+        "recovery-keep",
+        "recovery-copy-diagnostics",
+    ]
+    static let orderedScenarioRecordIDs = orderedActivityIDs + orderedRecoveryActionIDs
+
+    static func matchesScenario(_ scenario: ResearchScenario) -> Bool {
+        scenario.taskNumber == 4
+            && scenario.scenarioID == scenarioID
+            && scenario.startingSurface == startingSurface
+            && scenario.recordIDs == orderedScenarioRecordIDs
+    }
+
+    static func matchesActivities(_ records: [ResearchActivityRecord]) -> Bool {
+        guard records.map(\.id) == orderedActivityIDs,
+              records.count == 2 else {
+            return false
+        }
+        let failed = records[0]
+        let unstarted = records[1]
+        return failed.taskID == 7001
+            && failed.managerID == "npm"
+            && failed.updateID == nil
+            && failed.state == "failed_verification"
+            && failed.applyResult == "applied"
+            && failed.verificationResult == "failed"
+            && failed.sourceStarted
+            && failed.beforeKey == "research.activity.before.npm_prettier_3_5_2"
+            && failed.afterKey == "research.activity.after.npm_prettier_3_6_0_unverified"
+            && !failed.rollbackEligible
+            && failed.recoveryLimitsKey == "research.activity.recovery.npm_restore_not_guaranteed"
+            && unstarted.taskID == 7002
+            && unstarted.managerID == "mas"
+            && unstarted.updateID == "update-mas-pages"
+            && unstarted.state == "deferred"
+            && unstarted.applyResult == "not_started"
+            && unstarted.verificationResult == "not_run"
+            && !unstarted.sourceStarted
+            && unstarted.beforeKey == "research.activity.before.mas_unchanged"
+            && unstarted.afterKey == "research.activity.after.mas_unchanged"
+            && !unstarted.rollbackEligible
+            && unstarted.recoveryLimitsKey == "research.activity.recovery.no_change_to_restore"
+    }
+
+    static func matchesRecoveryActions(_ records: [ResearchRecoveryActionRecord]) -> Bool {
+        guard records.map(\.id) == orderedRecoveryActionIDs,
+              records.count == 4 else {
+            return false
+        }
+        let expected: [(WholeWorkflowResearchRecoveryActionKind, Bool, String)] = [
+            (.retryVerification, true, "research.recovery.retry_verification"),
+            (.restore, false, "research.recovery.restore_unavailable"),
+            (.keep, true, "research.recovery.keep_applied_state"),
+            (.copyDiagnostics, true, "research.recovery.copy_redacted_diagnostics"),
+        ]
+        return zip(records, expected).allSatisfy { record, expectation in
+            record.activityID == failedActivityID
+                && record.action == expectation.0.rawValue
+                && record.allowed == expectation.1
+                && record.reasonKey == expectation.2
+        }
+    }
+}
+
+enum WholeWorkflowResearchActivityProjector {
+    static func project(
+        _ dataset: WholeWorkflowResearchDataset
+    ) -> WholeWorkflowResearchActivityProjection? {
+        guard dataset.safety.syntheticOnly,
+              dataset.safety.localOnly,
+              !dataset.safety.allowsMachineScan,
+              !dataset.safety.allowsMutation,
+              let scenario = dataset.scenarios.first(where: { $0.taskNumber == 4 }),
+              WholeWorkflowResearchTaskFourContract.matchesScenario(scenario),
+              WholeWorkflowResearchTaskFourContract.matchesActivities(
+                  dataset.snapshot.activities
+              ),
+              WholeWorkflowResearchTaskFourContract.matchesRecoveryActions(
+                  dataset.snapshot.recoveryActions
+              ),
+              dataset.snapshot.managers.contains(where: { $0.id == "npm" }),
+              dataset.snapshot.managers.contains(where: { $0.id == "mas" }),
+              let pagesUpdate = dataset.snapshot.updates.first(where: {
+                  $0.id == "update-mas-pages"
+              }),
+              pagesUpdate.managerID == "mas",
+              pagesUpdate.packageName == "Pages" else {
+            return nil
+        }
+
+        let packageNamesByActivityID = [
+            WholeWorkflowResearchTaskFourContract.failedActivityID: "prettier",
+            WholeWorkflowResearchTaskFourContract.unstartedActivityID: pagesUpdate.packageName,
+        ]
+        var activities: [WholeWorkflowResearchActivity] = []
+        for record in dataset.snapshot.activities {
+            guard let packageName = packageNamesByActivityID[record.id],
+                  let state = WholeWorkflowResearchActivityState(rawValue: record.state),
+                  let applyResult = WholeWorkflowResearchApplyResult(rawValue: record.applyResult),
+                  let verificationResult = WholeWorkflowResearchVerificationResult(
+                      rawValue: record.verificationResult
+                  ) else {
+                return nil
+            }
+            activities.append(
+                WholeWorkflowResearchActivity(
+                    id: record.id,
+                    taskID: record.taskID,
+                    managerID: record.managerID,
+                    packageName: packageName,
+                    state: state,
+                    applyResult: applyResult,
+                    verificationResult: verificationResult,
+                    sourceStarted: record.sourceStarted,
+                    beforeKey: record.beforeKey,
+                    afterKey: record.afterKey,
+                    rollbackEligible: record.rollbackEligible,
+                    recoveryLimitsKey: record.recoveryLimitsKey
+                )
+            )
+        }
+
+        var actionsByActivityID: [String: [WholeWorkflowResearchRecoveryAction]] = [:]
+        for record in dataset.snapshot.recoveryActions {
+            guard let kind = WholeWorkflowResearchRecoveryActionKind(rawValue: record.action),
+                  activities.contains(where: { $0.id == record.activityID }) else {
+                return nil
+            }
+            actionsByActivityID[record.activityID, default: []].append(
+                WholeWorkflowResearchRecoveryAction(
+                    id: record.id,
+                    activityID: record.activityID,
+                    kind: kind,
+                    allowed: record.allowed,
+                    reasonKey: record.reasonKey
+                )
+            )
+        }
+
+        return WholeWorkflowResearchActivityProjection(
+            scenarioID: scenario.scenarioID,
+            activities: activities,
+            recoveryActionsByActivityID: actionsByActivityID
         )
     }
 }

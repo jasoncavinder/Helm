@@ -8,6 +8,12 @@ struct ControlCenterInspectorView: View {
     @EnvironmentObject private var context: ControlCenterContext
     private let researchPlanProjection = WholeWorkflowResearchDatasetProvider.activePlanProjection()
     private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
+    private let researchActivityProjection = WholeWorkflowResearchDatasetProvider
+        .activeActivityProjection()
+
+    private var selectedResearchActivity: WholeWorkflowResearchActivity? {
+        researchActivityProjection?.activity(withSelectionID: context.selectedTaskId)
+    }
 
     private var selectedTask: TaskItem? {
         guard let taskId = context.selectedTaskId else { return nil }
@@ -65,7 +71,13 @@ struct ControlCenterInspectorView: View {
                 Text(L10n.App.Inspector.title.localized)
                     .font(.headline)
 
-                if let task = selectedTask {
+                if let activity = selectedResearchActivity,
+                   let researchActivityProjection {
+                    ResearchActivityInspectorView(
+                        activity: activity,
+                        projection: researchActivityProjection
+                    )
+                } else if let task = selectedTask {
                     InspectorTaskDetailView(task: task)
                 } else if let step = selectedUpgradePlanStep {
                     if let task = selectedUpgradePlanTask {
