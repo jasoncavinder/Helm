@@ -105,6 +105,9 @@
 		R515000000000000000000001 /* LibraryTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R515000000000000000000011 /* LibraryTableView.swift */; };
 		R515000000000000000000002 /* LibraryTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R515000000000000000000011 /* LibraryTableView.swift */; };
 		R515000000000000000000003 /* LibraryTableViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R515000000000000000000012 /* LibraryTableViewTests.swift */; };
+		R518000000000000000000001 /* LibraryPerformanceBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */; };
+		R518000000000000000000002 /* LibraryPerformanceBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */; };
+		R518000000000000000000003 /* LibraryPackageIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = R518000000000000000000012 /* LibraryPackageIndex.swift */; };
 		R494000000000000000000001 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R495000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R495000000000000000000011 /* UpgradePlanOutlineView.swift */; };
@@ -297,6 +300,8 @@
 		R513100000000000000000011 /* PackageInspectorSelectionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackageInspectorSelectionPolicy.swift; sourceTree = "<group>"; };
 		R515000000000000000000011 /* LibraryTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableView.swift; sourceTree = "<group>"; };
 		R515000000000000000000012 /* LibraryTableViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableViewTests.swift; sourceTree = "<group>"; };
+		R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPerformanceBenchmark.swift; sourceTree = "<group>"; };
+		R518000000000000000000012 /* LibraryPackageIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndex.swift; sourceTree = "<group>"; };
 		R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeSheetPresentationSupport.swift; sourceTree = "<group>"; };
 		R495000000000000000000011 /* UpgradePlanOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePlanOutlineView.swift; sourceTree = "<group>"; };
 		W100000000000000000000001 /* EnvironmentBriefProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjection.swift; sourceTree = "<group>"; };
@@ -419,6 +424,8 @@
 				R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */,
 				R513000000000000000000011 /* LibraryResultProvenance.swift */,
 				R513100000000000000000011 /* PackageInspectorSelectionPolicy.swift */,
+				R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */,
+				R518000000000000000000012 /* LibraryPackageIndex.swift */,
 				R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */,
 			);
 			path = Core;
@@ -842,6 +849,8 @@
 				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
 				R513000000000000000000001 /* LibraryResultProvenance.swift in Sources */,
 				R513100000000000000000001 /* PackageInspectorSelectionPolicy.swift in Sources */,
+				R518000000000000000000001 /* LibraryPerformanceBenchmark.swift in Sources */,
+				R518000000000000000000003 /* LibraryPackageIndex.swift in Sources */,
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
@@ -954,6 +963,7 @@
 					R513000000000000000000003 /* LibraryResultProvenanceTests.swift in Sources */,
 					R515000000000000000000002 /* LibraryTableView.swift in Sources */,
 					R515000000000000000000003 /* LibraryTableViewTests.swift in Sources */,
+					R518000000000000000000002 /* LibraryPerformanceBenchmark.swift in Sources */,
 					R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */,
 			);
 		};

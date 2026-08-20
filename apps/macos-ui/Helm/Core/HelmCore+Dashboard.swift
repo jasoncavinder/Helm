@@ -194,6 +194,31 @@ extension HelmCore {
         pinnedOnly: Bool = false,
         knownPackages: [PackageItem]? = nil
     ) -> [ConsolidatedPackageItem] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if knownPackages == nil, trimmedQuery.isEmpty || searchResults.isEmpty {
+            let localeIdentifier = LocalizationManager.shared.currentLocale
+            let index: LibraryPackageIndex
+            if let cachedLibraryPackageIndex,
+               cachedLibraryPackageIndex.localeIdentifier == localeIdentifier {
+                index = cachedLibraryPackageIndex
+            } else {
+                index = LibraryPackageIndex(
+                    packages: allKnownPackages,
+                    localeIdentifier: localeIdentifier,
+                    localizedManagerName: normalizedManagerName
+                )
+                cachedLibraryPackageIndex = index
+            }
+            return index.filteredPackages(
+                query: trimmedQuery,
+                managerID: managerId,
+                statusFilter: statusFilter,
+                pinnedOnly: pinnedOnly,
+                managerParticipatesInSearch: packageManagerParticipatesInSearch,
+                localizedManagerName: normalizedManagerName
+            )
+        }
+
         let sourcePackages = knownPackages ?? allKnownPackages
         let consolidated = consolidatePackages(
             filteredPackagesRaw(
@@ -219,27 +244,41 @@ extension HelmCore {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         if !trimmed.isEmpty {
+            let normalizedQueryToken = PackageIdentity.normalizedExactQueryToken(trimmed)
             let localMatches = base.filter {
                 packageManagerParticipatesInSearch($0.managerId)
-                    && packageMatchesQuery($0, queryToken: trimmed)
+                    && packageMatchesQuery(
+                        $0,
+                        queryToken: trimmed,
+                        normalizedQueryToken: normalizedQueryToken
+                    )
             }
-            var mergedById = Dictionary(uniqueKeysWithValues: localMatches.map { ($0.id, $0) })
-            for remote in searchResults
-            where isManagerEnabled(remote.managerId)
-                && packageManagerParticipatesInSearch(remote.managerId)
-                && packageMatchesQuery(remote, queryToken: trimmed) {
-                if var existing = mergedById[remote.id] {
-                    mergeSummary(into: &existing, from: remote.summary)
-                    if existing.latestVersion == nil {
-                        existing.latestVersion = remote.latestVersion
+            if searchResults.isEmpty {
+                base = localMatches
+            } else {
+                var mergedById = Dictionary(
+                    uniqueKeysWithValues: localMatches.map { ($0.id, $0) }
+                )
+                for remote in searchResults
+                where isManagerEnabled(remote.managerId)
+                    && packageManagerParticipatesInSearch(remote.managerId)
+                    && packageMatchesQuery(
+                        remote,
+                        queryToken: trimmed,
+                        normalizedQueryToken: normalizedQueryToken
+                    ) {
+                    if var existing = mergedById[remote.id] {
+                        mergeSummary(into: &existing, from: remote.summary)
+                        if existing.latestVersion == nil {
+                            existing.latestVersion = remote.latestVersion
+                        }
+                        mergedById[remote.id] = existing
+                    } else {
+                        mergedById[remote.id] = remote
                     }
-                    mergedById[remote.id] = existing
-                } else {
-                    mergedById[remote.id] = remote
                 }
+                base = Array(mergedById.values)
             }
-
-            base = sortedPackagesByDisplayName(Array(mergedById.values))
         }
 
         if let managerId {
@@ -272,14 +311,18 @@ extension HelmCore {
         managerStatuses[managerId]?.supportsRemoteSearch ?? true
     }
 
-    private func packageMatchesQuery(_ package: PackageItem, queryToken: String) -> Bool {
+    private func packageMatchesQuery(
+        _ package: PackageItem,
+        queryToken: String,
+        normalizedQueryToken: String
+    ) -> Bool {
         guard !queryToken.isEmpty else { return true }
-        let normalizedQueryToken = PackageIdentity.normalizedExactQueryToken(queryToken)
-        if package.normalizedIdentityKey.contains(queryToken)
+        let normalizedIdentityKey = package.normalizedIdentityKey
+        if normalizedIdentityKey.contains(queryToken)
             || (
                 !normalizedQueryToken.isEmpty
                     && normalizedQueryToken != queryToken
-                    && package.normalizedIdentityKey.contains(normalizedQueryToken)
+                    && normalizedIdentityKey.contains(normalizedQueryToken)
             ) {
             return true
         }
@@ -1381,27 +1424,29 @@ extension HelmCore {
         guard !queryBaseToken.isEmpty else { return packages }
         let queryHasQualifier = queryQualifiedToken.contains("@")
 
-        let indexedPackages = Array(packages.enumerated())
-        return indexedPackages
-            .sorted { lhs, rhs in
-                let lhsRank = exactMatchRank(
-                    for: lhs.element.package,
-                    queryBaseToken: queryBaseToken,
-                    queryQualifiedToken: queryQualifiedToken,
-                    queryHasQualifier: queryHasQualifier
-                )
-                let rhsRank = exactMatchRank(
-                    for: rhs.element.package,
-                    queryBaseToken: queryBaseToken,
-                    queryQualifiedToken: queryQualifiedToken,
-                    queryHasQualifier: queryHasQualifier
-                )
-                if lhsRank != rhsRank {
-                    return lhsRank < rhsRank
-                }
-                return lhs.offset < rhs.offset
+        var qualifiedMatches: [ConsolidatedPackageItem] = []
+        var baseMatches: [ConsolidatedPackageItem] = []
+        var remainingPackages: [ConsolidatedPackageItem] = []
+        qualifiedMatches.reserveCapacity(1)
+        baseMatches.reserveCapacity(1)
+        remainingPackages.reserveCapacity(packages.count)
+
+        for package in packages {
+            switch exactMatchRank(
+                for: package.package,
+                queryBaseToken: queryBaseToken,
+                queryQualifiedToken: queryQualifiedToken,
+                queryHasQualifier: queryHasQualifier
+            ) {
+            case 0:
+                qualifiedMatches.append(package)
+            case 1:
+                baseMatches.append(package)
+            default:
+                remainingPackages.append(package)
             }
-            .map(\.element)
+        }
+        return qualifiedMatches + baseMatches + remainingPackages
     }
 
     private func exactMatchRank(

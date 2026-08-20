@@ -508,7 +508,10 @@ final class HelmCore: ObservableObject {
         }
     }
     @Published var managerPriorityOverrides: [String: Int] = HelmCore.loadManagerPriorityOverrides() {
-        didSet { scheduleDerivedViewStateRefresh() }
+        didSet {
+            invalidateKnownPackageCaches()
+            scheduleDerivedViewStateRefresh()
+        }
     }
     @Published var managerOperations: [String: String] = [:] {
         didSet { scheduleDerivedViewStateRefresh() }
@@ -629,6 +632,7 @@ final class HelmCore: ObservableObject {
     var cachedAllKnownPackagesUnsorted: [PackageItem]?
     var cachedAllKnownPackagesSorted: [PackageItem]?
     var cachedKnownPackageById: [String: PackageItem] = [:]
+    var cachedLibraryPackageIndex: LibraryPackageIndex?
     private var packageDescriptionRenderCache: [String: PackageDescriptionRenderCacheEntry] = [:]
     private var packageDescriptionRenderCacheOrder: [String] = []
     private static let maxPackageDescriptionRenderCacheEntries = 256
@@ -639,6 +643,14 @@ final class HelmCore: ObservableObject {
     }
 
     private init() {
+        #if DEBUG
+        if LibraryPerformanceBenchmarkConfiguration.iterations() != nil {
+            isInitialized = true
+            isConnected = true
+            networkAvailability = .available
+            return
+        }
+        #endif
         appUpdateAvailabilityCancellable = AppUpdateCoordinator.shared.$availableUpdate
             .receive(on: DispatchQueue.main)
             .sink { [weak self] availability in
@@ -752,6 +764,7 @@ final class HelmCore: ObservableObject {
         cachedAllKnownPackagesUnsorted = nil
         cachedAllKnownPackagesSorted = nil
         cachedKnownPackageById = [:]
+        cachedLibraryPackageIndex = nil
     }
 
     static func requiresLicenseTermsAcceptance(

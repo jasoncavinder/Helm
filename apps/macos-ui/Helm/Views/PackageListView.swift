@@ -30,9 +30,6 @@ struct PackagesSectionView: View {
         .onChange(of: context.pendingLibraryPackageFocusRequest) { _ in
             preparePendingPackageFocusRequest()
         }
-        .onChange(of: focusablePackageRowIDs) { _ in
-            preparePendingPackageFocusRequest()
-        }
     }
 
     private var productionBody: some View {
@@ -136,38 +133,37 @@ struct PackagesSectionView: View {
             if context.searchQuery != core.searchText {
                 context.searchQuery = core.searchText
             }
-            refreshPackageSnapshots()
+            refreshPackageSourceSnapshots()
             if normalizeManagerSelection() {
-                refreshPackageSnapshots()
+                refreshDisplayedPackages()
             }
         }
         .onChange(of: core.managerStatuses.mapValues(\.enabled)) { _ in
-            refreshPackageSnapshots()
+            refreshPackageSourceSnapshots()
             if normalizeManagerSelection() {
-                refreshPackageSnapshots()
+                refreshDisplayedPackages()
             }
         }
         .onChange(of: availableManagerIds) { _ in
             if normalizeManagerSelection() {
-                refreshPackageSnapshots()
+                refreshDisplayedPackages()
             }
         }
-        .onReceive(core.$installedPackages) { _ in refreshPackageSnapshots() }
-        .onReceive(core.$outdatedPackages) { _ in refreshPackageSnapshots() }
-        .onReceive(core.$cachedAvailablePackages) { _ in refreshPackageSnapshots() }
+        .onReceive(core.$installedPackages) { _ in refreshPackageSourceSnapshots() }
+        .onReceive(core.$outdatedPackages) { _ in refreshPackageSourceSnapshots() }
+        .onReceive(core.$cachedAvailablePackages) { _ in refreshPackageSourceSnapshots() }
         .onReceive(core.$searchResults) { _ in
             let hasQuery = !context.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if hasQuery {
-                refreshPackageSnapshots()
+                refreshPackageSourceSnapshots()
             }
         }
-        .onChange(of: core.installActionPackageIds) { _ in refreshPackageSnapshots() }
-        .onChange(of: core.pinActionPackageIds) { _ in refreshPackageSnapshots() }
-        .onChange(of: context.searchQuery) { _ in refreshPackageSnapshots() }
-        .onChange(of: selectedStatusFilter) { _ in refreshPackageSnapshots() }
-        .onChange(of: showPinnedOnly) { _ in refreshPackageSnapshots() }
-        .onChange(of: selectedManagerId) { _ in refreshPackageSnapshots() }
-        .onChange(of: context.managerFilterId) { _ in refreshPackageSnapshots() }
+        .onChange(of: core.installActionPackageIds) { _ in refreshPackageSourceSnapshots() }
+        .onChange(of: context.searchQuery) { _ in refreshDisplayedPackages() }
+        .onChange(of: selectedStatusFilter) { _ in refreshDisplayedPackages() }
+        .onChange(of: showPinnedOnly) { _ in refreshDisplayedPackages() }
+        .onChange(of: selectedManagerId) { _ in refreshDisplayedPackages() }
+        .onChange(of: context.managerFilterId) { _ in refreshDisplayedPackages() }
         .sheet(isPresented: $showInstallManagerSheet) {
             installManagerSheet
         }
@@ -587,13 +583,6 @@ struct PackagesSectionView: View {
         context.completeLibraryPackageFocusRequest(request, focusSucceeded: true)
     }
 
-    private var focusablePackageRowIDs: [String] {
-        if let researchLibraryProjection {
-            return researchResults(in: researchLibraryProjection).map(\.id)
-        }
-        return displayedPackages.map(\.id)
-    }
-
     private func preparePendingPackageFocusRequest() {
         guard context.pendingLibraryPackageFocusRequest != nil else { return }
 
@@ -615,7 +604,7 @@ struct PackagesSectionView: View {
             filtersChanged = true
         }
         if filtersChanged, researchLibraryProjection == nil {
-            refreshPackageSnapshots()
+            refreshDisplayedPackages()
         }
     }
 
@@ -642,12 +631,11 @@ struct PackagesSectionView: View {
         return changed
     }
 
-    private func refreshPackageSnapshots() {
+    private func refreshPackageSourceSnapshots() {
         let allPackages = core.allKnownPackages
-        let candidateSourcePackages = mergeCandidatePackages(
-            primary: allPackages,
-            secondary: core.searchResults
-        )
+        let candidateSourcePackages = core.searchResults.isEmpty
+            ? allPackages
+            : mergeCandidatePackages(primary: allPackages, secondary: core.searchResults)
         availableManagerIds = Array(Set(candidateSourcePackages.map(\.managerId))).sorted {
             localizedManagerDisplayName($0).localizedCaseInsensitiveCompare(localizedManagerDisplayName($1)) == .orderedAscending
         }
@@ -660,12 +648,15 @@ struct PackagesSectionView: View {
         }
         installableAvailablePackageNames = installableNames
         installActionPackageNames = core.installActionInFlightPackageNames(knownPackages: allPackages)
+        refreshDisplayedPackages()
+    }
+
+    private func refreshDisplayedPackages() {
         displayedPackages = core.filteredPackages(
             query: context.searchQuery,
             managerId: selectedManagerId ?? context.managerFilterId,
             statusFilter: selectedStatusFilter,
-            pinnedOnly: showPinnedOnly,
-            knownPackages: allPackages
+            pinnedOnly: showPinnedOnly
         )
     }
 

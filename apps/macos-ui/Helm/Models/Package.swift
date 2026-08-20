@@ -300,7 +300,10 @@ struct ConsolidatedPackageItem: Identifiable {
     ) -> [ConsolidatedPackageItem] {
         let grouped = Dictionary(grouping: packages) { $0.normalizedIdentityKey }
 
-        return grouped.values.compactMap { members in
+        let indexedItems = grouped.values.compactMap { members -> (
+            item: ConsolidatedPackageItem,
+            sortKey: String
+        )? in
             let sortedMembers = members.sorted(by: preferredPackageOrdering)
             guard var primary = sortedMembers.first else { return nil }
 
@@ -319,20 +322,40 @@ struct ConsolidatedPackageItem: Identifiable {
             )
             let managerDisplayNames = managerIds.map(localizedManagerName)
 
-            return ConsolidatedPackageItem(
+            let item = ConsolidatedPackageItem(
                 package: primary,
                 memberPackages: sortedMembers,
                 managerIds: managerIds,
                 managerDisplayNames: managerDisplayNames
             )
+            return (
+                item: item,
+                sortKey: primary.displayName.folding(
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    locale: .current
+                )
+            )
         }
-        .sorted { lhs, rhs in
-            let nameOrder = lhs.package.displayName.localizedCaseInsensitiveCompare(rhs.package.displayName)
+        return indexedItems.sorted { lhs, rhs in
+            if lhs.sortKey != rhs.sortKey {
+                return lhs.sortKey < rhs.sortKey
+            }
+            let nameOrder = lhs.item.package.displayName.localizedCaseInsensitiveCompare(
+                rhs.item.package.displayName
+            )
             if nameOrder != .orderedSame {
                 return nameOrder == .orderedAscending
             }
-            return preferredPackageOrdering(lhs.package, rhs.package)
+            if preferredPackageOrdering(lhs.item.package, rhs.item.package) {
+                return true
+            }
+            if preferredPackageOrdering(rhs.item.package, lhs.item.package) {
+                return false
+            }
+            return lhs.item.package.normalizedIdentityKey
+                < rhs.item.package.normalizedIdentityKey
         }
+        .map(\.item)
     }
 
     private static func preferredPackageOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
