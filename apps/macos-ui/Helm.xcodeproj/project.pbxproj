@@ -108,6 +108,12 @@
 		R518000000000000000000001 /* LibraryPerformanceBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */; };
 		R518000000000000000000002 /* LibraryPerformanceBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */; };
 		R518000000000000000000003 /* LibraryPackageIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = R518000000000000000000012 /* LibraryPackageIndex.swift */; };
+		R519000000000000000000001 /* Package.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D552F3D1D1D002372B8 /* Package.swift */; };
+		R519000000000000000000002 /* LibraryPackageIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = R518000000000000000000012 /* LibraryPackageIndex.swift */; };
+		R519000000000000000000003 /* LibraryPackageIndexTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519000000000000000000011 /* LibraryPackageIndexTestSupport.swift */; };
+		R519000000000000000000004 /* LibraryPackageIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519000000000000000000012 /* LibraryPackageIndexTests.swift */; };
+		R519100000000000000000001 /* LibraryPackageIndexState.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519100000000000000000011 /* LibraryPackageIndexState.swift */; };
+		R519100000000000000000002 /* LibraryPackageIndexState.swift in Sources */ = {isa = PBXBuildFile; fileRef = R519100000000000000000011 /* LibraryPackageIndexState.swift */; };
 		R494000000000000000000001 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R495000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R495000000000000000000011 /* UpgradePlanOutlineView.swift */; };
@@ -302,6 +308,9 @@
 		R515000000000000000000012 /* LibraryTableViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTableViewTests.swift; sourceTree = "<group>"; };
 		R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPerformanceBenchmark.swift; sourceTree = "<group>"; };
 		R518000000000000000000012 /* LibraryPackageIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndex.swift; sourceTree = "<group>"; };
+		R519000000000000000000011 /* LibraryPackageIndexTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndexTestSupport.swift; sourceTree = "<group>"; };
+		R519000000000000000000012 /* LibraryPackageIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndexTests.swift; sourceTree = "<group>"; };
+		R519100000000000000000011 /* LibraryPackageIndexState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPackageIndexState.swift; sourceTree = "<group>"; };
 		R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeSheetPresentationSupport.swift; sourceTree = "<group>"; };
 		R495000000000000000000011 /* UpgradePlanOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradePlanOutlineView.swift; sourceTree = "<group>"; };
 		W100000000000000000000001 /* EnvironmentBriefProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefProjection.swift; sourceTree = "<group>"; };
@@ -426,6 +435,7 @@
 				R513100000000000000000011 /* PackageInspectorSelectionPolicy.swift */,
 				R518000000000000000000011 /* LibraryPerformanceBenchmark.swift */,
 				R518000000000000000000012 /* LibraryPackageIndex.swift */,
+				R519100000000000000000011 /* LibraryPackageIndexState.swift */,
 				R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */,
 			);
 			path = Core;
@@ -586,6 +596,8 @@
 		C10000000000000000000006 /* HelmTests */ = {
 			isa = PBXGroup;
 			children = (
+				R519000000000000000000011 /* LibraryPackageIndexTestSupport.swift */,
+				R519000000000000000000012 /* LibraryPackageIndexTests.swift */,
 				R43000000000000000000012 /* PrivilegedHelperRegistrationTests.swift */,
 				R42810000000000000000029 /* PrivilegedOperationPolicyTests.swift */,
 				N42200000000000000000012 /* AppNotificationPolicyTests.swift */,
@@ -851,6 +863,7 @@
 				R513100000000000000000001 /* PackageInspectorSelectionPolicy.swift in Sources */,
 				R518000000000000000000001 /* LibraryPerformanceBenchmark.swift in Sources */,
 				R518000000000000000000003 /* LibraryPackageIndex.swift in Sources */,
+				R519100000000000000000001 /* LibraryPackageIndexState.swift in Sources */,
 				8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */,
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
@@ -918,6 +931,11 @@
 		C10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				R519000000000000000000001 /* Package.swift in Sources */,
+				R519000000000000000000002 /* LibraryPackageIndex.swift in Sources */,
+				R519000000000000000000003 /* LibraryPackageIndexTestSupport.swift in Sources */,
+				R519000000000000000000004 /* LibraryPackageIndexTests.swift in Sources */,
+				R519100000000000000000002 /* LibraryPackageIndexState.swift in Sources */,
 				R51700000000000000000001 /* HelmServiceProtocol.swift in Sources */,
 				R43000000000000000000002 /* PrivilegedHelperRegistration.swift in Sources */,
 				R43000000000000000000003 /* PrivilegedHelperRegistrationTests.swift in Sources */,

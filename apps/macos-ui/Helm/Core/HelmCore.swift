@@ -480,7 +480,9 @@ final class HelmCore: ObservableObject {
     @Published var taskTimeoutPrompts: [CoreTaskTimeoutPrompt] = [] {
         didSet { scheduleDerivedViewStateRefresh() }
     }
-    @Published var searchResults: [PackageItem] = []
+    @Published var searchResults: [PackageItem] = [] {
+        didSet { invalidateSearchOverlayIfNeeded(previousResults: oldValue) }
+    }
     @Published var cachedAvailablePackages: [PackageItem] = [] {
         didSet {
             invalidateKnownPackageCaches()
@@ -497,13 +499,12 @@ final class HelmCore: ObservableObject {
     @Published var scopedUpgradePlanRunInProgress: Bool = false
     @Published var detectedManagers: Set<String> = [] {
         didSet {
-            invalidateKnownPackageCaches()
             scheduleDerivedViewStateRefresh()
         }
     }
     @Published var managerStatuses: [String: ManagerStatus] = [:] {
         didSet {
-            invalidateKnownPackageCaches()
+            invalidateKnownPackagesIfManagerEnablementChanged(previousStatuses: oldValue)
             scheduleDerivedViewStateRefresh()
         }
     }
@@ -632,7 +633,14 @@ final class HelmCore: ObservableObject {
     var cachedAllKnownPackagesUnsorted: [PackageItem]?
     var cachedAllKnownPackagesSorted: [PackageItem]?
     var cachedKnownPackageById: [String: PackageItem] = [:]
-    var cachedLibraryPackageIndex: LibraryPackageIndex?
+    var packageIndexSourceRevision: UInt64 = 0
+    var searchResultsRevision: UInt64 = 0
+    var libraryPackageIndexCache = LibraryPackageIndexCache()
+    var libraryPackageSearchOverlayCache = LibraryPackageSearchOverlayCache()
+    var cachedLibraryPackageIndex: LibraryPackageIndex? {
+        get { libraryPackageIndexCache.cachedIndex }
+        set { libraryPackageIndexCache.replace(newValue, sourceRevision: packageIndexSourceRevision) }
+    }
     private var packageDescriptionRenderCache: [String: PackageDescriptionRenderCacheEntry] = [:]
     private var packageDescriptionRenderCacheOrder: [String] = []
     private static let maxPackageDescriptionRenderCacheEntries = 256

@@ -26,7 +26,7 @@ extension HelmCore {
                   ) else { return }
 
             DispatchQueue.main.async {
-                self.installedPackages = corePackages.map { pkg in
+                let packages = corePackages.map { pkg in
                     PackageItem(
                         id: self.availablePackageId(
                             managerId: pkg.package.manager,
@@ -44,6 +44,13 @@ extension HelmCore {
                         resultProvenance: pkg.validatedProvenance
                     )
                 }
+                guard PackageSnapshotPublicationPolicy.shouldPublish(
+                    current: self.installedPackages,
+                    replacement: packages
+                ) else {
+                    return
+                }
+                self.installedPackages = packages
             }
         }
     }
@@ -91,7 +98,13 @@ extension HelmCore {
                         resultProvenance: pkg.validatedProvenance
                     )
                 }
-                self.outdatedPackages = self.packagesIncludingHelmSelfUpdate(managerPackages)
+                let packages = self.packagesIncludingHelmSelfUpdate(managerPackages)
+                if PackageSnapshotPublicationPolicy.shouldPublish(
+                    current: self.outdatedPackages,
+                    replacement: packages
+                ) {
+                    self.outdatedPackages = packages
+                }
                 self.rebuildProjectedUpgradePlanExtensions()
                 if !self.upgradePlanSteps.isEmpty {
                     self.refreshUpgradePlan(
@@ -109,7 +122,10 @@ extension HelmCore {
             managerPackages,
             availability: availability
         )
-        guard packageSnapshotIdentity(updatedPackages) != packageSnapshotIdentity(outdatedPackages) else {
+        guard PackageSnapshotPublicationPolicy.shouldPublish(
+            current: outdatedPackages,
+            replacement: updatedPackages
+        ) else {
             return
         }
         outdatedPackages = updatedPackages
@@ -137,12 +153,6 @@ extension HelmCore {
             )
         )
         return result
-    }
-
-    private func packageSnapshotIdentity(_ packages: [PackageItem]) -> [String] {
-        packages.map {
-            "\($0.id)|\($0.version)|\($0.latestVersion ?? "")|\($0.pinned)"
-        }
     }
 
     func fetchTasks() {
@@ -462,7 +472,7 @@ extension HelmCore {
                     }
                 )
 
-                self.searchResults = results.map { result in
+                let nextSearchResults = results.map { result in
                     let identityId = self.packageIdentityId(
                         managerId: result.sourceManager,
                         packageName: result.name,
@@ -497,6 +507,12 @@ extension HelmCore {
                         resultProvenance: result.validatedProvenance,
                         status: .available
                     )
+                }
+                if !PackageSnapshotPublicationPolicy.areOrderedSemanticallyEquivalent(
+                    self.searchResults,
+                    nextSearchResults
+                ) {
+                    self.searchResults = nextSearchResults
                 }
                 self.packageDescriptionUnavailableIds.subtract(resolvedSummaryIds)
                 self.packageDescriptionLoadingIds.subtract(resolvedSummaryIds)
@@ -602,11 +618,17 @@ extension HelmCore {
                     }
                 }
 
-                self.cachedAvailablePackages = dedupedById.values.sorted { lhs, rhs in
+                let availablePackages = dedupedById.values.sorted { lhs, rhs in
                     lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
                 }
+                if PackageSnapshotPublicationPolicy.shouldPublish(
+                    current: self.cachedAvailablePackages,
+                    replacement: availablePackages
+                ) {
+                    self.cachedAvailablePackages = availablePackages
+                }
                 let resolvedSummaryIds = Set(
-                    self.cachedAvailablePackages.compactMap { package -> String? in
+                    availablePackages.compactMap { package -> String? in
                         guard let summary = package.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
                               !summary.isEmpty else {
                             return nil

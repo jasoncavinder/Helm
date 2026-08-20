@@ -296,15 +296,21 @@ struct ConsolidatedPackageItem: Identifiable {
 
     static func consolidate(
         _ packages: [PackageItem],
-        localizedManagerName: (String) -> String
+        locale: Locale = .current,
+        localizedManagerName: (String) -> String,
+        priorityRank: ((String) -> Int)? = nil
     ) -> [ConsolidatedPackageItem] {
         let grouped = Dictionary(grouping: packages) { $0.normalizedIdentityKey }
 
-        let indexedItems = grouped.values.compactMap { members -> (
-            item: ConsolidatedPackageItem,
-            sortKey: String
-        )? in
-            let sortedMembers = members.sorted(by: preferredPackageOrdering)
+        let items = grouped.values.compactMap { members -> ConsolidatedPackageItem? in
+            let sortedMembers = members.sorted { lhs, rhs in
+                preferredPackageOrdering(
+                    lhs,
+                    rhs,
+                    localizedManagerName: localizedManagerName,
+                    priorityRank: priorityRank
+                )
+            }
             guard var primary = sortedMembers.first else { return nil }
 
             for member in sortedMembers.dropFirst() {
@@ -318,48 +324,73 @@ struct ConsolidatedPackageItem: Identifiable {
             let managerIds = PackageConsolidationPolicy.sortedManagerIds(
                 sortedMembers.map(\.managerId),
                 localizedManagerName: localizedManagerName,
-                priorityRank: { HelmCore.shared.managerPriorityRank(for: $0) }
+                priorityRank: priorityRank
             )
             let managerDisplayNames = managerIds.map(localizedManagerName)
 
-            let item = ConsolidatedPackageItem(
+            return ConsolidatedPackageItem(
                 package: primary,
                 memberPackages: sortedMembers,
                 managerIds: managerIds,
                 managerDisplayNames: managerDisplayNames
             )
-            return (
-                item: item,
-                sortKey: primary.displayName.folding(
-                    options: [.caseInsensitive, .diacriticInsensitive],
-                    locale: .current
-                )
+        }
+        return items.sorted { lhs, rhs in
+            isOrderedBefore(
+                lhs,
+                rhs,
+                locale: locale,
+                localizedManagerName: localizedManagerName,
+                priorityRank: priorityRank
             )
         }
-        return indexedItems.sorted { lhs, rhs in
-            if lhs.sortKey != rhs.sortKey {
-                return lhs.sortKey < rhs.sortKey
-            }
-            let nameOrder = lhs.item.package.displayName.localizedCaseInsensitiveCompare(
-                rhs.item.package.displayName
-            )
-            if nameOrder != .orderedSame {
-                return nameOrder == .orderedAscending
-            }
-            if preferredPackageOrdering(lhs.item.package, rhs.item.package) {
-                return true
-            }
-            if preferredPackageOrdering(rhs.item.package, lhs.item.package) {
-                return false
-            }
-            return lhs.item.package.normalizedIdentityKey
-                < rhs.item.package.normalizedIdentityKey
-        }
-        .map(\.item)
     }
 
-    private static func preferredPackageOrdering(_ lhs: PackageItem, _ rhs: PackageItem) -> Bool {
-        PackageConsolidationPolicy.shouldPrefer(
+    static func isOrderedBefore(
+        _ lhs: ConsolidatedPackageItem,
+        _ rhs: ConsolidatedPackageItem,
+        locale: Locale,
+        localizedManagerName: (String) -> String,
+        priorityRank: ((String) -> Int)? = nil
+    ) -> Bool {
+        let nameOrder = lhs.package.displayName.compare(
+            rhs.package.displayName,
+            options: [.caseInsensitive],
+            range: nil,
+            locale: locale
+        )
+        if nameOrder != .orderedSame {
+            return nameOrder == .orderedAscending
+        }
+        if preferredPackageOrdering(
+            lhs.package,
+            rhs.package,
+            localizedManagerName: localizedManagerName,
+            priorityRank: priorityRank
+        ) {
+            return true
+        }
+        if preferredPackageOrdering(
+            rhs.package,
+            lhs.package,
+            localizedManagerName: localizedManagerName,
+            priorityRank: priorityRank
+        ) {
+            return false
+        }
+        if lhs.package.normalizedIdentityKey != rhs.package.normalizedIdentityKey {
+            return lhs.package.normalizedIdentityKey < rhs.package.normalizedIdentityKey
+        }
+        return lhs.package.id < rhs.package.id
+    }
+
+    private static func preferredPackageOrdering(
+        _ lhs: PackageItem,
+        _ rhs: PackageItem,
+        localizedManagerName: (String) -> String,
+        priorityRank: ((String) -> Int)?
+    ) -> Bool {
+        let lhsPreferred = PackageConsolidationPolicy.shouldPrefer(
             lhsStatus: lhs.status.rawValue,
             rhsStatus: rhs.status.rawValue,
             lhsPinned: lhs.pinned,
@@ -380,9 +411,40 @@ struct ConsolidatedPackageItem: Identifiable {
             rhsVersion: rhs.version,
             lhsManagerId: lhs.managerId,
             rhsManagerId: rhs.managerId,
-            localizedManagerName: localizedManagerDisplayName,
-            priorityRank: { HelmCore.shared.managerPriorityRank(for: $0) }
+            localizedManagerName: localizedManagerName,
+            priorityRank: priorityRank
         )
+        let rhsPreferred = PackageConsolidationPolicy.shouldPrefer(
+            lhsStatus: rhs.status.rawValue,
+            rhsStatus: lhs.status.rawValue,
+            lhsPinned: rhs.pinned,
+            rhsPinned: lhs.pinned,
+            lhsRestartRequired: rhs.restartRequired,
+            rhsRestartRequired: lhs.restartRequired,
+            lhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: rhs.runtimeState.isActive,
+                isDefault: rhs.runtimeState.isDefault,
+                hasOverride: rhs.runtimeState.hasOverride
+            ),
+            rhsRuntimeState: PackageRuntimeStateProjection(
+                isActive: lhs.runtimeState.isActive,
+                isDefault: lhs.runtimeState.isDefault,
+                hasOverride: lhs.runtimeState.hasOverride
+            ),
+            lhsVersion: rhs.version,
+            rhsVersion: lhs.version,
+            lhsManagerId: rhs.managerId,
+            rhsManagerId: lhs.managerId,
+            localizedManagerName: localizedManagerName,
+            priorityRank: priorityRank
+        )
+        if lhsPreferred != rhsPreferred {
+            return lhsPreferred
+        }
+        if lhs.id != rhs.id {
+            return lhs.id < rhs.id
+        }
+        return lhs.managerId < rhs.managerId
     }
 
     private static func mergeSummary(into package: inout PackageItem, from candidate: String?) {

@@ -15,7 +15,32 @@ extension HelmCore {
         cachedAllKnownPackagesUnsorted = nil
         cachedAllKnownPackagesSorted = nil
         cachedKnownPackageById = [:]
-        cachedLibraryPackageIndex = nil
+        packageIndexSourceRevision &+= 1
+        libraryPackageIndexCache.invalidate()
+    }
+
+    func invalidateSearchOverlayIfNeeded(previousResults: [PackageItem]) {
+        guard !PackageSnapshotPublicationPolicy.areOrderedSemanticallyEquivalent(
+            previousResults,
+            searchResults
+        ) else {
+            return
+        }
+        searchResultsRevision &+= 1
+        libraryPackageSearchOverlayCache.invalidate()
+    }
+
+    func invalidateKnownPackagesIfManagerEnablementChanged(
+        previousStatuses: [String: ManagerStatus]
+    ) {
+        let previous = previousStatuses.mapValues(\.enabled)
+        let current = managerStatuses.mapValues(\.enabled)
+        if LibraryPackageIndexInvalidationPolicy.managerEnablementChanged(
+            previous: previous,
+            current: current
+        ) {
+            invalidateKnownPackageCaches()
+        }
     }
 
     static let managerActionTaskMissingGraceSeconds: TimeInterval = 12
@@ -202,27 +227,33 @@ extension HelmCore {
         knownPackages: [PackageItem]? = nil
     ) -> [ConsolidatedPackageItem] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if knownPackages == nil, trimmedQuery.isEmpty || searchResults.isEmpty {
+        if knownPackages == nil {
             let localeIdentifier = LocalizationManager.shared.currentLocale
-            let index: LibraryPackageIndex
-            if let cachedLibraryPackageIndex,
-               cachedLibraryPackageIndex.localeIdentifier == localeIdentifier {
-                index = cachedLibraryPackageIndex
+            let index = libraryPackageIndexCache.resolve(
+                packages: allKnownPackages,
+                sourceRevision: packageIndexSourceRevision,
+                localeIdentifier: localeIdentifier,
+                localizedManagerName: normalizedManagerName,
+                priorityRank: { self.managerPriorityRank(for: $0) }
+            )
+            let overlay: LibraryPackageSearchOverlay? = if trimmedQuery.isEmpty || searchResults.isEmpty {
+                nil
             } else {
-                index = LibraryPackageIndex(
-                    packages: allKnownPackages,
-                    localeIdentifier: localeIdentifier,
-                    localizedManagerName: normalizedManagerName
+                libraryPackageSearchOverlayCache.resolve(
+                    packages: searchResults,
+                    sourceRevision: searchResultsRevision
                 )
-                cachedLibraryPackageIndex = index
             }
             return index.filteredPackages(
                 query: trimmedQuery,
                 managerID: managerId,
                 statusFilter: statusFilter,
                 pinnedOnly: pinnedOnly,
+                overlay: overlay,
                 managerParticipatesInSearch: packageManagerParticipatesInSearch,
-                localizedManagerName: normalizedManagerName
+                managerIsEnabled: isManagerEnabled,
+                localizedManagerName: normalizedManagerName,
+                priorityRank: { self.managerPriorityRank(for: $0) }
             )
         }
 
@@ -1474,9 +1505,11 @@ extension HelmCore {
     private func consolidatePackages(_ packages: [PackageItem]) -> [ConsolidatedPackageItem] {
         ConsolidatedPackageItem.consolidate(
             packages,
+            locale: Locale(identifier: LocalizationManager.shared.currentLocale),
             localizedManagerName: { managerId in
                 normalizedManagerName(managerId)
-            }
+            },
+            priorityRank: { self.managerPriorityRank(for: $0) }
         )
     }
 
