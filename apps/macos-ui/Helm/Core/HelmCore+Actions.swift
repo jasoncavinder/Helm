@@ -1918,13 +1918,13 @@ extension HelmCore {
     private func requestRemoteSearchCancellation(for taskIDs: Set<Int64>) {
         guard !taskIDs.isEmpty, let remoteSearchService = service() else { return }
         for taskID in taskIDs {
-            remoteSearchService.cancelTask(taskId: taskID) { [weak self] success in
+            remoteSearchService.cancelRemoteSearchTask(taskId: taskID) { [weak self] success in
                 guard !success else { return }
                 DispatchQueue.main.async {
-                    logger.warning("cancelTask(\(taskID)) returned false for remote search")
+                    logger.warning("cancelRemoteSearchTask(\(taskID)) returned false")
                     self?.recordLastError(
                         source: "core.actions",
-                        action: "cancelTask",
+                        action: "cancelRemoteSearchTask",
                         taskType: "search"
                     )
                 }
@@ -2023,7 +2023,10 @@ extension HelmCore {
 
         let tracker = DescriptionLookupSubmissionTracker(remaining: lookupCandidates.count)
         for candidate in lookupCandidates {
-            service.triggerRemoteSearchForManager(managerId: candidate.managerId, query: package.name) { [weak self] taskId in
+            service.triggerPackageDescriptionSearchForManager(
+                managerId: candidate.managerId,
+                query: package.name
+            ) { [weak self] taskId in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
 
@@ -2035,7 +2038,7 @@ extension HelmCore {
                     } else {
                         self.recordLastError(
                             source: "core.actions",
-                            action: "ensurePackageDescription.triggerRemoteSearchForManager",
+                            action: "ensurePackageDescription.triggerPackageDescriptionSearchForManager",
                             managerId: candidate.managerId,
                             taskType: "search"
                         )
