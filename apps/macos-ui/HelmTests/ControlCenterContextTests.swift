@@ -1,7 +1,76 @@
+import Combine
 import Foundation
+import SwiftUI
 import XCTest
 
 final class ControlCenterContextTests: XCTestCase {
+    func testLocaleChangeInvalidatesMountedActivityAndInspectorHosts() {
+        let localizationChanges = PassthroughSubject<Void, Never>()
+        let context = ControlCenterContextBase(
+            localizationChanges: localizationChanges.eraseToAnyPublisher()
+        )
+        let tracker = ControlCenterLocaleRenderTracker()
+        let hostingView = NSHostingView(
+            rootView: HStack {
+                ControlCenterLocaleProbe(host: .activity, tracker: tracker)
+                ControlCenterLocaleProbe(host: .inspector, tracker: tracker)
+            }
+            .environmentObject(context)
+        )
+        hostingView.frame = NSRect(x: 0, y: 0, width: 320, height: 80)
+
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.didRenderBothHosts
+            },
+            "Expected both Control Center locale-invalidating hosts to mount"
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        hostingView.layoutSubtreeIfNeeded()
+
+        let activityRenderCount = tracker.renderCount(for: .activity)
+        let inspectorRenderCount = tracker.renderCount(for: .inspector)
+        var forwardedChangeCount = 0
+        let observation = context.objectWillChange.sink {
+            forwardedChangeCount += 1
+        }
+
+        localizationChanges.send(())
+
+        XCTAssertEqual(forwardedChangeCount, 1)
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.renderCount(for: .activity) > activityRenderCount
+                    && tracker.renderCount(for: .inspector) > inspectorRenderCount
+            },
+            "Expected a locale change to invalidate both mounted hosts"
+        )
+        withExtendedLifetime(observation) {}
+        withExtendedLifetime(hostingView) {}
+    }
+
+    func testLocalePulseAndSubclassPublishedStateShareObjectWillChange() {
+        let localizationChanges = PassthroughSubject<Void, Never>()
+        let context = ControlCenterLocaleStateProbe(
+            localizationChanges: localizationChanges.eraseToAnyPublisher()
+        )
+        var publishedChangeCount = 0
+        let observation = context.objectWillChange.sink {
+            publishedChangeCount += 1
+        }
+
+        localizationChanges.send(())
+
+        XCTAssertEqual(publishedChangeCount, 1)
+
+        context.selectedPackageId = "package-1"
+
+        XCTAssertEqual(publishedChangeCount, 2)
+        withExtendedLifetime(observation) {}
+    }
+
     func testReviewedPlanConfirmationPreservesTheReviewedSelection() {
         var presentation = UpgradeSheetPresentationState()
         let selectedSteps = [
@@ -314,5 +383,63 @@ final class ControlCenterContextTests: XCTestCase {
                 mayRequireReboot: false
             )
         )
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 1,
+        condition: () -> Bool
+    ) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while !condition(), Date() < deadline {
+            RunLoop.main.run(until: min(deadline, Date(timeIntervalSinceNow: 0.01)))
+        }
+        return condition()
+    }
+}
+
+private enum ControlCenterLocaleHost: Hashable {
+    case activity
+    case inspector
+}
+
+private final class ControlCenterLocaleRenderTracker {
+    private var counts: [ControlCenterLocaleHost: Int] = [:]
+
+    var didRenderBothHosts: Bool {
+        renderCount(for: .activity) > 0 && renderCount(for: .inspector) > 0
+    }
+
+    func record(_ host: ControlCenterLocaleHost) {
+        counts[host, default: 0] += 1
+    }
+
+    func renderCount(for host: ControlCenterLocaleHost) -> Int {
+        counts[host, default: 0]
+    }
+}
+
+private final class ControlCenterLocaleStateProbe: ControlCenterContextBase {
+    @Published var selectedPackageId: String?
+}
+
+private struct ControlCenterLocaleProbe: View {
+    @EnvironmentObject private var context: ControlCenterContextBase
+    let host: ControlCenterLocaleHost
+    let tracker: ControlCenterLocaleRenderTracker
+
+    var body: some View {
+        tracker.record(host)
+        return Text(context.selectedTaskId ?? host.label)
+    }
+}
+
+private extension ControlCenterLocaleHost {
+    var label: String {
+        switch self {
+        case .activity:
+            "Activity"
+        case .inspector:
+            "Inspector"
+        }
     }
 }

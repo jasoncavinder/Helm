@@ -121,6 +121,15 @@ enum WholeWorkflowResearchDatasetValidator {
                     into: &issues
                 )
             }
+            if scenario.taskNumber == 4 {
+                require(
+                    WholeWorkflowResearchTaskFourContract.matchesScenario(scenario),
+                    code: "scenarios.record_order",
+                    path: "scenarios[\(index)].recordIds",
+                    message: "Task 4 must preserve activity records before their ordered recovery actions.",
+                    into: &issues
+                )
+            }
         }
     }
 
@@ -163,11 +172,10 @@ enum WholeWorkflowResearchDatasetValidator {
             )
         case 4:
             return ScenarioContract(
-                scenarioID: "recover-from-failure",
-                startingSurface: "activity",
+                scenarioID: WholeWorkflowResearchTaskFourContract.scenarioID,
+                startingSurface: WholeWorkflowResearchTaskFourContract.startingSurface,
                 recordIDs: Set(
-                    snapshot.activities.map(\.id)
-                        + snapshot.recoveryActions.map(\.id)
+                    WholeWorkflowResearchTaskFourContract.orderedScenarioRecordIDs
                 )
             )
         case 5:
@@ -397,6 +405,13 @@ enum WholeWorkflowResearchDatasetValidator {
         requireUnique(snapshot.activities.map(\.id), code: "activity.duplicate_id", path: "snapshot.activities", into: &issues)
         requireUnique(snapshot.activities.map(\.taskID), code: "activity.duplicate_task_id", path: "snapshot.activities", into: &issues)
         require(
+            WholeWorkflowResearchTaskFourContract.matchesActivities(snapshot.activities),
+            code: "activity.canonical_records",
+            path: "snapshot.activities",
+            message: "Task 4 requires the exact ordered failed-verification and unstarted-source records.",
+            into: &issues
+        )
+        require(
             snapshot.activities.contains { $0.applyResult == "applied" && $0.verificationResult == "failed" },
             code: "activity.failed_verification",
             path: "snapshot.activities",
@@ -416,6 +431,15 @@ enum WholeWorkflowResearchDatasetValidator {
 
         let activityIDs = Set(snapshot.activities.map(\.id))
         requireUnique(snapshot.recoveryActions.map(\.id), code: "recovery.duplicate_id", path: "snapshot.recoveryActions", into: &issues)
+        require(
+            WholeWorkflowResearchTaskFourContract.matchesRecoveryActions(
+                snapshot.recoveryActions
+            ),
+            code: "recovery.canonical_actions",
+            path: "snapshot.recoveryActions",
+            message: "Task 4 requires the exact ordered recovery actions and availability contract.",
+            into: &issues
+        )
         let actions = Set(snapshot.recoveryActions.map(\.action))
         require(
             actions.isSuperset(of: ["retry_verification", "restore", "keep", "copy_diagnostics"]),
