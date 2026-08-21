@@ -16,7 +16,8 @@ enum AppUpdateNotificationPolicy {
         updateIdentifiers: [String],
         previousFingerprint: String?,
         notificationsEnabled: Bool,
-        interactiveSurfaceVisible: Bool
+        interactiveSurfaceVisible: Bool,
+        updatesReadySuppressedForExecution: Bool
     ) -> AppUpdateNotificationEvaluation {
         let fingerprint = normalizedFingerprint(updateIdentifiers)
         guard fingerprint != previousFingerprint else {
@@ -31,6 +32,7 @@ enum AppUpdateNotificationPolicy {
             shouldNotify: fingerprint != nil
                 && notificationsEnabled
                 && !interactiveSurfaceVisible
+                && !updatesReadySuppressedForExecution
         )
     }
 

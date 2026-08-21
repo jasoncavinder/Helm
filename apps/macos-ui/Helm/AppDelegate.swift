@@ -976,6 +976,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             .store(in: &cancellables)
 
+        core.$scopedUpgradePlanRunInProgress
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                // Consume both transition snapshots before a debounced availability change can replay.
+                self.handleUpdateAvailabilityChanged(
+                    self.core.outdatedPackages,
+                    suppressForExecutionTransition: true
+                )
+            }
+            .store(in: &cancellables)
+
         Publishers.CombineLatest4(
             core.$outdatedPackages,
             core.$managerStatuses,
@@ -1220,8 +1234,13 @@ private extension AppDelegate {
         postUpgradePlanCompletionNotification(completion)
     }
 
-    func handleUpdateAvailabilityChanged(_ packages: [PackageItem]) {
+    func handleUpdateAvailabilityChanged(
+        _ packages: [PackageItem],
+        suppressForExecutionTransition: Bool = false
+    ) {
         let interactiveSurfaceVisible = panel.isVisible || isControlCenterVisible
+        let updatesReadySuppressedForExecution = core.scopedUpgradePlanRunInProgress
+            || suppressForExecutionTransition
         let automaticUpdateCount = core.upgradeAllPreviewCount(
             includePinned: false,
             allowOsUpdates: false
@@ -1241,11 +1260,15 @@ private extension AppDelegate {
             updateIdentifiers: updateIdentifiers,
             previousFingerprint: observedUpdateFingerprint,
             notificationsEnabled: core.notificationsEnabled,
-            interactiveSurfaceVisible: interactiveSurfaceVisible
+            interactiveSurfaceVisible: interactiveSurfaceVisible,
+            updatesReadySuppressedForExecution: updatesReadySuppressedForExecution
         )
         observedUpdateFingerprint = evaluation.observedFingerprint
 
-        if evaluation.observedFingerprint == nil || interactiveSurfaceVisible {
+        if evaluation.observedFingerprint == nil
+            || interactiveSurfaceVisible
+            || updatesReadySuppressedForExecution
+        {
             notificationCenter.removePendingNotificationRequests(
                 withIdentifiers: [Self.updatesAvailableNotificationId]
             )
