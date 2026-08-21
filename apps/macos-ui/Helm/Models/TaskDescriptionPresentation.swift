@@ -27,6 +27,14 @@ struct TaskDescriptionLocalization: Equatable {
         )
     }
 
+    static func productionTask(
+        taskType: String,
+        managerID: String,
+        override: Self?
+    ) -> Self {
+        override ?? genericTask(taskType: taskType, managerID: managerID)
+    }
+
     static func managerAction(taskType: String, managerID: String) -> Self? {
         switch taskType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "install", "manager_install":

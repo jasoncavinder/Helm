@@ -195,13 +195,14 @@ extension HelmCore {
                     let rawBackendDescription = backendDescription?.isEmpty == false
                         ? backendDescription
                         : nil
-                    let fallbackLocalization = overrideLocalization
-                        ?? (rawBackendDescription == nil
-                            ? TaskDescriptionLocalization.genericTask(
-                                taskType: task.taskType,
-                                managerID: task.manager
-                            )
-                            : nil)
+                    // The service's legacy `task.label` is persisted English text. Every
+                    // production task also carries type/manager facts, so retain a live
+                    // generic descriptor even when that legacy text is present.
+                    let fallbackLocalization = TaskDescriptionLocalization.productionTask(
+                        taskType: task.taskType,
+                        managerID: task.manager,
+                        override: overrideLocalization
+                    )
                     return TaskItem(
                         id: "\(task.id)",
                         description: taskLabel

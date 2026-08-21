@@ -198,9 +198,10 @@ final class ControlCenterContextTests: XCTestCase {
             rawDescription: "stale production fallback",
             labelKey: nil,
             labelArgs: nil,
-            fallbackLocalization: .genericTask(
+            fallbackLocalization: .productionTask(
                 taskType: "refresh",
-                managerID: "homebrew_formula"
+                managerID: "homebrew_formula",
+                override: nil
             )
         )
 
