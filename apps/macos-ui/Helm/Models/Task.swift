@@ -22,6 +22,25 @@ struct TaskItem: Identifiable {
         true
     }
 
+    var localizedDescription: String {
+        localizedDescription { key, arguments in
+            let localizedArguments = arguments.reduce(into: [String: Any]()) { result, entry in
+                result[entry.key] = entry.value
+            }
+            return key.localized(with: localizedArguments)
+        }
+    }
+
+    func localizedDescription(
+        using resolver: (_ key: String, _ arguments: [String: String]) -> String
+    ) -> String {
+        TaskDescriptionPresentation(
+            rawDescription: description,
+            labelKey: labelKey,
+            labelArgs: labelArgs
+        ).resolve(using: resolver)
+    }
+
     /// Sort order: running first, then queued, then terminal states.
     var statusSortOrder: Int {
         switch status.lowercased() {

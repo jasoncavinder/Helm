@@ -73,6 +73,93 @@ final class ControlCenterContextTests: XCTestCase {
         withExtendedLifetime(observation) {}
     }
 
+    func testLocaleRefreshHostPreservesMountedChildStateAndLifecycle() {
+        let localizationChanges = PassthroughSubject<Void, Never>()
+        let presentReview = PassthroughSubject<Void, Never>()
+        let context = ControlCenterContextBase(
+            localizationChanges: localizationChanges.eraseToAnyPublisher()
+        )
+        let tracker = ControlCenterLocaleStateTracker()
+        let hostingView = NSHostingView(
+            rootView: ControlCenterLocaleStatePreservationHost(
+                context: context,
+                presentReview: presentReview.eraseToAnyPublisher(),
+                tracker: tracker
+            )
+        )
+        hostingView.frame = NSRect(x: 0, y: 0, width: 320, height: 80)
+
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.latestRevision == 0 && tracker.appearCount == 1
+            },
+            "Expected the locale refresh host to mount its stateful child"
+        )
+        let initialLifecycleID = tracker.latestLifecycleID
+        let initialStateToken = tracker.latestStateToken
+
+        presentReview.send(())
+
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.reviewPresented
+            },
+            "Expected representative child presentation state to become active"
+        )
+
+        localizationChanges.send(())
+
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.latestRevision == 1
+                    && tracker.latestRenderedText == "locale-revision-1"
+            },
+            "Expected the mounted child to render the new locale revision"
+        )
+        XCTAssertEqual(tracker.latestLifecycleID, initialLifecycleID)
+        XCTAssertEqual(tracker.latestStateToken, initialStateToken)
+        XCTAssertTrue(tracker.reviewPresented)
+        XCTAssertEqual(tracker.appearCount, 1)
+        XCTAssertEqual(tracker.disappearCount, 0)
+        withExtendedLifetime(hostingView) {}
+    }
+
+    func testRetainedTaskDescriptionResolvesAtPresentationTime() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "raw persisted fallback",
+            labelKey: "service.task.label.install.package",
+            labelArgs: ["manager": "Homebrew", "package": "ripgrep"]
+        )
+        var presentationLocale = "en"
+        var resolutionCount = 0
+        let resolve: (String, [String: String]) -> String = { key, arguments in
+            resolutionCount += 1
+            return "\(presentationLocale):\(key):\(arguments["package"] ?? "")"
+        }
+
+        XCTAssertEqual(
+            presentation.resolve(using: resolve),
+            "en:service.task.label.install.package:ripgrep"
+        )
+        presentationLocale = "de"
+        XCTAssertEqual(
+            presentation.resolve(using: resolve),
+            "de:service.task.label.install.package:ripgrep"
+        )
+        XCTAssertEqual(resolutionCount, 2)
+
+        let fallbackPresentation = TaskDescriptionPresentation(
+            rawDescription: "raw fallback",
+            labelKey: nil,
+            labelArgs: nil
+        )
+        XCTAssertEqual(fallbackPresentation.resolve(using: resolve), "raw fallback")
+        XCTAssertEqual(resolutionCount, 2)
+    }
+
     func testReviewedPlanConfirmationPreservesTheReviewedSelection() {
         var presentation = UpgradeSheetPresentationState()
         let selectedSteps = [
@@ -422,6 +509,93 @@ private final class ControlCenterLocaleRenderTracker {
 
 private final class ControlCenterLocaleStateProbe: ControlCenterContextBase {
     @Published var selectedPackageId: String?
+}
+
+private final class ControlCenterLocaleStateTracker {
+    private(set) var latestRevision: Int?
+    private(set) var latestRenderedText: String?
+    private(set) var latestLifecycleID: UUID?
+    private(set) var latestStateToken: UUID?
+    private(set) var reviewPresented = false
+    private(set) var appearCount = 0
+    private(set) var disappearCount = 0
+
+    func recordRender(
+        revision: Int,
+        renderedText: String,
+        lifecycleID: UUID,
+        stateToken: UUID,
+        reviewPresented: Bool
+    ) {
+        latestRevision = revision
+        latestRenderedText = renderedText
+        latestLifecycleID = lifecycleID
+        latestStateToken = stateToken
+        self.reviewPresented = reviewPresented
+    }
+
+    func recordAppearance() {
+        appearCount += 1
+    }
+
+    func recordDisappearance() {
+        disappearCount += 1
+    }
+}
+
+private final class ControlCenterLocaleLifecycleProbe: ObservableObject {
+    let id = UUID()
+}
+
+private struct ControlCenterLocaleStatePreservationHost: View {
+    @ObservedObject var context: ControlCenterContextBase
+    let presentReview: AnyPublisher<Void, Never>
+    let tracker: ControlCenterLocaleStateTracker
+
+    var body: some View {
+        ControlCenterLocaleRefreshHost(revision: context.localeRevision) {
+            ControlCenterLocaleStatefulChildProbe(
+                presentReview: presentReview,
+                tracker: tracker
+            )
+        }
+    }
+}
+
+private struct ControlCenterLocaleStatefulChildProbe: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
+    @StateObject private var lifecycle = ControlCenterLocaleLifecycleProbe()
+    @State private var stateToken = UUID()
+    @State private var reviewPresented = false
+    let presentReview: AnyPublisher<Void, Never>
+    let tracker: ControlCenterLocaleStateTracker
+
+    var body: some View {
+        let renderedText = "locale-revision-\(localeRevision)"
+        tracker.recordRender(
+            revision: localeRevision,
+            renderedText: renderedText,
+            lifecycleID: lifecycle.id,
+            stateToken: stateToken,
+            reviewPresented: reviewPresented
+        )
+        return Text(renderedText)
+            .overlay {
+                if reviewPresented {
+                    Text("review-presented")
+                        .accessibilityHidden(true)
+                }
+            }
+            .onReceive(presentReview) {
+                reviewPresented = true
+            }
+            .onAppear {
+                tracker.recordAppearance()
+            }
+            .onDisappear {
+                tracker.recordDisappearance()
+            }
+    }
 }
 
 private struct ControlCenterLocaleProbe: View {

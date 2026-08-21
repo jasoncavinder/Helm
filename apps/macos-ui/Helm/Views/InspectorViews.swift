@@ -66,66 +66,68 @@ struct ControlCenterInspectorView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text(L10n.App.Inspector.title.localized)
-                    .font(.headline)
+        ControlCenterLocaleRefreshHost(revision: context.localeRevision) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(L10n.App.Inspector.title.localized)
+                        .font(.headline)
 
-                if let activity = selectedResearchActivity,
-                   let researchActivityProjection {
-                    ResearchActivityInspectorView(
-                        activity: activity,
-                        projection: researchActivityProjection
-                    )
-                } else if let task = selectedTask {
-                    InspectorTaskDetailView(task: task)
-                } else if let step = selectedUpgradePlanStep {
-                    if let task = selectedUpgradePlanTask {
-                        InspectorTaskDetailView(task: task)
-                    } else {
-                        InspectorUpgradePlanDetailView(
-                            step: step,
-                            status: step.status,
-                            reason: core.localizedUpgradePlanReason(for: step),
-                            researchUpdate: researchPlanProjection?.update(for: step.id)
+                    if let activity = selectedResearchActivity,
+                       let researchActivityProjection {
+                        ResearchActivityInspectorView(
+                            activity: activity,
+                            projection: researchActivityProjection
                         )
+                    } else if let task = selectedTask {
+                        InspectorTaskDetailView(task: task)
+                    } else if let step = selectedUpgradePlanStep {
+                        if let task = selectedUpgradePlanTask {
+                            InspectorTaskDetailView(task: task)
+                        } else {
+                            InspectorUpgradePlanDetailView(
+                                step: step,
+                                status: step.status,
+                                reason: core.localizedUpgradePlanReason(for: step),
+                                researchUpdate: researchPlanProjection?.update(for: step.id)
+                            )
+                        }
+                    } else if let package = selectedPackage {
+                        let runtimeStateToken = [
+                            package.runtimeState.isActive ? "1" : "0",
+                            package.runtimeState.isDefault ? "1" : "0",
+                            package.runtimeState.hasOverride ? "1" : "0",
+                        ].joined()
+                        let packageInspectorToken = "\(package.id)|\(package.pinned ? 1 : 0)|\(package.version)|\(package.latestVersion ?? "")|\(runtimeStateToken)"
+                        InspectorPackageDetailView(package: package)
+                            .id(packageInspectorToken)
+                    } else if let manager = selectedManager {
+                        InspectorManagerDetailView(
+                            manager: manager,
+                            status: core.managerStatuses[manager.id],
+                            detectionDiagnostics: core.managerDetectionDiagnostics(for: manager.id),
+                            health: core.health(forManagerId: manager.id),
+                            packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
+                            outdatedCount: core.outdatedCount(forManagerId: manager.id)
+                        )
+                    } else {
+                        Text(L10n.App.Inspector.empty.localized)
+                            .font(.callout)
+                            .foregroundColor(.secondary)
                     }
-                } else if let package = selectedPackage {
-                    let runtimeStateToken = [
-                        package.runtimeState.isActive ? "1" : "0",
-                        package.runtimeState.isDefault ? "1" : "0",
-                        package.runtimeState.hasOverride ? "1" : "0",
-                    ].joined()
-                    let packageInspectorToken = "\(package.id)|\(package.pinned ? 1 : 0)|\(package.version)|\(package.latestVersion ?? "")|\(runtimeStateToken)"
-                    InspectorPackageDetailView(package: package)
-                        .id(packageInspectorToken)
-                } else if let manager = selectedManager {
-                    InspectorManagerDetailView(
-                        manager: manager,
-                        status: core.managerStatuses[manager.id],
-                        detectionDiagnostics: core.managerDetectionDiagnostics(for: manager.id),
-                        health: core.health(forManagerId: manager.id),
-                        packageCount: core.installedPackages.filter { $0.managerId == manager.id }.count,
-                        outdatedCount: core.outdatedCount(forManagerId: manager.id)
-                    )
-                } else {
-                    Text(L10n.App.Inspector.empty.localized)
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                }
 
-                Spacer()
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
         }
-        .id(context.localeRevision)
     }
 }
 
 // MARK: - Upgrade Plan Inspector
 
 private struct InspectorUpgradePlanDetailView: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     let step: CoreUpgradePlanStep
     let status: String
     let reason: String
@@ -157,6 +159,10 @@ private struct InspectorUpgradePlanDetailView: View {
     }
 
     var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    private func content(forLocaleRevision _: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(step.packageName)
                 .font(.title3.weight(.semibold))
@@ -244,6 +250,7 @@ private struct InspectorUpgradePlanDetailView: View {
 
 private struct InspectorTaskDetailView: View {
     @ObservedObject private var core = HelmCore.shared
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     @State private var showDiagnosticsSheet = false
     @State private var isLoadingTaskOutput = false
     @State private var taskOutputLoadFailed = false
@@ -257,8 +264,12 @@ private struct InspectorTaskDetailView: View {
     let task: TaskItem
 
     var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    private func content(forLocaleRevision _: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(task.description)
+            Text(task.localizedDescription)
                 .font(.title3.weight(.semibold))
 
             // Status badge
@@ -363,7 +374,7 @@ private struct InspectorTaskDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .popover(isPresented: $showDiagnosticsSheet, arrowEdge: .leading) {
             TaskDiagnosticsSheetView(
-                taskDescription: task.description,
+                taskDescription: task.localizedDescription,
                 diagnosticsText: HelmSupport.generateTaskDiagnostics(
                     task: task,
                     suggestedCommand: diagnosticCommandHint(),
@@ -493,6 +504,7 @@ private struct InspectorTaskDetailView: View {
 }
 
 private struct TaskDiagnosticsSheetView: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     let taskDescription: String
     let diagnosticsText: String
     let output: CoreTaskOutputRecord?
@@ -507,6 +519,10 @@ private struct TaskDiagnosticsSheetView: View {
     @State private var statusFilter: TaskLogStatusFilter = .all
 
     var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    private func content(forLocaleRevision _: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.App.Inspector.taskDiagnostics.localized)
                 .font(.headline)
@@ -858,6 +874,7 @@ private func copyTextToClipboard(_ text: String) {
 private struct InspectorPackageDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     @State private var loadingPackageUninstallPreview = false
     @State private var inspectorAlert: InspectorPackageAlert?
     let package: PackageItem
@@ -1096,6 +1113,11 @@ private struct InspectorPackageDetailView: View {
 
     @ViewBuilder
     var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    @ViewBuilder
+    private func content(forLocaleRevision _: Int) -> some View {
         if let researchLibraryProjection, let researchResult {
             researchBody(researchResult, projection: researchLibraryProjection)
         } else {
@@ -2333,6 +2355,7 @@ private final class InspectorLinkTextView: NSTextView {
 private struct InspectorManagerDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @EnvironmentObject private var context: ControlCenterContext
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     private let installMethodPolicyContext = ManagerInstallMethodPolicyContext.fromEnvironment()
     let manager: ManagerInfo
     let status: ManagerStatus?
@@ -3417,6 +3440,7 @@ private struct InspectorManagerDetailView: View {
         .onChange(of: context.managerInstallSheetRequestToken) { _ in
             consumePendingInstallSheetRequestIfNeeded()
         }
+        .environment(\.controlCenterLocaleRevision, localeRevision)
     }
 }
 

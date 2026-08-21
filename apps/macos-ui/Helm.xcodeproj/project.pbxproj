@@ -31,6 +31,8 @@
 		8CFB6D592F3D1D1D002372B8 /* PackageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */; };
 		8CFB6D5A2F3D1D1D002372B8 /* Package.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D552F3D1D1D002372B8 /* Package.swift */; };
 		8CFB6D5B2F3D1D1D002372B8 /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFB6D562F3D1D1D002372B8 /* Task.swift */; };
+		R52300000000000000000001 /* TaskDescriptionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = R52300000000000000000011 /* TaskDescriptionPresentation.swift */; };
+		R52300000000000000000002 /* TaskDescriptionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = R52300000000000000000011 /* TaskDescriptionPresentation.swift */; };
 		A10000010000000000000001 /* HelmApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000001 /* HelmApp.swift */; };
 		A10000010000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000002 /* AppDelegate.swift */; };
 		A10000010000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000003 /* Assets.xcassets */; };
@@ -246,6 +248,7 @@
 		8CFB6D4F2F3D1D1D002372B8 /* Helm-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "Helm-Bridging-Header.h"; sourceTree = "<group>"; };
 		8CFB6D552F3D1D1D002372B8 /* Package.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		8CFB6D562F3D1D1D002372B8 /* Task.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Task.swift; sourceTree = "<group>"; };
+		R52300000000000000000011 /* TaskDescriptionPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDescriptionPresentation.swift; sourceTree = "<group>"; };
 		A10000020000000000000001 /* HelmApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmApp.swift; sourceTree = "<group>"; };
 		A10000020000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A10000020000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -488,6 +491,7 @@
 				B10000000000000000000001 /* ManagerInfo.swift */,
 				8CFB6D552F3D1D1D002372B8 /* Package.swift */,
 				8CFB6D562F3D1D1D002372B8 /* Task.swift */,
+				R52300000000000000000011 /* TaskDescriptionPresentation.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -893,6 +897,7 @@
 				8CE1FDD22F3D2B84000A3945 /* HelmServiceProtocol.swift in Sources */,
 				A30000000000000000000002 /* HelmVersion.swift in Sources */,
 				8CFB6D5B2F3D1D1D002372B8 /* Task.swift in Sources */,
+				R52300000000000000000001 /* TaskDescriptionPresentation.swift in Sources */,
 				8CFB6D582F3D1D1D002372B8 /* TaskListView.swift in Sources */,
 				B20000000000000000000001 /* ManagerInfo.swift in Sources */,
 				B20000000000000000000002 /* LabeledContentRow.swift in Sources */,
@@ -970,6 +975,7 @@
 				S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
 				C38300000000000000000003 /* ControlCenterContextTests.swift in Sources */,
 				R520400000000000000000002 /* ControlCenterContextBase.swift in Sources */,
+				R52300000000000000000002 /* TaskDescriptionPresentation.swift in Sources */,
 				T200000000000000000000002 /* SettingsOpeningBridge.swift in Sources */,
 				T200000000000000000000003 /* SettingsOpeningBridgeTests.swift in Sources */,
 				V200000000000000000000002 /* SettingsPane.swift in Sources */,
