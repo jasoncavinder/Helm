@@ -9,6 +9,7 @@ final class ControlCenterContextTests: XCTestCase {
         let context = ControlCenterContextBase(
             localizationChanges: localizationChanges.eraseToAnyPublisher()
         )
+        XCTAssertEqual(context.localeRevision, 0)
         let tracker = ControlCenterLocaleRenderTracker()
         let hostingView = NSHostingView(
             rootView: HStack {
@@ -39,6 +40,7 @@ final class ControlCenterContextTests: XCTestCase {
         localizationChanges.send(())
 
         XCTAssertEqual(forwardedChangeCount, 1)
+        XCTAssertEqual(context.localeRevision, 1)
         XCTAssertTrue(
             waitUntil {
                 hostingView.layoutSubtreeIfNeeded()

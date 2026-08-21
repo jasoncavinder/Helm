@@ -119,6 +119,7 @@ struct ControlCenterInspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
         }
+        .id(context.localeRevision)
     }
 }
 
