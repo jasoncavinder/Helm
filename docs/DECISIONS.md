@@ -730,6 +730,12 @@ Implemented in the released `v0.17.12` patch:
 - all submitted tasks in one phase become terminal before the next phase is scheduled;
 - scoped-workflow cancellation prevents future phase submission while per-task cancellation remains process-backed and observable; pre-start caller-supplied cancellation IDs reserve cancellation only for a bounded window so abandoned IDs cannot block future workflows.
 
+Current in-process scoped selected-Plan FFI refinement:
+
+- each submitted task's ordered domain-response persistence turn finishes before the next authority phase or observable workflow completion;
+- the persistence receipt denotes completion of that ordered turn, including the logged-error path, rather than guaranteeing that every underlying write succeeded.
+- legacy external-coordinator workflows retain terminal-only wait semantics.
+
 Deferred architecture work:
 
 - `0.19.x`: add revision-aware snapshots and evaluate narrowly scoped event delivery, with reconnect/replay/ordering/backpressure tests before reducing polling;

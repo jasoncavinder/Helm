@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     private let core = HelmCore.shared
     let controlCenterContext = ControlCenterContext()
     private let notificationCenter = UNUserNotificationCenter.current()
-    private var observedUpdateFingerprint: String?
+    private var updateNotificationState = AppUpdateNotificationState()
     private var announcedTimeoutPromptIds: Set<String> = []
     private var announcedUpgradePlanCompletionWorkflowId: String?
     private static let timeoutPromptCategoryId = "helm.task.timeout.prompt"
@@ -976,6 +976,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             }
             .store(in: &cancellables)
 
+        core.$scopedUpgradePlanRunInProgress
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isRunning in
+                guard let self else { return }
+                let observation: AppUpdateNotificationObservation
+                if isRunning {
+                    observation = .backendExecutionStarted
+                } else {
+                    observation = .backendExecutionEnded(
+                        awaitingSnapshotRevision: self.core.fetchOutdatedPackages()
+                    )
+                }
+                self.handleUpdateAvailabilityChanged(
+                    self.core.appUpdateNotificationSnapshot(for: self.core.outdatedPackages),
+                    observation: observation
+                )
+            }
+            .store(in: &cancellables)
+
+        core.appUpdateNotificationEventTracker.outdatedPackagesSnapshotPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] event in
+                guard let self, self.updateNotificationState.isExecutionSuppressed else { return }
+                self.handleUpdateAvailabilityChanged(
+                    event.snapshot,
+                    observation: .postExecutionSnapshotPublished(revision: event.revision)
+                )
+            }
+            .store(in: &cancellables)
+
+        core.appUpdateNotificationEventTracker.helmOnlyPlanStartedPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] snapshot in
+                guard let self else { return }
+                self.handleUpdateAvailabilityChanged(
+                    snapshot,
+                    observation: .helmOnlyPlanStarted
+                )
+            }
+            .store(in: &cancellables)
+
         Publishers.CombineLatest4(
             core.$outdatedPackages,
             core.$managerStatuses,
@@ -984,7 +1027,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         )
             .debounce(for: .milliseconds(750), scheduler: RunLoop.main)
             .sink { [weak self] packages, _, _, _ in
-                self?.handleUpdateAvailabilityChanged(packages)
+                guard let self else { return }
+                self.handleUpdateAvailabilityChanged(
+                    self.core.appUpdateNotificationSnapshot(for: packages),
+                    observation: .availabilityChanged
+                )
             }
             .store(in: &cancellables)
 
@@ -1220,32 +1267,22 @@ private extension AppDelegate {
         postUpgradePlanCompletionNotification(completion)
     }
 
-    func handleUpdateAvailabilityChanged(_ packages: [PackageItem]) {
+    func handleUpdateAvailabilityChanged(
+        _ snapshot: AppUpdateNotificationSnapshot,
+        observation: AppUpdateNotificationObservation
+    ) {
         let interactiveSurfaceVisible = panel.isVisible || isControlCenterVisible
-        let automaticUpdateCount = core.upgradeAllPreviewCount(
-            includePinned: false,
-            allowOsUpdates: false
-        )
-        var updateIdentifiers = packages.map { package in
-            [
-                package.managerId,
-                package.id,
-                package.version,
-                package.latestVersion ?? "",
-            ].joined(separator: "|")
-        }
-        if !packages.isEmpty {
-            updateIdentifiers.append("upgrade-all-available:\(automaticUpdateCount > 0)")
-        }
-        let evaluation = AppUpdateNotificationPolicy.evaluate(
-            updateIdentifiers: updateIdentifiers,
-            previousFingerprint: observedUpdateFingerprint,
+        let evaluation = updateNotificationState.evaluate(
+            updateIdentifiers: snapshot.updateIdentifiers,
             notificationsEnabled: core.notificationsEnabled,
-            interactiveSurfaceVisible: interactiveSurfaceVisible
+            interactiveSurfaceVisible: interactiveSurfaceVisible,
+            observation: observation
         )
-        observedUpdateFingerprint = evaluation.observedFingerprint
 
-        if evaluation.observedFingerprint == nil || interactiveSurfaceVisible {
+        if evaluation.observedFingerprint == nil
+            || interactiveSurfaceVisible
+            || evaluation.updatesReadySuppressedForExecution
+        {
             notificationCenter.removePendingNotificationRequests(
                 withIdentifiers: [Self.updatesAvailableNotificationId]
             )
@@ -1256,8 +1293,8 @@ private extension AppDelegate {
 
         guard evaluation.shouldNotify else { return }
         postUpdatesReadyNotification(
-            count: packages.count,
-            allowsUpgradeAll: automaticUpdateCount > 0
+            count: snapshot.updateCount,
+            allowsUpgradeAll: snapshot.automaticUpdateCount > 0
         )
     }
 

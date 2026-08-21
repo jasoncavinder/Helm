@@ -55,8 +55,11 @@ extension HelmCore {
         }
     }
 
-    func fetchOutdatedPackages() {
-        guard let svc = service() else { return }
+    @discardableResult
+    func fetchOutdatedPackages() -> UInt64 {
+        let requestRevision = appUpdateNotificationEventTracker
+            .issueOutdatedPackagesSnapshotRequest()
+        guard let svc = service() else { return requestRevision }
         withTimeout(
             30,
             source: "core.fetching",
@@ -78,6 +81,10 @@ extension HelmCore {
                   ) else { return }
 
             DispatchQueue.main.async {
+                guard self.appUpdateNotificationEventTracker
+                    .acceptOutdatedPackagesSnapshotResponse(revision: requestRevision) else {
+                    return
+                }
                 let managerPackages = corePackages.map { pkg in
                     PackageItem(
                         id: self.availablePackageId(
@@ -112,8 +119,27 @@ extension HelmCore {
                         allowOsUpdates: self.upgradePlanAllowOsUpdates
                     )
                 }
+                self.appUpdateNotificationEventTracker.publishOutdatedPackagesSnapshot(
+                    revision: requestRevision,
+                    snapshot: self.appUpdateNotificationSnapshot(
+                        for: self.outdatedPackages
+                    )
+                )
             }
         }
+        return requestRevision
+    }
+
+    func appUpdateNotificationSnapshot(
+        for packages: [PackageItem]
+    ) -> AppUpdateNotificationSnapshot {
+        AppUpdateNotificationSnapshot(
+            packages: packages,
+            automaticUpdateCount: upgradeAllPreviewCount(
+                includePinned: false,
+                allowOsUpdates: false
+            )
+        )
     }
 
     func syncHelmSelfUpdateAvailability(_ availability: AppUpdateAvailability?) {
