@@ -288,6 +288,24 @@ final class ControlCenterContextTests: XCTestCase {
         )
     }
 
+    func testGlobalSearchUnknownPackageVersionUsesCurrentLocalePresentation() {
+        let package = PackageItem(
+            id: "npm:example",
+            name: "example",
+            version: "inconnu",
+            managerId: "npm",
+            manager: "npm"
+        )
+
+        XCTAssertEqual(
+            PackageVersionPresentation.currentVersionText(
+                for: package,
+                localizedUnknown: "unbekannt"
+            ),
+            "unbekannt"
+        )
+    }
+
     func testLocalizedUnknownPackageVersionIsNeverUsedAsMutationSelector() {
         for placeholder in ["unknown", "unbekannt", "desconocida", "inconnu",
                             "ismeretlen", "不明", "desconhecido"] {

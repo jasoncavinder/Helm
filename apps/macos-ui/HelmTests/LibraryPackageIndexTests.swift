@@ -446,6 +446,34 @@ final class LibraryPackageIndexTests: XCTestCase {
         XCTAssertEqual(cache.generation, initialGeneration + 1)
     }
 
+    func testLocalizedUnknownVersionDoesNotRepublishSemanticSnapshot() {
+        let frenchSnapshot = package(
+            id: "npm:example",
+            name: "example",
+            version: "inconnu",
+            managerID: "npm"
+        )
+        let germanSnapshot = package(
+            id: frenchSnapshot.id,
+            name: frenchSnapshot.name,
+            version: "unbekannt",
+            managerID: frenchSnapshot.managerId
+        )
+
+        XCTAssertFalse(
+            PackageSnapshotPublicationPolicy.shouldPublish(
+                current: [frenchSnapshot],
+                replacement: [germanSnapshot]
+            )
+        )
+        XCTAssertTrue(
+            PackageSnapshotPublicationPolicy.areOrderedSemanticallyEquivalent(
+                [frenchSnapshot],
+                [germanSnapshot]
+            )
+        )
+    }
+
     func testFilterChangesReuseRevisionedSearchOverlay() {
         let remote = package(
             id: "cargo:ripgrep",

@@ -112,7 +112,10 @@ struct ControlCenterWindowView: View {
                 id: package.id,
                 title: package.displayName,
                 managerID: package.managerId,
-                version: package.version,
+                version: PackageVersionPresentation.currentVersionText(
+                    for: package,
+                    localizedUnknown: L10n.Common.unknown.localized
+                ),
                 state: package.status == .available ? .cached : .local,
                 detail: package.summary,
                 recommended: false

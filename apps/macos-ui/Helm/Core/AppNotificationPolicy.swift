@@ -33,7 +33,8 @@ struct AppUpdateNotificationSnapshot: Equatable {
             [
                 package.managerId,
                 package.id,
-                package.version,
+                PackageIdentity.normalizedKnownVersion(package.version)
+                    ?? PackageVersionStorage.unknown,
                 package.latestVersion ?? "",
             ].joined(separator: "|")
         }
