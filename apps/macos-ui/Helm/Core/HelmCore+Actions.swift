@@ -21,7 +21,8 @@ extension HelmCore {
                             managerId: task.managerId,
                             taskType: task.taskType,
                             labelKey: task.labelKey,
-                            labelArgs: task.labelArgs
+                            labelArgs: task.labelArgs,
+                            fallbackLocalization: task.fallbackLocalization
                         )
                     }
                     self?.postAccessibilityAnnouncement(
@@ -166,7 +167,12 @@ extension HelmCore {
                     taskId: UInt64(taskId),
                     taskType: "package_upgrade",
                     description: self.upgradeActionDescription(for: package),
-                    inProgressText: L10n.App.Managers.Operation.upgrading.localized
+                    inProgressText: L10n.App.Managers.Operation.upgrading.localized,
+                    fallbackLocalization: TaskDescriptionLocalization.packageUpgrade(
+                        packageName: package.name,
+                        managerID: package.managerId,
+                        cleanupOldKegs: self.shouldCleanupOldKegs(for: package)
+                    )
                 )
             }
         }
@@ -1028,6 +1034,7 @@ extension HelmCore {
         managerOperations.removeValue(forKey: managerId)
         if let taskId = managerActionTaskByManager.removeValue(forKey: managerId) {
             managerActionTaskDescriptions.removeValue(forKey: taskId)
+            managerActionTaskDescriptionLocalizations.removeValue(forKey: taskId)
             managerActionTaskTypes.removeValue(forKey: taskId)
             managerActionTaskSubmittedAt.removeValue(forKey: taskId)
         }
@@ -1788,9 +1795,20 @@ extension HelmCore {
         taskId: UInt64,
         taskType: String,
         description: String,
-        inProgressText: String
+        inProgressText: String,
+        fallbackLocalization: TaskDescriptionLocalization? = nil
     ) {
+        let resolvedFallbackLocalization = fallbackLocalization
+            ?? TaskDescriptionLocalization.managerAction(
+                taskType: taskType,
+                managerID: managerId
+            )
         managerActionTaskDescriptions[taskId] = description
+        if let resolvedFallbackLocalization {
+            managerActionTaskDescriptionLocalizations[taskId] = resolvedFallbackLocalization
+        } else {
+            managerActionTaskDescriptionLocalizations.removeValue(forKey: taskId)
+        }
         managerActionTaskByManager[managerId] = taskId
         managerActionTaskTypes[taskId] = taskType
         managerActionTaskSubmittedAt[taskId] = Date()
@@ -1806,7 +1824,8 @@ extension HelmCore {
                     managerId: managerId,
                     taskType: nil,
                     labelKey: nil,
-                    labelArgs: nil
+                    labelArgs: nil,
+                    fallbackLocalization: resolvedFallbackLocalization
                 ),
                 at: 0
             )
@@ -1819,6 +1838,10 @@ extension HelmCore {
         description: String
     ) {
         let localTaskId = Self.localManagerActionTaskIdPrefix + UUID().uuidString
+        let fallbackLocalization = TaskDescriptionLocalization.managerAction(
+            taskType: taskType ?? "",
+            managerID: managerId
+        )
         let failedTask = TaskItem(
             id: localTaskId,
             description: description,
@@ -1826,7 +1849,8 @@ extension HelmCore {
             managerId: managerId,
             taskType: taskType,
             labelKey: nil,
-            labelArgs: nil
+            labelArgs: nil,
+            fallbackLocalization: fallbackLocalization
         )
 
         localManagerActionTasks[localTaskId] = failedTask

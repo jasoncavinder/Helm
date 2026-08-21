@@ -1001,9 +1001,9 @@ extension HelmCore {
             let args = task.labelArgs?.reduce(into: [String: Any]()) { partialResult, entry in
                 partialResult[entry.key] = entry.value
             } ?? [:]
-            return labelKey.localized(with: args)
+            return LocalizationManager.shared.stringIfPresent(labelKey, args: args)
         }
-        // `task.label` is persisted server-side in English; prefer localized fallback composition.
+        // The caller retains `task.label` only as raw backend text when no live descriptor applies.
         return nil
     }
 

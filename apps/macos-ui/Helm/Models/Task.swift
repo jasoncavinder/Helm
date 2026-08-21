@@ -8,6 +8,27 @@ struct TaskItem: Identifiable {
     let taskType: String?
     let labelKey: String?
     let labelArgs: [String: String]?
+    let fallbackLocalization: TaskDescriptionLocalization?
+
+    init(
+        id: String,
+        description: String,
+        status: String,
+        managerId: String?,
+        taskType: String?,
+        labelKey: String?,
+        labelArgs: [String: String]?,
+        fallbackLocalization: TaskDescriptionLocalization? = nil
+    ) {
+        self.id = id
+        self.description = description
+        self.status = status
+        self.managerId = managerId
+        self.taskType = taskType
+        self.labelKey = labelKey
+        self.labelArgs = labelArgs
+        self.fallbackLocalization = fallbackLocalization
+    }
 
     var isRunning: Bool {
         let s = status.lowercased()
@@ -27,18 +48,29 @@ struct TaskItem: Identifiable {
             let localizedArguments = arguments.reduce(into: [String: Any]()) { result, entry in
                 result[entry.key] = entry.value
             }
-            return key.localized(with: localizedArguments)
+            return LocalizationManager.shared.stringIfPresent(key, args: localizedArguments)
+        } argumentResolver: { argument in
+            switch argument {
+            case let .literal(value):
+                return value
+            case let .managerID(managerID):
+                return localizedManagerDisplayName(managerID)
+            case let .taskType(taskType):
+                return HelmCore.shared.localizedTaskType(taskType)
+            }
         }
     }
 
     func localizedDescription(
-        using resolver: (_ key: String, _ arguments: [String: String]) -> String
+        using resolver: (_ key: String, _ arguments: [String: String]) -> String?,
+        argumentResolver: (TaskDescriptionLocalization.Argument) -> String = { $0.rawValue }
     ) -> String {
         TaskDescriptionPresentation(
             rawDescription: description,
             labelKey: labelKey,
-            labelArgs: labelArgs
-        ).resolve(using: resolver)
+            labelArgs: labelArgs,
+            fallbackLocalization: fallbackLocalization
+        ).resolve(using: resolver, argumentResolver: argumentResolver)
     }
 
     /// Sort order: running first, then queued, then terminal states.

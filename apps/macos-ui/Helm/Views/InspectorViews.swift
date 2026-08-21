@@ -884,17 +884,6 @@ private struct InspectorPackageDetailView: View {
         researchLibraryProjection?.result(withID: package.id)
     }
 
-    private static let unknownVersionTokens: Set<String> = {
-        var tokens: Set<String> = ["unknown"]
-        let localizedUnknown = L10n.Common.unknown.localized
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        if !localizedUnknown.isEmpty {
-            tokens.insert(localizedUnknown)
-        }
-        return tokens
-    }()
-
     private struct ManagerSwitchAlertContext: Identifiable {
         let packageName: String
         let selectedManagerId: String
@@ -1008,7 +997,10 @@ private struct InspectorPackageDetailView: View {
     }
 
     private var currentVersionText: String {
-        normalizedVersionText(activePackage.version) ?? L10n.Common.unknown.localized
+        PackageVersionPresentation.currentVersionText(
+            storedVersion: activePackage.version,
+            localizedUnknown: L10n.Common.unknown.localized
+        )
     }
 
     private struct RuntimeStateBadge: Identifiable {
@@ -2121,13 +2113,7 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func normalizedVersionText(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return nil }
-        if Self.unknownVersionTokens.contains(normalized.lowercased()) {
-            return nil
-        }
-        return normalized
+        PackageIdentity.normalizedKnownVersion(value)
     }
 
     private func versionSelectionLabel(for package: PackageItem) -> String {

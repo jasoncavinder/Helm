@@ -585,6 +585,7 @@ final class HelmCore: ObservableObject {
     var localSearchRequestGeneration: UInt64 = 0
     var remoteSearchSession = RemoteSearchSessionState() { didSet { isSearching = remoteSearchSession.isSearching } }
     var managerActionTaskDescriptions: [UInt64: String] = [:]
+    var managerActionTaskDescriptionLocalizations: [UInt64: TaskDescriptionLocalization] = [:]
     var managerActionTaskByManager: [String: UInt64] = [:]
     var managerActionTaskTypes: [UInt64: String] = [:]
     var managerActionTaskSubmittedAt: [UInt64: Date] = [:]
@@ -1349,6 +1350,7 @@ final class HelmCore: ObservableObject {
                     self?.descriptionLookupStartedAtByPackage = [:]
                     self?.descriptionLookupPackageById = [:]
                     self?.managerActionTaskDescriptions = [:]
+                    self?.managerActionTaskDescriptionLocalizations = [:]
                     self?.managerActionTaskByManager = [:]
                     self?.managerActionTaskTypes = [:]
                     self?.managerActionTaskSubmittedAt = [:]

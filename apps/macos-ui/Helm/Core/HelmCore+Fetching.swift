@@ -188,12 +188,25 @@ extension HelmCore {
 
                 let coreTaskItems = coreTasks.map { task in
                     let overrideDescription = self.managerActionTaskDescriptions[task.id]
+                    let overrideLocalization = self.managerActionTaskDescriptionLocalizations[task.id]
                     let managerName = self.normalizedManagerName(task.manager)
                     let taskLabel = self.localizedTaskLabel(from: task)
+                    let backendDescription = task.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let rawBackendDescription = backendDescription?.isEmpty == false
+                        ? backendDescription
+                        : nil
+                    let fallbackLocalization = overrideLocalization
+                        ?? (rawBackendDescription == nil
+                            ? TaskDescriptionLocalization.genericTask(
+                                taskType: task.taskType,
+                                managerID: task.manager
+                            )
+                            : nil)
                     return TaskItem(
                         id: "\(task.id)",
                         description: taskLabel
                             ?? overrideDescription
+                            ?? rawBackendDescription
                             ?? L10n.App.Tasks.fallbackDescription.localized(with: [
                                 "task_type": self.localizedTaskType(task.taskType),
                                 "manager": managerName
@@ -202,7 +215,8 @@ extension HelmCore {
                         managerId: task.manager,
                         taskType: task.taskType,
                         labelKey: task.labelKey,
-                        labelArgs: task.labelArgs
+                        labelArgs: task.labelArgs,
+                        fallbackLocalization: fallbackLocalization
                     )
                 }
                 self.syncManagerOperations(from: coreTasks)
@@ -333,6 +347,11 @@ extension HelmCore {
             let action = managerActionLabelAction(for: trackedType)
             let description = managerActionTaskDescriptions[taskId]
                 ?? managerActionDescription(action: action, managerId: managerId)
+            let fallbackLocalization = managerActionTaskDescriptionLocalizations[taskId]
+                ?? TaskDescriptionLocalization.managerAction(
+                    taskType: trackedType ?? "",
+                    managerID: managerId
+                )
 
             return TaskItem(
                 id: "\(taskId)",
@@ -341,7 +360,8 @@ extension HelmCore {
                 managerId: managerId,
                 taskType: managerActionPlaceholderTaskType(for: trackedType),
                 labelKey: nil,
-                labelArgs: nil
+                labelArgs: nil,
+                fallbackLocalization: fallbackLocalization
             )
         }
     }

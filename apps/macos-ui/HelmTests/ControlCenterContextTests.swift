@@ -135,7 +135,7 @@ final class ControlCenterContextTests: XCTestCase {
         )
         var presentationLocale = "en"
         var resolutionCount = 0
-        let resolve: (String, [String: String]) -> String = { key, arguments in
+        let resolve: (String, [String: String]) -> String? = { key, arguments in
             resolutionCount += 1
             return "\(presentationLocale):\(key):\(arguments["package"] ?? "")"
         }
@@ -158,6 +158,95 @@ final class ControlCenterContextTests: XCTestCase {
         )
         XCTAssertEqual(fallbackPresentation.resolve(using: resolve), "raw fallback")
         XCTAssertEqual(resolutionCount, 2)
+    }
+
+    func testMissingTaskDescriptionKeyUsesRawFallback() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "backend-provided task description",
+            labelKey: "service.task.label.missing",
+            labelArgs: ["package": "ripgrep"]
+        )
+
+        XCTAssertEqual(
+            presentation.resolve(using: { _, _ in nil }),
+            "backend-provided task description"
+        )
+    }
+
+    func testNilLabelProductionTaskFallbackReResolvesAcrossLocales() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale production fallback",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: .genericTask(
+                taskType: "refresh",
+                managerID: "homebrew_formula"
+            )
+        )
+
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "en"),
+                       "en|app.tasks.fallback.description|manager=en-homebrew_formula,task_type=en-refresh")
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "de"),
+                       "de|app.tasks.fallback.description|manager=de-homebrew_formula,task_type=de-refresh")
+    }
+
+    func testQueuedManagerPlaceholderFallbackReResolvesAcrossLocales() throws {
+        let localization = try XCTUnwrap(
+            TaskDescriptionLocalization.managerAction(
+                taskType: "manager_setup",
+                managerID: "mise"
+            )
+        )
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale queued placeholder",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: localization
+        )
+
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "en"),
+                       "en|service.task.label.setup.manager|manager=en-mise")
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "de"),
+                       "de|service.task.label.setup.manager|manager=de-mise")
+    }
+
+    func testLocalManagerFailureFallbackReResolvesAcrossLocales() throws {
+        let localization = try XCTUnwrap(
+            TaskDescriptionLocalization.managerAction(
+                taskType: "install",
+                managerID: "npm"
+            )
+        )
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale local failure",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: localization
+        )
+
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "en"),
+                       "en|app.tasks.fallback.description|manager=en-npm,task_type=en-install")
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "de"),
+                       "de|app.tasks.fallback.description|manager=de-npm,task_type=de-install")
+    }
+
+    func testRetainedUnknownPackageVersionUsesCurrentLocalePresentation() {
+        let retainedVersion = "inconnu"
+
+        XCTAssertEqual(
+            PackageVersionPresentation.currentVersionText(
+                storedVersion: retainedVersion,
+                localizedUnknown: "inconnu"
+            ),
+            "inconnu"
+        )
+        XCTAssertEqual(
+            PackageVersionPresentation.currentVersionText(
+                storedVersion: retainedVersion,
+                localizedUnknown: "unbekannt"
+            ),
+            "unbekannt"
+        )
     }
 
     func testReviewedPlanConfirmationPreservesTheReviewedSelection() {
@@ -483,6 +572,24 @@ final class ControlCenterContextTests: XCTestCase {
             RunLoop.main.run(until: min(deadline, Date(timeIntervalSinceNow: 0.01)))
         }
         return condition()
+    }
+
+    private func resolveTaskDescription(
+        _ presentation: TaskDescriptionPresentation,
+        locale: String
+    ) -> String {
+        presentation.resolve(
+            using: { key, arguments in
+                let renderedArguments = arguments
+                    .sorted(by: { $0.key < $1.key })
+                    .map { "\($0.key)=\($0.value)" }
+                    .joined(separator: ",")
+                return "\(locale)|\(key)|\(renderedArguments)"
+            },
+            argumentResolver: { argument in
+                "\(locale)-\(argument.rawValue)"
+            }
+        )
     }
 }
 
