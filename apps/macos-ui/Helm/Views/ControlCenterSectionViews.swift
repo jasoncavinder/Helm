@@ -132,6 +132,7 @@ struct RedesignOverviewSectionView: View {
 private struct DashboardServiceHealthCard: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
+    @ObservedObject private var localization = LocalizationManager.shared
     @State private var showCopiedConfirmation = false
 
     private var connectionStatus: String {

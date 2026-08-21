@@ -23,6 +23,20 @@ struct WholeWorkflowResearchDataset: Codable, Equatable {
     }
 }
 
+enum WholeWorkflowResearchDatasetContract {
+    static func matchesCurrentIdentityAndSafety(
+        _ dataset: WholeWorkflowResearchDataset
+    ) -> Bool {
+        dataset.schemaVersion == WholeWorkflowResearchDataset.currentSchemaVersion
+            && dataset.datasetID == WholeWorkflowResearchDataset.currentDatasetID
+            && dataset.safety.syntheticOnly
+            && dataset.safety.localOnly
+            && !dataset.safety.allowsMachineScan
+            && !dataset.safety.allowsMutation
+            && !dataset.safety.containsPersonalData
+    }
+}
+
 struct ResearchDatasetSafety: Codable, Equatable {
     let syntheticOnly: Bool
     let localOnly: Bool
@@ -540,6 +554,37 @@ enum WholeWorkflowResearchDatasetProvider {
         return WholeWorkflowResearchPlanProjector.project(dataset)
     }
 
+    static func activeAmbientHealthProjection(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        now: Date = Date()
+    ) -> ResearchAmbientHealthProjection? {
+        guard let dataset = active(environment: environment) else { return nil }
+        return ResearchAmbientHealthProjector.project(
+            dataset,
+            now: now
+        )
+    }
+
+    static func activeAmbientHealthPresentation(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        now: Date = Date()
+    ) -> WayfinderPopoverPresentation? {
+        if let projection = activeAmbientHealthProjection(
+            environment: environment,
+            now: now
+        ) {
+            return projection.presentation
+        }
+        guard isSelected(environment: environment) else { return nil }
+
+        let unavailable = WayfinderProjectionProjector.content(
+            for: WayfinderProjectionInput(serviceAvailable: false)
+        )
+        return WayfinderPopoverPresentationProjector.content(
+            for: WayfinderPopoverPresentationInput(projection: unavailable)
+        )
+    }
+
     static func activeLibraryProjection(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> WholeWorkflowResearchLibraryProjection? {
@@ -581,6 +626,166 @@ enum WholeWorkflowResearchDatasetProvider {
         #else
         return nil
         #endif
+    }
+}
+
+struct ResearchAmbientHealthProjection: Equatable {
+    let datasetID: String
+    let scenarioID: String
+    let failedActivityID: String
+    let failedActivitySelectionID: String
+    let presentation: WayfinderPopoverPresentation
+}
+
+enum WholeWorkflowResearchTaskOneContract {
+    static let scenarioID = "ambient-health"
+    static let startingSurface = "popover"
+    static let coverageID = "coverage-partial"
+    static let failedActivityID = WholeWorkflowResearchTaskFourContract.failedActivityID
+    static let failedManagerID = "macports"
+    static let orderedScenarioRecordIDs = [
+        coverageID,
+        failedActivityID,
+        failedManagerID,
+    ]
+    static let currentManagerIDs = [
+        "mise",
+        "rustup",
+        "homebrew_formula",
+        "npm",
+        "cargo",
+        "pnpm",
+        "mas",
+    ]
+    static let cachedManagerIDs = ["homebrew_cask"]
+    static let failedManagerIDs = [failedManagerID]
+    static let deferredManagerIDs = ["softwareupdate"]
+
+    static func matchesScenario(_ scenario: ResearchScenario) -> Bool {
+        scenario.taskNumber == 1
+            && scenario.scenarioID == scenarioID
+            && scenario.startingSurface == startingSurface
+            && scenario.recordIDs == orderedScenarioRecordIDs
+    }
+
+    static func matchesCoverage(_ coverage: ResearchCoverageRecord) -> Bool {
+        coverage.id == coverageID
+            && coverage.state == "partial"
+            && coverage.currentManagerIDs == currentManagerIDs
+            && coverage.cachedManagerIDs == cachedManagerIDs
+            && coverage.failedManagerIDs == failedManagerIDs
+            && coverage.deferredManagerIDs == deferredManagerIDs
+    }
+
+    static func matchesFailedManager(_ manager: ResearchManagerRecord) -> Bool {
+        manager.id == failedManagerID
+            && manager.authority == "guarded"
+            && !manager.detected
+            && manager.enabled
+            && manager.freshness == "unknown"
+            && manager.sourceState == "failed"
+            && manager.installInstances.isEmpty
+            && manager.findingCode == "source_refresh_failed"
+    }
+}
+
+enum ResearchAmbientHealthProjector {
+    static func project(
+        _ dataset: WholeWorkflowResearchDataset,
+        now: Date = Date()
+    ) -> ResearchAmbientHealthProjection? {
+        guard WholeWorkflowResearchDatasetContract.matchesCurrentIdentityAndSafety(dataset),
+              let scenario = dataset.scenarios.first(where: { $0.taskNumber == 1 }),
+              WholeWorkflowResearchTaskOneContract.matchesScenario(scenario),
+              WholeWorkflowResearchTaskOneContract.matchesCoverage(
+                  dataset.snapshot.coverage
+              ),
+              let failedActivity = dataset.snapshot.activities.first(where: {
+                  $0.id == WholeWorkflowResearchTaskOneContract.failedActivityID
+              }),
+              WholeWorkflowResearchTaskFourContract.matchesFailedActivity(
+                  failedActivity
+              ),
+              dataset.snapshot.managers.contains(where: { $0.id == "npm" }),
+              let failedManager = dataset.snapshot.managers.first(where: {
+                  $0.id == WholeWorkflowResearchTaskOneContract.failedManagerID
+              }),
+              WholeWorkflowResearchTaskOneContract.matchesFailedManager(
+                  failedManager
+              ) else {
+            return nil
+        }
+
+        let coverage = dataset.snapshot.coverage
+        let availableCount = coverage.currentManagerIDs.count
+            + coverage.cachedManagerIDs.count
+        let attentionCount = coverage.failedManagerIDs.count
+        let totalCount = availableCount
+            + attentionCount
+            + coverage.deferredManagerIDs.count
+        guard let courseCoverage = WayfinderCoverage(
+            completed: availableCount,
+            total: totalCount
+        ) else {
+            return nil
+        }
+
+        let selectionID = String(failedActivity.taskID)
+        let projection = WayfinderProjectionContent(
+            mode: .failedInterrupted,
+            condition: .failedOrInterrupted(failed: 1, interrupted: 0),
+            title: WayfinderLocalizedText(
+                key: "app.activity.research.status.verification_failed"
+            ),
+            explanation: WayfinderLocalizedText(key: failedActivity.afterKey),
+            primaryActionTitle: WayfinderLocalizedText(
+                key: "app.popover.wayfinder.action.review_recovery"
+            ),
+            primaryAction: WayfinderDeepLink(
+                destination: .activity,
+                entityID: selectionID,
+                focus: .selectedEntity,
+                originatingCondition: .failedOrInterrupted
+            ),
+            progress: nil,
+            currentAuthorityStage: nil,
+            freshnessDate: now.addingTimeInterval(-120),
+            coverage: courseCoverage
+        )
+        let presentation = WayfinderPopoverPresentation(
+            projection: projection,
+            routeItems: [
+                WayfinderPopoverRouteItem(stage: .system, tone: .review),
+                WayfinderPopoverRouteItem(stage: .tools, tone: .current),
+                WayfinderPopoverRouteItem(stage: .apps, tone: .cached),
+                WayfinderPopoverRouteItem(stage: .packages, tone: .error),
+            ],
+            contextTitle: WayfinderLocalizedText(
+                key: "app.first_run.environment_brief.title.partial"
+            ),
+            contextDetail: WayfinderLocalizedText(
+                key: "app.first_run.environment_brief.summary.partial",
+                arguments: [
+                    "mapped": String(availableCount),
+                    "total": String(totalCount),
+                    "attention": String(attentionCount),
+                ]
+            ),
+            contextSymbol: "point.3.connected.trianglepath.dotted",
+            showsPrimaryAction: true,
+            primaryActionTitle: WayfinderLocalizedText(
+                key: "app.popover.wayfinder.action.review_recovery"
+            ),
+            allowsRefresh: true
+        )
+
+        return ResearchAmbientHealthProjection(
+            datasetID: dataset.datasetID,
+            scenarioID: scenario.scenarioID,
+            failedActivityID: failedActivity.id,
+            failedActivitySelectionID: selectionID,
+            presentation: presentation
+        )
     }
 }
 
@@ -1083,18 +1288,6 @@ enum WholeWorkflowResearchTaskFourContract {
     ]
     static let orderedScenarioRecordIDs = orderedActivityIDs + orderedRecoveryActionIDs
 
-    static func matchesCurrentIdentityAndSafety(
-        _ dataset: WholeWorkflowResearchDataset
-    ) -> Bool {
-        dataset.schemaVersion == WholeWorkflowResearchDataset.currentSchemaVersion
-            && dataset.datasetID == WholeWorkflowResearchDataset.currentDatasetID
-            && dataset.safety.syntheticOnly
-            && dataset.safety.localOnly
-            && !dataset.safety.allowsMachineScan
-            && !dataset.safety.allowsMutation
-            && !dataset.safety.containsPersonalData
-    }
-
     static func matchesScenario(_ scenario: ResearchScenario) -> Bool {
         scenario.taskNumber == 4
             && scenario.scenarioID == scenarioID
@@ -1107,9 +1300,13 @@ enum WholeWorkflowResearchTaskFourContract {
               records.count == 2 else {
             return false
         }
-        let failed = records[0]
-        let unstarted = records[1]
-        return failed.taskID == 7001
+        return matchesFailedActivity(records[0])
+            && matchesUnstartedActivity(records[1])
+    }
+
+    static func matchesFailedActivity(_ failed: ResearchActivityRecord) -> Bool {
+        failed.id == failedActivityID
+            && failed.taskID == 7001
             && failed.managerID == "npm"
             && failed.updateID == nil
             && failed.state == "failed_verification"
@@ -1120,6 +1317,10 @@ enum WholeWorkflowResearchTaskFourContract {
             && failed.afterKey == "research.activity.after.npm_prettier_3_6_0_unverified"
             && !failed.rollbackEligible
             && failed.recoveryLimitsKey == "research.activity.recovery.npm_restore_not_guaranteed"
+    }
+
+    static func matchesUnstartedActivity(_ unstarted: ResearchActivityRecord) -> Bool {
+        unstarted.id == unstartedActivityID
             && unstarted.taskID == 7002
             && unstarted.managerID == "mas"
             && unstarted.updateID == "update-mas-pages"
@@ -1157,7 +1358,7 @@ enum WholeWorkflowResearchActivityProjector {
     static func project(
         _ dataset: WholeWorkflowResearchDataset
     ) -> WholeWorkflowResearchActivityProjection? {
-        guard WholeWorkflowResearchTaskFourContract.matchesCurrentIdentityAndSafety(dataset),
+        guard WholeWorkflowResearchDatasetContract.matchesCurrentIdentityAndSafety(dataset),
               let scenario = dataset.scenarios.first(where: { $0.taskNumber == 4 }),
               WholeWorkflowResearchTaskFourContract.matchesScenario(scenario),
               WholeWorkflowResearchTaskFourContract.matchesActivities(

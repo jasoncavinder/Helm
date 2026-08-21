@@ -132,6 +132,111 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         #endif
     }
 
+    func testTaskOneProjectsPartialAmbientHealthAndExactRecoveryRoute() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let projection = try XCTUnwrap(
+            ResearchAmbientHealthProjector.project(
+                dataset,
+                now: now
+            )
+        )
+        let presentation = projection.presentation
+
+        XCTAssertEqual(projection.scenarioID, "ambient-health")
+        XCTAssertEqual(projection.failedActivityID, "activity-npm-verification")
+        XCTAssertEqual(projection.failedActivitySelectionID, "7001")
+        XCTAssertEqual(
+            presentation.projection.condition,
+            .failedOrInterrupted(failed: 1, interrupted: 0)
+        )
+        XCTAssertEqual(
+            presentation.projection.title.key,
+            "app.activity.research.status.verification_failed"
+        )
+        XCTAssertEqual(
+            presentation.projection.explanation.key,
+            "research.activity.after.npm_prettier_3_6_0_unverified"
+        )
+        XCTAssertEqual(
+            presentation.projection.primaryAction,
+            WayfinderDeepLink(
+                destination: .activity,
+                entityID: "7001",
+                focus: .selectedEntity,
+                originatingCondition: .failedOrInterrupted
+            )
+        )
+        XCTAssertEqual(
+            presentation.primaryActionTitle.key,
+            "app.popover.wayfinder.action.review_recovery"
+        )
+        XCTAssertEqual(
+            presentation.routeItems.map(\.tone),
+            [.review, .current, .cached, .error]
+        )
+        XCTAssertEqual(
+            presentation.contextTitle.key,
+            "app.first_run.environment_brief.title.partial"
+        )
+        XCTAssertEqual(
+            presentation.contextDetail.arguments,
+            ["mapped": "8", "total": "10", "attention": "1"]
+        )
+        XCTAssertEqual(
+            presentation.projection.freshnessDate,
+            now.addingTimeInterval(-120)
+        )
+        XCTAssertEqual(presentation.projection.coverage?.completed, 8)
+        XCTAssertEqual(presentation.projection.coverage?.total, 10)
+    }
+
+    func testTaskOneProjectionFailsClosedForCanonicalDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let mutations = [
+            (
+                "\"coverage-partial\",\n        \"activity-npm-verification\"",
+                "\"activity-npm-verification\",\n        \"coverage-partial\"",
+                "scenarios.record_order"
+            ),
+            (
+                "\"cachedManagerIds\": [\n        \"homebrew_cask\"",
+                "\"cachedManagerIds\": [\n        \"homebrew_formula\"",
+                "coverage.canonical_record"
+            ),
+            (
+                "\"state\": \"failed_verification\"",
+                "\"state\": \"failed\"",
+                "activity.canonical_records"
+            ),
+            (
+                "\"sourceState\": \"failed\"",
+                "\"sourceState\": \"ready\"",
+                "coverage.failed_manager_record"
+            ),
+        ]
+
+        for mutation in mutations {
+            let modified = try replacingFirst(
+                mutation.0,
+                with: mutation.1,
+                in: source
+            )
+            let dataset = try WholeWorkflowResearchDatasetLoader.decode(
+                Data(modified.utf8)
+            )
+            let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+            XCTAssertTrue(
+                issues.contains { $0.code == mutation.2 },
+                "Expected \(mutation.2) for \(mutation.0)"
+            )
+            XCTAssertNil(
+                ResearchAmbientHealthProjector.project(dataset)
+            )
+        }
+    }
+
     func testTaskTwoProjectsThroughTheProductionPlanContract() throws {
         let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
         let projection = try XCTUnwrap(WholeWorkflowResearchPlanProjector.project(dataset))
@@ -568,6 +673,22 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertTrue(WholeWorkflowResearchDatasetProvider.isSelected(environment: environment))
         XCTAssertNotNil(WholeWorkflowResearchDatasetProvider.active(environment: environment))
         XCTAssertNotNil(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthProjection(
+                environment: environment
+            )
+        )
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthPresentation(
+                environment: environment,
+                now: now
+            ),
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthProjection(
+                environment: environment,
+                now: now
+            )?.presentation
+        )
+        XCTAssertNotNil(
             WholeWorkflowResearchDatasetProvider.activePlanProjection(environment: environment)
         )
         XCTAssertNotNil(
@@ -604,6 +725,16 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         ]
         XCTAssertTrue(WholeWorkflowResearchDatasetProvider.isSelected(environment: missingEnvironment))
         XCTAssertNil(WholeWorkflowResearchDatasetProvider.active(environment: missingEnvironment))
+        let unavailablePresentation = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthPresentation(
+                environment: missingEnvironment
+            )
+        )
+        XCTAssertEqual(
+            unavailablePresentation.projection.condition,
+            .serviceUnavailable
+        )
+        XCTAssertFalse(unavailablePresentation.allowsRefresh)
         XCTAssertTrue(
             ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: missingEnvironment)
         )

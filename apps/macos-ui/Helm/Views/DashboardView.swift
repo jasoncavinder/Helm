@@ -11,6 +11,8 @@ struct WayfinderPopoverView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsQuitConfirmation = false
     private let popoverFixture = WayfinderPopoverFixtureProvider.active()
+    private let researchAmbientHealthPresentation = WholeWorkflowResearchDatasetProvider
+        .activeAmbientHealthPresentation()
 
     let onOpenControlCenter: () -> Void
     let onOpenSettings: () -> Void
@@ -19,6 +21,9 @@ struct WayfinderPopoverView: View {
     private var presentation: WayfinderPopoverPresentation {
         if let popoverFixture {
             return popoverFixture.presentation
+        }
+        if let researchAmbientHealthPresentation {
+            return researchAmbientHealthPresentation
         }
         return WayfinderPopoverPresentationProjector.content(
             for: WayfinderPopoverPresentationInput(
@@ -34,6 +39,7 @@ struct WayfinderPopoverView: View {
     var body: some View {
         Group {
             if popoverFixture == nil
+                && researchAmbientHealthPresentation == nil
                 && (!core.hasCompletedOnboarding || core.requiresLicenseTermsAcceptance) {
                 OnboardingContainerView {
                     core.completeOnboarding()
@@ -111,7 +117,9 @@ struct WayfinderPopoverView: View {
                     .lineLimit(1)
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(L10n.App.Dashboard.title.localized)
+            .accessibilityLabel(
+                "\(L10n.App.Dashboard.title.localized). \(freshnessText)"
+            )
 
             Spacer()
         }
@@ -176,11 +184,7 @@ struct WayfinderPopoverView: View {
     private var hero: some View {
         HStack(spacing: 17) {
             WayfinderPopoverCourseIndicator(
-                projection: presentation.projection,
-                freshnessText: freshnessText,
-                actionText: presentation.showsPrimaryAction
-                    ? presentation.primaryActionTitle.localized
-                    : nil
+                projection: presentation.projection
             )
                 .frame(width: 92, height: 92)
 
@@ -190,7 +194,8 @@ struct WayfinderPopoverView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.86)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityHidden(true)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityHidden(presentation.projection.progress != nil)
 
                 Text(presentation.projection.explanation.localized)
                     .font(.system(size: 10.5, weight: .medium))
@@ -198,7 +203,6 @@ struct WayfinderPopoverView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.9)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityHidden(true)
 
                 if presentation.showsPrimaryAction {
                     Button(presentation.primaryActionTitle.localized) {
@@ -590,8 +594,6 @@ private struct WayfinderPopoverPrimaryButtonStyle: ButtonStyle {
 
 private struct WayfinderPopoverCourseIndicator: View {
     let projection: WayfinderProjectionContent
-    let freshnessText: String
-    let actionText: String?
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -616,19 +618,11 @@ private struct WayfinderPopoverCourseIndicator: View {
     }
 
     private var accessibilityValue: String {
-        var components = [freshnessText]
-        if let progress = projection.progress {
-            let percent = NumberFormatter.localizedString(
-                from: NSNumber(value: progress.fraction),
-                number: .percent
-            )
-            components.append(percent)
-        }
-        components.append(projection.explanation.localized)
-        if let actionText {
-            components.append(actionText)
-        }
-        return components.joined(separator: ". ")
+        guard let progress = projection.progress else { return "" }
+        return NumberFormatter.localizedString(
+            from: NSNumber(value: progress.fraction),
+            number: .percent
+        )
     }
 
     var body: some View {
@@ -659,6 +653,7 @@ private struct WayfinderPopoverCourseIndicator: View {
             }
         }
         .accessibilityElement(children: .ignore)
+        .accessibilityHidden(projection.progress == nil)
         .accessibilityIdentifier("wayfinderPopoverCourseIndicator")
         .accessibilityLabel(projection.title.localized)
         .accessibilityValue(accessibilityValue)
