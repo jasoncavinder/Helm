@@ -173,6 +173,26 @@ final class ControlCenterContextTests: XCTestCase {
         )
     }
 
+    func testMissingTaskDescriptionKeyUsesLiveFallbackWhenAvailable() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale generic fallback",
+            labelKey: "service.task.label.missing",
+            labelArgs: nil,
+            fallbackLocalization: .genericTask(
+                taskType: "refresh",
+                managerID: "homebrew_formula"
+            )
+        )
+
+        let resolved = presentation.resolve(
+            using: { key, _ in
+                key == "app.tasks.fallback.description" ? "live generic fallback" : nil
+            }
+        )
+
+        XCTAssertEqual(resolved, "live generic fallback")
+    }
+
     func testNilLabelProductionTaskFallbackReResolvesAcrossLocales() {
         let presentation = TaskDescriptionPresentation(
             rawDescription: "stale production fallback",

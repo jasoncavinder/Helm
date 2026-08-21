@@ -115,7 +115,9 @@ struct TaskDescriptionPresentation {
         if let labelKey {
             let normalizedKey = labelKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !normalizedKey.isEmpty {
-                return resolver(normalizedKey, labelArgs ?? [:]) ?? rawDescription
+                if let localized = resolver(normalizedKey, labelArgs ?? [:]) {
+                    return localized
+                }
             }
         }
 
