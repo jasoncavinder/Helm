@@ -931,7 +931,7 @@ async fn submit_with_task_store_persists_terminal_status_via_atomic_transition()
 }
 
 #[tokio::test]
-async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence_finishes() {
+async fn submit_with_persistence_waits_for_search_cache_after_task_terminal() {
     let path = test_db_path("orchestration-runtime-catalog-sync-terminal-before-cache");
     let store = Arc::new(SqliteStore::new(&path));
     store.migrate_to_latest().unwrap();
@@ -964,8 +964,8 @@ async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence
     )
     .unwrap();
 
-    let task_id = runtime
-        .submit(
+    let (task_id, persistence) = runtime
+        .submit_with_persistence(
             ManagerId::HomebrewCask,
             AdapterRequest::Search(SearchRequest {
                 query: SearchQuery {
@@ -993,6 +993,13 @@ async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence
         "expected search cache persistence to start"
     );
 
+    let persistence_waiter = tokio::spawn(persistence.wait_for_completion());
+    tokio::task::yield_now().await;
+    assert!(
+        !persistence_waiter.is_finished(),
+        "persistence handle must remain pending while the domain store is blocked"
+    );
+
     let persisted_completed = wait_until(|| {
         let records = store.list_recent_tasks(10).unwrap();
         records
@@ -1002,6 +1009,11 @@ async fn submit_catalog_sync_marks_task_complete_before_search_cache_persistence
     .await;
 
     search_cache_store.release();
+
+    tokio::time::timeout(Duration::from_secs(1), persistence_waiter)
+        .await
+        .expect("persistence handle should finish after the domain store is released")
+        .expect("persistence handle waiter should not panic");
 
     assert!(
         persisted_completed,

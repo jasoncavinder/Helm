@@ -174,7 +174,7 @@ use helm_core::models::{
     SearchQuery, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskRecord, TaskStatus,
     TaskType,
 };
-use helm_core::orchestration::adapter_runtime::AdapterRuntime;
+use helm_core::orchestration::adapter_runtime::{AdapterRuntime, TaskPersistenceHandle};
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::doctor_persistence::{
     DoctorStore, RepairHistoryRecord, begin_local_doctor_scan, complete_local_doctor_scan,
@@ -7886,17 +7886,17 @@ async fn submit_upgrade_workflow_step(
     runtime: &AdapterRuntime,
     step: &FfiUpgradePlanStep,
     control: &UpgradeWorkflowControl,
-) -> Option<helm_core::models::TaskId> {
+) -> Option<(helm_core::models::TaskId, TaskPersistenceHandle)> {
     let (manager, request, cleanup_old_kegs) = upgrade_workflow_request(step)?;
-    match runtime.submit(manager, request).await {
-        Ok(task_id) => {
+    match runtime.submit_with_persistence(manager, request).await {
+        Ok((task_id, persistence)) => {
             let (label_key, label_args) =
                 upgrade_task_label_for(manager, &step.package_name, cleanup_old_kegs);
             set_task_label(task_id, label_key, &label_args);
             if !control.admit_task(task_id) {
                 let _ = runtime.cancel(task_id, CancellationMode::Immediate).await;
             }
-            Some(task_id)
+            Some((task_id, persistence))
         }
         Err(error) => {
             eprintln!(
@@ -7949,19 +7949,26 @@ fn start_scoped_upgrade_workflow(
             let phase_steps = steps
                 .iter()
                 .filter(|step| upgrade_authority_rank(&step.authority) == authority_rank);
-            let mut task_ids = Vec::new();
+            let mut submitted_tasks = Vec::new();
             for step in phase_steps {
                 if control.is_cancelled() {
                     break;
                 }
-                if let Some(task_id) = submit_upgrade_workflow_step(&runtime, step, &control).await
+                if let Some(submitted) =
+                    submit_upgrade_workflow_step(&runtime, step, &control).await
                 {
-                    task_ids.push(task_id);
+                    submitted_tasks.push(submitted);
                 }
             }
             // Every submitted task reaches a terminal state before the next authority phase.
-            for task_id in task_ids {
-                let _ = runtime.wait_for_terminal(task_id, None).await;
+            for (task_id, _) in &submitted_tasks {
+                let _ = runtime.wait_for_terminal(*task_id, None).await;
+            }
+            // Workflow completion is not observable until each task's ordered domain-response
+            // persistence turn has finished, so no response from this workflow can overtake a
+            // post-workflow package snapshot request.
+            for (_, persistence) in submitted_tasks {
+                persistence.wait_for_completion().await;
             }
         }
         finish_upgrade_workflow(&finished_workflow_id);
@@ -11825,7 +11832,8 @@ mod tests {
     };
     use helm_core::orchestration::adapter_runtime::AdapterRuntime;
     use helm_core::persistence::{
-        DetectionStore, ManagerPreference, MigrationStore, PackageStore, TaskStore,
+        DetectionStore, ManagerPreference, MigrationStore, PackageStore, PersistenceResult,
+        TaskStore,
     };
     use helm_core::sqlite::{SqliteStore, current_schema_version};
     use helm_core::uninstall_preview::{
@@ -12086,6 +12094,109 @@ mod tests {
                 before_version: Some("1.0.0".to_string()),
                 after_version: Some("2.0.0".to_string()),
             }))
+        }
+    }
+
+    struct BlockingUpgradePackageStore {
+        inner: Arc<SqliteStore>,
+        entered: AtomicBool,
+        release: Arc<AtomicBool>,
+    }
+
+    impl BlockingUpgradePackageStore {
+        fn new(inner: Arc<SqliteStore>, release: Arc<AtomicBool>) -> Self {
+            Self {
+                inner,
+                entered: AtomicBool::new(false),
+                release,
+            }
+        }
+
+        fn has_entered(&self) -> bool {
+            self.entered.load(Ordering::Acquire)
+        }
+    }
+
+    impl PackageStore for BlockingUpgradePackageStore {
+        fn upsert_installed(&self, packages: &[InstalledPackage]) -> PersistenceResult<()> {
+            self.inner.upsert_installed(packages)
+        }
+
+        fn replace_installed_snapshot(
+            &self,
+            manager: ManagerId,
+            packages: &[InstalledPackage],
+        ) -> PersistenceResult<()> {
+            self.inner.replace_installed_snapshot(manager, packages)
+        }
+
+        fn upsert_outdated(&self, packages: &[OutdatedPackage]) -> PersistenceResult<()> {
+            self.inner.upsert_outdated(packages)
+        }
+
+        fn replace_outdated_snapshot(
+            &self,
+            manager: ManagerId,
+            packages: &[OutdatedPackage],
+        ) -> PersistenceResult<()> {
+            self.inner.replace_outdated_snapshot(manager, packages)
+        }
+
+        fn list_installed(&self) -> PersistenceResult<Vec<InstalledPackage>> {
+            self.inner.list_installed()
+        }
+
+        fn list_outdated(&self) -> PersistenceResult<Vec<OutdatedPackage>> {
+            self.inner.list_outdated()
+        }
+
+        fn set_snapshot_pinned(
+            &self,
+            package: &PackageRef,
+            version: Option<&str>,
+            pinned: bool,
+        ) -> PersistenceResult<()> {
+            self.inner.set_snapshot_pinned(package, version, pinned)
+        }
+
+        fn apply_install_result(
+            &self,
+            package: &PackageRef,
+            package_identifier: Option<&str>,
+            installed_version: Option<&str>,
+        ) -> PersistenceResult<()> {
+            self.inner
+                .apply_install_result(package, package_identifier, installed_version)
+        }
+
+        fn apply_uninstall_result(
+            &self,
+            package: &PackageRef,
+            package_identifier: Option<&str>,
+            removed_version: Option<&str>,
+        ) -> PersistenceResult<()> {
+            self.inner
+                .apply_uninstall_result(package, package_identifier, removed_version)
+        }
+
+        fn apply_upgrade_result(
+            &self,
+            package: &PackageRef,
+            package_identifier: Option<&str>,
+            before_version: Option<&str>,
+            after_version: Option<&str>,
+        ) -> PersistenceResult<()> {
+            self.entered.store(true, Ordering::Release);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !self.release.load(Ordering::Acquire) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            self.inner.apply_upgrade_result(
+                package,
+                package_identifier,
+                before_version,
+                after_version,
+            )
         }
     }
 
@@ -13534,6 +13645,173 @@ mod tests {
         assert_eq!(
             retain_reviewed_upgrade_workflow_steps(&mut steps, &[changed]),
             Err(SERVICE_ERROR_INVALID_INPUT)
+        );
+    }
+
+    #[test]
+    fn selected_upgrade_workflow_stays_active_until_response_persistence_finishes() {
+        const CHILD_ENV: &str = "HELM_TEST_SELECTED_WORKFLOW_PERSISTENCE_CHILD";
+
+        if std::env::var_os(CHILD_ENV).is_some() {
+            let store = Arc::new(temp_sqlite_store("selected-workflow-persistence"));
+            store
+                .migrate_to_latest()
+                .expect("sqlite migrations should apply");
+            store
+                .upsert_outdated(&[
+                    outdated_pkg(ManagerId::Rustup, "stable", false),
+                    outdated_pkg(ManagerId::Npm, "typescript", false),
+                ])
+                .expect("outdated workflow fixtures should persist");
+
+            let executed_steps = Arc::new(Mutex::new(Vec::new()));
+            let adapters: Vec<Arc<dyn ManagerAdapter>> = vec![
+                Arc::new(RecordingUpgradeAdapter::new(
+                    ManagerId::Rustup,
+                    executed_steps.clone(),
+                )),
+                Arc::new(RecordingUpgradeAdapter::new(
+                    ManagerId::Npm,
+                    executed_steps.clone(),
+                )),
+            ];
+            let release_persistence = Arc::new(AtomicBool::new(false));
+            let package_store = Arc::new(BlockingUpgradePackageStore::new(
+                store.clone(),
+                release_persistence.clone(),
+            ));
+            let runtime = Arc::new(
+                AdapterRuntime::with_all_stores(
+                    adapters,
+                    store.clone(),
+                    package_store.clone(),
+                    store.clone(),
+                    store.clone(),
+                )
+                .expect("workflow runtime should initialize"),
+            );
+            let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("tokio runtime should initialize");
+            let rt_handle = tokio_runtime.handle().clone();
+            *super::lock_or_recover(&super::STATE, "state") = Some(super::HelmState {
+                store: store.clone(),
+                runtime: runtime.clone(),
+                rt_handle,
+                _tokio_rt: tokio_runtime,
+            });
+            super::lock_or_recover(&super::UPGRADE_WORKFLOWS, "upgrade_workflows").clear();
+            super::lock_or_recover(
+                &super::COMPLETED_UPGRADE_WORKFLOWS,
+                "completed_upgrade_workflows",
+            )
+            .clear();
+
+            let reviewed_steps =
+                super::preview_upgrade_workflow_steps(false, false, ALL_MANAGERS_UPGRADE_SCOPE, "")
+                    .expect("workflow preview should succeed");
+            assert_eq!(
+                reviewed_steps
+                    .iter()
+                    .map(|step| step.step_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["rustup:stable", "npm:typescript"]
+            );
+
+            let workflow_id = CString::new("selected-workflow-persistence").unwrap();
+            let manager_scope = CString::new(ALL_MANAGERS_UPGRADE_SCOPE).unwrap();
+            let package_filter = CString::new("").unwrap();
+            let reviewed_steps_json = CString::new(
+                serde_json::to_string(&reviewed_steps)
+                    .expect("reviewed workflow steps should encode"),
+            )
+            .unwrap();
+            assert!(unsafe {
+                super::helm_start_selected_upgrade_workflow_with_id(
+                    workflow_id.as_ptr(),
+                    false,
+                    false,
+                    manager_scope.as_ptr(),
+                    package_filter.as_ptr(),
+                    reviewed_steps_json.as_ptr(),
+                )
+            });
+
+            let persistence_deadline = Instant::now() + Duration::from_secs(2);
+            while !package_store.has_entered() && Instant::now() < persistence_deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let persistence_entered = package_store.has_entered();
+            // Give an ungated workflow ample time to unregister and submit the next phase.
+            std::thread::sleep(Duration::from_millis(100));
+            let active_while_persistence_blocked =
+                unsafe { super::helm_is_upgrade_workflow_active(workflow_id.as_ptr()) };
+            let steps_while_persistence_blocked = executed_steps
+                .lock()
+                .expect("recording lock should not be poisoned")
+                .clone();
+
+            release_persistence.store(true, Ordering::Release);
+
+            assert!(
+                persistence_entered,
+                "authoritative response persistence should reach the blocking store"
+            );
+            assert!(
+                active_while_persistence_blocked,
+                "workflow must remain registered until the ordered persistence turn finishes"
+            );
+            assert_eq!(
+                steps_while_persistence_blocked,
+                vec!["rustup:stable"],
+                "the standard phase must not start while authoritative persistence is blocked"
+            );
+
+            let completion_deadline = Instant::now() + Duration::from_secs(2);
+            while unsafe { super::helm_is_upgrade_workflow_active(workflow_id.as_ptr()) }
+                && Instant::now() < completion_deadline
+            {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert!(!unsafe { super::helm_is_upgrade_workflow_active(workflow_id.as_ptr()) });
+            assert_eq!(
+                *executed_steps
+                    .lock()
+                    .expect("recording lock should not be poisoned"),
+                vec!["rustup:stable", "npm:typescript"]
+            );
+
+            let database_path = store.database_path().to_path_buf();
+            let state = super::lock_or_recover(&super::STATE, "state").take();
+            super::lock_or_recover(&super::UPGRADE_WORKFLOWS, "upgrade_workflows").clear();
+            super::lock_or_recover(
+                &super::COMPLETED_UPGRADE_WORKFLOWS,
+                "completed_upgrade_workflows",
+            )
+            .clear();
+            drop(state);
+            drop(runtime);
+            drop(package_store);
+            drop(store);
+            let _ = fs::remove_file(database_path);
+            return;
+        }
+
+        let output = Command::new(std::env::current_exe().expect("test executable should resolve"))
+            .args([
+                "--exact",
+                "tests::selected_upgrade_workflow_stays_active_until_response_persistence_finishes",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .output()
+            .expect("FFI workflow child should run");
+        assert!(
+            output.status.success(),
+            "FFI workflow child failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

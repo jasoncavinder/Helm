@@ -69,6 +69,15 @@ struct ResponsePersistenceTurn {
     completed: bool,
 }
 
+pub struct TaskPersistenceHandle {
+    completion: watch::Receiver<bool>,
+}
+
+struct SubmittedAdapterTask {
+    task_id: TaskId,
+    persistence: TaskPersistenceHandle,
+}
+
 impl ResponsePersistenceOrdering {
     async fn reserve(&self, manager: ManagerId) -> ResponsePersistenceTurn {
         let (completion, receiver) = watch::channel(false);
@@ -86,6 +95,12 @@ impl ResponsePersistenceOrdering {
 }
 
 impl ResponsePersistenceTurn {
+    fn handle(&self) -> TaskPersistenceHandle {
+        TaskPersistenceHandle {
+            completion: self.completion.subscribe(),
+        }
+    }
+
     async fn wait_for_predecessor(&mut self) {
         let Some(predecessor) = self.predecessor.as_mut() else {
             return;
@@ -105,6 +120,24 @@ impl ResponsePersistenceTurn {
         if !self.completed {
             self.completion.send_replace(true);
             self.completed = true;
+        }
+    }
+}
+
+impl TaskPersistenceHandle {
+    fn completed() -> Self {
+        let (_, completion) = watch::channel(true);
+        Self { completion }
+    }
+
+    pub async fn wait_for_completion(mut self) {
+        loop {
+            if *self.completion.borrow_and_update() {
+                return;
+            }
+            if self.completion.changed().await.is_err() {
+                return;
+            }
         }
     }
 }
@@ -608,6 +641,7 @@ impl AdapterRuntime {
             let task_id = self
                 .submit_with_enablement(manager, request.clone(), enablement_snapshot)
                 .await
+                .map(|submitted| submitted.task_id)
                 .map_err(|error| attribute_error(error, manager, task_type, action))?;
 
             let terminal_result = match self
@@ -768,7 +802,20 @@ impl AdapterRuntime {
         manager: ManagerId,
         request: AdapterRequest,
     ) -> OrchestrationResult<TaskId> {
-        self.submit_with_enablement(manager, request, None).await
+        Ok(self
+            .submit_with_enablement(manager, request, None)
+            .await?
+            .task_id)
+    }
+
+    #[instrument(skip(self, request), fields(manager = ?manager))]
+    pub async fn submit_with_persistence(
+        &self,
+        manager: ManagerId,
+        request: AdapterRequest,
+    ) -> OrchestrationResult<(TaskId, TaskPersistenceHandle)> {
+        let submitted = self.submit_with_enablement(manager, request, None).await?;
+        Ok((submitted.task_id, submitted.persistence))
     }
 
     async fn submit_with_enablement(
@@ -776,7 +823,7 @@ impl AdapterRuntime {
         manager: ManagerId,
         request: AdapterRequest,
         enablement_snapshot: Option<&ManagerEnablementSnapshot>,
-    ) -> OrchestrationResult<TaskId> {
+    ) -> OrchestrationResult<SubmittedAdapterTask> {
         let action = request.action();
         let task_type = task_type_for_request(&request);
 
@@ -831,11 +878,12 @@ impl AdapterRuntime {
 
         let task_id = self.execution.submit(adapter, request).await?;
 
-        if let Some(task_store) = &self.task_store {
+        let persistence = if let Some(task_store) = &self.task_store {
             // Reserve the domain-persistence turn before queued-task persistence can yield.
             // Task execution remains independent, while response snapshots are committed in
             // submission order for each shared execution domain.
             let persistence_turn = self.persistence_ordering.reserve(manager).await;
+            let persistence = persistence_turn.handle();
             let record = TaskRecord {
                 id: task_id,
                 manager,
@@ -894,9 +942,15 @@ impl AdapterRuntime {
                 task_type,
                 action,
             });
-        }
+            persistence
+        } else {
+            TaskPersistenceHandle::completed()
+        };
 
-        Ok(task_id)
+        Ok(SubmittedAdapterTask {
+            task_id,
+            persistence,
+        })
     }
 
     pub async fn status(&self, task_id: TaskId) -> OrchestrationResult<TaskStatus> {
@@ -2456,7 +2510,7 @@ fn task_type_for_request(request: &AdapterRequest) -> TaskType {
 #[cfg(test)]
 mod tests {
     use super::{
-        SelectedExecutablePathUpdate, TaskTerminalErrorDetails, TaskType,
+        ResponsePersistenceTurn, SelectedExecutablePathUpdate, TaskTerminalErrorDetails, TaskType,
         build_failure_diagnostic_envelope, build_manager_enablement_map,
         build_refresh_capability_plan, classify_failure_issue, failure_fingerprint,
         manager_uninstall_reset_targets, persist_manager_uninstall_state_reset_sync,
@@ -2495,6 +2549,26 @@ mod tests {
             .migrate_to_latest()
             .expect("sqlite migrations should apply");
         store
+    }
+
+    #[tokio::test]
+    async fn task_persistence_handle_waits_for_domain_response_completion() {
+        let (completion, _) = tokio::sync::watch::channel(false);
+        let mut turn = ResponsePersistenceTurn {
+            predecessor: None,
+            completion,
+            completed: false,
+        };
+        let waiter = tokio::spawn(turn.handle().wait_for_completion());
+
+        tokio::task::yield_now().await;
+        assert!(!waiter.is_finished());
+
+        turn.complete();
+        tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("persistence completion should release the workflow waiter")
+            .expect("persistence waiter should not panic");
     }
 
     fn test_instance(
