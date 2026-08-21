@@ -677,6 +677,7 @@ extension HelmCore {
                 }
                 managerActionTaskByManager.removeValue(forKey: managerId)
                 managerActionTaskDescriptions.removeValue(forKey: taskId)
+                managerActionTaskDescriptionLocalizations.removeValue(forKey: taskId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
                 managerActionTaskSubmittedAt.removeValue(forKey: taskId)
                 continue
@@ -695,6 +696,7 @@ extension HelmCore {
                 }
                 managerActionTaskByManager.removeValue(forKey: managerId)
                 managerActionTaskDescriptions.removeValue(forKey: taskId)
+                managerActionTaskDescriptionLocalizations.removeValue(forKey: taskId)
                 managerActionTaskTypes.removeValue(forKey: taskId)
                 managerActionTaskSubmittedAt.removeValue(forKey: taskId)
             }
@@ -1357,14 +1359,7 @@ extension HelmCore {
     }
 
     private func normalizedDescriptionVersionToken(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return nil }
-        let unknownLabel = L10n.Common.unknown.localized.lowercased()
-        if normalized.lowercased() == unknownLabel {
-            return nil
-        }
-        return normalized
+        PackageIdentity.normalizedKnownVersion(value)
     }
 
     private func canInstallPackageDirect(_ package: PackageItem) -> Bool {

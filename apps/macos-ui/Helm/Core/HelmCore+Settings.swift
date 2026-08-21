@@ -1004,9 +1004,9 @@ extension HelmCore {
             let args = task.labelArgs?.reduce(into: [String: Any]()) { partialResult, entry in
                 partialResult[entry.key] = entry.value
             } ?? [:]
-            return labelKey.localized(with: args)
+            return LocalizationManager.shared.stringIfPresent(labelKey, args: args)
         }
-        // `task.label` is persisted server-side in English; prefer localized fallback composition.
+        // The caller retains `task.label` only as raw backend text when no live descriptor applies.
         return nil
     }
 
@@ -2034,7 +2034,7 @@ struct HelmSupport {
                 status: task.status,
                 managerId: task.managerId,
                 taskType: task.taskType,
-                description: redactor.redactString(task.description),
+                description: redactor.redactString(task.localizedDescription),
                 labelKey: task.labelKey,
                 labelArgs: redactor.redactDictionary(task.labelArgs)
             )
@@ -2048,7 +2048,7 @@ struct HelmSupport {
                     managerId: task.managerId,
                     taskType: task.taskType,
                     status: task.status,
-                    description: redactor.redactString(task.description),
+                    description: redactor.redactString(task.localizedDescription),
                     suggestedCommand: redactor.redactOptionalString(core.diagnosticCommandHint(for: task))
                 )
             }
@@ -2158,7 +2158,7 @@ struct HelmSupport {
             info += "(No active tasks)\n"
         } else {
             for task in core.activeTasks {
-                info += "- [\(task.id)] \(task.description) (\(task.status))"
+                info += "- [\(task.id)] \(task.localizedDescription) (\(task.status))"
                 if let mid = task.managerId {
                     info += " [\(mid)]"
                 }

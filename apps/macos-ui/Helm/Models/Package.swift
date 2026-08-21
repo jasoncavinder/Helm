@@ -121,24 +121,40 @@ struct PackageItem: Identifiable {
     }
 }
 
+enum PackageVersionPresentation {
+    static func currentVersionText(
+        storedVersion: String?,
+        localizedUnknown: String
+    ) -> String {
+        PackageIdentity.normalizedKnownVersion(storedVersion) ?? localizedUnknown
+    }
+}
+
+enum PackageMutationVersionPolicy {
+    static func versionSelector(storedVersion: String?) -> String? {
+        PackageIdentity.normalizedKnownVersion(storedVersion)
+    }
+}
+
 enum PackageIdentity {
-    private static let unknownVersionTokens: Set<String> = {
-        var tokens: Set<String> = ["unknown"]
-        let localizedUnknown = L10n.Common.unknown.localized
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        if !localizedUnknown.isEmpty {
-            tokens.insert(localizedUnknown)
-        }
-        return tokens
-    }()
+    // Matching-only values for every locale in LocalizationPreferenceStore.supportedSelections.
+    // Keeping the bounded set here avoids capturing whichever locale happens to initialize the type.
+    private static let unknownVersionTokens: Set<String> = [
+        "unknown",
+        "unbekannt",
+        "desconocida",
+        "inconnu",
+        "ismeretlen",
+        "不明",
+        "desconhecido",
+    ]
 
     static func normalizedBaseName(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     static func hasKnownVersion(_ value: String?) -> Bool {
-        normalizedVersionSelectorInput(value) != nil
+        normalizedKnownVersion(value) != nil
     }
 
     static func variantQualifier(fromVersion version: String?) -> String? {
@@ -200,15 +216,17 @@ enum PackageIdentity {
     }
 
     private static func normalizedVariantQualifier(fromVersion version: String?, lowercase: Bool) -> String? {
-        guard let normalizedVersion = normalizedVersionSelectorInput(version) else { return nil }
+        guard let normalizedVersion = normalizedKnownVersion(version) else { return nil }
         return qualifierFromSelector(normalizedVersion, lowercase: lowercase)
     }
 
-    private static func normalizedVersionSelectorInput(_ value: String?) -> String? {
+    static func normalizedKnownVersion(_ value: String?) -> String? {
         guard let value else { return nil }
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return nil }
-        if unknownVersionTokens.contains(normalized.lowercased()) {
+        if unknownVersionTokens.contains(where: {
+            $0.caseInsensitiveCompare(normalized) == .orderedSame
+        }) {
             return nil
         }
         return normalized

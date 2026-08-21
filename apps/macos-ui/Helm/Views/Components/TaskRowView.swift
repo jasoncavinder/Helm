@@ -6,6 +6,7 @@ enum TaskOutputSurface {
 }
 
 struct TaskRowView: View {
+    @ObservedObject private var localization = LocalizationManager.shared
     let task: TaskItem
     var onCancel: (() -> Void)?
     var onDismiss: (() -> Void)?
@@ -17,7 +18,12 @@ struct TaskRowView: View {
     var onSelect: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
+        content(forLocale: localization.currentLocale)
+    }
+
+    private func content(forLocale _: String) -> some View {
+        let taskDescription = task.localizedDescription
+        return VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
             HStack(spacing: 8) {
                 if task.isRunning {
                     ProgressView()
@@ -31,7 +37,7 @@ struct TaskRowView: View {
                         .accessibilityHidden(true)
                 }
 
-                Text(task.description)
+                Text(taskDescription)
                     .font(.subheadline)
                     .lineLimit(1)
 
@@ -49,7 +55,7 @@ struct TaskRowView: View {
                     }
                     .buttonStyle(.plain)
                     .helmPointer()
-                    .accessibilityLabel(task.description)
+                    .accessibilityLabel(taskDescription)
                     .accessibilityValue(task.localizedStatus)
                 }
 

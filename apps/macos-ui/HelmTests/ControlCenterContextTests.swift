@@ -9,6 +9,7 @@ final class ControlCenterContextTests: XCTestCase {
         let context = ControlCenterContextBase(
             localizationChanges: localizationChanges.eraseToAnyPublisher()
         )
+        XCTAssertEqual(context.localeRevision, 0)
         let tracker = ControlCenterLocaleRenderTracker()
         let hostingView = NSHostingView(
             rootView: HStack {
@@ -39,6 +40,7 @@ final class ControlCenterContextTests: XCTestCase {
         localizationChanges.send(())
 
         XCTAssertEqual(forwardedChangeCount, 1)
+        XCTAssertEqual(context.localeRevision, 1)
         XCTAssertTrue(
             waitUntil {
                 hostingView.layoutSubtreeIfNeeded()
@@ -69,6 +71,235 @@ final class ControlCenterContextTests: XCTestCase {
 
         XCTAssertEqual(publishedChangeCount, 2)
         withExtendedLifetime(observation) {}
+    }
+
+    func testLocaleRefreshHostPreservesMountedChildStateAndLifecycle() {
+        let localizationChanges = PassthroughSubject<Void, Never>()
+        let presentReview = PassthroughSubject<Void, Never>()
+        let context = ControlCenterContextBase(
+            localizationChanges: localizationChanges.eraseToAnyPublisher()
+        )
+        let tracker = ControlCenterLocaleStateTracker()
+        let hostingView = NSHostingView(
+            rootView: ControlCenterLocaleStatePreservationHost(
+                context: context,
+                presentReview: presentReview.eraseToAnyPublisher(),
+                tracker: tracker
+            )
+        )
+        hostingView.frame = NSRect(x: 0, y: 0, width: 320, height: 80)
+
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.latestRevision == 0 && tracker.appearCount == 1
+            },
+            "Expected the locale refresh host to mount its stateful child"
+        )
+        let initialLifecycleID = tracker.latestLifecycleID
+        let initialStateToken = tracker.latestStateToken
+
+        presentReview.send(())
+
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.reviewPresented
+            },
+            "Expected representative child presentation state to become active"
+        )
+
+        localizationChanges.send(())
+
+        XCTAssertTrue(
+            waitUntil {
+                hostingView.layoutSubtreeIfNeeded()
+                return tracker.latestRevision == 1
+                    && tracker.latestRenderedText == "locale-revision-1"
+            },
+            "Expected the mounted child to render the new locale revision"
+        )
+        XCTAssertEqual(tracker.latestLifecycleID, initialLifecycleID)
+        XCTAssertEqual(tracker.latestStateToken, initialStateToken)
+        XCTAssertTrue(tracker.reviewPresented)
+        XCTAssertEqual(tracker.appearCount, 1)
+        XCTAssertEqual(tracker.disappearCount, 0)
+        withExtendedLifetime(hostingView) {}
+    }
+
+    func testRetainedTaskDescriptionResolvesAtPresentationTime() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "raw persisted fallback",
+            labelKey: "service.task.label.install.package",
+            labelArgs: ["manager": "Homebrew", "package": "ripgrep"]
+        )
+        var presentationLocale = "en"
+        var resolutionCount = 0
+        let resolve: (String, [String: String]) -> String? = { key, arguments in
+            resolutionCount += 1
+            return "\(presentationLocale):\(key):\(arguments["package"] ?? "")"
+        }
+
+        XCTAssertEqual(
+            presentation.resolve(using: resolve),
+            "en:service.task.label.install.package:ripgrep"
+        )
+        presentationLocale = "de"
+        XCTAssertEqual(
+            presentation.resolve(using: resolve),
+            "de:service.task.label.install.package:ripgrep"
+        )
+        XCTAssertEqual(resolutionCount, 2)
+
+        let fallbackPresentation = TaskDescriptionPresentation(
+            rawDescription: "raw fallback",
+            labelKey: nil,
+            labelArgs: nil
+        )
+        XCTAssertEqual(fallbackPresentation.resolve(using: resolve), "raw fallback")
+        XCTAssertEqual(resolutionCount, 2)
+    }
+
+    func testMissingTaskDescriptionKeyUsesRawFallback() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "backend-provided task description",
+            labelKey: "service.task.label.missing",
+            labelArgs: ["package": "ripgrep"]
+        )
+
+        XCTAssertEqual(
+            presentation.resolve(using: { _, _ in nil }),
+            "backend-provided task description"
+        )
+    }
+
+    func testMissingTaskDescriptionKeyUsesLiveFallbackWhenAvailable() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale generic fallback",
+            labelKey: "service.task.label.missing",
+            labelArgs: nil,
+            fallbackLocalization: .genericTask(
+                taskType: "refresh",
+                managerID: "homebrew_formula"
+            )
+        )
+
+        let resolved = presentation.resolve(
+            using: { key, _ in
+                key == "app.tasks.fallback.description" ? "live generic fallback" : nil
+            }
+        )
+
+        XCTAssertEqual(resolved, "live generic fallback")
+    }
+
+    func testNilLabelProductionTaskFallbackReResolvesAcrossLocales() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale production fallback",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: .productionTask(
+                taskType: "refresh",
+                managerID: "homebrew_formula",
+                override: nil
+            )
+        )
+
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "en"),
+                       "en|app.tasks.fallback.description|manager=en-homebrew_formula,task_type=en-refresh")
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "de"),
+                       "de|app.tasks.fallback.description|manager=de-homebrew_formula,task_type=de-refresh")
+    }
+
+    func testLegacyCatalogSyncUsesCompleteLiveDescriptor() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale catalog label",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: .productionTask(
+                taskType: "catalog_sync",
+                managerID: "homebrew_formula",
+                override: nil
+            )
+        )
+
+        XCTAssertEqual(
+            resolveTaskDescription(presentation, locale: "de"),
+            "de|service.task.label.search.manager|manager=de-homebrew_formula"
+        )
+    }
+
+    func testQueuedManagerPlaceholderFallbackReResolvesAcrossLocales() throws {
+        let localization = try XCTUnwrap(
+            TaskDescriptionLocalization.managerAction(
+                taskType: "manager_setup",
+                managerID: "mise"
+            )
+        )
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale queued placeholder",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: localization
+        )
+
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "en"),
+                       "en|service.task.label.setup.manager|manager=en-mise")
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "de"),
+                       "de|service.task.label.setup.manager|manager=de-mise")
+    }
+
+    func testLocalManagerFailureFallbackReResolvesAcrossLocales() throws {
+        let localization = try XCTUnwrap(
+            TaskDescriptionLocalization.managerAction(
+                taskType: "install",
+                managerID: "npm"
+            )
+        )
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale local failure",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: localization
+        )
+
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "en"),
+                       "en|app.tasks.fallback.description|manager=en-npm,task_type=en-install")
+        XCTAssertEqual(resolveTaskDescription(presentation, locale: "de"),
+                       "de|app.tasks.fallback.description|manager=de-npm,task_type=de-install")
+    }
+
+    func testRetainedUnknownPackageVersionUsesCurrentLocalePresentation() {
+        let retainedVersion = "inconnu"
+
+        XCTAssertEqual(
+            PackageVersionPresentation.currentVersionText(
+                storedVersion: retainedVersion,
+                localizedUnknown: "inconnu"
+            ),
+            "inconnu"
+        )
+        XCTAssertEqual(
+            PackageVersionPresentation.currentVersionText(
+                storedVersion: retainedVersion,
+                localizedUnknown: "unbekannt"
+            ),
+            "unbekannt"
+        )
+    }
+
+    func testLocalizedUnknownPackageVersionIsNeverUsedAsMutationSelector() {
+        for placeholder in ["unknown", "unbekannt", "desconocida", "inconnu",
+                            "ismeretlen", "不明", "desconhecido"] {
+            XCTAssertNil(
+                PackageMutationVersionPolicy.versionSelector(storedVersion: placeholder),
+                "Expected \(placeholder) to remain presentation-only"
+            )
+        }
+        XCTAssertEqual(
+            PackageMutationVersionPolicy.versionSelector(storedVersion: " 1.2.3 "),
+            "1.2.3"
+        )
     }
 
     func testReviewedPlanConfirmationPreservesTheReviewedSelection() {
@@ -395,6 +626,24 @@ final class ControlCenterContextTests: XCTestCase {
         }
         return condition()
     }
+
+    private func resolveTaskDescription(
+        _ presentation: TaskDescriptionPresentation,
+        locale: String
+    ) -> String {
+        presentation.resolve(
+            using: { key, arguments in
+                let renderedArguments = arguments
+                    .sorted(by: { $0.key < $1.key })
+                    .map { "\($0.key)=\($0.value)" }
+                    .joined(separator: ",")
+                return "\(locale)|\(key)|\(renderedArguments)"
+            },
+            argumentResolver: { argument in
+                "\(locale)-\(argument.rawValue)"
+            }
+        )
+    }
 }
 
 private enum ControlCenterLocaleHost: Hashable {
@@ -420,6 +669,93 @@ private final class ControlCenterLocaleRenderTracker {
 
 private final class ControlCenterLocaleStateProbe: ControlCenterContextBase {
     @Published var selectedPackageId: String?
+}
+
+private final class ControlCenterLocaleStateTracker {
+    private(set) var latestRevision: Int?
+    private(set) var latestRenderedText: String?
+    private(set) var latestLifecycleID: UUID?
+    private(set) var latestStateToken: UUID?
+    private(set) var reviewPresented = false
+    private(set) var appearCount = 0
+    private(set) var disappearCount = 0
+
+    func recordRender(
+        revision: Int,
+        renderedText: String,
+        lifecycleID: UUID,
+        stateToken: UUID,
+        reviewPresented: Bool
+    ) {
+        latestRevision = revision
+        latestRenderedText = renderedText
+        latestLifecycleID = lifecycleID
+        latestStateToken = stateToken
+        self.reviewPresented = reviewPresented
+    }
+
+    func recordAppearance() {
+        appearCount += 1
+    }
+
+    func recordDisappearance() {
+        disappearCount += 1
+    }
+}
+
+private final class ControlCenterLocaleLifecycleProbe: ObservableObject {
+    let id = UUID()
+}
+
+private struct ControlCenterLocaleStatePreservationHost: View {
+    @ObservedObject var context: ControlCenterContextBase
+    let presentReview: AnyPublisher<Void, Never>
+    let tracker: ControlCenterLocaleStateTracker
+
+    var body: some View {
+        ControlCenterLocaleRefreshHost(revision: context.localeRevision) {
+            ControlCenterLocaleStatefulChildProbe(
+                presentReview: presentReview,
+                tracker: tracker
+            )
+        }
+    }
+}
+
+private struct ControlCenterLocaleStatefulChildProbe: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
+    @StateObject private var lifecycle = ControlCenterLocaleLifecycleProbe()
+    @State private var stateToken = UUID()
+    @State private var reviewPresented = false
+    let presentReview: AnyPublisher<Void, Never>
+    let tracker: ControlCenterLocaleStateTracker
+
+    var body: some View {
+        let renderedText = "locale-revision-\(localeRevision)"
+        tracker.recordRender(
+            revision: localeRevision,
+            renderedText: renderedText,
+            lifecycleID: lifecycle.id,
+            stateToken: stateToken,
+            reviewPresented: reviewPresented
+        )
+        return Text(renderedText)
+            .overlay {
+                if reviewPresented {
+                    Text("review-presented")
+                        .accessibilityHidden(true)
+                }
+            }
+            .onReceive(presentReview) {
+                reviewPresented = true
+            }
+            .onAppear {
+                tracker.recordAppearance()
+            }
+            .onDisappear {
+                tracker.recordDisappearance()
+            }
+    }
 }
 
 private struct ControlCenterLocaleProbe: View {

@@ -230,9 +230,16 @@ class LocalizationManager: ObservableObject {
         return result
     }
     
-    func string(_ key: String, args: [String: Any] = [:]) -> String {
+    func stringIfPresent(_ key: String, args: [String: Any] = [:]) -> String? {
         let format = strings[key] ?? fallbackStrings[key]
-        guard let format else {
+        guard let format else { return nil }
+
+        let pluralApplied = applyPluralArguments(format, args: args)
+        return applySimpleArguments(pluralApplied, args: args)
+    }
+
+    func string(_ key: String, args: [String: Any] = [:]) -> String {
+        guard let localized = stringIfPresent(key, args: args) else {
             #if DEBUG
             return "⟦\(key)⟧"
             #else
@@ -242,8 +249,6 @@ class LocalizationManager: ObservableObject {
             return key
             #endif
         }
-
-        let pluralApplied = applyPluralArguments(format, args: args)
-        return applySimpleArguments(pluralApplied, args: args)
+        return localized
     }
 }

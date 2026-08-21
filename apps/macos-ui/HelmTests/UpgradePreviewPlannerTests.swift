@@ -819,6 +819,19 @@ final class PackageConsolidationPolicyTests: XCTestCase {
 }
 
 final class PackageActionTrackingTests: XCTestCase {
+    func testLocalizedUnknownVersionDoesNotChangePackageIdentity() {
+        for placeholder in ["unknown", "unbekannt", "desconocida", "inconnu",
+                            "ismeretlen", "不明", "desconhecido"] {
+            XCTAssertEqual(
+                PackageActionTracking.normalizedPackageIdentityKey(
+                    name: "ripgrep",
+                    version: placeholder
+                ),
+                "ripgrep"
+            )
+        }
+    }
+
     func testPackageNameFromVersionedPackageId() {
         XCTAssertEqual(
             PackageActionTracking.packageNameFromPackageId("homebrew_formula:zig::0.14.0"),

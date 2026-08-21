@@ -195,12 +195,17 @@ private struct ResearchActivityRow: View {
 }
 
 struct ResearchActivityInspectorView: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     let activity: WholeWorkflowResearchActivity
     let projection: WholeWorkflowResearchActivityProjection
     @State private var reviewedAction: WholeWorkflowResearchRecoveryAction?
     @State private var copiedDiagnostics = false
 
     var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    private func content(forLocaleRevision _: Int) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(activity.localizedTitle)
                 .font(.title3.weight(.semibold))
@@ -378,10 +383,15 @@ private struct ResearchInspectorField<Content: View>: View {
 }
 
 private struct ResearchRecoveryReviewSheet: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     let action: WholeWorkflowResearchRecoveryAction
     let dismiss: () -> Void
 
     var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    private func content(forLocaleRevision _: Int) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(title)
                 .font(.title2.weight(.semibold))

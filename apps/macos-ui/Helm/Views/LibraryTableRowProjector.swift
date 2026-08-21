@@ -53,7 +53,10 @@ enum LibraryTableRowProjector {
                         for: packageRow, actionTarget: package, labels: labels
                     )),
                     manager: packageRow.managerDisplayText,
-                    currentVersion: package.version,
+                    currentVersion: PackageVersionPresentation.currentVersionText(
+                        storedVersion: package.version,
+                        localizedUnknown: L10n.Common.unknown.localized
+                    ),
                     latestVersion: package.latestVersion,
                     status: statusLabel(for: package.status, labels: labels),
                     statusSymbolName: package.status.iconName,
