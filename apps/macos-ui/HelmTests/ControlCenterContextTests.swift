@@ -211,6 +211,24 @@ final class ControlCenterContextTests: XCTestCase {
                        "de|app.tasks.fallback.description|manager=de-homebrew_formula,task_type=de-refresh")
     }
 
+    func testLegacyCatalogSyncUsesCompleteLiveDescriptor() {
+        let presentation = TaskDescriptionPresentation(
+            rawDescription: "stale catalog label",
+            labelKey: nil,
+            labelArgs: nil,
+            fallbackLocalization: .productionTask(
+                taskType: "catalog_sync",
+                managerID: "homebrew_formula",
+                override: nil
+            )
+        )
+
+        XCTAssertEqual(
+            resolveTaskDescription(presentation, locale: "de"),
+            "de|service.task.label.search.manager|manager=de-homebrew_formula"
+        )
+    }
+
     func testQueuedManagerPlaceholderFallbackReResolvesAcrossLocales() throws {
         let localization = try XCTUnwrap(
             TaskDescriptionLocalization.managerAction(
@@ -267,6 +285,20 @@ final class ControlCenterContextTests: XCTestCase {
                 localizedUnknown: "unbekannt"
             ),
             "unbekannt"
+        )
+    }
+
+    func testLocalizedUnknownPackageVersionIsNeverUsedAsMutationSelector() {
+        for placeholder in ["unknown", "unbekannt", "desconocida", "inconnu",
+                            "ismeretlen", "不明", "desconhecido"] {
+            XCTAssertNil(
+                PackageMutationVersionPolicy.versionSelector(storedVersion: placeholder),
+                "Expected \(placeholder) to remain presentation-only"
+            )
+        }
+        XCTAssertEqual(
+            PackageMutationVersionPolicy.versionSelector(storedVersion: " 1.2.3 "),
+            "1.2.3"
         )
     }
 

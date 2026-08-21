@@ -130,6 +130,12 @@ enum PackageVersionPresentation {
     }
 }
 
+enum PackageMutationVersionPolicy {
+    static func versionSelector(storedVersion: String?) -> String? {
+        PackageIdentity.normalizedKnownVersion(storedVersion)
+    }
+}
+
 enum PackageIdentity {
     // Matching-only values for every locale in LocalizationPreferenceStore.supportedSelections.
     // Keeping the bounded set here avoids capturing whichever locale happens to initialize the type.

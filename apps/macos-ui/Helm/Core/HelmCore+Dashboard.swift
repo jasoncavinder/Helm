@@ -1359,14 +1359,7 @@ extension HelmCore {
     }
 
     private func normalizedDescriptionVersionToken(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return nil }
-        let unknownLabel = L10n.Common.unknown.localized.lowercased()
-        if normalized.lowercased() == unknownLabel {
-            return nil
-        }
-        return normalized
+        PackageIdentity.normalizedKnownVersion(value)
     }
 
     private func canInstallPackageDirect(_ package: PackageItem) -> Bool {

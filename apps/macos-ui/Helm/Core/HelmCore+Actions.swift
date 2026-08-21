@@ -669,7 +669,9 @@ extension HelmCore {
             }
             return
         }
-        let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
+        let version = PackageMutationVersionPolicy.versionSelector(
+            storedVersion: package.version
+        )
         service.pinPackage(managerId: package.managerId, packageName: package.name, version: version) { [weak self] success in
             DispatchQueue.main.async {
                 self?.pinActionPackageIds.remove(package.id)
@@ -707,7 +709,9 @@ extension HelmCore {
             }
             return
         }
-        let version = package.version.isEmpty || package.version == "unknown" ? nil : package.version
+        let version = PackageMutationVersionPolicy.versionSelector(
+            storedVersion: package.version
+        )
         service.unpinPackage(managerId: package.managerId, packageName: package.name, version: version) { [weak self] success in
             DispatchQueue.main.async {
                 self?.pinActionPackageIds.remove(package.id)

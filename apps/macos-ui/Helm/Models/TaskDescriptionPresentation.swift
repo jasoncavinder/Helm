@@ -32,7 +32,16 @@ struct TaskDescriptionLocalization: Equatable {
         managerID: String,
         override: Self?
     ) -> Self {
-        override ?? genericTask(taskType: taskType, managerID: managerID)
+        if let override {
+            return override
+        }
+        if taskType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "catalog_sync" {
+            return Self(
+                key: "service.task.label.search.manager",
+                arguments: ["manager": .managerID(managerID)]
+            )
+        }
+        return genericTask(taskType: taskType, managerID: managerID)
     }
 
     static func managerAction(taskType: String, managerID: String) -> Self? {

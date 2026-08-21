@@ -2031,7 +2031,7 @@ struct HelmSupport {
                 status: task.status,
                 managerId: task.managerId,
                 taskType: task.taskType,
-                description: redactor.redactString(task.description),
+                description: redactor.redactString(task.localizedDescription),
                 labelKey: task.labelKey,
                 labelArgs: redactor.redactDictionary(task.labelArgs)
             )
@@ -2045,7 +2045,7 @@ struct HelmSupport {
                     managerId: task.managerId,
                     taskType: task.taskType,
                     status: task.status,
-                    description: redactor.redactString(task.description),
+                    description: redactor.redactString(task.localizedDescription),
                     suggestedCommand: redactor.redactOptionalString(core.diagnosticCommandHint(for: task))
                 )
             }
@@ -2155,7 +2155,7 @@ struct HelmSupport {
             info += "(No active tasks)\n"
         } else {
             for task in core.activeTasks {
-                info += "- [\(task.id)] \(task.description) (\(task.status))"
+                info += "- [\(task.id)] \(task.localizedDescription) (\(task.status))"
                 if let mid = task.managerId {
                     info += " [\(mid)]"
                 }
