@@ -120,11 +120,26 @@ extension HelmCore {
                     )
                 }
                 self.appUpdateNotificationEventTracker.publishOutdatedPackagesSnapshot(
-                    revision: requestRevision
+                    revision: requestRevision,
+                    snapshot: self.appUpdateNotificationSnapshot(
+                        for: self.outdatedPackages
+                    )
                 )
             }
         }
         return requestRevision
+    }
+
+    func appUpdateNotificationSnapshot(
+        for packages: [PackageItem]
+    ) -> AppUpdateNotificationSnapshot {
+        AppUpdateNotificationSnapshot(
+            packages: packages,
+            automaticUpdateCount: upgradeAllPreviewCount(
+                includePinned: false,
+                allowOsUpdates: false
+            )
+        )
     }
 
     func syncHelmSelfUpdateAvailability(_ availability: AppUpdateAvailability?) {

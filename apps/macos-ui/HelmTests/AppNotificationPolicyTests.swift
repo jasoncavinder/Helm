@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 
 final class AppNotificationPolicyTests: XCTestCase {
@@ -221,6 +222,70 @@ final class AppNotificationPolicyTests: XCTestCase {
         XCTAssertTrue(revisions.acceptResponse(revision: second))
         XCTAssertFalse(revisions.acceptResponse(revision: first))
         XCTAssertEqual(revisions.latestAppliedRevision, second)
+    }
+
+    func testQueuedAcceptedSnapshotsKeepEachRevisionBoundToItsOwnFingerprint() {
+        let tracker = AppUpdateNotificationEventTracker()
+        var state = AppUpdateNotificationState()
+        let initialIdentifiers = ["npm|one|1|2", "cargo|two|3|4"]
+        let firstSnapshot = AppUpdateNotificationSnapshot(
+            updateIdentifiers: ["cargo|two|3|4"],
+            updateCount: 1,
+            automaticUpdateCount: 1
+        )
+        let laterSnapshot = AppUpdateNotificationSnapshot(
+            updateIdentifiers: ["cargo|two|3|4", "poetry|three|5|6"],
+            updateCount: 2,
+            automaticUpdateCount: 2
+        )
+        let firstRevision = tracker.issueOutdatedPackagesSnapshotRequest()
+        let laterRevision = tracker.issueOutdatedPackagesSnapshotRequest()
+
+        _ = evaluate(&state, identifiers: initialIdentifiers)
+        _ = evaluate(
+            &state,
+            identifiers: initialIdentifiers,
+            observation: .backendExecutionStarted
+        )
+        _ = evaluate(
+            &state,
+            identifiers: initialIdentifiers,
+            observation: .backendExecutionEnded(awaitingSnapshotRevision: firstRevision)
+        )
+
+        let delivered = expectation(description: "queued snapshot events delivered")
+        delivered.expectedFulfillmentCount = 2
+        var handledRevisions: [UInt64] = []
+        let subscription = tracker.outdatedPackagesSnapshotPublisher
+            .receive(on: RunLoop.main)
+            .sink { event in
+                defer { delivered.fulfill() }
+                guard state.isExecutionSuppressed else { return }
+                handledRevisions.append(event.revision)
+                _ = state.evaluate(
+                    updateIdentifiers: event.snapshot.updateIdentifiers,
+                    notificationsEnabled: true,
+                    interactiveSurfaceVisible: false,
+                    observation: .postExecutionSnapshotPublished(revision: event.revision)
+                )
+            }
+
+        XCTAssertTrue(tracker.acceptOutdatedPackagesSnapshotResponse(revision: firstRevision))
+        tracker.publishOutdatedPackagesSnapshot(revision: firstRevision, snapshot: firstSnapshot)
+        XCTAssertTrue(tracker.acceptOutdatedPackagesSnapshotResponse(revision: laterRevision))
+        tracker.publishOutdatedPackagesSnapshot(revision: laterRevision, snapshot: laterSnapshot)
+
+        wait(for: [delivered], timeout: 1)
+
+        XCTAssertEqual(handledRevisions, [firstRevision])
+        XCTAssertFalse(state.isExecutionSuppressed)
+        XCTAssertTrue(
+            evaluate(
+                &state,
+                identifiers: laterSnapshot.updateIdentifiers
+            ).shouldNotify
+        )
+        withExtendedLifetime(subscription) {}
     }
 
     private func evaluate(

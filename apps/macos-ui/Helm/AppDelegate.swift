@@ -991,7 +991,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
                     )
                 }
                 self.handleUpdateAvailabilityChanged(
-                    self.core.outdatedPackages,
+                    self.core.appUpdateNotificationSnapshot(for: self.core.outdatedPackages),
                     observation: observation
                 )
             }
@@ -999,21 +999,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
         core.appUpdateNotificationEventTracker.outdatedPackagesSnapshotPublisher
             .receive(on: RunLoop.main)
-            .sink { [weak self] revision in
+            .sink { [weak self] event in
                 guard let self, self.updateNotificationState.isExecutionSuppressed else { return }
                 self.handleUpdateAvailabilityChanged(
-                    self.core.outdatedPackages,
-                    observation: .postExecutionSnapshotPublished(revision: revision)
+                    event.snapshot,
+                    observation: .postExecutionSnapshotPublished(revision: event.revision)
                 )
             }
             .store(in: &cancellables)
 
         core.appUpdateNotificationEventTracker.helmOnlyPlanStartedPublisher
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] snapshot in
                 guard let self else { return }
                 self.handleUpdateAvailabilityChanged(
-                    self.core.outdatedPackages,
+                    snapshot,
                     observation: .helmOnlyPlanStarted
                 )
             }
@@ -1027,8 +1027,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         )
             .debounce(for: .milliseconds(750), scheduler: RunLoop.main)
             .sink { [weak self] packages, _, _, _ in
-                self?.handleUpdateAvailabilityChanged(
-                    packages,
+                guard let self else { return }
+                self.handleUpdateAvailabilityChanged(
+                    self.core.appUpdateNotificationSnapshot(for: packages),
                     observation: .availabilityChanged
                 )
             }
@@ -1267,27 +1268,12 @@ private extension AppDelegate {
     }
 
     func handleUpdateAvailabilityChanged(
-        _ packages: [PackageItem],
+        _ snapshot: AppUpdateNotificationSnapshot,
         observation: AppUpdateNotificationObservation
     ) {
         let interactiveSurfaceVisible = panel.isVisible || isControlCenterVisible
-        let automaticUpdateCount = core.upgradeAllPreviewCount(
-            includePinned: false,
-            allowOsUpdates: false
-        )
-        var updateIdentifiers = packages.map { package in
-            [
-                package.managerId,
-                package.id,
-                package.version,
-                package.latestVersion ?? "",
-            ].joined(separator: "|")
-        }
-        if !packages.isEmpty {
-            updateIdentifiers.append("upgrade-all-available:\(automaticUpdateCount > 0)")
-        }
         let evaluation = updateNotificationState.evaluate(
-            updateIdentifiers: updateIdentifiers,
+            updateIdentifiers: snapshot.updateIdentifiers,
             notificationsEnabled: core.notificationsEnabled,
             interactiveSurfaceVisible: interactiveSurfaceVisible,
             observation: observation
@@ -1307,8 +1293,8 @@ private extension AppDelegate {
 
         guard evaluation.shouldNotify else { return }
         postUpdatesReadyNotification(
-            count: packages.count,
-            allowsUpgradeAll: automaticUpdateCount > 0
+            count: snapshot.updateCount,
+            allowsUpgradeAll: snapshot.automaticUpdateCount > 0
         )
     }
 

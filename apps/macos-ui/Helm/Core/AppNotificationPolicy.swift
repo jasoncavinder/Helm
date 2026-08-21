@@ -13,6 +13,44 @@ struct AppUpdateNotificationEvaluation: Equatable {
     let updatesReadySuppressedForExecution: Bool
 }
 
+struct AppUpdateNotificationSnapshot: Equatable {
+    let updateIdentifiers: [String]
+    let updateCount: Int
+    let automaticUpdateCount: Int
+
+    init(
+        updateIdentifiers: [String],
+        updateCount: Int,
+        automaticUpdateCount: Int
+    ) {
+        self.updateIdentifiers = updateIdentifiers
+        self.updateCount = updateCount
+        self.automaticUpdateCount = automaticUpdateCount
+    }
+
+    init(packages: [PackageItem], automaticUpdateCount: Int) {
+        var updateIdentifiers = packages.map { package in
+            [
+                package.managerId,
+                package.id,
+                package.version,
+                package.latestVersion ?? "",
+            ].joined(separator: "|")
+        }
+        if !packages.isEmpty {
+            updateIdentifiers.append("upgrade-all-available:\(automaticUpdateCount > 0)")
+        }
+        self.updateIdentifiers = updateIdentifiers
+        self.updateCount = packages.count
+        self.automaticUpdateCount = automaticUpdateCount
+    }
+}
+
+struct AppUpdateNotificationSnapshotEvent: Equatable {
+    let revision: UInt64
+    let snapshot: AppUpdateNotificationSnapshot
+}
+
 struct OutdatedPackageSnapshotRevisionState: Equatable {
     private(set) var latestIssuedRevision: UInt64 = 0
     private(set) var latestAppliedRevision: UInt64 = 0
@@ -30,8 +68,14 @@ struct OutdatedPackageSnapshotRevisionState: Equatable {
 }
 
 final class AppUpdateNotificationEventTracker {
-    let outdatedPackagesSnapshotPublisher = PassthroughSubject<UInt64, Never>()
-    let helmOnlyPlanStartedPublisher = PassthroughSubject<Void, Never>()
+    let outdatedPackagesSnapshotPublisher = PassthroughSubject<
+        AppUpdateNotificationSnapshotEvent,
+        Never
+    >()
+    let helmOnlyPlanStartedPublisher = PassthroughSubject<
+        AppUpdateNotificationSnapshot,
+        Never
+    >()
 
     private var outdatedPackagesSnapshotRevisionState = OutdatedPackageSnapshotRevisionState()
 
@@ -43,12 +87,17 @@ final class AppUpdateNotificationEventTracker {
         outdatedPackagesSnapshotRevisionState.acceptResponse(revision: revision)
     }
 
-    func publishOutdatedPackagesSnapshot(revision: UInt64) {
-        outdatedPackagesSnapshotPublisher.send(revision)
+    func publishOutdatedPackagesSnapshot(
+        revision: UInt64,
+        snapshot: AppUpdateNotificationSnapshot
+    ) {
+        outdatedPackagesSnapshotPublisher.send(
+            AppUpdateNotificationSnapshotEvent(revision: revision, snapshot: snapshot)
+        )
     }
 
-    func publishHelmOnlyPlanStarted() {
-        helmOnlyPlanStartedPublisher.send()
+    func publishHelmOnlyPlanStarted(snapshot: AppUpdateNotificationSnapshot) {
+        helmOnlyPlanStartedPublisher.send(snapshot)
     }
 }
 
