@@ -103,4 +103,136 @@ final class AppNotificationPolicyTests: XCTestCase {
         XCTAssertEqual(afterExecution.observedFingerprint, duringExecution.observedFingerprint)
         XCTAssertFalse(afterExecution.shouldNotify)
     }
+
+    func testBackendExecutionWaitsForLatePostTerminalSnapshotBeforeReleasing() {
+        var state = AppUpdateNotificationState()
+        let initialIdentifiers = ["npm|one|1|2", "cargo|two|3|4", "pipx|three|5|6"]
+
+        XCTAssertTrue(evaluate(&state, identifiers: initialIdentifiers).shouldNotify)
+        XCTAssertFalse(
+            evaluate(
+                &state,
+                identifiers: initialIdentifiers,
+                observation: .backendExecutionStarted
+            ).shouldNotify
+        )
+        let terminal = evaluate(
+            &state,
+            identifiers: initialIdentifiers,
+            observation: .backendExecutionEnded(awaitingSnapshotRevision: 12)
+        )
+        XCTAssertTrue(terminal.updatesReadySuppressedForExecution)
+        XCTAssertEqual(state.requiredPostExecutionSnapshotRevision, 12)
+
+        let staleResponse = evaluate(
+            &state,
+            identifiers: ["cargo|two|3|4", "pipx|three|5|6"],
+            observation: .postExecutionSnapshotPublished(revision: 11)
+        )
+        XCTAssertFalse(staleResponse.shouldNotify)
+        XCTAssertTrue(staleResponse.updatesReadySuppressedForExecution)
+        XCTAssertEqual(state.requiredPostExecutionSnapshotRevision, 12)
+
+        let postExecutionResponse = evaluate(
+            &state,
+            identifiers: ["pipx|three|5|6"],
+            observation: .postExecutionSnapshotPublished(revision: 12)
+        )
+        XCTAssertFalse(postExecutionResponse.shouldNotify)
+        XCTAssertTrue(postExecutionResponse.updatesReadySuppressedForExecution)
+        XCTAssertFalse(state.isExecutionSuppressed)
+
+        let genuinelyLaterSnapshot = evaluate(
+            &state,
+            identifiers: ["pipx|three|5|6", "poetry|four|7|8"]
+        )
+        XCTAssertTrue(genuinelyLaterSnapshot.shouldNotify)
+    }
+
+    func testBackendExecutionConsumesSnapshotBeforeTerminalAndStillWaitsForFreshSnapshot() {
+        var state = AppUpdateNotificationState()
+        let initialIdentifiers = ["npm|one|1|2", "cargo|two|3|4"]
+        let residualIdentifiers = ["cargo|two|3|4"]
+
+        XCTAssertTrue(evaluate(&state, identifiers: initialIdentifiers).shouldNotify)
+        _ = evaluate(
+            &state,
+            identifiers: initialIdentifiers,
+            observation: .backendExecutionStarted
+        )
+        let activeSnapshot = evaluate(
+            &state,
+            identifiers: residualIdentifiers,
+            observation: .postExecutionSnapshotPublished(revision: 20)
+        )
+        XCTAssertFalse(activeSnapshot.shouldNotify)
+        XCTAssertTrue(state.isExecutionSuppressed)
+
+        _ = evaluate(
+            &state,
+            identifiers: residualIdentifiers,
+            observation: .backendExecutionEnded(awaitingSnapshotRevision: 21)
+        )
+        XCTAssertEqual(state.requiredPostExecutionSnapshotRevision, 21)
+        let postTerminalSnapshot = evaluate(
+            &state,
+            identifiers: [],
+            observation: .postExecutionSnapshotPublished(revision: 21)
+        )
+        XCTAssertFalse(postTerminalSnapshot.shouldNotify)
+        XCTAssertNil(postTerminalSnapshot.observedFingerprint)
+        XCTAssertFalse(state.isExecutionSuppressed)
+
+        XCTAssertTrue(
+            evaluate(
+                &state,
+                identifiers: residualIdentifiers + ["poetry|three|5|6"]
+            ).shouldNotify
+        )
+    }
+
+    func testHelmOnlyPlanConsumesCurrentSnapshotWithoutSuppressingLaterManualChanges() {
+        var state = AppUpdateNotificationState()
+        let helmUpdate = ["helm_self_update|helm|0.19.1|0.20.0"]
+
+        XCTAssertTrue(evaluate(&state, identifiers: helmUpdate).shouldNotify)
+        let planStart = evaluate(
+            &state,
+            identifiers: helmUpdate,
+            observation: .helmOnlyPlanStarted
+        )
+        XCTAssertFalse(planStart.shouldNotify)
+        XCTAssertTrue(planStart.updatesReadySuppressedForExecution)
+        XCTAssertFalse(state.isExecutionSuppressed)
+
+        let unrelatedManualCheckResult = evaluate(
+            &state,
+            identifiers: ["helm_self_update|helm|0.19.1|0.20.1"]
+        )
+        XCTAssertTrue(unrelatedManualCheckResult.shouldNotify)
+        XCTAssertFalse(unrelatedManualCheckResult.updatesReadySuppressedForExecution)
+    }
+
+    func testOutdatedSnapshotRevisionRejectsOlderOutOfOrderResponses() {
+        var revisions = OutdatedPackageSnapshotRevisionState()
+        let first = revisions.issueRequest()
+        let second = revisions.issueRequest()
+
+        XCTAssertTrue(revisions.acceptResponse(revision: second))
+        XCTAssertFalse(revisions.acceptResponse(revision: first))
+        XCTAssertEqual(revisions.latestAppliedRevision, second)
+    }
+
+    private func evaluate(
+        _ state: inout AppUpdateNotificationState,
+        identifiers: [String],
+        observation: AppUpdateNotificationObservation = .availabilityChanged
+    ) -> AppUpdateNotificationEvaluation {
+        state.evaluate(
+            updateIdentifiers: identifiers,
+            notificationsEnabled: true,
+            interactiveSurfaceVisible: false,
+            observation: observation
+        )
+    }
 }

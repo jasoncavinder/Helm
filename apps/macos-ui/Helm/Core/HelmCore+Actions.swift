@@ -264,6 +264,7 @@ extension HelmCore {
         }
 
         if backendSteps.isEmpty, includeHelmSelfUpdate {
+            appUpdateNotificationEventTracker.publishHelmOnlyPlanStarted()
             AppUpdateCoordinator.shared.checkForUpdates()
             return
         }

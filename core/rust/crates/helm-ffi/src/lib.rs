@@ -174,7 +174,7 @@ use helm_core::models::{
     SearchQuery, StrategyKind, TaskId, TaskLogLevel, TaskLogRecord, TaskRecord, TaskStatus,
     TaskType,
 };
-use helm_core::orchestration::adapter_runtime::AdapterRuntime;
+use helm_core::orchestration::adapter_runtime::{AdapterRuntime, TaskPersistenceHandle};
 use helm_core::orchestration::{AdapterTaskTerminalState, CancellationMode};
 use helm_core::persistence::doctor_persistence::{
     DoctorStore, RepairHistoryRecord, begin_local_doctor_scan, complete_local_doctor_scan,
@@ -7886,17 +7886,17 @@ async fn submit_upgrade_workflow_step(
     runtime: &AdapterRuntime,
     step: &FfiUpgradePlanStep,
     control: &UpgradeWorkflowControl,
-) -> Option<helm_core::models::TaskId> {
+) -> Option<(helm_core::models::TaskId, TaskPersistenceHandle)> {
     let (manager, request, cleanup_old_kegs) = upgrade_workflow_request(step)?;
-    match runtime.submit(manager, request).await {
-        Ok(task_id) => {
+    match runtime.submit_with_persistence(manager, request).await {
+        Ok((task_id, persistence)) => {
             let (label_key, label_args) =
                 upgrade_task_label_for(manager, &step.package_name, cleanup_old_kegs);
             set_task_label(task_id, label_key, &label_args);
             if !control.admit_task(task_id) {
                 let _ = runtime.cancel(task_id, CancellationMode::Immediate).await;
             }
-            Some(task_id)
+            Some((task_id, persistence))
         }
         Err(error) => {
             eprintln!(
@@ -7949,19 +7949,26 @@ fn start_scoped_upgrade_workflow(
             let phase_steps = steps
                 .iter()
                 .filter(|step| upgrade_authority_rank(&step.authority) == authority_rank);
-            let mut task_ids = Vec::new();
+            let mut submitted_tasks = Vec::new();
             for step in phase_steps {
                 if control.is_cancelled() {
                     break;
                 }
-                if let Some(task_id) = submit_upgrade_workflow_step(&runtime, step, &control).await
+                if let Some(submitted) =
+                    submit_upgrade_workflow_step(&runtime, step, &control).await
                 {
-                    task_ids.push(task_id);
+                    submitted_tasks.push(submitted);
                 }
             }
             // Every submitted task reaches a terminal state before the next authority phase.
-            for task_id in task_ids {
-                let _ = runtime.wait_for_terminal(task_id, None).await;
+            for (task_id, _) in &submitted_tasks {
+                let _ = runtime.wait_for_terminal(*task_id, None).await;
+            }
+            // Workflow completion is not observable until each task's ordered domain-response
+            // persistence turn has finished, so no response from this workflow can overtake a
+            // post-workflow package snapshot request.
+            for (_, persistence) in submitted_tasks {
+                persistence.wait_for_completion().await;
             }
         }
         finish_upgrade_workflow(&finished_workflow_id);

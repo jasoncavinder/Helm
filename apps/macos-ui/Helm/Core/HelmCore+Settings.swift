@@ -683,6 +683,7 @@ extension HelmCore {
             .map(\.id)
         if !hasBackendUpgradeCandidate(includePinned: includePinned, allowOsUpdates: allowOsUpdates),
            includeHelmSelfUpdate {
+            appUpdateNotificationEventTracker.publishHelmOnlyPlanStarted()
             AppUpdateCoordinator.shared.checkForUpdates()
             return
         }

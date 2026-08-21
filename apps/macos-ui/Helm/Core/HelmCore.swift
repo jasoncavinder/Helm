@@ -617,6 +617,7 @@ final class HelmCore: ObservableObject {
     var scopedUpgradeWorkflowStatusReconciliationState = UpgradeWorkflowStatusReconciliationState()
     var upgradePlanCompletionTracker = UpgradePlanCompletionTracker()
     var scopedUpgradeWorkflowStatusCheckInFlight = false
+    let appUpdateNotificationEventTracker = AppUpdateNotificationEventTracker()
     private var connectionGeneration: UInt64 = 0
     private var reconnectToken: UUID?
     private var reconnectPolicy = ServiceConnectionRetryPolicy()
