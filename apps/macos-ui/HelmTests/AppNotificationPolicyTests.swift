@@ -224,6 +224,42 @@ final class AppNotificationPolicyTests: XCTestCase {
         XCTAssertEqual(revisions.latestAppliedRevision, second)
     }
 
+    func testLocalizedUnknownVersionDoesNotChangeAvailabilityFingerprint() {
+        let frenchPackage = PackageItem(
+            id: "npm:example",
+            name: "example",
+            version: "inconnu",
+            latestVersion: "2.0.0",
+            managerId: "npm",
+            manager: "npm"
+        )
+        let germanPackage = PackageItem(
+            id: frenchPackage.id,
+            name: frenchPackage.name,
+            version: "unbekannt",
+            latestVersion: frenchPackage.latestVersion,
+            managerId: frenchPackage.managerId,
+            manager: frenchPackage.manager
+        )
+        let frenchSnapshot = AppUpdateNotificationSnapshot(
+            packages: [frenchPackage],
+            automaticUpdateCount: 1
+        )
+        let germanSnapshot = AppUpdateNotificationSnapshot(
+            packages: [germanPackage],
+            automaticUpdateCount: 1
+        )
+        var state = AppUpdateNotificationState()
+
+        XCTAssertEqual(frenchSnapshot, germanSnapshot)
+        XCTAssertTrue(
+            evaluate(&state, identifiers: frenchSnapshot.updateIdentifiers).shouldNotify
+        )
+        XCTAssertFalse(
+            evaluate(&state, identifiers: germanSnapshot.updateIdentifiers).shouldNotify
+        )
+    }
+
     func testQueuedAcceptedSnapshotsKeepEachRevisionBoundToItsOwnFingerprint() {
         let tracker = AppUpdateNotificationEventTracker()
         var state = AppUpdateNotificationState()

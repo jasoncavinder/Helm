@@ -123,11 +123,26 @@ struct PackageItem: Identifiable {
 
 enum PackageVersionPresentation {
     static func currentVersionText(
+        for package: PackageItem,
+        localizedUnknown: String
+    ) -> String {
+        currentVersionText(
+            storedVersion: package.version,
+            localizedUnknown: localizedUnknown
+        )
+    }
+
+    static func currentVersionText(
         storedVersion: String?,
         localizedUnknown: String
     ) -> String {
         PackageIdentity.normalizedKnownVersion(storedVersion) ?? localizedUnknown
     }
+}
+
+enum PackageVersionStorage {
+    // Missing versions stay locale-neutral until a presentation surface renders them.
+    static let unknown = ""
 }
 
 enum PackageMutationVersionPolicy {

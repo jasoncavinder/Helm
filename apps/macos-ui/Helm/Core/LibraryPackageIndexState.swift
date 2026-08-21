@@ -20,7 +20,8 @@ enum PackageSnapshotPublicationPolicy {
             id = package.id
             name = package.name
             packageIdentifier = package.packageIdentifier
-            version = package.version
+            version = PackageIdentity.normalizedKnownVersion(package.version)
+                ?? PackageVersionStorage.unknown
             latestVersion = package.latestVersion
             managerID = package.managerId
             manager = package.manager
