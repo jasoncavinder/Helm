@@ -620,9 +620,19 @@ enum WholeWorkflowResearchDatasetProvider {
 
     static func activeEnvironmentProjection(
         environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> WholeWorkflowResearchEnvironmentProjection? {
+    ) -> ResearchEnvironmentProjection? {
         guard let dataset = active(environment: environment) else { return nil }
-        return WholeWorkflowResearchEnvironmentProjector.project(dataset)
+        return ResearchEnvironmentProjector.project(dataset)
+    }
+
+    static func environmentRuntimeState(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ResearchEnvironmentRuntimeState {
+        guard isSelected(environment: environment) else { return .inactive }
+        guard let projection = activeEnvironmentProjection(environment: environment) else {
+            return .unavailable
+        }
+        return .ready(projection)
     }
 
     static func isOfflineVariantSelected(
@@ -663,6 +673,12 @@ struct ResearchAmbientHealthProjection: Equatable {
 struct ResearchAmbientHealthRuntimeState: Equatable {
     let presentation: WayfinderPopoverPresentation
     let serviceConnected: Bool
+}
+
+enum ResearchEnvironmentRuntimeState: Equatable {
+    case inactive
+    case ready(ResearchEnvironmentProjection)
+    case unavailable
 }
 
 enum WholeWorkflowResearchTaskOneContract {
@@ -1471,25 +1487,25 @@ enum WholeWorkflowResearchActivityProjector {
     }
 }
 
-enum WholeWorkflowResearchManagerDecisionState: String, Equatable {
+enum ResearchManagerDecisionState: String, Equatable {
     case pending
     case acknowledged
 }
 
-struct WholeWorkflowResearchEnvironmentDecision: Equatable {
+struct ResearchEnvironmentDecision: Equatable {
     let id: String
     let managerID: String
-    let initialState: WholeWorkflowResearchManagerDecisionState
-    let resultingState: WholeWorkflowResearchManagerDecisionState
+    let initialState: ResearchManagerDecisionState
+    let resultingState: ResearchManagerDecisionState
     let revisitSurface: String
 }
 
-struct WholeWorkflowResearchEnvironmentProjection: Equatable {
+struct ResearchEnvironmentProjection: Equatable {
     let datasetID: String
     let scenarioID: String
     let managers: [ResearchManagerRecord]
     let targetManagerID: String
-    let decision: WholeWorkflowResearchEnvironmentDecision
+    let decision: ResearchEnvironmentDecision
 
     func manager(withID managerID: String?) -> ResearchManagerRecord? {
         guard let managerID else { return nil }
@@ -1497,12 +1513,12 @@ struct WholeWorkflowResearchEnvironmentProjection: Equatable {
     }
 }
 
-struct WholeWorkflowResearchManagerDecisionSession: Equatable {
+struct ResearchManagerDecisionSession: Equatable {
     private(set) var acknowledgedDecisionIDs: Set<String> = []
 
     func state(
-        for decision: WholeWorkflowResearchEnvironmentDecision
-    ) -> WholeWorkflowResearchManagerDecisionState {
+        for decision: ResearchEnvironmentDecision
+    ) -> ResearchManagerDecisionState {
         acknowledgedDecisionIDs.contains(decision.id)
             ? decision.resultingState
             : decision.initialState
@@ -1510,7 +1526,7 @@ struct WholeWorkflowResearchManagerDecisionSession: Equatable {
 
     @discardableResult
     mutating func acknowledge(
-        _ decision: WholeWorkflowResearchEnvironmentDecision
+        _ decision: ResearchEnvironmentDecision
     ) -> Bool {
         guard decision.initialState == .pending,
               decision.resultingState == .acknowledged,
@@ -1522,7 +1538,7 @@ struct WholeWorkflowResearchManagerDecisionSession: Equatable {
 
     @discardableResult
     mutating func revisit(
-        _ decision: WholeWorkflowResearchEnvironmentDecision
+        _ decision: ResearchEnvironmentDecision
     ) -> Bool {
         acknowledgedDecisionIDs.remove(decision.id) != nil
     }
@@ -1535,18 +1551,6 @@ enum WholeWorkflowResearchTaskFiveContract {
     static let systemInstanceID = "rustup-system"
     static let userInstanceID = "rustup-user"
     static let decisionID = "decision-rustup-keep-multiple"
-    static let orderedManagerIDs = [
-        "mise",
-        managerID,
-        "homebrew_formula",
-        "homebrew_cask",
-        "npm",
-        "cargo",
-        "pnpm",
-        "mas",
-        "softwareupdate",
-        "macports",
-    ]
     static let orderedScenarioRecordIDs = [
         managerID,
         systemInstanceID,
@@ -1562,7 +1566,7 @@ enum WholeWorkflowResearchTaskFiveContract {
     }
 
     static func matchesManagers(_ managers: [ResearchManagerRecord]) -> Bool {
-        managers.map(\.id) == orderedManagerIDs
+        managers == canonicalManagers
     }
 
     static func matchesManager(_ manager: ResearchManagerRecord) -> Bool {
@@ -1595,17 +1599,17 @@ enum WholeWorkflowResearchTaskFiveContract {
         decision.id == decisionID
             && decision.managerID == managerID
             && decision.action == "keep_multiple"
-            && decision.initialState == WholeWorkflowResearchManagerDecisionState.pending.rawValue
+            && decision.initialState == ResearchManagerDecisionState.pending.rawValue
             && decision.resultingState
-                == WholeWorkflowResearchManagerDecisionState.acknowledged.rawValue
+                == ResearchManagerDecisionState.acknowledged.rawValue
             && decision.revisitSurface == startingSurface
     }
 }
 
-enum WholeWorkflowResearchEnvironmentProjector {
+enum ResearchEnvironmentProjector {
     static func project(
         _ dataset: WholeWorkflowResearchDataset
-    ) -> WholeWorkflowResearchEnvironmentProjection? {
+    ) -> ResearchEnvironmentProjection? {
         guard WholeWorkflowResearchDatasetContract.matchesCurrentIdentityAndSafety(dataset),
               let scenario = dataset.scenarios.first(where: { $0.taskNumber == 5 }),
               WholeWorkflowResearchTaskFiveContract.matchesScenario(scenario),
@@ -1619,22 +1623,22 @@ enum WholeWorkflowResearchEnvironmentProjector {
               WholeWorkflowResearchTaskFiveContract.matchesDecision(
                   dataset.snapshot.managerDecision
               ),
-              let initialState = WholeWorkflowResearchManagerDecisionState(
+              let initialState = ResearchManagerDecisionState(
                   rawValue: dataset.snapshot.managerDecision.initialState
               ),
-              let resultingState = WholeWorkflowResearchManagerDecisionState(
+              let resultingState = ResearchManagerDecisionState(
                   rawValue: dataset.snapshot.managerDecision.resultingState
               ) else {
             return nil
         }
 
         let decision = dataset.snapshot.managerDecision
-        return WholeWorkflowResearchEnvironmentProjection(
+        return ResearchEnvironmentProjection(
             datasetID: dataset.datasetID,
             scenarioID: scenario.scenarioID,
             managers: dataset.snapshot.managers,
             targetManagerID: manager.id,
-            decision: WholeWorkflowResearchEnvironmentDecision(
+            decision: ResearchEnvironmentDecision(
                 id: decision.id,
                 managerID: decision.managerID,
                 initialState: initialState,

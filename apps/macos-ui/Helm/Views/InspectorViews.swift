@@ -10,8 +10,23 @@ struct ControlCenterInspectorView: View {
     private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
     private let researchActivityProjection = WholeWorkflowResearchDatasetProvider
         .activeActivityProjection()
-    private let researchEnvironmentProjection = WholeWorkflowResearchDatasetProvider
-        .activeEnvironmentProjection()
+    private let researchEnvironmentState = WholeWorkflowResearchDatasetProvider
+        .environmentRuntimeState()
+
+    private var researchEnvironmentProjection: ResearchEnvironmentProjection? {
+        guard case let .ready(projection) = researchEnvironmentState else { return nil }
+        return projection
+    }
+
+    private var researchEnvironmentUnavailable: Bool {
+        if case .unavailable = researchEnvironmentState { return true }
+        return false
+    }
+
+    private var researchEnvironmentInactive: Bool {
+        if case .inactive = researchEnvironmentState { return true }
+        return false
+    }
 
     private var selectedResearchActivity: WholeWorkflowResearchActivity? {
         researchActivityProjection?.activity(withSelectionID: context.selectedTaskId)
@@ -127,7 +142,10 @@ struct ControlCenterInspectorView: View {
                                 )
                             }
                         )
-                    } else if researchEnvironmentProjection == nil,
+                    } else if context.selectedSection == .managers,
+                              researchEnvironmentUnavailable {
+                        researchEnvironmentUnavailableView
+                    } else if researchEnvironmentInactive,
                               let manager = selectedManager {
                         InspectorManagerDetailView(
                             manager: manager,
@@ -149,6 +167,23 @@ struct ControlCenterInspectorView: View {
                 .padding(14)
             }
         }
+    }
+
+    private var researchEnvironmentUnavailableView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                L10n.App.Health.unavailable.localized,
+                systemImage: OperationalHealth.unavailable.icon
+            )
+            .font(.callout.weight(.semibold))
+            .foregroundColor(HelmTheme.stateUnavailable)
+
+            Text(L10n.App.Managers.Research.datasetUnavailable.localized)
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -2367,10 +2402,11 @@ private final class InspectorLinkTextView: NSTextView {
 // MARK: - Research Environment Inspector
 
 private struct ResearchEnvironmentManagerInspectorView: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
     let managerInfo: ManagerInfo
     let manager: ResearchManagerRecord
-    let projection: WholeWorkflowResearchEnvironmentProjection
-    let decisionState: WholeWorkflowResearchManagerDecisionState
+    let projection: ResearchEnvironmentProjection
+    let decisionState: ResearchManagerDecisionState
     let onAcknowledge: () -> Void
     let onRevisit: () -> Void
     @State private var expandedInstanceIDs: Set<String> = []
@@ -2380,20 +2416,13 @@ private struct ResearchEnvironmentManagerInspectorView: View {
     }
 
     private var health: OperationalHealth {
-        guard manager.detected else { return .notInstalled }
-        if isDecisionTarget, decisionState == .acknowledged {
-            return .healthy
-        }
-        switch manager.sourceState {
-        case "needs_review":
-            return .needsReview
-        case "failed":
-            return .error
-        case "deferred":
-            return .unavailable
-        default:
-            return .healthy
-        }
+        OperationalHealth(
+            researchState: ResearchManagerHealthPolicy.health(
+                for: manager,
+                decisionState: decisionState,
+                isDecisionTarget: isDecisionTarget
+            )
+        )
     }
 
     private var orderedInstances: [ResearchInstallInstanceRecord] {
@@ -2405,6 +2434,10 @@ private struct ResearchEnvironmentManagerInspectorView: View {
     }
 
     var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    private func content(forLocaleRevision _: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: managerInfo.symbolName)
@@ -2422,6 +2455,15 @@ private struct ResearchEnvironmentManagerInspectorView: View {
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+            if manager.findingCode == "source_refresh_failed" {
+                Label(
+                    L10n.App.Managers.Research.sourceRefreshFailed.localized,
+                    systemImage: health.icon
+                )
+                .font(.callout.weight(.medium))
+                .foregroundColor(health.color)
+            }
 
             if isDecisionTarget {
                 decisionBanner
@@ -2495,6 +2537,9 @@ private struct ResearchEnvironmentManagerInspectorView: View {
     private func instanceCard(_ instance: ResearchInstallInstanceRecord) -> some View {
         let isExpanded = expandedInstanceIDs.contains(instance.id)
         let status = policyStatus(for: instance)
+        let disclosureState = isExpanded
+            ? L10n.App.Managers.Research.detailsExpanded.localized
+            : L10n.App.Managers.Research.detailsCollapsed.localized
         return VStack(alignment: .leading, spacing: 8) {
             Button {
                 toggleInstance(instance.id)
@@ -2535,8 +2580,10 @@ private struct ResearchEnvironmentManagerInspectorView: View {
                 [
                     instance.active ? L10n.App.Managers.Research.active.localized : nil,
                     status.label,
+                    disclosureState,
                 ].compactMap { $0 }.joined(separator: ", ")
             )
+            .accessibilityHint(L10n.App.Managers.Research.toggleDetails.localized)
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 5) {

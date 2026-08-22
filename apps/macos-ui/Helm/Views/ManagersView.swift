@@ -20,12 +20,17 @@ private struct ResearchEnvironmentManagerItem: Identifiable {
 
 struct ManagersSectionView: View {
     private let core = HelmCore.shared
-    private let researchEnvironmentProjection = WholeWorkflowResearchDatasetProvider
-        .activeEnvironmentProjection()
+    private let researchEnvironmentState = WholeWorkflowResearchDatasetProvider
+        .environmentRuntimeState()
     @ObservedObject private var managersState = HelmCore.shared.managersState
     @EnvironmentObject private var context: ControlCenterContext
     @State private var draggedManagerId: String?
     @State private var managerDependencyAlert: ManagerDependencyAlertState?
+
+    private var researchEnvironmentProjection: ResearchEnvironmentProjection? {
+        guard case let .ready(projection) = researchEnvironmentState else { return nil }
+        return projection
+    }
 
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         [
@@ -107,9 +112,12 @@ struct ManagersSectionView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
 
-                if let researchEnvironmentProjection {
-                    researchManagerGroups(researchEnvironmentProjection)
-                } else {
+                switch researchEnvironmentState {
+                case let .ready(projection):
+                    researchManagerGroups(projection)
+                case .unavailable:
+                    researchUnavailableState
+                case .inactive:
                     productionManagerGroups
                 }
             }
@@ -182,7 +190,7 @@ struct ManagersSectionView: View {
 
     @ViewBuilder
     private func researchManagerGroups(
-        _ projection: WholeWorkflowResearchEnvironmentProjection
+        _ projection: ResearchEnvironmentProjection
     ) -> some View {
         let decisionState = context.researchManagerDecisionState(for: projection.decision)
         ForEach(researchGroupedManagers, id: \.authority) { group in
@@ -205,6 +213,27 @@ struct ManagersSectionView: View {
                 }
             }
         }
+    }
+
+    private var researchUnavailableState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                L10n.App.Health.unavailable.localized,
+                systemImage: OperationalHealth.unavailable.icon
+            )
+            .font(.headline)
+            .foregroundColor(HelmTheme.stateUnavailable)
+
+            Text(L10n.App.Managers.Research.datasetUnavailable.localized)
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .helmCardSurface(cornerRadius: 12)
+        .padding(.horizontal, 20)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -352,26 +381,19 @@ struct ManagersSectionView: View {
 
 private struct ResearchEnvironmentManagerRow: View {
     let item: ResearchEnvironmentManagerItem
-    let decisionState: WholeWorkflowResearchManagerDecisionState
+    let decisionState: ResearchManagerDecisionState
     let isDecisionTarget: Bool
     let isSelected: Bool
     let onSelect: () -> Void
 
     private var health: OperationalHealth {
-        guard item.record.detected else { return .notInstalled }
-        if isDecisionTarget, decisionState == .acknowledged {
-            return .healthy
-        }
-        switch item.record.sourceState {
-        case "needs_review":
-            return .needsReview
-        case "failed":
-            return .error
-        case "deferred":
-            return .unavailable
-        default:
-            return .healthy
-        }
+        OperationalHealth(
+            researchState: ResearchManagerHealthPolicy.health(
+                for: item.record,
+                decisionState: decisionState,
+                isDecisionTarget: isDecisionTarget
+            )
+        )
     }
 
     private var findingSummary: String? {
@@ -387,9 +409,10 @@ private struct ResearchEnvironmentManagerRow: View {
     }
 
     private var findingSymbol: String {
-        decisionState == .acknowledged && isDecisionTarget
-            ? "checkmark.seal.fill"
-            : "exclamationmark.triangle.fill"
+        if decisionState == .acknowledged, isDecisionTarget {
+            return "checkmark.seal.fill"
+        }
+        return health.icon
     }
 
     private var findingColor: Color {

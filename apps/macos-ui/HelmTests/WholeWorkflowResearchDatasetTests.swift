@@ -741,13 +741,19 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
     func testTaskFiveProjectsCanonicalEnvironmentAndProvenance() throws {
         let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
         let projection = try XCTUnwrap(
-            WholeWorkflowResearchEnvironmentProjector.project(dataset)
+            ResearchEnvironmentProjector.project(dataset)
         )
         let rustup = try XCTUnwrap(projection.manager(withID: projection.targetManagerID))
+        let macports = try XCTUnwrap(projection.manager(withID: "macports"))
+        let softwareUpdate = try XCTUnwrap(projection.manager(withID: "softwareupdate"))
 
         XCTAssertEqual(projection.scenarioID, "inspect-rustup-source")
         XCTAssertEqual(projection.targetManagerID, "rustup")
         XCTAssertEqual(projection.managers, dataset.snapshot.managers)
+        XCTAssertEqual(
+            projection.managers,
+            WholeWorkflowResearchTaskFiveContract.canonicalManagers
+        )
         XCTAssertEqual(
             projection.managers.map(\.id),
             [
@@ -781,14 +787,38 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertEqual(projection.decision.initialState, .pending)
         XCTAssertEqual(projection.decision.resultingState, .acknowledged)
         XCTAssertEqual(projection.decision.revisitSurface, "environment")
+        XCTAssertEqual(
+            ResearchManagerHealthPolicy.health(
+                for: rustup,
+                decisionState: .pending,
+                isDecisionTarget: true
+            ),
+            .needsReview
+        )
+        XCTAssertEqual(
+            ResearchManagerHealthPolicy.health(
+                for: macports,
+                decisionState: .pending,
+                isDecisionTarget: false
+            ),
+            .error
+        )
+        XCTAssertEqual(
+            ResearchManagerHealthPolicy.health(
+                for: softwareUpdate,
+                decisionState: .pending,
+                isDecisionTarget: false
+            ),
+            .unavailable
+        )
     }
 
     func testTaskFiveKeepMultipleAcknowledgmentIsLocalAndReversible() throws {
         let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
         let projection = try XCTUnwrap(
-            WholeWorkflowResearchEnvironmentProjector.project(dataset)
+            ResearchEnvironmentProjector.project(dataset)
         )
-        var session = WholeWorkflowResearchManagerDecisionSession()
+        var session = ResearchManagerDecisionSession()
 
         XCTAssertEqual(session.state(for: projection.decision), .pending)
         XCTAssertTrue(session.acknowledge(projection.decision))
@@ -818,6 +848,11 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
                 "decision.canonical_record"
             ),
             (
+                "\"id\": \"mise\",\n        \"authority\": \"authoritative\"",
+                "\"id\": \"mise\",\n        \"authority\": \"guarded\"",
+                "managers.canonical_records"
+            ),
+            (
                 "\"managers\": [\n      {\n        \"id\": \"mise\"",
                 "\"managers\": [\n      {\n        \"id\": \"unknown-manager\"",
                 "managers.canonical_records"
@@ -837,7 +872,7 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
                 issues.contains { $0.code == mutation.2 },
                 "Expected \(mutation.2) for \(mutation.0)"
             )
-            XCTAssertNil(WholeWorkflowResearchEnvironmentProjector.project(dataset))
+            XCTAssertNil(ResearchEnvironmentProjector.project(dataset))
         }
     }
 
@@ -872,10 +907,16 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertNotNil(
             WholeWorkflowResearchDatasetProvider.activeActivityProjection(environment: environment)
         )
-        XCTAssertNotNil(
+        let environmentProjection = try XCTUnwrap(
             WholeWorkflowResearchDatasetProvider.activeEnvironmentProjection(
                 environment: environment
             )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.environmentRuntimeState(
+                environment: environment
+            ),
+            .ready(environmentProjection)
         )
         XCTAssertFalse(
             WholeWorkflowResearchDatasetProvider.isOfflineVariantSelected(environment: environment)
@@ -896,6 +937,12 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertFalse(
             WholeWorkflowResearchDatasetProvider.isSelected(environment: popoverEnvironment)
         )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.environmentRuntimeState(
+                environment: popoverEnvironment
+            ),
+            .inactive
+        )
         XCTAssertNil(
             WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
                 environment: popoverEnvironment
@@ -914,6 +961,12 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
             WholeWorkflowResearchDatasetProvider.activeEnvironmentProjection(
                 environment: missingEnvironment
             )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.environmentRuntimeState(
+                environment: missingEnvironment
+            ),
+            .unavailable
         )
         let unavailablePresentation = try XCTUnwrap(
             WholeWorkflowResearchDatasetProvider.activeAmbientHealthPresentation(
