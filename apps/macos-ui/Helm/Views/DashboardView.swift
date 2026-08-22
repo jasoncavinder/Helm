@@ -11,8 +11,10 @@ struct WayfinderPopoverView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsQuitConfirmation = false
     private let popoverFixture = WayfinderPopoverFixtureProvider.active()
-    private let researchAmbientHealthPresentation = WholeWorkflowResearchDatasetProvider
-        .activeAmbientHealthPresentation()
+
+    private var researchAmbientHealthPresentation: WayfinderPopoverPresentation? {
+        overviewState.researchAmbientHealthPresentation
+    }
 
     let onOpenControlCenter: () -> Void
     let onOpenSettings: () -> Void

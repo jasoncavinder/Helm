@@ -176,6 +176,30 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
             [.review, .current, .cached, .error]
         )
         XCTAssertEqual(
+            presentation.routeItems[0].deepLink(
+                originatingCondition: presentation.projection.condition.kind
+            ),
+            WayfinderDeepLink(
+                destination: .environment,
+                entityID: "macports",
+                focus: .selectedEntity,
+                routeStage: .system,
+                originatingCondition: .failedOrInterrupted
+            )
+        )
+        XCTAssertEqual(
+            presentation.routeItems[3].deepLink(
+                originatingCondition: presentation.projection.condition.kind
+            ),
+            WayfinderDeepLink(
+                destination: .environment,
+                entityID: "npm",
+                focus: .selectedEntity,
+                routeStage: .packages,
+                originatingCondition: .failedOrInterrupted
+            )
+        )
+        XCTAssertEqual(
             presentation.contextTitle.key,
             "app.first_run.environment_brief.title.partial"
         )
@@ -189,6 +213,54 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         )
         XCTAssertEqual(presentation.projection.coverage?.completed, 8)
         XCTAssertEqual(presentation.projection.coverage?.total, 10)
+
+        let runtimeState = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
+                environment: [
+                    WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path
+                ],
+                now: now
+            )
+        )
+        XCTAssertEqual(runtimeState.presentation, presentation)
+        XCTAssertTrue(runtimeState.serviceConnected)
+    }
+
+    func testTaskOneRecoveryNavigationRequiresInspectorAndSelectedActivityFocus() {
+        let deepLink = WayfinderDeepLink(
+            destination: .activity,
+            entityID: "7001",
+            focus: .selectedEntity,
+            originatingCondition: .failedOrInterrupted
+        )
+
+        XCTAssertTrue(
+            WayfinderSelectedEntityNavigationPolicy.shouldRevealInspector(
+                for: deepLink
+            )
+        )
+        XCTAssertFalse(
+            WayfinderSelectedEntityNavigationPolicy.shouldRevealInspector(
+                for: WayfinderDeepLink(
+                    destination: .activity,
+                    entityID: "7001",
+                    focus: .primaryContent
+                )
+            )
+        )
+    }
+
+    func testActivityFocusRequestRejectsStaleCompletionAndRetainsRetry() throws {
+        var state = ActivityFocusRequestState()
+        let first = try XCTUnwrap(state.request(activityID: "7001"))
+        let second = try XCTUnwrap(state.request(activityID: "7002"))
+
+        XCTAssertFalse(state.complete(first, focusSucceeded: true))
+        XCTAssertFalse(state.complete(second, focusSucceeded: false))
+        XCTAssertEqual(state.pendingRequest, second)
+        XCTAssertTrue(state.complete(second, focusSucceeded: true))
+        XCTAssertNil(state.pendingRequest)
+        XCTAssertEqual(state.lastCompletedRequestID, second.id)
     }
 
     func testTaskOneProjectionFailsClosedForCanonicalDrift() throws {
@@ -716,6 +788,11 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertFalse(
             WholeWorkflowResearchDatasetProvider.isSelected(environment: popoverEnvironment)
         )
+        XCTAssertNil(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
+                environment: popoverEnvironment
+            )
+        )
         XCTAssertTrue(
             ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: popoverEnvironment)
         )
@@ -735,6 +812,13 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
             .serviceUnavailable
         )
         XCTAssertFalse(unavailablePresentation.allowsRefresh)
+        let unavailableRuntimeState = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
+                environment: missingEnvironment
+            )
+        )
+        XCTAssertEqual(unavailableRuntimeState.presentation, unavailablePresentation)
+        XCTAssertFalse(unavailableRuntimeState.serviceConnected)
         XCTAssertTrue(
             ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: missingEnvironment)
         )

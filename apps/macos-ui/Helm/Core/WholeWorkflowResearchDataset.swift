@@ -585,6 +585,22 @@ enum WholeWorkflowResearchDatasetProvider {
         )
     }
 
+    static func activeAmbientHealthRuntimeState(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        now: Date = Date()
+    ) -> ResearchAmbientHealthRuntimeState? {
+        guard let presentation = activeAmbientHealthPresentation(
+            environment: environment,
+            now: now
+        ) else {
+            return nil
+        }
+        return ResearchAmbientHealthRuntimeState(
+            presentation: presentation,
+            serviceConnected: presentation.projection.condition != .serviceUnavailable
+        )
+    }
+
     static func activeLibraryProjection(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> WholeWorkflowResearchLibraryProjection? {
@@ -635,6 +651,11 @@ struct ResearchAmbientHealthProjection: Equatable {
     let failedActivityID: String
     let failedActivitySelectionID: String
     let presentation: WayfinderPopoverPresentation
+}
+
+struct ResearchAmbientHealthRuntimeState: Equatable {
+    let presentation: WayfinderPopoverPresentation
+    let serviceConnected: Bool
 }
 
 enum WholeWorkflowResearchTaskOneContract {
@@ -755,10 +776,18 @@ enum ResearchAmbientHealthProjector {
         let presentation = WayfinderPopoverPresentation(
             projection: projection,
             routeItems: [
-                WayfinderPopoverRouteItem(stage: .system, tone: .review),
+                WayfinderPopoverRouteItem(
+                    stage: .system,
+                    tone: .review,
+                    managerID: failedManager.id
+                ),
                 WayfinderPopoverRouteItem(stage: .tools, tone: .current),
                 WayfinderPopoverRouteItem(stage: .apps, tone: .cached),
-                WayfinderPopoverRouteItem(stage: .packages, tone: .error),
+                WayfinderPopoverRouteItem(
+                    stage: .packages,
+                    tone: .error,
+                    managerID: failedActivity.managerID
+                ),
             ],
             contextTitle: WayfinderLocalizedText(
                 key: "app.first_run.environment_brief.title.partial"

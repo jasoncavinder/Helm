@@ -958,6 +958,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.registerUserNotificationCategories()
+                self?.updateStatusItemAppearance()
             }
             .store(in: &cancellables)
 
@@ -1060,9 +1061,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 
     private func preferredPopoverHeight(forWidth _: CGFloat) -> CGFloat {
-        core.hasCompletedOnboarding && !core.requiresLicenseTermsAcceptance
-            ? WayfinderPopoverLayout.ordinaryHeight
-            : WayfinderPopoverLayout.onboardingHeight
+        WayfinderPopoverLayout.preferredHeight(
+            hasCompletedOnboarding: core.hasCompletedOnboarding,
+            requiresLicenseTermsAcceptance: core.requiresLicenseTermsAcceptance,
+            bypassesOnboarding: WayfinderPopoverFixtureProvider.isActive()
+                || core.overviewState.researchAmbientHealthPresentation != nil
+        )
     }
 
     private func updateStatusItemAppearance() {

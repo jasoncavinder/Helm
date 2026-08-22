@@ -4,6 +4,18 @@ enum WayfinderPopoverLayout {
     static let width: CGFloat = 400
     static let ordinaryHeight: CGFloat = 458
     static let onboardingHeight: CGFloat = 620
+
+    static func preferredHeight(
+        hasCompletedOnboarding: Bool,
+        requiresLicenseTermsAcceptance: Bool,
+        bypassesOnboarding: Bool
+    ) -> CGFloat {
+        if bypassesOnboarding
+            || (hasCompletedOnboarding && !requiresLicenseTermsAcceptance) {
+            return ordinaryHeight
+        }
+        return onboardingHeight
+    }
 }
 
 enum WayfinderDestination: String, Codable, Equatable {
@@ -60,6 +72,54 @@ struct WayfinderNavigationState: Equatable {
 
     mutating func record(_ deepLink: WayfinderDeepLink) {
         self.deepLink = deepLink
+    }
+}
+
+enum WayfinderSelectedEntityNavigationPolicy {
+    static func shouldRevealInspector(for deepLink: WayfinderDeepLink) -> Bool {
+        guard deepLink.focus == .selectedEntity else { return false }
+        switch deepLink.destination {
+        case .dashboard:
+            return false
+        case .plan, .library, .activity, .environment:
+            return true
+        }
+    }
+}
+
+struct ActivityFocusRequest: Equatable {
+    let id: Int
+    let activityID: String
+}
+
+struct ActivityFocusRequestState: Equatable {
+    private(set) var pendingRequest: ActivityFocusRequest?
+    private(set) var lastCompletedRequestID: Int?
+    private var nextRequestID = 0
+
+    @discardableResult
+    mutating func request(activityID: String) -> ActivityFocusRequest? {
+        let activityID = activityID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !activityID.isEmpty else { return nil }
+
+        nextRequestID &+= 1
+        let request = ActivityFocusRequest(
+            id: nextRequestID,
+            activityID: activityID
+        )
+        pendingRequest = request
+        return request
+    }
+
+    @discardableResult
+    mutating func complete(
+        _ request: ActivityFocusRequest,
+        focusSucceeded: Bool
+    ) -> Bool {
+        guard focusSucceeded, pendingRequest == request else { return false }
+        pendingRequest = nil
+        lastCompletedRequestID = request.id
+        return true
     }
 }
 

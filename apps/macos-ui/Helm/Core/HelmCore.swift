@@ -667,8 +667,9 @@ final class HelmCore: ObservableObject {
                 self?.syncHelmSelfUpdateAvailability(availability)
             }
         if WholeWorkflowResearchDatasetProvider.isSelected() {
+            let researchState = WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState()
             isInitialized = true
-            isConnected = true
+            isConnected = overviewState.applyResearchAmbientHealthRuntimeState(researchState)
             networkAvailability = .available
             return
         }
@@ -676,7 +677,6 @@ final class HelmCore: ObservableObject {
         startNetworkMonitoring()
         setupConnection()
     }
-
     var networkOperationsAvailable: Bool {
         networkAvailability == .available
     }

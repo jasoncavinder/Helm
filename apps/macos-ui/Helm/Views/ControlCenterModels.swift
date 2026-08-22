@@ -174,6 +174,7 @@ final class ControlCenterContext: ControlCenterContextBase {
     @Published var planPackageFilter: String = ""
     @Published var managerFilterId: String?
     @Published private var environmentRouteFilterState = WayfinderEnvironmentRouteFilterState()
+    @Published private var activityFocusRequestState = ActivityFocusRequestState()
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     @Published private var upgradePlanConfirmationRequestState = UpgradePlanConfirmationRequestState()
     @Published private var libraryPackageFocusRequestState = LibraryPackageFocusRequestState()
@@ -221,6 +222,10 @@ final class ControlCenterContext: ControlCenterContextBase {
 
     var pendingLibraryPackageFocusRequest: LibraryPackageFocusRequest? {
         libraryPackageFocusRequestState.pendingRequest
+    }
+
+    var pendingActivityFocusRequest: ActivityFocusRequest? {
+        activityFocusRequestState.pendingRequest
     }
 
     var environmentRouteStage: WayfinderPopoverRouteStage? {
@@ -310,6 +315,16 @@ final class ControlCenterContext: ControlCenterContextBase {
         )
     }
 
+    func completeActivityFocusRequest(
+        _ request: ActivityFocusRequest,
+        focusSucceeded: Bool
+    ) {
+        activityFocusRequestState.complete(
+            request,
+            focusSucceeded: focusSucceeded
+        )
+    }
+
     func updateGlobalSearchQuery(
         _ query: String,
         presentsResults: Bool
@@ -384,8 +399,15 @@ final class ControlCenterContext: ControlCenterContextBase {
         wayfinderNavigationState.record(deepLink)
         clearInspectorSelection()
 
-        selectedSection = deepLink.destination.legacyControlCenterSection
+        let destinationSection = deepLink.destination.legacyControlCenterSection
+        selectedSection = destinationSection
         environmentRouteFilterState.apply(deepLink)
+
+        if WayfinderSelectedEntityNavigationPolicy.shouldRevealInspector(
+            for: deepLink
+        ) {
+            isInspectorVisible = true
+        }
 
         if deepLink.destination == .dashboard, deepLink.focus == .serviceHealth {
             pendingDashboardFocusTarget = .serviceHealth
@@ -402,6 +424,9 @@ final class ControlCenterContext: ControlCenterContextBase {
             selectedPackageId = entityID
         case .activity:
             selectedTaskId = entityID
+            if deepLink.focus == .selectedEntity {
+                activityFocusRequestState.request(activityID: entityID)
+            }
         case .environment:
             selectedManagerId = entityID
         }
