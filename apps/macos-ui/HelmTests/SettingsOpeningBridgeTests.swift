@@ -138,26 +138,30 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertEqual(constrained.origin, visibleFrame.origin)
     }
 
-    func testClosingDashboardDetachesSettingsPanelFromParentWindow() {
+    func testSettingsPanelPresentationDetachesFromDashboardAfterOrdering() {
         let dashboardWindow = NSWindow()
         let settingsWindow = NSWindow()
-        dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
+        var parentDuringPresentation: NSWindow?
 
-        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+        HelmSettingsPanelPolicy.presentIndependently(
             settingsWindow: settingsWindow,
-            dashboardWindow: dashboardWindow
+            above: dashboardWindow,
+            present: { window in
+                parentDuringPresentation = window.parent
+            }
         )
 
+        XCTAssertTrue(parentDuringPresentation === dashboardWindow)
         XCTAssertNil(settingsWindow.parent)
     }
 
-    func testClosingDifferentWindowDoesNotDetachSettingsPanel() {
+    func testDetachingFromDifferentWindowPreservesCurrentParent() {
         let dashboardWindow = NSWindow()
         let otherWindow = NSWindow()
         let settingsWindow = NSWindow()
         dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
 
-        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+        HelmSettingsPanelPolicy.detachSettingsWindowFromDashboard(
             settingsWindow: settingsWindow,
             dashboardWindow: otherWindow
         )

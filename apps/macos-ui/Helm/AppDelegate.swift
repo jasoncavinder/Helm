@@ -244,12 +244,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
 
         guard let settingsWindow = settingsWindowController?.window else { return }
-        settingsWindow.parent?.removeChildWindow(settingsWindow)
-        if let dashboardWindow = controlCenterWindowController?.window,
-           dashboardWindow.isVisible {
-            dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
-        }
-        settingsWindow.makeKeyAndOrderFront(nil)
+        let dashboardWindow = controlCenterWindowController?.window
+        let visibleDashboardWindow = dashboardWindow?.isVisible == true ? dashboardWindow : nil
+        HelmSettingsPanelPolicy.presentIndependently(
+            settingsWindow: settingsWindow,
+            above: visibleDashboardWindow
+        )
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -1488,7 +1488,7 @@ extension AppDelegate {
             return
         }
         guard window == controlCenterWindowController?.window else { return }
-        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+        HelmSettingsPanelPolicy.detachSettingsWindowFromDashboard(
             settingsWindow: settingsWindowController?.window,
             dashboardWindow: window
         )

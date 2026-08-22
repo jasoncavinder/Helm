@@ -164,7 +164,24 @@ enum HelmSettingsPanelPolicy {
         .fullScreenAuxiliary
     ]
 
-    static func detachSettingsWindowFromClosingDashboard(
+    static func presentIndependently(
+        settingsWindow: NSWindow,
+        above dashboardWindow: NSWindow?,
+        present: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) }
+    ) {
+        settingsWindow.parent?.removeChildWindow(settingsWindow)
+        if let dashboardWindow {
+            dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
+        }
+
+        present(settingsWindow)
+        detachSettingsWindowFromDashboard(
+            settingsWindow: settingsWindow,
+            dashboardWindow: dashboardWindow
+        )
+    }
+
+    static func detachSettingsWindowFromDashboard(
         settingsWindow: NSWindow?,
         dashboardWindow: NSWindow?
     ) {

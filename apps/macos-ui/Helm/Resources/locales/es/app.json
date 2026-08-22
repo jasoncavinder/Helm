@@ -17,7 +17,7 @@
   "app.settings.tab.title": "Ajustes",
   "app.settings.window.title": "Ajustes de Helm",
   "app.settings.pane.sources": "Fuentes",
-  "app.settings.section.general": "General",
+  "app.settings.section.general": "Ajustes generales",
   "app.settings.native_authorization.section": "Autorización del sistema",
   "app.settings.native_authorization.status_label": "Servicio auxiliar nativo",
   "app.settings.native_authorization.status.not_enabled": "No registrado",
