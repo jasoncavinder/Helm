@@ -121,6 +121,15 @@ enum WholeWorkflowResearchDatasetValidator {
                     into: &issues
                 )
             }
+            if scenario.taskNumber == 1 {
+                require(
+                    WholeWorkflowResearchTaskOneContract.matchesScenario(scenario),
+                    code: "scenarios.record_order",
+                    path: "scenarios[\(index)].recordIds",
+                    message: "Task 1 must preserve coverage, failed verification, then failed source order.",
+                    into: &issues
+                )
+            }
             if scenario.taskNumber == 4 {
                 require(
                     WholeWorkflowResearchTaskFourContract.matchesScenario(scenario),
@@ -148,14 +157,10 @@ enum WholeWorkflowResearchDatasetValidator {
         switch taskNumber {
         case 1:
             return ScenarioContract(
-                scenarioID: "ambient-health",
-                startingSurface: "popover",
+                scenarioID: WholeWorkflowResearchTaskOneContract.scenarioID,
+                startingSurface: WholeWorkflowResearchTaskOneContract.startingSurface,
                 recordIDs: Set(
-                    [snapshot.coverage.id]
-                        + snapshot.activities
-                        .filter { $0.verificationResult == "failed" }
-                        .map(\.id)
-                        + snapshot.coverage.failedManagerIDs
+                    WholeWorkflowResearchTaskOneContract.orderedScenarioRecordIDs
                 )
             )
         case 2:
@@ -233,6 +238,22 @@ enum WholeWorkflowResearchDatasetValidator {
         require(snapshot.coverage.state == "partial", code: "coverage.state", path: "snapshot.coverage.state", message: "Task 1 requires partial coverage.", into: &issues)
         require(!snapshot.coverage.cachedManagerIDs.isEmpty, code: "coverage.cached", path: "snapshot.coverage.cachedManagerIds", message: "Task 1 requires cached coverage.", into: &issues)
         require(!snapshot.coverage.failedManagerIDs.isEmpty, code: "coverage.failed", path: "snapshot.coverage.failedManagerIds", message: "Task 1 requires an incomplete source.", into: &issues)
+        require(
+            WholeWorkflowResearchTaskOneContract.matchesCoverage(snapshot.coverage),
+            code: "coverage.canonical_record",
+            path: "snapshot.coverage",
+            message: "Task 1 coverage must preserve its canonical current, cached, failed, and deferred sources.",
+            into: &issues
+        )
+        require(
+            snapshot.managers.contains(
+                where: WholeWorkflowResearchTaskOneContract.matchesFailedManager
+            ),
+            code: "coverage.failed_manager_record",
+            path: "snapshot.managers",
+            message: "Task 1 must preserve the canonical failed source record.",
+            into: &issues
+        )
 
         let coverageIDs = snapshot.coverage.currentManagerIDs
             + snapshot.coverage.cachedManagerIDs

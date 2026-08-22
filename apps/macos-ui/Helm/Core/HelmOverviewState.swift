@@ -11,6 +11,7 @@ final class HelmOverviewState: ObservableObject {
     private let environmentBriefFixture = EnvironmentBriefFixtureProvider.active()?.brief
 
     @Published private(set) var wayfinderProjection: WayfinderPresentationProjection = .initial
+    @Published private(set) var researchAmbientHealthPresentation: WayfinderPopoverPresentation?
     @Published private(set) var environmentBrief: EnvironmentBrief?
     @Published private(set) var aggregateHealth: OperationalHealth = .healthy
     @Published private(set) var failedTaskCount: Int = 0
@@ -41,6 +42,7 @@ final class HelmOverviewState: ObservableObject {
         managerHealthById: [String: OperationalHealth],
         recentTasksTop10: [TaskItem]
     ) {
+        guard researchAmbientHealthPresentation == nil else { return }
         let nextProjection = WayfinderProjectionProjector.project(
             wayfinderInput,
             replacing: wayfinderProjection
@@ -69,6 +71,49 @@ final class HelmOverviewState: ObservableObject {
         self.outdatedCountByManager = outdatedCountByManager
         self.managerHealthById = managerHealthById
         self.recentTasksTop10 = recentTasksTop10
+    }
+
+    func applyResearchAmbientHealthPresentation(
+        _ presentation: WayfinderPopoverPresentation
+    ) {
+        researchAmbientHealthPresentation = presentation
+        let content = presentation.projection
+        if content != wayfinderProjection.content {
+            wayfinderProjection = WayfinderPresentationProjection(
+                revision: wayfinderProjection.revision &+ 1,
+                content: content
+            )
+        }
+
+        aggregateHealth = Self.operationalHealth(for: content.condition)
+        if case let .failedOrInterrupted(failed, interrupted) = content.condition {
+            failedTaskCount = failed + interrupted
+        } else {
+            failedTaskCount = 0
+        }
+        runningTaskCount = 0
+        outdatedPackagesCount = 0
+        isRefreshing = false
+
+        wayfinderRelatedRouteStages = presentation.routeItems.map(\.stage)
+        wayfinderRelatedManagerIDsByStage = presentation.routeItems.reduce(into: [:]) {
+            if let managerID = $1.managerID {
+                $0[$1.stage] = managerID
+            }
+        }
+        detectedManagerCount = content.coverage?.completed ?? 0
+        wayfinderFindingContext = WayfinderPopoverFindingContext(
+            title: presentation.contextTitle,
+            detail: presentation.contextDetail
+        )
+    }
+
+    func applyResearchAmbientHealthRuntimeState(
+        _ state: ResearchAmbientHealthRuntimeState?
+    ) -> Bool {
+        guard let state else { return false }
+        applyResearchAmbientHealthPresentation(state.presentation)
+        return state.serviceConnected
     }
 
     private static func operationalHealth(

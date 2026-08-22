@@ -7,6 +7,8 @@ struct TasksSectionView: View {
     private let researchActivityProjection = WholeWorkflowResearchDatasetProvider
         .activeActivityProjection()
     @State private var expandedTaskId: String?
+    @FocusState private var focusedActivityID: String?
+    @AccessibilityFocusState private var accessibilityFocusedActivityID: String?
 
     var body: some View {
         Group {
@@ -43,7 +45,9 @@ struct TasksSectionView: View {
                             TaskRowView(
                                 task: task,
                                 onCancel: task.isRunning ? { core.cancelTask(task) } : nil,
-                                onDismiss: task.status.lowercased() == "failed" ? { core.dismissTask(task) } : nil,
+                                onDismiss: task.status.lowercased() == "failed" ? {
+                                    core.dismissTask(task)
+                                } : nil,
                                 canExpandDetails: task.supportsInlineDetails,
                                 isExpanded: expandedTaskId == task.id,
                                 isSelected: context.selectedTaskId == task.id,
@@ -99,22 +103,47 @@ struct TasksSectionView: View {
                     .foregroundColor(HelmTheme.textSecondary)
             }
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(projection.activities) { activity in
-                        ResearchActivityRow(
-                            activity: activity,
-                            isSelected: context.selectedTaskId == activity.selectionID,
-                            onSelect: {
-                                context.selectedTaskId = activity.selectionID
-                                context.selectedPackageId = nil
-                                context.selectedUpgradePlanStepId = nil
-                                context.selectedManagerId = activity.managerID
-                            }
-                        )
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(projection.activities) { activity in
+                            ResearchActivityRow(
+                                activity: activity,
+                                isSelected: context.selectedTaskId == activity.selectionID,
+                                onSelect: {
+                                    context.selectedTaskId = activity.selectionID
+                                    context.selectedPackageId = nil
+                                    context.selectedUpgradePlanStepId = nil
+                                    context.selectedManagerId = activity.managerID
+                                }
+                            )
+                            .id(activity.selectionID)
+                            .focused(
+                                $focusedActivityID,
+                                equals: activity.selectionID
+                            )
+                            .accessibilityFocused(
+                                $accessibilityFocusedActivityID,
+                                equals: activity.selectionID
+                            )
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
-                .padding(.vertical, 2)
+                .onAppear {
+                    fulfillActivityFocusRequest(
+                        context.pendingActivityFocusRequest,
+                        availableActivityIDs: Set(projection.activities.map(\.selectionID)),
+                        scrollProxy: scrollProxy
+                    )
+                }
+                .onChange(of: context.pendingActivityFocusRequest) { request in
+                    fulfillActivityFocusRequest(
+                        request,
+                        availableActivityIDs: Set(projection.activities.map(\.selectionID)),
+                        scrollProxy: scrollProxy
+                    )
+                }
             }
         }
         .padding(20)
@@ -124,6 +153,28 @@ struct TasksSectionView: View {
                 return
             }
             context.selectedTaskId = nil
+        }
+    }
+
+    private func fulfillActivityFocusRequest(
+        _ request: ActivityFocusRequest?,
+        availableActivityIDs: Set<String>,
+        scrollProxy: ScrollViewProxy
+    ) {
+        guard let request,
+              availableActivityIDs.contains(request.activityID) else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            guard context.pendingActivityFocusRequest == request else { return }
+            scrollProxy.scrollTo(request.activityID, anchor: .center)
+            focusedActivityID = request.activityID
+            accessibilityFocusedActivityID = request.activityID
+            context.completeActivityFocusRequest(
+                request,
+                focusSucceeded: true
+            )
         }
     }
 

@@ -520,6 +520,30 @@ final class WayfinderPresentationProjectionTests: XCTestCase {
             WayfinderPopoverLayout.onboardingHeight,
             WayfinderPopoverLayout.ordinaryHeight
         )
+        XCTAssertEqual(
+            WayfinderPopoverLayout.preferredHeight(
+                hasCompletedOnboarding: false,
+                requiresLicenseTermsAcceptance: true,
+                bypassesOnboarding: true
+            ),
+            WayfinderPopoverLayout.ordinaryHeight
+        )
+        XCTAssertEqual(
+            WayfinderPopoverLayout.preferredHeight(
+                hasCompletedOnboarding: false,
+                requiresLicenseTermsAcceptance: false,
+                bypassesOnboarding: false
+            ),
+            WayfinderPopoverLayout.onboardingHeight
+        )
+        XCTAssertEqual(
+            WayfinderPopoverLayout.preferredHeight(
+                hasCompletedOnboarding: true,
+                requiresLicenseTermsAcceptance: false,
+                bypassesOnboarding: false
+            ),
+            WayfinderPopoverLayout.ordinaryHeight
+        )
     }
 
     private func project(

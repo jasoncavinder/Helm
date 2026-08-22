@@ -132,6 +132,183 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         #endif
     }
 
+    func testTaskOneProjectsPartialAmbientHealthAndExactRecoveryRoute() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let projection = try XCTUnwrap(
+            ResearchAmbientHealthProjector.project(
+                dataset,
+                now: now
+            )
+        )
+        let presentation = projection.presentation
+
+        XCTAssertEqual(projection.scenarioID, "ambient-health")
+        XCTAssertEqual(projection.failedActivityID, "activity-npm-verification")
+        XCTAssertEqual(projection.failedActivitySelectionID, "7001")
+        XCTAssertEqual(
+            presentation.projection.condition,
+            .failedOrInterrupted(failed: 1, interrupted: 0)
+        )
+        XCTAssertEqual(
+            presentation.projection.title.key,
+            "app.activity.research.status.verification_failed"
+        )
+        XCTAssertEqual(
+            presentation.projection.explanation.key,
+            "research.activity.after.npm_prettier_3_6_0_unverified"
+        )
+        XCTAssertEqual(
+            presentation.projection.primaryAction,
+            WayfinderDeepLink(
+                destination: .activity,
+                entityID: "7001",
+                focus: .selectedEntity,
+                originatingCondition: .failedOrInterrupted
+            )
+        )
+        XCTAssertEqual(
+            presentation.primaryActionTitle.key,
+            "app.popover.wayfinder.action.review_recovery"
+        )
+        XCTAssertEqual(
+            presentation.routeItems.map(\.tone),
+            [.review, .current, .cached, .error]
+        )
+        XCTAssertEqual(
+            presentation.routeItems[0].deepLink(
+                originatingCondition: presentation.projection.condition.kind
+            ),
+            WayfinderDeepLink(
+                destination: .environment,
+                entityID: "macports",
+                focus: .selectedEntity,
+                routeStage: .system,
+                originatingCondition: .failedOrInterrupted
+            )
+        )
+        XCTAssertEqual(
+            presentation.routeItems[3].deepLink(
+                originatingCondition: presentation.projection.condition.kind
+            ),
+            WayfinderDeepLink(
+                destination: .environment,
+                entityID: "npm",
+                focus: .selectedEntity,
+                routeStage: .packages,
+                originatingCondition: .failedOrInterrupted
+            )
+        )
+        XCTAssertEqual(
+            presentation.contextTitle.key,
+            "app.first_run.environment_brief.title.partial"
+        )
+        XCTAssertEqual(
+            presentation.contextDetail.arguments,
+            ["mapped": "8", "total": "10", "attention": "1"]
+        )
+        XCTAssertEqual(
+            presentation.projection.freshnessDate,
+            now.addingTimeInterval(-120)
+        )
+        XCTAssertEqual(presentation.projection.coverage?.completed, 8)
+        XCTAssertEqual(presentation.projection.coverage?.total, 10)
+
+        let runtimeState = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
+                environment: [
+                    WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path
+                ],
+                now: now
+            )
+        )
+        XCTAssertEqual(runtimeState.presentation, presentation)
+        XCTAssertTrue(runtimeState.serviceConnected)
+    }
+
+    func testTaskOneRecoveryNavigationRequiresInspectorAndSelectedActivityFocus() {
+        let deepLink = WayfinderDeepLink(
+            destination: .activity,
+            entityID: "7001",
+            focus: .selectedEntity,
+            originatingCondition: .failedOrInterrupted
+        )
+
+        XCTAssertTrue(
+            WayfinderSelectedEntityNavigationPolicy.shouldRevealInspector(
+                for: deepLink
+            )
+        )
+        XCTAssertFalse(
+            WayfinderSelectedEntityNavigationPolicy.shouldRevealInspector(
+                for: WayfinderDeepLink(
+                    destination: .activity,
+                    entityID: "7001",
+                    focus: .primaryContent
+                )
+            )
+        )
+    }
+
+    func testActivityFocusRequestRejectsStaleCompletionAndRetainsRetry() throws {
+        var state = ActivityFocusRequestState()
+        let first = try XCTUnwrap(state.request(activityID: "7001"))
+        let second = try XCTUnwrap(state.request(activityID: "7002"))
+
+        XCTAssertFalse(state.complete(first, focusSucceeded: true))
+        XCTAssertFalse(state.complete(second, focusSucceeded: false))
+        XCTAssertEqual(state.pendingRequest, second)
+        XCTAssertTrue(state.complete(second, focusSucceeded: true))
+        XCTAssertNil(state.pendingRequest)
+        XCTAssertEqual(state.lastCompletedRequestID, second.id)
+    }
+
+    func testTaskOneProjectionFailsClosedForCanonicalDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let mutations = [
+            (
+                "\"coverage-partial\",\n        \"activity-npm-verification\"",
+                "\"activity-npm-verification\",\n        \"coverage-partial\"",
+                "scenarios.record_order"
+            ),
+            (
+                "\"cachedManagerIds\": [\n        \"homebrew_cask\"",
+                "\"cachedManagerIds\": [\n        \"homebrew_formula\"",
+                "coverage.canonical_record"
+            ),
+            (
+                "\"state\": \"failed_verification\"",
+                "\"state\": \"failed\"",
+                "activity.canonical_records"
+            ),
+            (
+                "\"sourceState\": \"failed\"",
+                "\"sourceState\": \"ready\"",
+                "coverage.failed_manager_record"
+            ),
+        ]
+
+        for mutation in mutations {
+            let modified = try replacingFirst(
+                mutation.0,
+                with: mutation.1,
+                in: source
+            )
+            let dataset = try WholeWorkflowResearchDatasetLoader.decode(
+                Data(modified.utf8)
+            )
+            let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+            XCTAssertTrue(
+                issues.contains { $0.code == mutation.2 },
+                "Expected \(mutation.2) for \(mutation.0)"
+            )
+            XCTAssertNil(
+                ResearchAmbientHealthProjector.project(dataset)
+            )
+        }
+    }
+
     func testTaskTwoProjectsThroughTheProductionPlanContract() throws {
         let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
         let projection = try XCTUnwrap(WholeWorkflowResearchPlanProjector.project(dataset))
@@ -568,6 +745,22 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertTrue(WholeWorkflowResearchDatasetProvider.isSelected(environment: environment))
         XCTAssertNotNil(WholeWorkflowResearchDatasetProvider.active(environment: environment))
         XCTAssertNotNil(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthProjection(
+                environment: environment
+            )
+        )
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthPresentation(
+                environment: environment,
+                now: now
+            ),
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthProjection(
+                environment: environment,
+                now: now
+            )?.presentation
+        )
+        XCTAssertNotNil(
             WholeWorkflowResearchDatasetProvider.activePlanProjection(environment: environment)
         )
         XCTAssertNotNil(
@@ -595,6 +788,11 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertFalse(
             WholeWorkflowResearchDatasetProvider.isSelected(environment: popoverEnvironment)
         )
+        XCTAssertNil(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
+                environment: popoverEnvironment
+            )
+        )
         XCTAssertTrue(
             ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: popoverEnvironment)
         )
@@ -604,6 +802,23 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         ]
         XCTAssertTrue(WholeWorkflowResearchDatasetProvider.isSelected(environment: missingEnvironment))
         XCTAssertNil(WholeWorkflowResearchDatasetProvider.active(environment: missingEnvironment))
+        let unavailablePresentation = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthPresentation(
+                environment: missingEnvironment
+            )
+        )
+        XCTAssertEqual(
+            unavailablePresentation.projection.condition,
+            .serviceUnavailable
+        )
+        XCTAssertFalse(unavailablePresentation.allowsRefresh)
+        let unavailableRuntimeState = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
+                environment: missingEnvironment
+            )
+        )
+        XCTAssertEqual(unavailableRuntimeState.presentation, unavailablePresentation)
+        XCTAssertFalse(unavailableRuntimeState.serviceConnected)
         XCTAssertTrue(
             ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: missingEnvironment)
         )
