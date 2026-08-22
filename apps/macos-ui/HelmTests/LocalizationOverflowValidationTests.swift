@@ -44,6 +44,7 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         let english = try localeAppStrings("en")
         let hungarian = try localeAppStrings("hu")
         let keys = [
+            "app.navigation.tab.dashboard",
             "app.settings.tab.title",
             "app.health.healthy",
             "app.health.error",

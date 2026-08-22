@@ -1,5 +1,5 @@
 {
-  "app.navigation.tab.dashboard": "Dashboard",
+  "app.navigation.tab.dashboard": "Vezérlőpult",
   "app.navigation.tab.packages": "Packages",
   "app.navigation.tab.managers": "Managers",
   "app.navigation.search.placeholder": "Search packages...",
