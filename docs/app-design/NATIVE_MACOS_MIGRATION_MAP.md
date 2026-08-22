@@ -257,7 +257,7 @@ Implementation checkpoint on `dev`:
 - Deep links preserve originating condition, destination, focus, route domain, and affected manager. Owner QA verified the corrected visible Environment filter for all four route stages before PR #490 merged.
 - Library, Plan, Activity, Environment, and Dashboard own detail, confirmation, recovery, and search rather than hosting those workflows inside the transient panel.
 - A debug-only six-state `HELM_WAYFINDER_POPOVER_FIXTURE` seam uses the production projectors/view and suppresses refresh plus Helm update-check submission while active. It is a state-validation seam, not a whole-workflow synthetic dataset.
-- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector now projects Task 1 through shared status-item/popover/Dashboard/sidebar ambient truth, exact affected-manager Environment routes, and the failed-verification Activity inspector/focus handoff; Task 2 through Plan; Task 3 through Library/global search; and Task 4 through Activity/inspector. Task 1 provider/projection/policy/request-state unit evidence, the full app-target build, and attributable current-host owner validation of production overview/navigation wiring plus SwiftUI keyboard/VoiceOver focus transfer are complete on `3de57a81`; the retained earlier build remains directional evidence only. Tasks 5-7 remain unprojected, and each remaining workflow slice owns that work.
+- The canonical `v0.20-whole-workflow-v1` corpus and typed semantic validator cover all seven moderated tasks without host scanning or mutation. The Debug-only absolute-path selector now projects Task 1 through shared status-item/popover/Dashboard/sidebar ambient truth, exact affected-manager Environment routes, and the failed-verification Activity inspector/focus handoff; Task 2 through Plan; Task 3 through Library/global search; Task 4 through Activity/inspector; and Task 5 through Environment/manager provenance. Task 1 provider/projection/policy/request-state unit evidence, the full app-target build, and attributable current-host owner validation of production overview/navigation wiring plus SwiftUI keyboard/VoiceOver focus transfer are complete on `3de57a81`; the retained earlier build remains directional evidence only. Task 5 automated contract evidence is complete while its owner matrix remains open. Tasks 6-7 remain unprojected, and each remaining workflow slice owns that work.
 
 Affected files/components:
 
@@ -440,6 +440,11 @@ Validation:
 Rollback/incremental strategy:
 
 - Migrate table selection first, inspector subsections next, sheets last; retain existing core actions.
+
+Implementation checkpoint:
+
+- Task 5 projects every canonical corpus manager through the shipping authority-grouped Environment view and selects the exact rustup finding in the contextual inspector. The inspector identifies `<home>/.cargo/bin/rustup` as active, rustup-installer, and manageable; identifies `/usr/bin/rustup` as inactive, system, and policy-blocked; explains that authorization cannot override policy; and exposes only expandable read-only details plus a fixture-local reversible Keep Multiple acknowledgment.
+- The projector and validator fail closed on scenario-order, manager/provenance/policy, or decision drift. The whole-workflow selector continues to block service, database, network, updater, detection, and mutation startup. Arm64 app-target tests and locale integrity/length/parity gates pass; owner visual, interaction, Full Keyboard Access, VoiceOver, and localization validation remains open.
 
 ### Slice 20.6: First reviewed and verified improvement
 

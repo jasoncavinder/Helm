@@ -178,6 +178,8 @@ final class ControlCenterContext: ControlCenterContextBase {
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     @Published private var upgradePlanConfirmationRequestState = UpgradePlanConfirmationRequestState()
     @Published private var libraryPackageFocusRequestState = LibraryPackageFocusRequestState()
+    @Published private var researchEnvironmentDecisionSession =
+        WholeWorkflowResearchManagerDecisionSession()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isSidebarVisible: Bool = true
@@ -380,6 +382,32 @@ final class ControlCenterContext: ControlCenterContextBase {
 
     func dismissResearchInstallConfirmation() {
         researchInstallConfirmation = nil
+    }
+
+    func researchManagerDecisionState(
+        for decision: WholeWorkflowResearchEnvironmentDecision
+    ) -> WholeWorkflowResearchManagerDecisionState {
+        researchEnvironmentDecisionSession.state(for: decision)
+    }
+
+    @discardableResult
+    func acknowledgeResearchManagerDecision(
+        _ decision: WholeWorkflowResearchEnvironmentDecision
+    ) -> Bool {
+        var session = researchEnvironmentDecisionSession
+        guard session.acknowledge(decision) else { return false }
+        researchEnvironmentDecisionSession = session
+        return true
+    }
+
+    @discardableResult
+    func revisitResearchManagerDecision(
+        _ decision: WholeWorkflowResearchEnvironmentDecision
+    ) -> Bool {
+        var session = researchEnvironmentDecisionSession
+        guard session.revisit(decision) else { return false }
+        researchEnvironmentDecisionSession = session
+        return true
     }
 
     func clearEnvironmentRouteStage() {

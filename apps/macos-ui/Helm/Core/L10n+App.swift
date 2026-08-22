@@ -119,6 +119,27 @@ extension L10n {
             struct Label {
                 static let packageCount = "app.managers.label.package_count"
             }
+            struct Research {
+                static let installInstanceCount = "app.managers.research.install_instance_count"
+                static let current = "app.managers.research.freshness.current"
+                static let cached = "app.managers.research.freshness.cached"
+                static let unknown = "app.managers.research.freshness.unknown"
+                static let sourceRefreshFailed = "app.managers.research.source_refresh_failed"
+                static let readOnlyNotice = "app.managers.research.read_only_notice"
+                static let decisionPending = "app.managers.research.decision.pending"
+                static let decisionAcknowledged = "app.managers.research.decision.acknowledged"
+                static let active = "app.managers.research.instance.active"
+                static let manageable = "app.managers.research.instance.manageable"
+                static let policyBlocked = "app.managers.research.instance.policy_blocked"
+                static let permissionRequired = "app.managers.research.instance.permission_required"
+                static let toggleDetails = "app.managers.research.instance.toggle_details"
+                static let activeExplanation = "app.managers.research.instance.active_explanation"
+                static let policyBlockedExplanation = "app.managers.research.instance.policy_blocked_explanation"
+                static let permissionExplanation = "app.managers.research.instance.permission_explanation"
+                static let unavailableExplanation = "app.managers.research.instance.unavailable_explanation"
+                static let provenanceRustupInstaller = "app.managers.research.provenance.rustup_installer"
+                static let provenanceSystem = "app.managers.research.provenance.system"
+            }
             struct Name {
                 static let homebrew = "app.managers.name.homebrew"
                 static let homebrewCask = "app.managers.name.homebrew_cask"

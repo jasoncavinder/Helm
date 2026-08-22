@@ -618,6 +618,13 @@ enum WholeWorkflowResearchDatasetProvider {
         return WholeWorkflowResearchActivityProjector.project(dataset)
     }
 
+    static func activeEnvironmentProjection(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> WholeWorkflowResearchEnvironmentProjection? {
+        guard let dataset = active(environment: environment) else { return nil }
+        return WholeWorkflowResearchEnvironmentProjector.project(dataset)
+    }
+
     static func isOfflineVariantSelected(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
@@ -1460,6 +1467,180 @@ enum WholeWorkflowResearchActivityProjector {
             scenarioID: scenario.scenarioID,
             activities: activities,
             recoveryActionsByActivityID: actionsByActivityID
+        )
+    }
+}
+
+enum WholeWorkflowResearchManagerDecisionState: String, Equatable {
+    case pending
+    case acknowledged
+}
+
+struct WholeWorkflowResearchEnvironmentDecision: Equatable {
+    let id: String
+    let managerID: String
+    let initialState: WholeWorkflowResearchManagerDecisionState
+    let resultingState: WholeWorkflowResearchManagerDecisionState
+    let revisitSurface: String
+}
+
+struct WholeWorkflowResearchEnvironmentProjection: Equatable {
+    let datasetID: String
+    let scenarioID: String
+    let managers: [ResearchManagerRecord]
+    let targetManagerID: String
+    let decision: WholeWorkflowResearchEnvironmentDecision
+
+    func manager(withID managerID: String?) -> ResearchManagerRecord? {
+        guard let managerID else { return nil }
+        return managers.first { $0.id == managerID }
+    }
+}
+
+struct WholeWorkflowResearchManagerDecisionSession: Equatable {
+    private(set) var acknowledgedDecisionIDs: Set<String> = []
+
+    func state(
+        for decision: WholeWorkflowResearchEnvironmentDecision
+    ) -> WholeWorkflowResearchManagerDecisionState {
+        acknowledgedDecisionIDs.contains(decision.id)
+            ? decision.resultingState
+            : decision.initialState
+    }
+
+    @discardableResult
+    mutating func acknowledge(
+        _ decision: WholeWorkflowResearchEnvironmentDecision
+    ) -> Bool {
+        guard decision.initialState == .pending,
+              decision.resultingState == .acknowledged,
+              decision.revisitSurface == WholeWorkflowResearchTaskFiveContract.startingSurface else {
+            return false
+        }
+        return acknowledgedDecisionIDs.insert(decision.id).inserted
+    }
+
+    @discardableResult
+    mutating func revisit(
+        _ decision: WholeWorkflowResearchEnvironmentDecision
+    ) -> Bool {
+        acknowledgedDecisionIDs.remove(decision.id) != nil
+    }
+}
+
+enum WholeWorkflowResearchTaskFiveContract {
+    static let scenarioID = "inspect-rustup-source"
+    static let startingSurface = "environment"
+    static let managerID = "rustup"
+    static let systemInstanceID = "rustup-system"
+    static let userInstanceID = "rustup-user"
+    static let decisionID = "decision-rustup-keep-multiple"
+    static let orderedManagerIDs = [
+        "mise",
+        managerID,
+        "homebrew_formula",
+        "homebrew_cask",
+        "npm",
+        "cargo",
+        "pnpm",
+        "mas",
+        "softwareupdate",
+        "macports",
+    ]
+    static let orderedScenarioRecordIDs = [
+        managerID,
+        systemInstanceID,
+        userInstanceID,
+        decisionID,
+    ]
+
+    static func matchesScenario(_ scenario: ResearchScenario) -> Bool {
+        scenario.taskNumber == 5
+            && scenario.scenarioID == scenarioID
+            && scenario.startingSurface == startingSurface
+            && scenario.recordIDs == orderedScenarioRecordIDs
+    }
+
+    static func matchesManagers(_ managers: [ResearchManagerRecord]) -> Bool {
+        managers.map(\.id) == orderedManagerIDs
+    }
+
+    static func matchesManager(_ manager: ResearchManagerRecord) -> Bool {
+        manager.id == managerID
+            && manager.authority == "authoritative"
+            && manager.detected
+            && manager.enabled
+            && manager.freshness == "current"
+            && manager.sourceState == "needs_review"
+            && manager.findingCode == "multiple_installs_detected"
+            && manager.installInstances == [
+                ResearchInstallInstanceRecord(
+                    id: systemInstanceID,
+                    displayPath: "/usr/bin/rustup",
+                    provenance: "system",
+                    active: false,
+                    policyState: "policy_blocked"
+                ),
+                ResearchInstallInstanceRecord(
+                    id: userInstanceID,
+                    displayPath: "<home>/.cargo/bin/rustup",
+                    provenance: "rustup_init",
+                    active: true,
+                    policyState: "manageable"
+                ),
+            ]
+    }
+
+    static func matchesDecision(_ decision: ResearchManagerDecisionRecord) -> Bool {
+        decision.id == decisionID
+            && decision.managerID == managerID
+            && decision.action == "keep_multiple"
+            && decision.initialState == WholeWorkflowResearchManagerDecisionState.pending.rawValue
+            && decision.resultingState
+                == WholeWorkflowResearchManagerDecisionState.acknowledged.rawValue
+            && decision.revisitSurface == startingSurface
+    }
+}
+
+enum WholeWorkflowResearchEnvironmentProjector {
+    static func project(
+        _ dataset: WholeWorkflowResearchDataset
+    ) -> WholeWorkflowResearchEnvironmentProjection? {
+        guard WholeWorkflowResearchDatasetContract.matchesCurrentIdentityAndSafety(dataset),
+              let scenario = dataset.scenarios.first(where: { $0.taskNumber == 5 }),
+              WholeWorkflowResearchTaskFiveContract.matchesScenario(scenario),
+              WholeWorkflowResearchTaskFiveContract.matchesManagers(
+                  dataset.snapshot.managers
+              ),
+              let manager = dataset.snapshot.managers.first(where: {
+                  $0.id == WholeWorkflowResearchTaskFiveContract.managerID
+              }),
+              WholeWorkflowResearchTaskFiveContract.matchesManager(manager),
+              WholeWorkflowResearchTaskFiveContract.matchesDecision(
+                  dataset.snapshot.managerDecision
+              ),
+              let initialState = WholeWorkflowResearchManagerDecisionState(
+                  rawValue: dataset.snapshot.managerDecision.initialState
+              ),
+              let resultingState = WholeWorkflowResearchManagerDecisionState(
+                  rawValue: dataset.snapshot.managerDecision.resultingState
+              ) else {
+            return nil
+        }
+
+        let decision = dataset.snapshot.managerDecision
+        return WholeWorkflowResearchEnvironmentProjection(
+            datasetID: dataset.datasetID,
+            scenarioID: scenario.scenarioID,
+            managers: dataset.snapshot.managers,
+            targetManagerID: manager.id,
+            decision: WholeWorkflowResearchEnvironmentDecision(
+                id: decision.id,
+                managerID: decision.managerID,
+                initialState: initialState,
+                resultingState: resultingState,
+                revisitSurface: decision.revisitSurface
+            )
         )
     }
 }

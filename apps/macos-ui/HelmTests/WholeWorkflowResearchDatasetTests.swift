@@ -738,6 +738,109 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertNil(WholeWorkflowResearchActivityProjector.project(dataset))
     }
 
+    func testTaskFiveProjectsCanonicalEnvironmentAndProvenance() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            WholeWorkflowResearchEnvironmentProjector.project(dataset)
+        )
+        let rustup = try XCTUnwrap(projection.manager(withID: projection.targetManagerID))
+
+        XCTAssertEqual(projection.scenarioID, "inspect-rustup-source")
+        XCTAssertEqual(projection.targetManagerID, "rustup")
+        XCTAssertEqual(projection.managers, dataset.snapshot.managers)
+        XCTAssertEqual(
+            projection.managers.map(\.id),
+            [
+                "mise", "rustup", "homebrew_formula", "homebrew_cask", "npm",
+                "cargo", "pnpm", "mas", "softwareupdate", "macports",
+            ]
+        )
+        XCTAssertEqual(rustup.sourceState, "needs_review")
+        XCTAssertEqual(rustup.findingCode, "multiple_installs_detected")
+        XCTAssertEqual(
+            rustup.installInstances,
+            [
+                ResearchInstallInstanceRecord(
+                    id: "rustup-system",
+                    displayPath: "/usr/bin/rustup",
+                    provenance: "system",
+                    active: false,
+                    policyState: "policy_blocked"
+                ),
+                ResearchInstallInstanceRecord(
+                    id: "rustup-user",
+                    displayPath: "<home>/.cargo/bin/rustup",
+                    provenance: "rustup_init",
+                    active: true,
+                    policyState: "manageable"
+                ),
+            ]
+        )
+        XCTAssertEqual(projection.decision.id, "decision-rustup-keep-multiple")
+        XCTAssertEqual(projection.decision.managerID, "rustup")
+        XCTAssertEqual(projection.decision.initialState, .pending)
+        XCTAssertEqual(projection.decision.resultingState, .acknowledged)
+        XCTAssertEqual(projection.decision.revisitSurface, "environment")
+    }
+
+    func testTaskFiveKeepMultipleAcknowledgmentIsLocalAndReversible() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            WholeWorkflowResearchEnvironmentProjector.project(dataset)
+        )
+        var session = WholeWorkflowResearchManagerDecisionSession()
+
+        XCTAssertEqual(session.state(for: projection.decision), .pending)
+        XCTAssertTrue(session.acknowledge(projection.decision))
+        XCTAssertFalse(session.acknowledge(projection.decision))
+        XCTAssertEqual(session.state(for: projection.decision), .acknowledged)
+        XCTAssertTrue(session.revisit(projection.decision))
+        XCTAssertEqual(session.state(for: projection.decision), .pending)
+        XCTAssertFalse(session.revisit(projection.decision))
+    }
+
+    func testTaskFiveProjectionFailsClosedForCanonicalDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let mutations = [
+            (
+                "\"rustup-system\",\n        \"rustup-user\"",
+                "\"rustup-user\",\n        \"rustup-system\"",
+                "scenarios.record_order"
+            ),
+            (
+                "\"id\": \"rustup-user\",\n            \"displayPath\": \"<home>/.cargo/bin/rustup\",\n            \"provenance\": \"rustup_init\"",
+                "\"id\": \"rustup-user\",\n            \"displayPath\": \"<home>/.cargo/bin/rustup\",\n            \"provenance\": \"homebrew\"",
+                "rustup.canonical_record"
+            ),
+            (
+                "\"revisitSurface\": \"environment\"",
+                "\"revisitSurface\": \"settings\"",
+                "decision.canonical_record"
+            ),
+            (
+                "\"managers\": [\n      {\n        \"id\": \"mise\"",
+                "\"managers\": [\n      {\n        \"id\": \"unknown-manager\"",
+                "managers.canonical_records"
+            ),
+        ]
+
+        for mutation in mutations {
+            let modified = try replacingFirst(
+                mutation.0,
+                with: mutation.1,
+                in: source
+            )
+            let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+            let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+            XCTAssertTrue(
+                issues.contains { $0.code == mutation.2 },
+                "Expected \(mutation.2) for \(mutation.0)"
+            )
+            XCTAssertNil(WholeWorkflowResearchEnvironmentProjector.project(dataset))
+        }
+    }
+
     func testWholeWorkflowSelectionFailsClosedForLiveOperations() throws {
         let environment = [WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path]
 
@@ -768,6 +871,11 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         )
         XCTAssertNotNil(
             WholeWorkflowResearchDatasetProvider.activeActivityProjection(environment: environment)
+        )
+        XCTAssertNotNil(
+            WholeWorkflowResearchDatasetProvider.activeEnvironmentProjection(
+                environment: environment
+            )
         )
         XCTAssertFalse(
             WholeWorkflowResearchDatasetProvider.isOfflineVariantSelected(environment: environment)
@@ -802,6 +910,11 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         ]
         XCTAssertTrue(WholeWorkflowResearchDatasetProvider.isSelected(environment: missingEnvironment))
         XCTAssertNil(WholeWorkflowResearchDatasetProvider.active(environment: missingEnvironment))
+        XCTAssertNil(
+            WholeWorkflowResearchDatasetProvider.activeEnvironmentProjection(
+                environment: missingEnvironment
+            )
+        )
         let unavailablePresentation = try XCTUnwrap(
             WholeWorkflowResearchDatasetProvider.activeAmbientHealthPresentation(
                 environment: missingEnvironment

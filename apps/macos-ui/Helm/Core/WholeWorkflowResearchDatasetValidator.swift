@@ -139,6 +139,15 @@ enum WholeWorkflowResearchDatasetValidator {
                     into: &issues
                 )
             }
+            if scenario.taskNumber == 5 {
+                require(
+                    WholeWorkflowResearchTaskFiveContract.matchesScenario(scenario),
+                    code: "scenarios.record_order",
+                    path: "scenarios[\(index)].recordIds",
+                    message: "Task 5 must preserve manager, instances, then decision order.",
+                    into: &issues
+                )
+            }
         }
     }
 
@@ -184,14 +193,10 @@ enum WholeWorkflowResearchDatasetValidator {
                 )
             )
         case 5:
-            let rustup = snapshot.managers.first { $0.id == "rustup" }
             return ScenarioContract(
-                scenarioID: "inspect-rustup-source",
-                startingSurface: "environment",
-                recordIDs: Set(
-                    ["rustup", snapshot.managerDecision.id]
-                        + (rustup?.installInstances.map(\.id) ?? [])
-                )
+                scenarioID: WholeWorkflowResearchTaskFiveContract.scenarioID,
+                startingSurface: WholeWorkflowResearchTaskFiveContract.startingSurface,
+                recordIDs: Set(WholeWorkflowResearchTaskFiveContract.orderedScenarioRecordIDs)
             )
         case 6:
             return ScenarioContract(
@@ -478,10 +483,24 @@ enum WholeWorkflowResearchDatasetValidator {
         _ managers: [ResearchManagerRecord],
         into issues: inout [WholeWorkflowResearchDatasetIssue]
     ) {
+        require(
+            WholeWorkflowResearchTaskFiveContract.matchesManagers(managers),
+            code: "managers.canonical_records",
+            path: "snapshot.managers",
+            message: "Task 5 requires the exact ordered canonical manager records.",
+            into: &issues
+        )
         guard let rustup = managers.first(where: { $0.id == "rustup" }) else {
             add(code: "rustup.missing", path: "snapshot.managers", message: "Task 5 requires rustup.", into: &issues)
             return
         }
+        require(
+            WholeWorkflowResearchTaskFiveContract.matchesManager(rustup),
+            code: "rustup.canonical_record",
+            path: "snapshot.managers[rustup]",
+            message: "Task 5 requires the canonical active user and policy-blocked system installations.",
+            into: &issues
+        )
         require(rustup.installInstances.count == 2, code: "rustup.instances", path: "snapshot.managers[rustup].installInstances", message: "Task 5 requires two rustup installations.", into: &issues)
         require(rustup.installInstances.filter(\.active).count == 1, code: "rustup.active", path: "snapshot.managers[rustup].installInstances", message: "Task 5 requires exactly one active rustup installation.", into: &issues)
         require(
@@ -506,6 +525,13 @@ enum WholeWorkflowResearchDatasetValidator {
         into issues: inout [WholeWorkflowResearchDatasetIssue]
     ) {
         require(managerIDs.contains(decision.managerID), code: "decision.unknown_manager", path: "snapshot.managerDecision.managerId", message: "The decision must reference a manager.", into: &issues)
+        require(
+            WholeWorkflowResearchTaskFiveContract.matchesDecision(decision),
+            code: "decision.canonical_record",
+            path: "snapshot.managerDecision",
+            message: "Task 5 requires the canonical reversible Keep Multiple acknowledgment.",
+            into: &issues
+        )
         require(decision.managerID == "rustup" && decision.action == "keep_multiple", code: "decision.keep_multiple", path: "snapshot.managerDecision", message: "Task 5 requires the rustup Keep Multiple decision.", into: &issues)
         require(decision.initialState == "pending" && decision.resultingState == "acknowledged", code: "decision.states", path: "snapshot.managerDecision", message: "The manager decision must capture acknowledgment.", into: &issues)
         require(decision.revisitSurface == "environment", code: "decision.revisit", path: "snapshot.managerDecision.revisitSurface", message: "Task 5 must provide an Environment revisit route.", into: &issues)
