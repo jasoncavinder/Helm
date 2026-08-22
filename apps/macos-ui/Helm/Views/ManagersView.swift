@@ -11,12 +11,26 @@ private struct ManagerDependencyAlertState: Identifiable {
     let kind: Kind
 }
 
+private struct ResearchEnvironmentManagerItem: Identifiable {
+    let manager: ManagerInfo
+    let record: ResearchManagerRecord
+
+    var id: String { record.id }
+}
+
 struct ManagersSectionView: View {
     private let core = HelmCore.shared
+    private let researchEnvironmentState = WholeWorkflowResearchDatasetProvider
+        .environmentRuntimeState()
     @ObservedObject private var managersState = HelmCore.shared.managersState
     @EnvironmentObject private var context: ControlCenterContext
     @State private var draggedManagerId: String?
     @State private var managerDependencyAlert: ManagerDependencyAlertState?
+
+    private var researchEnvironmentProjection: ResearchEnvironmentProjection? {
+        guard case let .ready(projection) = researchEnvironmentState else { return nil }
+        return projection
+    }
 
     private var groupedManagers: [(authority: ManagerAuthority, managers: [ManagerInfo])] {
         [
@@ -31,6 +45,37 @@ struct ManagersSectionView: View {
 
     private var hasImplementedManagers: Bool {
         groupedManagers.contains { !$0.managers.isEmpty }
+    }
+
+    private var researchGroupedManagers: [(
+        authority: ManagerAuthority,
+        managers: [ResearchEnvironmentManagerItem]
+    )] {
+        guard let researchEnvironmentProjection else { return [] }
+        let items = researchEnvironmentProjection.managers.compactMap { record in
+            ManagerInfo.all.first(where: { $0.id == record.id }).map {
+                ResearchEnvironmentManagerItem(manager: $0, record: record)
+            }
+        }
+        return ManagerAuthority.allCases.map { authority in
+            (
+                authority: authority,
+                managers: routeFiltered(
+                    items.filter { $0.record.authority == researchAuthorityID(authority) }
+                )
+            )
+        }
+    }
+
+    private func researchAuthorityID(_ authority: ManagerAuthority) -> String {
+        switch authority {
+        case .authoritative:
+            return "authoritative"
+        case .standard:
+            return "standard"
+        case .guarded:
+            return "guarded"
+        }
     }
 
     var body: some View {
@@ -67,89 +112,13 @@ struct ManagersSectionView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
 
-                ForEach(groupedManagers, id: \.authority) { group in
-                    if !group.managers.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(group.authority.key.localized)
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(.secondary)
-                                .textCase(.uppercase)
-                                .padding(.horizontal, 20)
-
-                            ForEach(group.managers) { manager in
-                                let canReorder = ManagerPriorityDragPolicy.canInitiateDrag(
-                                    isDetected: core.isManagerDetected(manager.id)
-                                )
-                                ManagerSectionRow(
-                                    manager: manager,
-                                    status: managersState.managerStatusesById[manager.id],
-                                    health: core.health(forManagerId: manager.id),
-                                    outdatedCount: managersState.outdatedCountByManager[manager.id, default: 0],
-                                    packageCount: managersState.installedCountByManager[manager.id, default: 0],
-                                    operationStatus: managersState.managerOperationsById[manager.id],
-                                    isManagerUninstalling: core.isManagerUninstalling(manager.id),
-                                    isSelected: context.selectedManagerId == manager.id,
-                                    canReorder: canReorder,
-                                    onSelect: {
-                                        context.selectedManagerId = manager.id
-                                        context.selectedPackageId = nil
-                                        context.selectedTaskId = nil
-                                        context.selectedUpgradePlanStepId = nil
-                                    },
-                                    onViewPackages: {
-                                        context.selectedManagerId = manager.id
-                                        context.selectedPackageId = nil
-                                        context.selectedTaskId = nil
-                                        context.selectedUpgradePlanStepId = nil
-                                        context.managerFilterId = manager.id
-                                        context.selectedSection = .packages
-                                    },
-                                    onDetectManager: {
-                                        context.selectedManagerId = manager.id
-                                        context.selectedPackageId = nil
-                                        context.selectedTaskId = nil
-                                        context.selectedUpgradePlanStepId = nil
-                                        context.selectedSection = .managers
-                                        core.triggerDetection(for: manager.id)
-                                    },
-                                    onInstallManager: {
-                                        context.selectedManagerId = manager.id
-                                        context.selectedPackageId = nil
-                                        context.selectedTaskId = nil
-                                        context.selectedUpgradePlanStepId = nil
-                                        context.selectedSection = .managers
-                                        context.requestManagerInstallSheet(for: manager.id)
-                                    },
-                                    onToggleEnabled: { enabled in
-                                        handleManagerToggle(managerId: manager.id, enable: enabled)
-                                    }
-                                )
-                                .modifier(
-                                    ManagerPriorityDragModifier(
-                                        managerId: manager.id,
-                                        canInitiateDrag: canReorder,
-                                        draggedManagerId: $draggedManagerId
-                                    )
-                                )
-                                .onDrop(
-                                    of: [UTType.text.identifier],
-                                    delegate: ManagerPriorityDropDelegate(
-                                        core: core,
-                                        authority: group.authority,
-                                        targetManagerId: manager.id,
-                                        draggedManagerId: $draggedManagerId
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-
-                if !hasImplementedManagers {
-                    Text(L10n.App.ManagersSection.empty.localized)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 20)
+                switch researchEnvironmentState {
+                case let .ready(projection):
+                    researchManagerGroups(projection)
+                case .unavailable:
+                    researchUnavailableState
+                case .inactive:
+                    productionManagerGroups
                 }
             }
             .padding(.bottom, 18)
@@ -210,6 +179,161 @@ struct ManagersSectionView: View {
         }
     }
 
+    private func routeFiltered(
+        _ managers: [ResearchEnvironmentManagerItem]
+    ) -> [ResearchEnvironmentManagerItem] {
+        guard let routeStage = context.environmentRouteStage else { return managers }
+        return managers.filter {
+            WayfinderPopoverRouteStage.stage(forManagerCategory: $0.manager.category) == routeStage
+        }
+    }
+
+    @ViewBuilder
+    private func researchManagerGroups(
+        _ projection: ResearchEnvironmentProjection
+    ) -> some View {
+        let decisionState = context.researchManagerDecisionState(for: projection.decision)
+        ForEach(researchGroupedManagers, id: \.authority) { group in
+            if !group.managers.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    managerGroupHeading(group.authority)
+                    ForEach(group.managers) { item in
+                        ResearchEnvironmentManagerRow(
+                            item: item,
+                            decisionState: decisionState,
+                            isDecisionTarget: item.id == projection.targetManagerID,
+                            isSelected: context.selectedManagerId == item.id
+                        ) {
+                            context.selectedManagerId = item.id
+                            context.selectedPackageId = nil
+                            context.selectedTaskId = nil
+                            context.selectedUpgradePlanStepId = nil
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var researchUnavailableState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                L10n.App.Health.unavailable.localized,
+                systemImage: OperationalHealth.unavailable.icon
+            )
+            .font(.headline)
+            .foregroundColor(HelmTheme.stateUnavailable)
+
+            Text(L10n.App.Managers.Research.datasetUnavailable.localized)
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .helmCardSurface(cornerRadius: 12)
+        .padding(.horizontal, 20)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var productionManagerGroups: some View {
+        ForEach(groupedManagers, id: \.authority) { group in
+            if !group.managers.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    managerGroupHeading(group.authority)
+                    ForEach(group.managers) { manager in
+                        productionManagerRow(manager, authority: group.authority)
+                    }
+                }
+            }
+        }
+
+        if !hasImplementedManagers {
+            Text(L10n.App.ManagersSection.empty.localized)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 20)
+        }
+    }
+
+    private func managerGroupHeading(_ authority: ManagerAuthority) -> some View {
+        Text(authority.key.localized)
+            .font(.caption.weight(.semibold))
+            .foregroundColor(.secondary)
+            .textCase(.uppercase)
+            .padding(.horizontal, 20)
+    }
+
+    private func productionManagerRow(
+        _ manager: ManagerInfo,
+        authority: ManagerAuthority
+    ) -> some View {
+        let canReorder = ManagerPriorityDragPolicy.canInitiateDrag(
+            isDetected: core.isManagerDetected(manager.id)
+        )
+        return ManagerSectionRow(
+            manager: manager,
+            status: managersState.managerStatusesById[manager.id],
+            health: core.health(forManagerId: manager.id),
+            outdatedCount: managersState.outdatedCountByManager[manager.id, default: 0],
+            packageCount: managersState.installedCountByManager[manager.id, default: 0],
+            operationStatus: managersState.managerOperationsById[manager.id],
+            isManagerUninstalling: core.isManagerUninstalling(manager.id),
+            isSelected: context.selectedManagerId == manager.id,
+            canReorder: canReorder,
+            onSelect: {
+                context.selectedManagerId = manager.id
+                context.selectedPackageId = nil
+                context.selectedTaskId = nil
+                context.selectedUpgradePlanStepId = nil
+            },
+            onViewPackages: {
+                context.selectedManagerId = manager.id
+                context.selectedPackageId = nil
+                context.selectedTaskId = nil
+                context.selectedUpgradePlanStepId = nil
+                context.managerFilterId = manager.id
+                context.selectedSection = .packages
+            },
+            onDetectManager: {
+                context.selectedManagerId = manager.id
+                context.selectedPackageId = nil
+                context.selectedTaskId = nil
+                context.selectedUpgradePlanStepId = nil
+                context.selectedSection = .managers
+                core.triggerDetection(for: manager.id)
+            },
+            onInstallManager: {
+                context.selectedManagerId = manager.id
+                context.selectedPackageId = nil
+                context.selectedTaskId = nil
+                context.selectedUpgradePlanStepId = nil
+                context.selectedSection = .managers
+                context.requestManagerInstallSheet(for: manager.id)
+            },
+            onToggleEnabled: { enabled in
+                handleManagerToggle(managerId: manager.id, enable: enabled)
+            }
+        )
+        .modifier(
+            ManagerPriorityDragModifier(
+                managerId: manager.id,
+                canInitiateDrag: canReorder,
+                draggedManagerId: $draggedManagerId
+            )
+        )
+        .onDrop(
+            of: [UTType.text.identifier],
+            delegate: ManagerPriorityDropDelegate(
+                core: core,
+                authority: authority,
+                targetManagerId: manager.id,
+                draggedManagerId: $draggedManagerId
+            )
+        )
+    }
+
     private func handleManagerToggle(managerId: String, enable: Bool) {
         guard let status = managersState.managerStatusesById[managerId] else {
             core.setManagerEnabled(managerId, enabled: enable)
@@ -252,6 +376,143 @@ struct ManagersSectionView: View {
 
     private func localizedDependentManagerList(_ managerIds: [String]) -> String {
         managerIds.map(localizedManagerDisplayName).joined(separator: ", ")
+    }
+}
+
+private struct ResearchEnvironmentManagerRow: View {
+    let item: ResearchEnvironmentManagerItem
+    let decisionState: ResearchManagerDecisionState
+    let isDecisionTarget: Bool
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    private var health: OperationalHealth {
+        OperationalHealth(
+            researchState: ResearchManagerHealthPolicy.health(
+                for: item.record,
+                decisionState: decisionState,
+                isDecisionTarget: isDecisionTarget
+            )
+        )
+    }
+
+    private var findingSummary: String? {
+        if isDecisionTarget {
+            return decisionState == .acknowledged
+                ? L10n.App.Inspector.MultiInstance.acknowledgedTitle.localized
+                : L10n.App.Inspector.MultiInstance.attentionTitle.localized
+        }
+        if item.record.findingCode == "source_refresh_failed" {
+            return L10n.App.Managers.Research.sourceRefreshFailed.localized
+        }
+        return item.record.findingCode == nil ? nil : L10n.App.Health.needsReview.localized
+    }
+
+    private var findingSymbol: String {
+        if decisionState == .acknowledged, isDecisionTarget {
+            return "checkmark.seal.fill"
+        }
+        return health.icon
+    }
+
+    private var findingColor: Color {
+        decisionState == .acknowledged && isDecisionTarget
+            ? HelmTheme.stateHealthy
+            : health.color
+    }
+
+    private var freshnessLabel: String {
+        switch item.record.freshness {
+        case "current":
+            return L10n.App.Managers.Research.current.localized
+        case "cached":
+            return L10n.App.Managers.Research.cached.localized
+        default:
+            return L10n.App.Managers.Research.unknown.localized
+        }
+    }
+
+    private var enabledLabel: String {
+        guard item.record.detected else { return L10n.App.Managers.State.notInstalled.localized }
+        return item.record.enabled
+            ? L10n.App.Managers.State.enabled.localized
+            : L10n.App.Managers.State.disabled.localized
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .top, spacing: 10) {
+                HealthBadgeView(status: health)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(localizedManagerDisplayName(item.manager.id))
+                        .font(.body.weight(.medium))
+                    HStack(spacing: 6) {
+                        Text(
+                            L10n.App.Managers.Research.installInstanceCount.localized(
+                                with: ["count": item.record.installInstances.count]
+                            )
+                        )
+                        Text("|")
+                        Text(freshnessLabel)
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                    if let findingSummary {
+                        Label(findingSummary, systemImage: findingSymbol)
+                            .font(.caption2)
+                            .foregroundColor(findingColor)
+                            .lineLimit(2)
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                Text(enabledLabel)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .helmCardSurface(cornerRadius: 12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        isSelected
+                            ? HelmTheme.selectionFill
+                            : (
+                                health == .needsReview
+                                    ? HelmTheme.stateNeedsReview.opacity(0.045)
+                                    : Color.clear
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(
+                                isSelected
+                                    ? HelmTheme.selectionStroke
+                                    : (
+                                        health == .needsReview
+                                            ? HelmTheme.stateNeedsReview.opacity(0.48)
+                                            : Color.clear
+                                    ),
+                                lineWidth: 0.9
+                            )
+                    )
+                    .allowsHitTesting(false)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+        .helmPointer()
+        .accessibilityLabel(localizedManagerDisplayName(item.manager.id))
+        .accessibilityValue(
+            [health.key.localized, findingSummary, enabledLabel, freshnessLabel]
+                .compactMap { $0 }
+                .joined(separator: ", ")
+        )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

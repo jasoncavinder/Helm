@@ -40,6 +40,27 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         return try JSONDecoder().decode([String: String].self, from: data)
     }
 
+    func testTaskFiveHungarianPresentationStringsAreLocalized() throws {
+        let english = try localeAppStrings("en")
+        let hungarian = try localeAppStrings("hu")
+        let keys = [
+            "app.health.healthy",
+            "app.health.error",
+            "app.health.not_installed",
+            "app.managers.research.instance.inactive",
+        ]
+
+        for key in keys {
+            let englishValue = try XCTUnwrap(english[key], "Missing English value for \(key)")
+            let hungarianValue = try XCTUnwrap(hungarian[key], "Missing Hungarian value for \(key)")
+            XCTAssertNotEqual(
+                hungarianValue,
+                englishValue,
+                "Task 5 Hungarian presentation must not reuse English for \(key)"
+            )
+        }
+    }
+
     func testLanguagePickerOptionsFitConfiguredWidthAcrossLocales() throws {
         let keys = [
             "app.settings.label.language.system_default",

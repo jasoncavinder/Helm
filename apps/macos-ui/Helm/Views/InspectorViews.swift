@@ -10,6 +10,23 @@ struct ControlCenterInspectorView: View {
     private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
     private let researchActivityProjection = WholeWorkflowResearchDatasetProvider
         .activeActivityProjection()
+    private let researchEnvironmentState = WholeWorkflowResearchDatasetProvider
+        .environmentRuntimeState()
+
+    private var researchEnvironmentProjection: ResearchEnvironmentProjection? {
+        guard case let .ready(projection) = researchEnvironmentState else { return nil }
+        return projection
+    }
+
+    private var researchEnvironmentUnavailable: Bool {
+        if case .unavailable = researchEnvironmentState { return true }
+        return false
+    }
+
+    private var researchEnvironmentInactive: Bool {
+        if case .inactive = researchEnvironmentState { return true }
+        return false
+    }
 
     private var selectedResearchActivity: WholeWorkflowResearchActivity? {
         researchActivityProjection?.activity(withSelectionID: context.selectedTaskId)
@@ -65,6 +82,10 @@ struct ControlCenterInspectorView: View {
         return ManagerInfo.all.first { $0.id == managerId }
     }
 
+    private var selectedResearchManager: ResearchManagerRecord? {
+        researchEnvironmentProjection?.manager(withID: context.selectedManagerId)
+    }
+
     var body: some View {
         ControlCenterLocaleRefreshHost(revision: context.localeRevision) {
             ScrollView {
@@ -100,7 +121,32 @@ struct ControlCenterInspectorView: View {
                         let packageInspectorToken = "\(package.id)|\(package.pinned ? 1 : 0)|\(package.version)|\(package.latestVersion ?? "")|\(runtimeStateToken)"
                         InspectorPackageDetailView(package: package)
                             .id(packageInspectorToken)
-                    } else if let manager = selectedManager {
+                    } else if let manager = selectedResearchManager,
+                              let managerInfo = selectedManager,
+                              let researchEnvironmentProjection {
+                        ResearchEnvironmentManagerInspectorView(
+                            managerInfo: managerInfo,
+                            manager: manager,
+                            projection: researchEnvironmentProjection,
+                            decisionState: context.researchManagerDecisionState(
+                                for: researchEnvironmentProjection.decision
+                            ),
+                            onAcknowledge: {
+                                context.acknowledgeResearchManagerDecision(
+                                    researchEnvironmentProjection.decision
+                                )
+                            },
+                            onRevisit: {
+                                context.revisitResearchManagerDecision(
+                                    researchEnvironmentProjection.decision
+                                )
+                            }
+                        )
+                    } else if context.selectedSection == .managers,
+                              researchEnvironmentUnavailable {
+                        researchEnvironmentUnavailableView
+                    } else if researchEnvironmentInactive,
+                              let manager = selectedManager {
                         InspectorManagerDetailView(
                             manager: manager,
                             status: core.managerStatuses[manager.id],
@@ -121,6 +167,23 @@ struct ControlCenterInspectorView: View {
                 .padding(14)
             }
         }
+    }
+
+    private var researchEnvironmentUnavailableView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                L10n.App.Health.unavailable.localized,
+                systemImage: OperationalHealth.unavailable.icon
+            )
+            .font(.callout.weight(.semibold))
+            .foregroundColor(HelmTheme.stateUnavailable)
+
+            Text(L10n.App.Managers.Research.datasetUnavailable.localized)
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -2333,6 +2396,303 @@ private final class InspectorLinkTextView: NSTextView {
     override func layout() {
         super.layout()
         invalidateIntrinsicContentSize()
+    }
+}
+
+// MARK: - Research Environment Inspector
+
+private struct ResearchEnvironmentManagerInspectorView: View {
+    @Environment(\.controlCenterLocaleRevision) private var localeRevision
+    let managerInfo: ManagerInfo
+    let manager: ResearchManagerRecord
+    let projection: ResearchEnvironmentProjection
+    let decisionState: ResearchManagerDecisionState
+    let onAcknowledge: () -> Void
+    let onRevisit: () -> Void
+    @State private var expandedInstanceIDs: Set<String> = []
+
+    private var isDecisionTarget: Bool {
+        manager.id == projection.targetManagerID
+    }
+
+    private var health: OperationalHealth {
+        OperationalHealth(
+            researchState: ResearchManagerHealthPolicy.health(
+                for: manager,
+                decisionState: decisionState,
+                isDecisionTarget: isDecisionTarget
+            )
+        )
+    }
+
+    private var orderedInstances: [ResearchInstallInstanceRecord] {
+        manager.installInstances.sorted { left, right in
+            if left.active != right.active { return left.active }
+            return left.displayPath.localizedCaseInsensitiveCompare(right.displayPath)
+                == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        content(forLocaleRevision: localeRevision)
+    }
+
+    private func content(forLocaleRevision _: Int) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: managerInfo.symbolName)
+                    .foregroundColor(.secondary)
+                Text(localizedManagerDisplayName(managerInfo.id))
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                HealthBadgeView(status: health)
+            }
+
+            Label(
+                L10n.App.Managers.Research.readOnlyNotice.localized,
+                systemImage: "checkmark.shield"
+            )
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if manager.findingCode == "source_refresh_failed" {
+                Label(
+                    L10n.App.Managers.Research.sourceRefreshFailed.localized,
+                    systemImage: health.icon
+                )
+                .font(.callout.weight(.medium))
+                .foregroundColor(health.color)
+            }
+
+            if isDecisionTarget {
+                decisionBanner
+            }
+
+            InspectorField(label: L10n.App.Inspector.category.localized) {
+                Text(localizedCategoryName(managerInfo.category))
+                    .font(.callout)
+            }
+
+            Text(localizedAuthorityName(manager.authority))
+                .font(.callout)
+                .foregroundColor(.secondary)
+
+            InspectorField(label: L10n.App.Inspector.installInstanceCount.localized) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(orderedInstances, id: \.id) { instance in
+                        instanceCard(instance)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var decisionBanner: some View {
+        let acknowledged = decisionState == .acknowledged
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: acknowledged ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .foregroundColor(
+                        acknowledged ? HelmTheme.stateHealthy : HelmTheme.stateNeedsReview
+                    )
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(
+                        acknowledged
+                            ? L10n.App.Inspector.MultiInstance.acknowledgedTitle.localized
+                            : L10n.App.Inspector.MultiInstance.attentionTitle.localized
+                    )
+                    .font(.callout.weight(.semibold))
+                    Text(
+                        acknowledged
+                            ? L10n.App.Managers.Research.decisionAcknowledged.localized
+                            : L10n.App.Managers.Research.decisionPending.localized
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Button(
+                acknowledged
+                    ? L10n.App.Inspector.MultiInstance.reevaluate.localized
+                    : L10n.App.Inspector.MultiInstance.keepMultiple.localized,
+                action: acknowledged ? onRevisit : onAcknowledge
+            )
+            .buttonStyle(HelmSecondaryButtonStyle())
+            .helmPointer()
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(HelmTheme.surfaceElevated)
+        )
+    }
+
+    private func instanceCard(_ instance: ResearchInstallInstanceRecord) -> some View {
+        let isExpanded = expandedInstanceIDs.contains(instance.id)
+        let status = policyStatus(for: instance)
+        let disclosureState = isExpanded
+            ? L10n.App.Managers.Research.detailsExpanded.localized
+            : L10n.App.Managers.Research.detailsCollapsed.localized
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                toggleInstance(instance.id)
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    if instance.active {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(HelmTheme.stateHealthy)
+                            .padding(.top, 1)
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(instance.displayPath)
+                            .font(.system(.caption, design: .monospaced))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                        HStack(spacing: 6) {
+                            researchBadge(
+                                instance.active
+                                    ? L10n.App.Managers.Research.active.localized
+                                    : L10n.App.Managers.Research.inactive.localized,
+                                color: instance.active
+                                    ? HelmTheme.stateHealthy
+                                    : HelmTheme.stateUnavailable
+                            )
+                            researchBadge(status.label, color: status.color)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
+            }
+            .buttonStyle(.plain)
+            .helmPointer()
+            .help(L10n.App.Managers.Research.toggleDetails.localized)
+            .accessibilityLabel(instance.displayPath)
+            .accessibilityValue(
+                [
+                    instance.active
+                        ? L10n.App.Managers.Research.active.localized
+                        : L10n.App.Managers.Research.inactive.localized,
+                    status.label,
+                    disclosureState,
+                ].compactMap { $0 }.joined(separator: ", ")
+            )
+            .accessibilityHint(L10n.App.Managers.Research.toggleDetails.localized)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(
+                        "\(L10n.App.Inspector.provenance.localized): "
+                            + provenanceLabel(instance.provenance)
+                    )
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                    Text(instanceExplanation(instance))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, instance.active ? 24 : 0)
+            }
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(HelmTheme.surfaceElevated)
+        )
+        .contextMenu {
+            Button(L10n.App.Managers.Research.toggleDetails.localized) {
+                toggleInstance(instance.id)
+            }
+        }
+    }
+
+    private func researchBadge(_ title: String, color: Color) -> some View {
+        Text(title)
+            .font(.caption2.weight(.semibold))
+            .lineLimit(1)
+            .foregroundColor(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.13)))
+    }
+
+    private func policyStatus(
+        for instance: ResearchInstallInstanceRecord
+    ) -> (label: String, color: Color) {
+        switch instance.policyState {
+        case "manageable":
+            return (L10n.App.Managers.Research.manageable.localized, HelmTheme.stateHealthy)
+        case "policy_blocked":
+            return (L10n.App.Managers.Research.policyBlocked.localized, HelmTheme.stateNeedsReview)
+        case "needs_confirmation":
+            return (L10n.App.Managers.Research.permissionRequired.localized, HelmTheme.stateNeedsReview)
+        default:
+            return (L10n.App.Health.unavailable.localized, HelmTheme.stateUnavailable)
+        }
+    }
+
+    private func instanceExplanation(_ instance: ResearchInstallInstanceRecord) -> String {
+        switch instance.policyState {
+        case "manageable" where instance.active:
+            return L10n.App.Managers.Research.activeExplanation.localized
+        case "policy_blocked":
+            return L10n.App.Managers.Research.policyBlockedExplanation.localized
+        case "needs_confirmation":
+            return L10n.App.Managers.Research.permissionExplanation.localized
+        default:
+            return L10n.App.Managers.Research.unavailableExplanation.localized
+        }
+    }
+
+    private func provenanceLabel(_ provenance: String) -> String {
+        switch provenance {
+        case "rustup_init":
+            return L10n.App.Managers.Research.provenanceRustupInstaller.localized
+        case "system":
+            return L10n.App.Managers.Research.provenanceSystem.localized
+        default:
+            return localizedManagerDisplayName(provenance)
+        }
+    }
+
+    private func localizedCategoryName(_ category: String) -> String {
+        switch category {
+        case "Toolchain": return L10n.App.Managers.Category.toolchain.localized
+        case "System/OS": return L10n.App.Managers.Category.systemOs.localized
+        case "Language": return L10n.App.Managers.Category.language.localized
+        case "App Store": return L10n.App.Managers.Category.appStore.localized
+        default: return category
+        }
+    }
+
+    private func localizedAuthorityName(_ authority: String) -> String {
+        switch authority {
+        case "authoritative": return L10n.App.Updates.Authority.authoritative.localized
+        case "standard": return L10n.App.Updates.Authority.standard.localized
+        case "guarded": return L10n.App.Updates.Authority.guarded.localized
+        default: return authority
+        }
+    }
+
+    private func toggleInstance(_ instanceID: String) {
+        if expandedInstanceIDs.contains(instanceID) {
+            expandedInstanceIDs.remove(instanceID)
+        } else {
+            expandedInstanceIDs.insert(instanceID)
+        }
     }
 }
 
