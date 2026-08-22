@@ -40,13 +40,33 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         return try JSONDecoder().decode([String: String].self, from: data)
     }
 
-    func testTaskFiveHungarianPresentationStringsAreLocalized() throws {
+    func testTaskFiveHungarianVisibleSurfaceStringsAreLocalized() throws {
         let english = try localeAppStrings("en")
         let hungarian = try localeAppStrings("hu")
         let keys = [
+            "app.settings.tab.title",
             "app.health.healthy",
             "app.health.error",
+            "app.health.running",
             "app.health.not_installed",
+            "app.overview.manager_health",
+            "app.overview.recent_tasks",
+            "app.packages.filter.upgradable",
+            "app.settings.section.service_health",
+            "app.settings.service_health.connection",
+            "app.settings.service_health.refresh_state",
+            "app.settings.service_health.last_check",
+            "app.settings.service_health.failed_tasks",
+            "app.settings.service_health.last_error",
+            "app.settings.service_health.copy_snapshot",
+            "app.settings.service_health.status.connected",
+            "app.settings.service_health.status.disconnected",
+            "app.settings.service_health.status.refreshing",
+            "app.settings.service_health.status.idle",
+            "app.settings.service_health.status.never",
+            "app.control_center.search_placeholder",
+            "app.inspector.title",
+            "app.inspector.empty",
             "app.managers.research.instance.inactive",
         ]
 

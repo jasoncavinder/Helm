@@ -4,6 +4,7 @@ import SwiftUI
 struct ControlCenterWindowView: View {
     @EnvironmentObject private var context: ControlCenterContext
     @ObservedObject private var core = HelmCore.shared
+    @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
     @Environment(\.colorScheme) private var colorScheme
     private let sidebarWidth: CGFloat = 232

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RedesignOverviewSectionView: View {
     private let core = HelmCore.shared
+    @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @EnvironmentObject private var context: ControlCenterContext
     @State private var expandedTaskId: String?
@@ -1338,6 +1339,7 @@ struct ReviewedUpgradeConfirmationSheet: View {
 }
 
 struct ManagerHealthCardView: View {
+    @ObservedObject private var localization = LocalizationManager.shared
     let title: String
     let authority: ManagerAuthority
     let status: OperationalHealth

@@ -522,6 +522,7 @@ final class ControlCenterContext: ControlCenterContextBase {
 }
 
 struct HealthBadgeView: View {
+    @ObservedObject private var localization = LocalizationManager.shared
     let status: OperationalHealth
 
     var body: some View {
@@ -540,6 +541,7 @@ struct HealthBadgeView: View {
 }
 
 struct WayfinderFooterStatusBadge: View {
+    @ObservedObject private var localization = LocalizationManager.shared
     let status: WayfinderFooterStatus
 
     private var color: Color {
