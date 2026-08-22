@@ -778,6 +778,7 @@
   "app.managers.research.decision.pending": "Helm がこれらのインストールをどう扱うか選択してください。ポリシーによるブロックは承認で解除できません。",
   "app.managers.research.decision.acknowledged": "複数のインストールを意図的に保持しています。ここで再評価できます。",
   "app.managers.research.instance.active": "アクティブ",
+  "app.managers.research.instance.inactive": "非アクティブ",
   "app.managers.research.instance.manageable": "管理可能",
   "app.managers.research.instance.policy_blocked": "ポリシーによりブロック",
   "app.managers.research.instance.permission_required": "権限が必要",

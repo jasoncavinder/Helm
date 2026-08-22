@@ -778,6 +778,7 @@
   "app.managers.research.decision.pending": "Choose how Helm should treat these installations. Authorization cannot override a policy block.",
   "app.managers.research.decision.acknowledged": "These installations are being kept intentionally. You can re-evaluate them here.",
   "app.managers.research.instance.active": "Active",
+  "app.managers.research.instance.inactive": "Inactive",
   "app.managers.research.instance.manageable": "Manageable",
   "app.managers.research.instance.policy_blocked": "Policy blocked",
   "app.managers.research.instance.permission_required": "Permission required",

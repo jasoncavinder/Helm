@@ -778,6 +778,7 @@
   "app.managers.research.decision.pending": "Elige cómo debe tratar Helm estas instalaciones. Una política no se puede omitir con autorización.",
   "app.managers.research.decision.acknowledged": "Estas instalaciones se conservarán a propósito. Puedes reevaluarlas aquí.",
   "app.managers.research.instance.active": "Activa",
+  "app.managers.research.instance.inactive": "Inactiva",
   "app.managers.research.instance.manageable": "Gestionable",
   "app.managers.research.instance.policy_blocked": "Bloqueada por política",
   "app.managers.research.instance.permission_required": "Requiere permiso",

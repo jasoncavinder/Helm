@@ -130,6 +130,7 @@ extension L10n {
                 static let decisionPending = "app.managers.research.decision.pending"
                 static let decisionAcknowledged = "app.managers.research.decision.acknowledged"
                 static let active = "app.managers.research.instance.active"
+                static let inactive = "app.managers.research.instance.inactive"
                 static let manageable = "app.managers.research.instance.manageable"
                 static let policyBlocked = "app.managers.research.instance.policy_blocked"
                 static let permissionRequired = "app.managers.research.instance.permission_required"

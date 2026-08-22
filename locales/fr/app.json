@@ -778,6 +778,7 @@
   "app.managers.research.decision.pending": "Choisissez comment Helm doit traiter ces installations. Une règle bloquante ne peut pas être contournée par autorisation.",
   "app.managers.research.decision.acknowledged": "Ces installations sont conservées volontairement. Vous pouvez les réévaluer ici.",
   "app.managers.research.instance.active": "Active",
+  "app.managers.research.instance.inactive": "Inactive",
   "app.managers.research.instance.manageable": "Gérable",
   "app.managers.research.instance.policy_blocked": "Bloquée par une règle",
   "app.managers.research.instance.permission_required": "Autorisation requise",

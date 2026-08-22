@@ -512,6 +512,7 @@ private struct ResearchEnvironmentManagerRow: View {
                 .compactMap { $0 }
                 .joined(separator: ", ")
         )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

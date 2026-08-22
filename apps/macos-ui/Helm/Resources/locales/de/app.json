@@ -778,6 +778,7 @@
   "app.managers.research.decision.pending": "Wählen Sie, wie Helm diese Installationen behandeln soll. Eine Richtliniensperre kann nicht autorisiert werden.",
   "app.managers.research.decision.acknowledged": "Diese Installationen werden absichtlich beibehalten. Sie können sie hier neu bewerten.",
   "app.managers.research.instance.active": "Aktiv",
+  "app.managers.research.instance.inactive": "Inaktiv",
   "app.managers.research.instance.manageable": "Verwaltbar",
   "app.managers.research.instance.policy_blocked": "Durch Richtlinie blockiert",
   "app.managers.research.instance.permission_required": "Berechtigung erforderlich",

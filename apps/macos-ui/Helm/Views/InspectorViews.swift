@@ -2556,12 +2556,14 @@ private struct ResearchEnvironmentManagerInspectorView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.leading)
                         HStack(spacing: 6) {
-                            if instance.active {
-                                researchBadge(
-                                    L10n.App.Managers.Research.active.localized,
-                                    color: HelmTheme.stateHealthy
-                                )
-                            }
+                            researchBadge(
+                                instance.active
+                                    ? L10n.App.Managers.Research.active.localized
+                                    : L10n.App.Managers.Research.inactive.localized,
+                                color: instance.active
+                                    ? HelmTheme.stateHealthy
+                                    : HelmTheme.stateUnavailable
+                            )
                             researchBadge(status.label, color: status.color)
                         }
                     }
@@ -2578,7 +2580,9 @@ private struct ResearchEnvironmentManagerInspectorView: View {
             .accessibilityLabel(instance.displayPath)
             .accessibilityValue(
                 [
-                    instance.active ? L10n.App.Managers.Research.active.localized : nil,
+                    instance.active
+                        ? L10n.App.Managers.Research.active.localized
+                        : L10n.App.Managers.Research.inactive.localized,
                     status.label,
                     disclosureState,
                 ].compactMap { $0 }.joined(separator: ", ")

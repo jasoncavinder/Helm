@@ -778,6 +778,7 @@
   "app.managers.research.decision.pending": "Escolha como o Helm deve tratar estas instalações. Uma política de bloqueio não pode ser anulada por autorização.",
   "app.managers.research.decision.acknowledged": "Estas instalações serão mantidas de propósito. Você pode reavaliá-las aqui.",
   "app.managers.research.instance.active": "Ativa",
+  "app.managers.research.instance.inactive": "Inativa",
   "app.managers.research.instance.manageable": "Gerenciável",
   "app.managers.research.instance.policy_blocked": "Bloqueada por política",
   "app.managers.research.instance.permission_required": "Permissão necessária",
