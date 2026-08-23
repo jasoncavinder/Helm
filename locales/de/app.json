@@ -45,6 +45,8 @@
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Helm beim Anmelden starten",
+  "app.settings.research.dataset_unavailable": "Die ausgewählten Forschungsdaten fehlen oder sind ungültig. Helm hat die Anmeldeeinstellung des Mac weder gelesen noch geändert.",
+  "app.settings.research.live_changes_unavailable": "Live-Systemeinstellungen sind nicht verfügbar, solange ein Forschungsdatensatz aktiv ist.",
   "app.settings.label.notifications": "Mitteilungen",
   "app.settings.label.notifications_description": "Bei neuen Updates, Plänen mit Handlungsbedarf oder Tasks, die eine Entscheidung brauchen, benachrichtigen. Die macOS-Mitteilungseinstellungen gelten ebenfalls.",
   "app.settings.label.auto_check": "Automatisch nach Updates suchen",

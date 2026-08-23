@@ -199,6 +199,8 @@
   "app.settings.label.language.german": "Deutsch",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "ログイン時にHelmを起動",
+  "app.settings.research.dataset_unavailable": "選択した調査データが見つからないか、無効です。Helm は Mac のログイン設定を読み取ったり変更したりしていません。",
+  "app.settings.research.live_changes_unavailable": "調査用フィクスチャが有効な間は、実際のシステム設定を変更できません。",
   "app.settings.label.notifications": "通知",
   "app.settings.label.notifications_description": "アップデートが見つかったとき、プランに対応が必要なとき、または実行中のタスクで判断が必要なときに通知します。macOSの通知権限も適用されます。",
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",

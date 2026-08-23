@@ -28,6 +28,40 @@ final class HelmCliShimCommandRunnerTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 5)
     }
 
+    func testResearchFixtureBlockPreservesManagedShimAndMarker() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let shimURL = directory.appendingPathComponent("helm")
+        let markerURL = directory.appendingPathComponent("install.json")
+        try "#!/bin/sh\n# helm-cli-shim: app-bundle\n".write(
+            to: shimURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        try "{\"channel\": \"app-bundle-shim\"}\n".write(
+            to: markerURL,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let result: Bool? = try ResearchFixtureLiveOperationGate.perform(
+            liveOperationsBlocked: true
+        ) {
+            try FileManager.default.removeItem(at: shimURL)
+            try FileManager.default.removeItem(at: markerURL)
+            return true
+        }
+        XCTAssertNil(result)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: shimURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
+    }
+
     private func run(
         executableURL: URL,
         arguments: [String],

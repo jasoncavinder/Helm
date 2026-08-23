@@ -45,6 +45,8 @@
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Iniciar Helm al iniciar sesión",
+  "app.settings.research.dataset_unavailable": "Los datos de investigación seleccionados faltan o no son válidos. Helm no leyó ni cambió el ajuste de inicio de sesión del Mac.",
+  "app.settings.research.live_changes_unavailable": "Los ajustes reales del sistema no están disponibles durante una prueba de investigación.",
   "app.settings.label.notifications": "Notificaciones",
   "app.settings.label.notifications_description": "Notificar cuando haya actualizaciones listas, planes que requieran revisión o tareas que necesiten una decisión. También se aplican los permisos de macOS.",
   "app.settings.label.auto_check": "Comprobar actualizaciones automáticamente",

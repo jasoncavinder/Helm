@@ -45,6 +45,8 @@
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Launch Helm at login",
+  "app.settings.research.dataset_unavailable": "The selected research data is missing or invalid. Helm did not read or change the Mac login setting.",
+  "app.settings.research.live_changes_unavailable": "Live system settings are unavailable while a research fixture is active.",
   "app.settings.label.notifications": "Notifications",
   "app.settings.label.notifications_description": "Notify when updates are ready, a plan needs review, or a running task needs a decision. macOS notification permissions also apply.",
   "app.settings.label.auto_check": "Auto-check for updates",

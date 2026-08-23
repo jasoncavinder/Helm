@@ -197,6 +197,7 @@ final class ControlCenterContext: ControlCenterContextBase {
     @Published private var libraryPackageFocusRequestState = LibraryPackageFocusRequestState()
     @Published private var researchEnvironmentDecisionSession =
         ResearchManagerDecisionSession()
+    @Published private var researchSettingsSession = ResearchSettingsSession()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isSidebarVisible: Bool = true
@@ -424,6 +425,23 @@ final class ControlCenterContext: ControlCenterContextBase {
         var session = researchEnvironmentDecisionSession
         guard session.revisit(decision) else { return false }
         researchEnvironmentDecisionSession = session
+        return true
+    }
+
+    func researchLaunchAtLoginValue(
+        for projection: ResearchSettingsDiagnosticsProjection
+    ) -> Bool {
+        researchSettingsSession.launchAtLoginValue(for: projection)
+    }
+
+    @discardableResult
+    func setResearchLaunchAtLogin(
+        _ enabled: Bool,
+        for projection: ResearchSettingsDiagnosticsProjection
+    ) -> Bool {
+        var session = researchSettingsSession
+        guard session.setLaunchAtLogin(enabled, for: projection) else { return false }
+        researchSettingsSession = session
         return true
     }
 

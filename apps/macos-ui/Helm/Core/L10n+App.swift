@@ -377,6 +377,11 @@ extension L10n {
                     static let unregistrationFailed = "app.settings.native_authorization.error.unregistration_failed"
                 }
             }
+            struct Research {
+                static let datasetUnavailable = "app.settings.research.dataset_unavailable"
+                static let liveChangesUnavailable =
+                    "app.settings.research.live_changes_unavailable"
+            }
             struct Label {
                 static let language = "app.settings.label.language"
                 static let systemDefault = "app.settings.label.language.system_default"
