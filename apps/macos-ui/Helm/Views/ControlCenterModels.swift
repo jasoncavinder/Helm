@@ -137,6 +137,23 @@ enum OperationalHealth: Equatable {
     }
 }
 
+extension OperationalHealth {
+    init(researchState: ResearchManagerHealthState) {
+        switch researchState {
+        case .healthy:
+            self = .healthy
+        case .needsReview:
+            self = .needsReview
+        case .error:
+            self = .error
+        case .unavailable:
+            self = .unavailable
+        case .notInstalled:
+            self = .notInstalled
+        }
+    }
+}
+
 extension WayfinderLocalizedText {
     var localized: String {
         key.localized(with: arguments)
@@ -178,6 +195,8 @@ final class ControlCenterContext: ControlCenterContextBase {
     @Published private var upgradeSheetPresentation = UpgradeSheetPresentationState()
     @Published private var upgradePlanConfirmationRequestState = UpgradePlanConfirmationRequestState()
     @Published private var libraryPackageFocusRequestState = LibraryPackageFocusRequestState()
+    @Published private var researchEnvironmentDecisionSession =
+        ResearchManagerDecisionSession()
     let controlCenterSearchFocusRouter = ControlCenterSearchFocusRouter()
     let settingsOpenRouter = HelmSettingsOpenRouter()
     @Published var isSidebarVisible: Bool = true
@@ -382,6 +401,32 @@ final class ControlCenterContext: ControlCenterContextBase {
         researchInstallConfirmation = nil
     }
 
+    func researchManagerDecisionState(
+        for decision: ResearchEnvironmentDecision
+    ) -> ResearchManagerDecisionState {
+        researchEnvironmentDecisionSession.state(for: decision)
+    }
+
+    @discardableResult
+    func acknowledgeResearchManagerDecision(
+        _ decision: ResearchEnvironmentDecision
+    ) -> Bool {
+        var session = researchEnvironmentDecisionSession
+        guard session.acknowledge(decision) else { return false }
+        researchEnvironmentDecisionSession = session
+        return true
+    }
+
+    @discardableResult
+    func revisitResearchManagerDecision(
+        _ decision: ResearchEnvironmentDecision
+    ) -> Bool {
+        var session = researchEnvironmentDecisionSession
+        guard session.revisit(decision) else { return false }
+        researchEnvironmentDecisionSession = session
+        return true
+    }
+
     func clearEnvironmentRouteStage() {
         environmentRouteFilterState.clear()
     }
@@ -477,6 +522,7 @@ final class ControlCenterContext: ControlCenterContextBase {
 }
 
 struct HealthBadgeView: View {
+    @ObservedObject private var localization = LocalizationManager.shared
     let status: OperationalHealth
 
     var body: some View {
@@ -495,6 +541,7 @@ struct HealthBadgeView: View {
 }
 
 struct WayfinderFooterStatusBadge: View {
+    @ObservedObject private var localization = LocalizationManager.shared
     let status: WayfinderFooterStatus
 
     private var color: Color {

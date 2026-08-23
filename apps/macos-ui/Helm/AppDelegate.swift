@@ -244,12 +244,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         }
 
         guard let settingsWindow = settingsWindowController?.window else { return }
-        settingsWindow.parent?.removeChildWindow(settingsWindow)
-        if let dashboardWindow = controlCenterWindowController?.window,
-           dashboardWindow.isVisible {
-            dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
-        }
-        settingsWindow.makeKeyAndOrderFront(nil)
+        let dashboardWindow = controlCenterWindowController?.window
+        let visibleDashboardWindow = dashboardWindow?.isVisible == true ? dashboardWindow : nil
+        HelmSettingsPanelPolicy.presentIndependently(
+            settingsWindow: settingsWindow,
+            above: visibleDashboardWindow
+        )
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -927,6 +927,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
     #endif
 
+    private func updatePrimaryWindowTitles() {
+        HelmPrimaryWindowTitlePolicy.apply(
+            dashboardTitle: L10n.App.Window.controlCenter.localized,
+            settingsTitle: L10n.App.Settings.windowTitle.localized,
+            dashboardWindow: controlCenterWindowController?.window,
+            settingsWindow: settingsWindowController?.window
+        )
+    }
+
     private func closePanel() {
         panel.orderOut(nil)
         eventMonitor?.stop()
@@ -959,6 +968,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             .sink { [weak self] _ in
                 self?.registerUserNotificationCategories()
                 self?.updateStatusItemAppearance()
+                self?.updatePrimaryWindowTitles()
             }
             .store(in: &cancellables)
 
@@ -1488,7 +1498,7 @@ extension AppDelegate {
             return
         }
         guard window == controlCenterWindowController?.window else { return }
-        HelmSettingsPanelPolicy.detachSettingsWindowFromClosingDashboard(
+        HelmSettingsPanelPolicy.detachSettingsWindowFromDashboard(
             settingsWindow: settingsWindowController?.window,
             dashboardWindow: window
         )

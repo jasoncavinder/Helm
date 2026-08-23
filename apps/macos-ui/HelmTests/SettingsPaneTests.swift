@@ -43,6 +43,27 @@ final class SettingsPaneTests: XCTestCase {
         }
     }
 
+    func testReportedSettingsPaneTitlesUseLocaleSpecificCopy() throws {
+        let english = try catalog(locale: "en", file: "app.json")
+        let reportedFallbacks: [(locale: String, keys: [String])] = [
+            ("hu", ["app.settings.section.general", "app.section.updates"]),
+            ("fr", ["app.settings.pane.sources"]),
+            ("de", ["app.section.updates", "app.settings.section.support_feedback"]),
+            ("es", ["app.settings.section.general"]),
+        ]
+
+        for fallback in reportedFallbacks {
+            let localized = try catalog(locale: fallback.locale, file: "app.json")
+            for key in fallback.keys {
+                XCTAssertNotEqual(
+                    try XCTUnwrap(localized[key]),
+                    try XCTUnwrap(english[key]),
+                    "Settings pane title must not reuse English for \(key) in \(fallback.locale)"
+                )
+            }
+        }
+    }
+
     func testWayfinderPopoverKeysResolveAcrossLocales() throws {
         let keys = [
             "app.popover.wayfinder.utilities",

@@ -11,6 +11,18 @@ enum HelmWindowChromePolicy {
     static let titleVisibility: NSWindow.TitleVisibility = .hidden
 }
 
+enum HelmPrimaryWindowTitlePolicy {
+    static func apply(
+        dashboardTitle: String,
+        settingsTitle: String,
+        dashboardWindow: NSWindow?,
+        settingsWindow: NSWindow?
+    ) {
+        dashboardWindow?.title = dashboardTitle
+        settingsWindow?.title = settingsTitle
+    }
+}
+
 enum HelmHostingSizingPolicy {
     static let windowOwned: NSHostingSizingOptions = []
 
@@ -164,7 +176,24 @@ enum HelmSettingsPanelPolicy {
         .fullScreenAuxiliary
     ]
 
-    static func detachSettingsWindowFromClosingDashboard(
+    static func presentIndependently(
+        settingsWindow: NSWindow,
+        above dashboardWindow: NSWindow?,
+        present: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) }
+    ) {
+        settingsWindow.parent?.removeChildWindow(settingsWindow)
+        if let dashboardWindow {
+            dashboardWindow.addChildWindow(settingsWindow, ordered: .above)
+        }
+
+        present(settingsWindow)
+        detachSettingsWindowFromDashboard(
+            settingsWindow: settingsWindow,
+            dashboardWindow: dashboardWindow
+        )
+    }
+
+    static func detachSettingsWindowFromDashboard(
         settingsWindow: NSWindow?,
         dashboardWindow: NSWindow?
     ) {
