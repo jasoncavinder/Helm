@@ -523,7 +523,7 @@
   "app.settings.service_health.copy_snapshot": "Szolgáltatási állapotkép másolása",
   "app.settings.service_health.status.connected": "Csatlakoztatva",
   "app.settings.service_health.status.disconnected": "Nincs csatlakoztatva",
-  "app.settings.service_health.status.refreshing": "Frissítés",
+  "app.settings.service_health.status.refreshing": "Frissítés folyamatban",
   "app.settings.service_health.status.idle": "Tétlen",
   "app.settings.service_health.status.never": "Soha",
   "app.walkthrough.control.next": "Next",

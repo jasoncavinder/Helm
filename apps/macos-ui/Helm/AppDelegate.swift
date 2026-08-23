@@ -927,6 +927,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
     #endif
 
+    private func updatePrimaryWindowTitles() {
+        HelmPrimaryWindowTitlePolicy.apply(
+            dashboardTitle: L10n.App.Window.controlCenter.localized,
+            settingsTitle: L10n.App.Settings.windowTitle.localized,
+            dashboardWindow: controlCenterWindowController?.window,
+            settingsWindow: settingsWindowController?.window
+        )
+    }
+
     private func closePanel() {
         panel.orderOut(nil)
         eventMonitor?.stop()
@@ -959,6 +968,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
             .sink { [weak self] _ in
                 self?.registerUserNotificationCategories()
                 self?.updateStatusItemAppearance()
+                self?.updatePrimaryWindowTitles()
             }
             .store(in: &cancellables)
 

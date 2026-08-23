@@ -30,6 +30,25 @@ final class HelmSettingsOpenRouterTests: XCTestCase {
         XCTAssertEqual(HelmWindowChromePolicy.titleVisibility, .hidden)
     }
 
+    func testPrimaryWindowTitlesRefreshForAccessibilityAfterLocaleChange() {
+        let dashboardWindow = NSWindow()
+        let settingsWindow = NSWindow()
+        dashboardWindow.title = "Helm Dashboard"
+        settingsWindow.title = "Helm Settings"
+
+        HelmPrimaryWindowTitlePolicy.apply(
+            dashboardTitle: "Helm vezérlőpult",
+            settingsTitle: "Helm beállításai",
+            dashboardWindow: dashboardWindow,
+            settingsWindow: settingsWindow
+        )
+
+        XCTAssertEqual(dashboardWindow.title, "Helm vezérlőpult")
+        XCTAssertEqual(settingsWindow.title, "Helm beállításai")
+        XCTAssertEqual(dashboardWindow.accessibilityTitle(), "Helm vezérlőpult")
+        XCTAssertEqual(settingsWindow.accessibilityTitle(), "Helm beállításai")
+    }
+
     func testPrimaryWindowFramesRemainOwnedByAppKit() {
         let controller = NSHostingController(rootView: EmptyView())
 

@@ -82,6 +82,15 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         }
     }
 
+    func testHungarianRefreshingStatusCommunicatesInProgressState() throws {
+        let hungarian = try localeAppStrings("hu")
+
+        XCTAssertEqual(
+            hungarian["app.settings.service_health.status.refreshing"],
+            "Frissítés folyamatban"
+        )
+    }
+
     func testLanguagePickerOptionsFitConfiguredWidthAcrossLocales() throws {
         let keys = [
             "app.settings.label.language.system_default",

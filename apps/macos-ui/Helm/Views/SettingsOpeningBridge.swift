@@ -11,6 +11,18 @@ enum HelmWindowChromePolicy {
     static let titleVisibility: NSWindow.TitleVisibility = .hidden
 }
 
+enum HelmPrimaryWindowTitlePolicy {
+    static func apply(
+        dashboardTitle: String,
+        settingsTitle: String,
+        dashboardWindow: NSWindow?,
+        settingsWindow: NSWindow?
+    ) {
+        dashboardWindow?.title = dashboardTitle
+        settingsWindow?.title = settingsTitle
+    }
+}
+
 enum HelmHostingSizingPolicy {
     static let windowOwned: NSHostingSizingOptions = []
 
