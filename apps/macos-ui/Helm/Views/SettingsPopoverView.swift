@@ -12,6 +12,8 @@ struct SettingsSectionView: View {
     @EnvironmentObject private var context: ControlCenterContext
     private let researchSettingsState = WholeWorkflowResearchDatasetProvider
         .settingsDiagnosticsRuntimeState()
+    private let researchFixtureBlocksLiveOperations = ResearchFixtureSafetyPolicy
+        .blocksLiveOperations()
 
     let selectedPane: SettingsPane
     let onResetCompleted: () -> Void
@@ -124,34 +126,34 @@ struct SettingsSectionView: View {
         selectedPane == pane
     }
 
-    private var launchAtLoginBinding: Binding<Bool> {
-        Binding(
-            get: {
-                switch researchSettingsState {
-                case let .ready(projection):
-                    return context.researchLaunchAtLoginValue(for: projection)
-                case .unavailable:
-                    return false
-                case .inactive:
-                    return core.launchAtLoginEnabled
-                }
-            },
-            set: { enabled in
-                switch researchSettingsState {
-                case let .ready(projection):
-                    context.setResearchLaunchAtLogin(enabled, for: projection)
-                case .unavailable:
-                    break
-                case .inactive:
-                    core.setLaunchAtLogin(enabled)
-                }
-            }
+    private var launchAtLoginPresentation: ResearchLaunchAtLoginPresentation {
+        let fixtureValue: Bool?
+        if case let .ready(projection) = researchSettingsState {
+            fixtureValue = context.researchLaunchAtLoginValue(for: projection)
+        } else {
+            fixtureValue = nil
+        }
+        return ResearchLaunchAtLoginPresentation.project(
+            runtimeState: researchSettingsState,
+            productionValue: core.launchAtLoginEnabled,
+            fixtureValue: fixtureValue
         )
     }
 
-    private var launchAtLoginUnavailable: Bool {
-        if case .unavailable = researchSettingsState { return true }
-        return false
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLoginPresentation.booleanValue ?? false },
+            set: { enabled in
+                switch launchAtLoginPresentation.mutationTarget {
+                case let .fixture(projection):
+                    context.setResearchLaunchAtLogin(enabled, for: projection)
+                case .production:
+                    core.setLaunchAtLogin(enabled)
+                case .none:
+                    break
+                }
+            }
+        )
     }
 
     var body: some View {
@@ -179,12 +181,29 @@ struct SettingsSectionView: View {
 
                         Divider()
 
-                        Toggle(
-                            L10n.App.Settings.Label.launchAtLogin.localized,
-                            isOn: launchAtLoginBinding
-                        )
-                        .toggleStyle(.switch)
-                        .disabled(launchAtLoginUnavailable)
+                        if launchAtLoginPresentation.isInteractive {
+                            Toggle(
+                                L10n.App.Settings.Label.launchAtLogin.localized,
+                                isOn: launchAtLoginBinding
+                            )
+                            .toggleStyle(.switch)
+                        } else {
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text(L10n.App.Settings.Label.launchAtLogin.localized)
+                                    Spacer()
+                                    Text(L10n.App.Health.unavailable.localized)
+                                        .foregroundColor(.secondary)
+                                }
+                                if let explanationKey = launchAtLoginPresentation.explanationKey {
+                                    Text(explanationKey.localized)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
                     }
 
                     if privilegedHelper.shouldPresentSettings {
@@ -327,50 +346,62 @@ struct SettingsSectionView: View {
 
                 if showsPane(.cli) {
                     SettingsCard(title: L10n.App.Settings.CLI.section.localized, icon: "terminal", fill: cardFill) {
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.CLI.status.localized,
-                            value: helmCliStatusLabel
-                        )
-                        ServiceHealthStatusRow(
-                            title: L10n.App.Settings.CLI.shimPath.localized,
-                            value: core.helmCliShimPath,
-                            multiline: true
-                        )
-                        if let bundledPath = core.helmCliBundledPath, !bundledPath.isEmpty {
+                        if researchFixtureBlocksLiveOperations {
                             ServiceHealthStatusRow(
-                                title: L10n.App.Settings.CLI.bundledPath.localized,
-                                value: bundledPath,
-                                multiline: true
+                                title: L10n.App.Settings.CLI.status.localized,
+                                value: L10n.App.Health.unavailable.localized
                             )
-                        }
-
-                        Text(L10n.App.Settings.CLI.description.localized)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Divider()
-
-                        SettingsActionButton(
-                            title: helmCliActionTitle,
-                            badges: [],
-                            isProminent: false,
-                            useSystemStyle: true
-                        ) {
-                            if core.helmCliShimInstalled {
-                                core.removeHelmCliShim()
-                            } else {
-                                core.installHelmCliShim()
-                            }
-                        }
-                        .disabled(
-                            core.helmCliShimOperationInProgress ||
-                            (!core.helmCliBundledAvailable && !core.helmCliShimInstalled)
-                        )
-
-                        if let statusMessage = core.helmCliShimStatusMessage, !statusMessage.isEmpty {
-                            Text(statusMessage)
+                            Text(L10n.App.Settings.Research.liveChangesUnavailable.localized)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            ServiceHealthStatusRow(
+                                title: L10n.App.Settings.CLI.status.localized,
+                                value: helmCliStatusLabel
+                            )
+                            ServiceHealthStatusRow(
+                                title: L10n.App.Settings.CLI.shimPath.localized,
+                                value: core.helmCliShimPath,
+                                multiline: true
+                            )
+                            if let bundledPath = core.helmCliBundledPath, !bundledPath.isEmpty {
+                                ServiceHealthStatusRow(
+                                    title: L10n.App.Settings.CLI.bundledPath.localized,
+                                    value: bundledPath,
+                                    multiline: true
+                                )
+                            }
+
+                            Text(L10n.App.Settings.CLI.description.localized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            Divider()
+
+                            SettingsActionButton(
+                                title: helmCliActionTitle,
+                                badges: [],
+                                isProminent: false,
+                                useSystemStyle: true
+                            ) {
+                                if core.helmCliShimInstalled {
+                                    core.removeHelmCliShim()
+                                } else {
+                                    core.installHelmCliShim()
+                                }
+                            }
+                            .disabled(
+                                core.helmCliShimOperationInProgress ||
+                                (!core.helmCliBundledAvailable && !core.helmCliShimInstalled)
+                            )
+
+                            if let statusMessage = core.helmCliShimStatusMessage,
+                               !statusMessage.isEmpty {
+                                Text(statusMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -567,11 +598,15 @@ struct SettingsSectionView: View {
             if case .inactive = researchSettingsState {
                 core.refreshLaunchAtLogin()
             }
-            core.refreshHelmCliShimStatus()
-            privilegedHelper.refresh()
+            if !researchFixtureBlocksLiveOperations {
+                core.refreshHelmCliShimStatus()
+                privilegedHelper.refresh()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            privilegedHelper.refresh()
+            if !researchFixtureBlocksLiveOperations {
+                privilegedHelper.refresh()
+            }
         }
     }
 }

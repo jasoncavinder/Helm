@@ -101,6 +101,8 @@
 		R492000000000000000000003 /* WholeWorkflowResearchDatasetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */; };
 		R492000000000000000000004 /* WholeWorkflowResearchDatasetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */; };
 		R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */; };
+		R530000000000000000000001 /* ResearchSettingsDiagnosticsProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */; };
+		R530000000000000000000002 /* ResearchSettingsDiagnosticsProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */; };
 		R527000000000000000000001 /* ResearchEnvironmentCanonicalManagers.swift in Sources */ = {isa = PBXBuildFile; fileRef = R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */; };
 		R527000000000000000000002 /* ResearchEnvironmentCanonicalManagers.swift in Sources */ = {isa = PBXBuildFile; fileRef = R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */; };
 		R513000000000000000000001 /* LibraryResultProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = R513000000000000000000011 /* LibraryResultProvenance.swift */; };
@@ -313,6 +315,7 @@
 		R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDataset.swift; sourceTree = "<group>"; };
 		R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetValidator.swift; sourceTree = "<group>"; };
 		R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetTests.swift; sourceTree = "<group>"; };
+		R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResearchSettingsDiagnosticsProjection.swift; sourceTree = "<group>"; };
 		R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResearchEnvironmentCanonicalManagers.swift; sourceTree = "<group>"; };
 		R513000000000000000000011 /* LibraryResultProvenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryResultProvenance.swift; sourceTree = "<group>"; };
 		R513000000000000000000012 /* LibraryResultProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryResultProvenanceTests.swift; sourceTree = "<group>"; };
@@ -447,6 +450,7 @@
 				Q100000000000000000000001 /* WayfinderPresentationProjection.swift */,
 				R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */,
 				R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */,
+				R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */,
 				R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */,
 				R513000000000000000000011 /* LibraryResultProvenance.swift */,
 				R513100000000000000000011 /* PackageInspectorSelectionPolicy.swift */,
@@ -951,6 +955,7 @@
 				R200000000000000000000001 /* WayfinderCourseIndicatorView.swift in Sources */,
 				R492000000000000000000001 /* WholeWorkflowResearchDataset.swift in Sources */,
 				R492000000000000000000003 /* WholeWorkflowResearchDatasetValidator.swift in Sources */,
+				R530000000000000000000001 /* ResearchSettingsDiagnosticsProjection.swift in Sources */,
 				R527000000000000000000001 /* ResearchEnvironmentCanonicalManagers.swift in Sources */,
 				R494000000000000000000001 /* UpgradeSheetPresentationSupport.swift in Sources */,
 			);
@@ -1004,6 +1009,7 @@
 				Q200000000000000000000003 /* WayfinderPresentationProjectionTests.swift in Sources */,
 				R492000000000000000000002 /* WholeWorkflowResearchDataset.swift in Sources */,
 				R492000000000000000000004 /* WholeWorkflowResearchDatasetValidator.swift in Sources */,
+				R530000000000000000000002 /* ResearchSettingsDiagnosticsProjection.swift in Sources */,
 				R527000000000000000000002 /* ResearchEnvironmentCanonicalManagers.swift in Sources */,
 				R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */,
 				R513000000000000000000002 /* LibraryResultProvenance.swift in Sources */,

@@ -101,18 +101,23 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
     let availability: PrivilegedHelperRegistrationAvailability
 
     private let service: PrivilegedHelperRegistrationServicing?
+    private let blocksLiveOperations: () -> Bool
 
     var shouldPresentSettings: Bool {
-        availability != .unsupportedChannel
+        availability != .unsupportedChannel && !blocksLiveOperations()
     }
 
     init(
         availability: PrivilegedHelperRegistrationAvailability,
-        service: PrivilegedHelperRegistrationServicing?
+        service: PrivilegedHelperRegistrationServicing?,
+        blocksLiveOperations: @escaping () -> Bool = { false }
     ) {
         self.availability = availability
         self.service = service
-        if availability == .available {
+        self.blocksLiveOperations = blocksLiveOperations
+        if blocksLiveOperations() {
+            status = .unavailable
+        } else if availability == .available {
             status = service?.registrationStatus ?? .notFound
         } else {
             status = .unavailable
@@ -121,7 +126,10 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
 
     static func production(
         bundle: Bundle = .main,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        blocksLiveOperations: @escaping () -> Bool = {
+            ResearchFixtureSafetyPolicy.blocksLiveOperations()
+        }
     ) -> PrivilegedHelperRegistrationController {
         let helperURL = bundle.bundleURL.appendingPathComponent(helperExecutableRelativePath)
         let plistURL = bundle.bundleURL.appendingPathComponent(launchDaemonPlistRelativePath)
@@ -131,21 +139,28 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
             launchDaemonPlistExists: fileManager.fileExists(atPath: plistURL.path)
         )
         let service: PrivilegedHelperRegistrationServicing? = availability == .available
+            && !blocksLiveOperations()
             ? SMPrivilegedHelperService(plistName: launchDaemonPlistName)
             : nil
         return PrivilegedHelperRegistrationController(
             availability: availability,
-            service: service
+            service: service,
+            blocksLiveOperations: blocksLiveOperations
         )
     }
 
     func refresh() {
         operationError = nil
+        guard !blocksLiveOperations() else {
+            status = .unavailable
+            return
+        }
         refreshStatus()
     }
 
     func register() {
-        guard availability == .available,
+        guard !blocksLiveOperations(),
+              availability == .available,
               let service,
               !operationInProgress else {
             return
@@ -184,7 +199,8 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
     }
 
     func unregister() {
-        guard availability == .available,
+        guard !blocksLiveOperations(),
+              availability == .available,
               let service,
               !operationInProgress else {
             return
@@ -208,12 +224,12 @@ final class PrivilegedHelperRegistrationController: ObservableObject {
     }
 
     func openSystemSettingsLoginItems() {
-        guard availability == .available else { return }
+        guard !blocksLiveOperations(), availability == .available else { return }
         service?.openSystemSettingsLoginItems()
     }
 
     private func refreshStatus() {
-        guard availability == .available else {
+        guard !blocksLiveOperations(), availability == .available else {
             status = .unavailable
             return
         }

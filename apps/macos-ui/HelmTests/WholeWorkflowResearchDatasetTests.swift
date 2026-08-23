@@ -859,6 +859,62 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         #endif
     }
 
+    func testTaskSixLaunchAtLoginPresentationDistinguishesEveryRuntimeState() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            ResearchSettingsDiagnosticsProjector.project(dataset)
+        )
+
+        XCTAssertEqual(
+            ResearchLaunchAtLoginPresentation.project(
+                runtimeState: .inactive,
+                productionValue: true,
+                fixtureValue: nil
+            ),
+            ResearchLaunchAtLoginPresentation(
+                booleanValue: true,
+                mutationTarget: .production,
+                explanationKey: nil
+            )
+        )
+        XCTAssertEqual(
+            ResearchLaunchAtLoginPresentation.project(
+                runtimeState: .ready(projection),
+                productionValue: false,
+                fixtureValue: true
+            ),
+            ResearchLaunchAtLoginPresentation(
+                booleanValue: true,
+                mutationTarget: .fixture(projection),
+                explanationKey: nil
+            )
+        )
+
+        let unavailable = ResearchLaunchAtLoginPresentation.project(
+            runtimeState: .unavailable,
+            productionValue: true,
+            fixtureValue: nil
+        )
+        XCTAssertNil(unavailable.booleanValue)
+        XCTAssertFalse(unavailable.isInteractive)
+        XCTAssertEqual(
+            unavailable.explanationKey,
+            ResearchSettingsDiagnosticsLocalization.datasetUnavailable
+        )
+
+        let safetyBlocked = ResearchLaunchAtLoginPresentation.project(
+            runtimeState: .safetyBlocked,
+            productionValue: true,
+            fixtureValue: nil
+        )
+        XCTAssertNil(safetyBlocked.booleanValue)
+        XCTAssertFalse(safetyBlocked.isInteractive)
+        XCTAssertEqual(
+            safetyBlocked.explanationKey,
+            ResearchSettingsDiagnosticsLocalization.liveChangesUnavailable
+        )
+    }
+
     func testTaskFiveProjectsCanonicalEnvironmentAndProvenance() throws {
         let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
         let projection = try XCTUnwrap(
@@ -1079,7 +1135,7 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
             WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
                 environment: popoverEnvironment
             ),
-            .inactive
+            .safetyBlocked
         )
         XCTAssertNil(
             WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(

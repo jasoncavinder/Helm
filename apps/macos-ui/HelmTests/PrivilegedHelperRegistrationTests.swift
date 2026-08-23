@@ -47,6 +47,30 @@ final class PrivilegedHelperRegistrationTests: XCTestCase {
         XCTAssertEqual(service.openSystemSettingsCallCount, 0)
     }
 
+    func testResearchFixtureBlockSuppressesStatusReadsAndOperations() {
+        let service = FakePrivilegedHelperRegistrationService(status: .notRegistered)
+        let controller = PrivilegedHelperRegistrationController(
+            availability: .available,
+            service: service,
+            blocksLiveOperations: { true }
+        )
+
+        XCTAssertFalse(controller.shouldPresentSettings)
+        XCTAssertEqual(controller.status, .unavailable)
+        XCTAssertEqual(service.registrationStatusReadCount, 0)
+
+        controller.refresh()
+        controller.register()
+        controller.unregister()
+        controller.openSystemSettingsLoginItems()
+
+        XCTAssertEqual(controller.status, .unavailable)
+        XCTAssertEqual(service.registrationStatusReadCount, 0)
+        XCTAssertEqual(service.registerCallCount, 0)
+        XCTAssertEqual(service.unregisterCallCount, 0)
+        XCTAssertEqual(service.openSystemSettingsCallCount, 0)
+    }
+
     func testControllerPreservesEveryServiceStatus() {
         let statuses: [PrivilegedHelperRegistrationStatus] = [
             .notRegistered,
@@ -184,17 +208,28 @@ private enum TestError: Error {
 }
 
 private final class FakePrivilegedHelperRegistrationService: PrivilegedHelperRegistrationServicing {
-    var registrationStatus: PrivilegedHelperRegistrationStatus
+    private var storedRegistrationStatus: PrivilegedHelperRegistrationStatus
     var statusAfterRegister: PrivilegedHelperRegistrationStatus?
     var statusAfterUnregister: PrivilegedHelperRegistrationStatus?
     var registerError: Error?
     var unregisterError: Error?
+    var registrationStatusReadCount = 0
     var registerCallCount = 0
     var unregisterCallCount = 0
     var openSystemSettingsCallCount = 0
 
+    var registrationStatus: PrivilegedHelperRegistrationStatus {
+        get {
+            registrationStatusReadCount += 1
+            return storedRegistrationStatus
+        }
+        set {
+            storedRegistrationStatus = newValue
+        }
+    }
+
     init(status: PrivilegedHelperRegistrationStatus) {
-        registrationStatus = status
+        storedRegistrationStatus = status
     }
 
     func register() throws {

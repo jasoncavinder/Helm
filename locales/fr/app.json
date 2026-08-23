@@ -199,6 +199,8 @@
   "app.settings.label.language.german": "Deutsch",
   "app.settings.label.language.japanese": "日本語",
   "app.settings.label.launch_at_login": "Lancer Helm à l’ouverture de session",
+  "app.settings.research.dataset_unavailable": "Les données de recherche sont absentes ou invalides. Helm n’a ni lu ni modifié le réglage de connexion du Mac.",
+  "app.settings.research.live_changes_unavailable": "Les réglages système actifs sont indisponibles tant qu’un jeu de données de recherche est actif.",
   "app.settings.label.notifications": "Notifications",
   "app.settings.label.notifications_description": "Notifier pour les mises à jour, les plans à examiner ou les tâches nécessitant une décision. Les autorisations de macOS s’appliquent également.",
   "app.settings.label.language.portuguese_brazilian": "Português (Brasil)",

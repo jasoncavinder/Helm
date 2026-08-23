@@ -115,6 +115,10 @@ extension HelmCore {
     }
 
     func refreshHelmCliShimStatus() {
+        guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else {
+            logger.info("Ignoring Helm CLI shim status refresh while a research fixture is active")
+            return
+        }
         let status = HelmCliShimInstaller.status(
             bundle: .main,
             shimURL: Self.defaultHelmCliShimURL()
@@ -129,6 +133,10 @@ extension HelmCore {
     }
 
     func installHelmCliShim() {
+        guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else {
+            logger.info("Ignoring Helm CLI shim installation while a research fixture is active")
+            return
+        }
         guard !helmCliShimOperationInProgress else { return }
 
         DispatchQueue.main.async {
@@ -252,6 +260,10 @@ extension HelmCore {
     }
 
     func removeHelmCliShim() {
+        guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else {
+            logger.info("Ignoring Helm CLI shim removal while a research fixture is active")
+            return
+        }
         guard !helmCliShimOperationInProgress else { return }
 
         DispatchQueue.main.async {
@@ -260,10 +272,14 @@ extension HelmCore {
         }
 
         do {
-            let removed = try HelmCliShimInstaller.remove(
-                shimURL: Self.defaultHelmCliShimURL(),
-                markerURL: Self.defaultHelmCliInstallMarkerURL()
-            )
+            let removed = try ResearchFixtureLiveOperationGate.perform(
+                liveOperationsBlocked: ResearchFixtureSafetyPolicy.blocksLiveOperations()
+            ) {
+                try HelmCliShimInstaller.remove(
+                    shimURL: Self.defaultHelmCliShimURL(),
+                    markerURL: Self.defaultHelmCliInstallMarkerURL()
+                )
+            } ?? false
             if removed {
                 logger.info("Removed Helm CLI shim at \(Self.defaultHelmCliShimURL().path, privacy: .public)")
             } else {
