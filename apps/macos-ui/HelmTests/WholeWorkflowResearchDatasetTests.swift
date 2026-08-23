@@ -738,6 +738,127 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertNil(WholeWorkflowResearchActivityProjector.project(dataset))
     }
 
+    func testTaskSixProjectsCanonicalSettingAndDiagnosticsRoute() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            ResearchSettingsDiagnosticsProjector.project(dataset)
+        )
+
+        XCTAssertEqual(projection.datasetID, "v0.20-whole-workflow-v1")
+        XCTAssertEqual(projection.scenarioID, "settings-and-diagnostics")
+        XCTAssertEqual(
+            projection.launchAtLoginSetting,
+            ResearchSettingRecord(
+                id: "setting-launch-at-login",
+                key: "launch_at_login",
+                booleanValue: false
+            )
+        )
+        XCTAssertEqual(projection.failedActivitySelectionID, "7001")
+        XCTAssertEqual(projection.copyDiagnosticsActionID, "recovery-copy-diagnostics")
+        XCTAssertEqual(
+            projection.failedActivityDeepLink,
+            WayfinderDeepLink(
+                destination: .activity,
+                entityID: "7001",
+                focus: .selectedEntity
+            )
+        )
+    }
+
+    func testTaskSixLaunchAtLoginChangeIsFixtureLocalAndReversible() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            ResearchSettingsDiagnosticsProjector.project(dataset)
+        )
+        var session = ResearchSettingsSession()
+
+        XCTAssertFalse(session.launchAtLoginValue(for: projection))
+        XCTAssertFalse(session.setLaunchAtLogin(false, for: projection))
+        XCTAssertTrue(session.setLaunchAtLogin(true, for: projection))
+        XCTAssertTrue(session.launchAtLoginValue(for: projection))
+        XCTAssertFalse(session.setLaunchAtLogin(true, for: projection))
+        XCTAssertTrue(session.setLaunchAtLogin(false, for: projection))
+        XCTAssertFalse(session.launchAtLoginValue(for: projection))
+    }
+
+    func testTaskSixProjectionFailsClosedForCanonicalDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let mutations = [
+            (
+                "\"id\": \"setting-launch-at-login\",\n        \"key\": \"launch_at_login\",\n        \"booleanValue\": false",
+                "\"id\": \"setting-launch-at-login\",\n        \"key\": \"launch_at_login\",\n        \"booleanValue\": true",
+                "settings.canonical_record"
+            ),
+            (
+                "\"setting-launch-at-login\",\n        \"activity-npm-verification\",\n        \"recovery-copy-diagnostics\"",
+                "\"activity-npm-verification\",\n        \"setting-launch-at-login\",\n        \"recovery-copy-diagnostics\"",
+                "scenarios.record_order"
+            ),
+            (
+                "\"id\": \"recovery-copy-diagnostics\",\n        \"activityId\": \"activity-npm-verification\",\n        \"action\": \"copy_diagnostics\",\n        \"allowed\": true",
+                "\"id\": \"recovery-copy-diagnostics\",\n        \"activityId\": \"activity-npm-verification\",\n        \"action\": \"copy_diagnostics\",\n        \"allowed\": false",
+                "recovery.canonical_actions"
+            ),
+        ]
+
+        for mutation in mutations {
+            let modified = try replacingFirst(
+                mutation.0,
+                with: mutation.1,
+                in: source
+            )
+            let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+            let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+            XCTAssertTrue(
+                issues.contains { $0.code == mutation.2 },
+                "Expected \(mutation.2) for \(mutation.0)"
+            )
+            XCTAssertNil(ResearchSettingsDiagnosticsProjector.project(dataset))
+        }
+    }
+
+    func testTaskSixProviderFailsClosedForMissingSelectedDataset() throws {
+        let environment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path
+        ]
+
+        #if DEBUG
+        let projection = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeSettingsDiagnosticsProjection(
+                environment: environment
+            )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
+                environment: environment
+            ),
+            .ready(projection)
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(environment: [:]),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
+                environment: [
+                    WholeWorkflowResearchDatasetProvider.environmentKey:
+                        "/tmp/missing-helm-research-task-six.json"
+                ]
+            ),
+            .unavailable
+        )
+        #else
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
+                environment: environment
+            ),
+            .inactive
+        )
+        #endif
+    }
+
     func testTaskFiveProjectsCanonicalEnvironmentAndProvenance() throws {
         let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
         let projection = try XCTUnwrap(
@@ -907,6 +1028,17 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertNotNil(
             WholeWorkflowResearchDatasetProvider.activeActivityProjection(environment: environment)
         )
+        let settingsDiagnosticsProjection = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeSettingsDiagnosticsProjection(
+                environment: environment
+            )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
+                environment: environment
+            ),
+            .ready(settingsDiagnosticsProjection)
+        )
         let environmentProjection = try XCTUnwrap(
             WholeWorkflowResearchDatasetProvider.activeEnvironmentProjection(
                 environment: environment
@@ -943,6 +1075,12 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
             ),
             .inactive
         )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
+                environment: popoverEnvironment
+            ),
+            .inactive
+        )
         XCTAssertNil(
             WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
                 environment: popoverEnvironment
@@ -964,6 +1102,12 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         )
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.environmentRuntimeState(
+                environment: missingEnvironment
+            ),
+            .unavailable
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
                 environment: missingEnvironment
             ),
             .unavailable

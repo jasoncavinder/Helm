@@ -31,6 +31,10 @@ extension HelmCore {
     // MARK: - App Lifecycle
 
     func refreshLaunchAtLogin() {
+        guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else {
+            logger.info("Ignoring launch-at-login status refresh while a research fixture is active")
+            return
+        }
         let enabled = SMAppService.mainApp.status == .enabled
         DispatchQueue.main.async {
             UserDefaults.standard.set(enabled, forKey: Self.launchAtLoginEnabledKey)
@@ -39,6 +43,10 @@ extension HelmCore {
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
+        guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else {
+            logger.info("Ignoring launch-at-login mutation while a research fixture is active")
+            return
+        }
         do {
             if enabled {
                 try SMAppService.mainApp.register()

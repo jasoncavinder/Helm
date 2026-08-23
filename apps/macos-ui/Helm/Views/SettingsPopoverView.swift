@@ -10,6 +10,8 @@ struct SettingsSectionView: View {
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var privilegedHelper = PrivilegedHelperRegistrationController.shared
     @EnvironmentObject private var context: ControlCenterContext
+    private let researchSettingsState = WholeWorkflowResearchDatasetProvider
+        .settingsDiagnosticsRuntimeState()
 
     let selectedPane: SettingsPane
     let onResetCompleted: () -> Void
@@ -122,6 +124,36 @@ struct SettingsSectionView: View {
         selectedPane == pane
     }
 
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: {
+                switch researchSettingsState {
+                case let .ready(projection):
+                    return context.researchLaunchAtLoginValue(for: projection)
+                case .unavailable:
+                    return false
+                case .inactive:
+                    return core.launchAtLoginEnabled
+                }
+            },
+            set: { enabled in
+                switch researchSettingsState {
+                case let .ready(projection):
+                    context.setResearchLaunchAtLogin(enabled, for: projection)
+                case .unavailable:
+                    break
+                case .inactive:
+                    core.setLaunchAtLogin(enabled)
+                }
+            }
+        )
+    }
+
+    private var launchAtLoginUnavailable: Bool {
+        if case .unavailable = researchSettingsState { return true }
+        return false
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
@@ -147,11 +179,12 @@ struct SettingsSectionView: View {
 
                         Divider()
 
-                        Toggle(L10n.App.Settings.Label.launchAtLogin.localized, isOn: Binding(
-                            get: { core.launchAtLoginEnabled },
-                            set: { core.setLaunchAtLogin($0) }
-                        ))
+                        Toggle(
+                            L10n.App.Settings.Label.launchAtLogin.localized,
+                            isOn: launchAtLoginBinding
+                        )
                         .toggleStyle(.switch)
+                        .disabled(launchAtLoginUnavailable)
                     }
 
                     if privilegedHelper.shouldPresentSettings {
@@ -531,7 +564,9 @@ struct SettingsSectionView: View {
         }
         .onAppear {
             appUpdate.refreshState()
-            core.refreshLaunchAtLogin()
+            if case .inactive = researchSettingsState {
+                core.refreshLaunchAtLogin()
+            }
             core.refreshHelmCliShimStatus()
             privilegedHelper.refresh()
         }

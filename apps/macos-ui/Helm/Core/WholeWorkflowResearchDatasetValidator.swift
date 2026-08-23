@@ -148,6 +148,15 @@ enum WholeWorkflowResearchDatasetValidator {
                     into: &issues
                 )
             }
+            if scenario.taskNumber == 6 {
+                require(
+                    WholeWorkflowResearchTaskSixContract.matchesScenario(scenario),
+                    code: "scenarios.record_order",
+                    path: "scenarios[\(index)].recordIds",
+                    message: "Task 6 must preserve setting, failed activity, then diagnostics action order.",
+                    into: &issues
+                )
+            }
         }
     }
 
@@ -200,19 +209,9 @@ enum WholeWorkflowResearchDatasetValidator {
             )
         case 6:
             return ScenarioContract(
-                scenarioID: "settings-and-diagnostics",
-                startingSurface: "settings",
-                recordIDs: Set(
-                    snapshot.settings
-                        .filter { $0.key == "launch_at_login" }
-                        .map(\.id)
-                        + snapshot.activities
-                        .filter { $0.verificationResult == "failed" }
-                        .map(\.id)
-                        + snapshot.recoveryActions
-                        .filter { $0.action == "copy_diagnostics" }
-                        .map(\.id)
-                )
+                scenarioID: WholeWorkflowResearchTaskSixContract.scenarioID,
+                startingSurface: WholeWorkflowResearchTaskSixContract.startingSurface,
+                recordIDs: Set(WholeWorkflowResearchTaskSixContract.orderedScenarioRecordIDs)
             )
         case 7:
             let firstRun = dataset.firstRun
@@ -543,10 +542,10 @@ enum WholeWorkflowResearchDatasetValidator {
     ) {
         requireUnique(settings.map(\.id), code: "settings.duplicate_id", path: "snapshot.settings", into: &issues)
         require(
-            settings.contains { $0.key == "launch_at_login" },
-            code: "settings.launch_at_login",
+            WholeWorkflowResearchTaskSixContract.matchesSettings(settings),
+            code: "settings.canonical_record",
             path: "snapshot.settings",
-            message: "Task 6 requires a launch-at-login setting.",
+            message: "Task 6 requires the canonical disabled launch-at-login setting.",
             into: &issues
         )
     }
