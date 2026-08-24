@@ -1,6 +1,13 @@
 import Foundation
 
 extension WholeWorkflowResearchDatasetProvider {
+    static func isFirstRunPreviewSelected(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        isSelected(environment: environment)
+            && EnvironmentBriefFirstRunConfiguration.mode(environment: environment) == .preview
+    }
+
     static func activeFirstRunProjection(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> ResearchFirstRunProjection? {
@@ -11,7 +18,7 @@ extension WholeWorkflowResearchDatasetProvider {
     static func firstRunRuntimeState(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> ResearchFirstRunRuntimeState {
-        guard isSelected(environment: environment) else { return .inactive }
+        guard isFirstRunPreviewSelected(environment: environment) else { return .inactive }
         guard let projection = activeFirstRunProjection(environment: environment) else {
             return .unavailable
         }
@@ -67,9 +74,11 @@ struct ResearchFirstRunSession: Equatable {
 
 enum FirstRunCompletionPolicy {
     static func shouldPersistOnboardingCompletion(
-        researchDatasetSelected: Bool
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
-        !researchDatasetSelected
+        !WholeWorkflowResearchDatasetProvider.isFirstRunPreviewSelected(
+            environment: environment
+        )
     }
 }
 

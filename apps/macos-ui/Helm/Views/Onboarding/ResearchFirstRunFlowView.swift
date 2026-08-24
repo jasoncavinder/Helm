@@ -7,6 +7,7 @@ struct ResearchFirstRunFlowView: View {
 
     @State private var session = ResearchFirstRunSession()
     @State private var summaryCopied = false
+    @AccessibilityFocusState private var accessibilityFocusedStage: ResearchFirstRunStage?
 
     var body: some View {
         Group {
@@ -44,6 +45,13 @@ struct ResearchFirstRunFlowView: View {
         }
         .id(session.stage)
         .accessibilityElement(children: .contain)
+        .accessibilityFocused($accessibilityFocusedStage, equals: session.stage)
+        .onAppear {
+            moveAccessibilityFocus(to: session.stage, announce: false)
+        }
+        .onChange(of: session.stage) { stage in
+            moveAccessibilityFocus(to: stage, announce: true)
+        }
     }
 
     private func reviewPlan() {
@@ -78,8 +86,43 @@ struct ResearchFirstRunFlowView: View {
         ])
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(summary, forType: .string)
-        summaryCopied = true
+        summaryCopied = pasteboard.setString(summary, forType: .string)
+        if summaryCopied {
+            HelmCore.shared.postAccessibilityAnnouncement(
+                L10n.App.FirstRun.Research.CopySummary.copied.localized
+            )
+        }
+    }
+
+    private func moveAccessibilityFocus(
+        to stage: ResearchFirstRunStage,
+        announce: Bool
+    ) {
+        DispatchQueue.main.async {
+            accessibilityFocusedStage = stage
+            if announce {
+                HelmCore.shared.postAccessibilityAnnouncement(
+                    accessibilityAnnouncement(for: stage)
+                )
+            }
+        }
+    }
+
+    private func accessibilityAnnouncement(for stage: ResearchFirstRunStage) -> String {
+        switch stage {
+        case .environmentBrief:
+            return L10n.App.FirstRun.eyebrow.localized
+        case .planReview:
+            return L10n.App.FirstRun.Research.Plan.title.localized(with: [
+                "manager": localizedManagerDisplayName(
+                    projection.recommendation.target.identifier
+                )
+            ])
+        case .verifiedProgress:
+            return L10n.App.FirstRun.Research.Progress.title.localized
+        case .actionReceipt:
+            return L10n.App.FirstRun.Research.Receipt.title.localized
+        }
     }
 
     private func localizedYesNo(_ value: Bool) -> String {
@@ -149,46 +192,15 @@ private struct ResearchFirstRunPlanView: View {
             symbol: "wrench.and.screwdriver.fill",
             tint: HelmTheme.stateNeedsReview
         ) {
-            HStack(alignment: .top, spacing: 18) {
-                ResearchFirstRunCard(
-                    title: L10n.App.FirstRun.Research.Plan.observed.localized,
-                    symbol: "scope"
-                ) {
-                    Text(localizedResearchText(action.impactKey, arguments: action.impactArgs))
-                    Divider()
-                    Label(
-                        L10n.App.FirstRun.Research.Plan.partialCoverage.localized(with: [
-                            "manager": failedManagerName
-                        ]),
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .foregroundColor(HelmTheme.stateUnavailable)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) {
+                    observedCard
+                    consequencesCard
                 }
 
-                ResearchFirstRunCard(
-                    title: L10n.App.FirstRun.Research.Plan.consequences.localized,
-                    symbol: "list.bullet.clipboard"
-                ) {
-                    ResearchFirstRunFactRow(
-                        title: L10n.App.FirstRun.Research.Plan.network.localized,
-                        value: L10n.App.FirstRun.Research.Plan.notRequired.localized,
-                        symbol: "network.slash"
-                    )
-                    ResearchFirstRunFactRow(
-                        title: L10n.App.FirstRun.Research.Plan.authorization.localized,
-                        value: L10n.App.FirstRun.Research.Plan.notRequired.localized,
-                        symbol: "lock.open"
-                    )
-                    ResearchFirstRunFactRow(
-                        title: L10n.App.FirstRun.Research.Plan.verification.localized,
-                        value: localizedResearchFact(projection.expectedStateFact),
-                        symbol: "checkmark.seal"
-                    )
-                    ResearchFirstRunFactRow(
-                        title: L10n.App.FirstRun.Research.Plan.recovery.localized,
-                        value: localizedResearchText(action.recoveryLimitsKey),
-                        symbol: "arrow.uturn.backward.circle"
-                    )
+                VStack(alignment: .leading, spacing: 18) {
+                    observedCard
+                    consequencesCard
                 }
             }
         } footer: {
@@ -202,6 +214,53 @@ private struct ResearchFirstRunPlanView: View {
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
         }
+    }
+
+    private var observedCard: some View {
+        ResearchFirstRunCard(
+            title: L10n.App.FirstRun.Research.Plan.observed.localized,
+            symbol: "scope"
+        ) {
+            Text(localizedResearchText(action.impactKey, arguments: action.impactArgs))
+            Divider()
+            Label(
+                L10n.App.FirstRun.Research.Plan.partialCoverage.localized(with: [
+                    "manager": failedManagerName
+                ]),
+                systemImage: "exclamationmark.triangle"
+            )
+            .foregroundColor(HelmTheme.stateUnavailable)
+        }
+        .frame(minWidth: 320)
+    }
+
+    private var consequencesCard: some View {
+        ResearchFirstRunCard(
+            title: L10n.App.FirstRun.Research.Plan.consequences.localized,
+            symbol: "list.bullet.clipboard"
+        ) {
+            ResearchFirstRunFactRow(
+                title: L10n.App.FirstRun.Research.Plan.network.localized,
+                value: L10n.App.FirstRun.Research.Plan.notRequired.localized,
+                symbol: "network.slash"
+            )
+            ResearchFirstRunFactRow(
+                title: L10n.App.FirstRun.Research.Plan.authorization.localized,
+                value: L10n.App.FirstRun.Research.Plan.notRequired.localized,
+                symbol: "lock.open"
+            )
+            ResearchFirstRunFactRow(
+                title: L10n.App.FirstRun.Research.Plan.verification.localized,
+                value: localizedResearchFact(projection.expectedStateFact),
+                symbol: "checkmark.seal"
+            )
+            ResearchFirstRunFactRow(
+                title: L10n.App.FirstRun.Research.Plan.recovery.localized,
+                value: localizedResearchText(action.recoveryLimitsKey),
+                symbol: "arrow.uturn.backward.circle"
+            )
+        }
+        .frame(minWidth: 320)
     }
 }
 
@@ -300,39 +359,15 @@ private struct ResearchFirstRunReceiptView: View {
             symbol: "checkmark.seal.fill",
             tint: HelmTheme.stateHealthy
         ) {
-            HStack(alignment: .top, spacing: 18) {
-                ResearchFirstRunCard(
-                    title: L10n.App.FirstRun.Research.Receipt.result.localized,
-                    symbol: "arrow.left.arrow.right"
-                ) {
-                    ResearchFirstRunReceiptFact(
-                        title: L10n.App.FirstRun.Research.Receipt.before.localized,
-                        text: localizedResearchFact(result.before)
-                    )
-                    Divider()
-                    ResearchFirstRunReceiptFact(
-                        title: L10n.App.FirstRun.Research.Receipt.after.localized,
-                        text: localizedResearchFact(result.after),
-                        tint: HelmTheme.stateHealthy
-                    )
-                    Divider()
-                    ResearchFirstRunReceiptFact(
-                        title: L10n.App.FirstRun.Research.Receipt.recovery.localized,
-                        text: localizedResearchFact(result.recoveryLimits)
-                    )
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) {
+                    resultCard
+                    unchangedCard
                 }
 
-                ResearchFirstRunCard(
-                    title: L10n.App.FirstRun.Research.Receipt.unchanged.localized,
-                    symbol: "hand.raised"
-                ) {
-                    ForEach(
-                        Array(projection.actionReceipt.unchangedState.enumerated()),
-                        id: \.offset
-                    ) { _, fact in
-                        Label(localizedResearchFact(fact), systemImage: "checkmark.circle")
-                            .foregroundColor(HelmTheme.textSecondary)
-                    }
+                VStack(alignment: .leading, spacing: 18) {
+                    resultCard
+                    unchangedCard
                 }
             }
         } footer: {
@@ -356,6 +391,46 @@ private struct ResearchFirstRunReceiptView: View {
                 .buttonStyle(HelmPrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
         }
+    }
+
+    private var resultCard: some View {
+        ResearchFirstRunCard(
+            title: L10n.App.FirstRun.Research.Receipt.result.localized,
+            symbol: "arrow.left.arrow.right"
+        ) {
+            ResearchFirstRunReceiptFact(
+                title: L10n.App.FirstRun.Research.Receipt.before.localized,
+                text: localizedResearchFact(result.before)
+            )
+            Divider()
+            ResearchFirstRunReceiptFact(
+                title: L10n.App.FirstRun.Research.Receipt.after.localized,
+                text: localizedResearchFact(result.after),
+                tint: HelmTheme.stateHealthy
+            )
+            Divider()
+            ResearchFirstRunReceiptFact(
+                title: L10n.App.FirstRun.Research.Receipt.recovery.localized,
+                text: localizedResearchFact(result.recoveryLimits)
+            )
+        }
+        .frame(minWidth: 320)
+    }
+
+    private var unchangedCard: some View {
+        ResearchFirstRunCard(
+            title: L10n.App.FirstRun.Research.Receipt.unchanged.localized,
+            symbol: "hand.raised"
+        ) {
+            ForEach(
+                Array(projection.actionReceipt.unchangedState.enumerated()),
+                id: \.offset
+            ) { _, fact in
+                Label(localizedResearchFact(fact), systemImage: "checkmark.circle")
+                    .foregroundColor(HelmTheme.textSecondary)
+            }
+        }
+        .frame(minWidth: 320)
     }
 }
 
@@ -387,48 +462,64 @@ private struct ResearchFirstRunStageLayout<Content: View, Footer: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(spacing: 20) {
-                ZStack {
-                    Circle()
-                        .fill(tint.opacity(0.12))
-                    Circle()
-                        .stroke(tint.opacity(0.34), lineWidth: 1)
-                    Image(systemName: symbol)
-                        .font(.system(size: 30, weight: .medium))
-                        .foregroundColor(tint)
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    HStack(spacing: 20) {
+                        ZStack {
+                            Circle()
+                                .fill(tint.opacity(0.12))
+                            Circle()
+                                .stroke(tint.opacity(0.34), lineWidth: 1)
+                            Image(systemName: symbol)
+                                .font(.system(size: 30, weight: .medium))
+                                .foregroundColor(tint)
+                        }
+                        .frame(width: 78, height: 78)
+                        .accessibilityHidden(true)
+
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(eyebrow)
+                                .font(.caption.weight(.bold))
+                                .tracking(1.05)
+                                .foregroundColor(HelmTheme.blue500)
+                            Text(title)
+                                .font(
+                                    .system(
+                                        .largeTitle,
+                                        design: .rounded,
+                                        weight: .semibold
+                                    )
+                                )
+                                .foregroundColor(HelmTheme.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityAddTraits(.isHeader)
+                            Text(subtitle)
+                                .font(.title3)
+                                .foregroundColor(HelmTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    content
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                    Spacer(minLength: 0)
+
+                    HStack(spacing: 10) {
+                        footer
+                    }
                 }
-                .frame(width: 78, height: 78)
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(eyebrow)
-                        .font(.caption.weight(.bold))
-                        .tracking(1.05)
-                        .foregroundColor(HelmTheme.blue500)
-                    Text(title)
-                        .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                        .foregroundColor(HelmTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(subtitle)
-                        .font(.title3)
-                        .foregroundColor(HelmTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            HStack(spacing: 10) {
-                footer
+                .padding(.horizontal, 40)
+                .padding(.vertical, 34)
+                .frame(
+                    maxWidth: 980,
+                    minHeight: geometry.size.height,
+                    alignment: .topLeading
+                )
+                .frame(maxWidth: .infinity, alignment: .top)
             }
         }
-        .padding(.horizontal, 40)
-        .padding(.vertical, 34)
-        .frame(maxWidth: 980, maxHeight: .infinity, alignment: .topLeading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

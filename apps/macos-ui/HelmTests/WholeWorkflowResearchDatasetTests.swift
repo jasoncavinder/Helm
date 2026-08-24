@@ -1206,21 +1206,51 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
     }
 
     func testTaskSevenProviderAndCompletionPolicyFailClosed() throws {
-        let environment = [
+        let datasetEnvironment = [
             WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path
+        ]
+        let previewEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path,
+            EnvironmentBriefFirstRunConfiguration.environmentKey: "preview",
+        ]
+        let enabledEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path,
+            EnvironmentBriefFirstRunConfiguration.environmentKey: "enabled",
+        ]
+        let missingPreviewEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey:
+                "/tmp/missing-helm-task-seven.json",
+            EnvironmentBriefFirstRunConfiguration.environmentKey: "preview",
         ]
 
         #if DEBUG
         let projection = try XCTUnwrap(
             WholeWorkflowResearchDatasetProvider.activeFirstRunProjection(
-                environment: environment
+                environment: datasetEnvironment
             )
         )
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
-                environment: environment
+                environment: previewEnvironment
             ),
             .ready(projection)
+        )
+        XCTAssertTrue(
+            WholeWorkflowResearchDatasetProvider.isFirstRunPreviewSelected(
+                environment: previewEnvironment
+            )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: datasetEnvironment
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: enabledEnvironment
+            ),
+            .inactive
         )
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(environment: [:]),
@@ -1228,30 +1258,42 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         )
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
-                environment: [
-                    WholeWorkflowResearchDatasetProvider.environmentKey:
-                        "/tmp/missing-helm-task-seven.json"
-                ]
+                environment: missingPreviewEnvironment
             ),
             .unavailable
+        )
+        XCTAssertFalse(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: previewEnvironment
+            )
         )
         #else
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
-                environment: environment
+                environment: previewEnvironment
             ),
             .inactive
+        )
+        XCTAssertTrue(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: previewEnvironment
+            )
         )
         #endif
 
         XCTAssertTrue(
             FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
-                researchDatasetSelected: false
+                environment: [:]
             )
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
-                researchDatasetSelected: true
+                environment: datasetEnvironment
+            )
+        )
+        XCTAssertTrue(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: enabledEnvironment
             )
         )
     }
@@ -1306,6 +1348,15 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
                 environment: environment
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: environment.merging(
+                    [EnvironmentBriefFirstRunConfiguration.environmentKey: "preview"],
+                    uniquingKeysWith: { _, new in new }
+                )
             ),
             .ready(firstRunProjection)
         )
@@ -1391,6 +1442,15 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
                 environment: missingEnvironment
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: missingEnvironment.merging(
+                    [EnvironmentBriefFirstRunConfiguration.environmentKey: "preview"],
+                    uniquingKeysWith: { _, new in new }
+                )
             ),
             .unavailable
         )
