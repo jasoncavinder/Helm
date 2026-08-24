@@ -252,6 +252,8 @@ Owner-review and implementation record: `docs/app-design/proposals/v020-wayfinde
 
 Implementation checkpoint on `dev`:
 
+- Superseding Task 7 checkpoint: the final whole-workflow scenario now projects the canonical Environment Brief, setup session, reviewed safe recommendation, verified progress, Action Receipt, and strict aggregate summary through the shipping first-run host behind paired Debug-only selectors. Exact record order and full canonical snapshot identity are validated; selected missing or invalid data presents unavailable truth; flow transitions and copied-summary fields are fixture-local; and completion cannot persist onboarding or start live service, database, network, updater, detection, authorization, or mutation work. Focused arm64 contract and locale-parity evidence passes. The Task 7 owner matrix, whole-workflow accessibility pass, Ventura lane, targeted Sparkle handoff, and participant checkpoint remain open.
+
 - The legacy mini-Dashboard popover is replaced by the approved fixed-footprint unified Wayfinder composition in the production `WayfinderPopoverView`.
 - The shared projection drives one Course truth, one optional next action, affected System/Tools/Apps/Packages route tones, one context fact, and completed-check freshness.
 - Deep links preserve originating condition, destination, focus, route domain, and affected manager. Owner QA verified the corrected visible Environment filter for all four route stages before PR #490 merged.

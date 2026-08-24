@@ -321,6 +321,66 @@ extension L10n {
                 static let scanAgain = "app.first_run.environment_brief.action.scan_again"
             }
 
+            struct Research {
+                static let previewNotice = "app.first_run.research.preview_notice"
+                static let verified = "app.first_run.research.verified"
+                static let yes = "app.first_run.research.yes"
+                static let no = "app.first_run.research.no"
+
+                struct Unavailable {
+                    static let title = "app.first_run.research.unavailable.title"
+                    static let detail = "app.first_run.research.unavailable.detail"
+                }
+
+                struct Plan {
+                    static let eyebrow = "app.first_run.research.plan.eyebrow"
+                    static let title = "app.first_run.research.plan.title"
+                    static let subtitle = "app.first_run.research.plan.subtitle"
+                    static let observed = "app.first_run.research.plan.observed"
+                    static let consequences = "app.first_run.research.plan.consequences"
+                    static let partialCoverage = "app.first_run.research.plan.partial_coverage"
+                    static let network = "app.first_run.research.plan.network"
+                    static let authorization = "app.first_run.research.plan.authorization"
+                    static let verification = "app.first_run.research.plan.verification"
+                    static let recovery = "app.first_run.research.plan.recovery"
+                    static let notRequired = "app.first_run.research.plan.not_required"
+                }
+
+                struct Progress {
+                    static let eyebrow = "app.first_run.research.progress.eyebrow"
+                    static let title = "app.first_run.research.progress.title"
+                    static let details = "app.first_run.research.progress.details"
+                    static let revalidate = "app.first_run.research.progress.revalidate"
+                    static let apply = "app.first_run.research.progress.apply"
+                    static let verify = "app.first_run.research.progress.verify"
+                    static let record = "app.first_run.research.progress.record"
+                }
+
+                struct Receipt {
+                    static let eyebrow = "app.first_run.research.receipt.eyebrow"
+                    static let title = "app.first_run.research.receipt.title"
+                    static let result = "app.first_run.research.receipt.result"
+                    static let before = "app.first_run.research.receipt.before"
+                    static let after = "app.first_run.research.receipt.after"
+                    static let recovery = "app.first_run.research.receipt.recovery"
+                    static let unchanged = "app.first_run.research.receipt.unchanged"
+                }
+
+                struct Action {
+                    static let reviewPlan = "app.first_run.research.action.review_plan"
+                    static let back = "app.first_run.research.action.back"
+                    static let apply = "app.first_run.research.action.apply"
+                    static let viewReceipt = "app.first_run.research.action.view_receipt"
+                    static let openHelm = "app.first_run.research.action.open_helm"
+                    static let copySummary = "app.first_run.research.action.copy_summary"
+                }
+
+                struct CopySummary {
+                    static let template = "app.first_run.research.copy_summary.template"
+                    static let copied = "app.first_run.research.copy_summary.copied"
+                }
+            }
+
             static let discovering = "app.first_run.environment_brief.discovering"
             static let architecture = "app.first_run.environment_brief.label.architecture"
             static let shell = "app.first_run.environment_brief.label.shell"

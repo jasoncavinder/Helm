@@ -157,6 +157,15 @@ enum WholeWorkflowResearchDatasetValidator {
                     into: &issues
                 )
             }
+            if scenario.taskNumber == 7 {
+                require(
+                    WholeWorkflowResearchTaskSevenContract.matchesScenario(scenario),
+                    code: "scenarios.record_order",
+                    path: "scenarios[\(index)].recordIds",
+                    message: "Task 7 must preserve brief, session, plan, action, then receipt order.",
+                    into: &issues
+                )
+            }
         }
     }
 
@@ -216,8 +225,8 @@ enum WholeWorkflowResearchDatasetValidator {
         case 7:
             let firstRun = dataset.firstRun
             return ScenarioContract(
-                scenarioID: "project-wow-first-run",
-                startingSurface: "first_run",
+                scenarioID: WholeWorkflowResearchTaskSevenContract.scenarioID,
+                startingSurface: WholeWorkflowResearchTaskSevenContract.startingSurface,
                 recordIDs: Set(
                     [
                         firstRun.environmentBrief.briefID,
@@ -588,6 +597,13 @@ enum WholeWorkflowResearchDatasetValidator {
         }
         require(receipt.status == "verified" && summary.sessionStatus == "verified", code: "first_run.verified_summary", path: "firstRun", message: "Receipt and strict summary must report verified completion.", into: &issues)
         require(summary.redactionClass == "strict", code: "first_run.redaction", path: "firstRun.redactedSummary.redactionClass", message: "The copyable summary must use strict redaction.", into: &issues)
+        require(
+            WholeWorkflowResearchTaskSevenContract.matchesSnapshot(firstRun),
+            code: "first_run.canonical_snapshot",
+            path: "firstRun",
+            message: "Task 7 requires the canonical brief-to-receipt record chain.",
+            into: &issues
+        )
     }
 
     private static func recordIDList(in dataset: WholeWorkflowResearchDataset) -> [String] {

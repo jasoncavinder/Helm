@@ -377,7 +377,10 @@ struct ControlCenterWindowView: View {
 
     private func completeFirstRun() {
         context.dismissFirstRunPreview()
-        if !core.hasCompletedOnboarding {
+        let shouldPersistCompletion = FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+            researchDatasetSelected: WholeWorkflowResearchDatasetProvider.isSelected()
+        )
+        if shouldPersistCompletion && !core.hasCompletedOnboarding {
             core.completeOnboarding()
             core.triggerRefresh()
         }
