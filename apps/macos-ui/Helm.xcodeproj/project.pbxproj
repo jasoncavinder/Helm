@@ -103,6 +103,8 @@
 		R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */; };
 		R530000000000000000000001 /* ResearchSettingsDiagnosticsProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */; };
 		R530000000000000000000002 /* ResearchSettingsDiagnosticsProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */; };
+		R531000000000000000000001 /* ResearchFirstRunProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = R531000000000000000000011 /* ResearchFirstRunProjection.swift */; };
+		R531000000000000000000002 /* ResearchFirstRunProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = R531000000000000000000011 /* ResearchFirstRunProjection.swift */; };
 		R527000000000000000000001 /* ResearchEnvironmentCanonicalManagers.swift in Sources */ = {isa = PBXBuildFile; fileRef = R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */; };
 		R527000000000000000000002 /* ResearchEnvironmentCanonicalManagers.swift in Sources */ = {isa = PBXBuildFile; fileRef = R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */; };
 		R513000000000000000000001 /* LibraryResultProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = R513000000000000000000011 /* LibraryResultProvenance.swift */; };
@@ -135,6 +137,7 @@
 		X200000000000000000000001 /* HelmCore+EnvironmentBrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */; };
 		X200000000000000000000002 /* HelmOverviewState.swift in Sources */ = {isa = PBXBuildFile; fileRef = X100000000000000000000002 /* HelmOverviewState.swift */; };
 		Y200000000000000000000001 /* EnvironmentBriefFirstRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Y100000000000000000000001 /* EnvironmentBriefFirstRunView.swift */; };
+		R531000000000000000000003 /* ResearchFirstRunFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R531000000000000000000012 /* ResearchFirstRunFlowView.swift */; };
 		Z200000000000000000000001 /* FirstRunPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z100000000000000000000001 /* FirstRunPresentationSupport.swift */; };
 		Z200000000000000000000002 /* FirstRunPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z100000000000000000000001 /* FirstRunPresentationSupport.swift */; };
 		Z200000000000000000000003 /* FirstRunPresentationSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = Z100000000000000000000002 /* FirstRunPresentationSupportTests.swift */; };
@@ -316,6 +319,7 @@
 		R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetValidator.swift; sourceTree = "<group>"; };
 		R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeWorkflowResearchDatasetTests.swift; sourceTree = "<group>"; };
 		R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResearchSettingsDiagnosticsProjection.swift; sourceTree = "<group>"; };
+		R531000000000000000000011 /* ResearchFirstRunProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResearchFirstRunProjection.swift; sourceTree = "<group>"; };
 		R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResearchEnvironmentCanonicalManagers.swift; sourceTree = "<group>"; };
 		R513000000000000000000011 /* LibraryResultProvenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryResultProvenance.swift; sourceTree = "<group>"; };
 		R513000000000000000000012 /* LibraryResultProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryResultProvenanceTests.swift; sourceTree = "<group>"; };
@@ -337,6 +341,7 @@
 		X100000000000000000000001 /* HelmCore+EnvironmentBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+EnvironmentBrief.swift"; sourceTree = "<group>"; };
 		X100000000000000000000002 /* HelmOverviewState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmOverviewState.swift; sourceTree = "<group>"; };
 		Y100000000000000000000001 /* EnvironmentBriefFirstRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentBriefFirstRunView.swift; sourceTree = "<group>"; };
+		R531000000000000000000012 /* ResearchFirstRunFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResearchFirstRunFlowView.swift; sourceTree = "<group>"; };
 		Z100000000000000000000001 /* FirstRunPresentationSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunPresentationSupport.swift; sourceTree = "<group>"; };
 		Z100000000000000000000002 /* FirstRunPresentationSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunPresentationSupportTests.swift; sourceTree = "<group>"; };
 		R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WayfinderCourseIndicatorView.swift; sourceTree = "<group>"; };
@@ -451,6 +456,7 @@
 				R492000000000000000000011 /* WholeWorkflowResearchDataset.swift */,
 				R492000000000000000000012 /* WholeWorkflowResearchDatasetValidator.swift */,
 				R530000000000000000000011 /* ResearchSettingsDiagnosticsProjection.swift */,
+				R531000000000000000000011 /* ResearchFirstRunProjection.swift */,
 				R527000000000000000000011 /* ResearchEnvironmentCanonicalManagers.swift */,
 				R513000000000000000000011 /* LibraryResultProvenance.swift */,
 				R513100000000000000000011 /* PackageInspectorSelectionPolicy.swift */,
@@ -600,6 +606,7 @@
 			isa = PBXGroup;
 			children = (
 				Y100000000000000000000001 /* EnvironmentBriefFirstRunView.swift */,
+				R531000000000000000000012 /* ResearchFirstRunFlowView.swift */,
 				B10000000000000000000011 /* OnboardingContainerView.swift */,
 				B10000000000000000000014 /* OnboardingConfigureView.swift */,
 				D10000000000000000000010 /* OnboardingSettingsView.swift */,
@@ -924,6 +931,7 @@
 				B20000000000000000000014 /* OnboardingConfigureView.swift in Sources */,
 				D20000000000000000000010 /* OnboardingSettingsView.swift in Sources */,
 				Y200000000000000000000001 /* EnvironmentBriefFirstRunView.swift in Sources */,
+				R531000000000000000000003 /* ResearchFirstRunFlowView.swift in Sources */,
 				D20000000000000000000001 /* ControlCenterModels.swift in Sources */,
 				R520400000000000000000001 /* ControlCenterContextBase.swift in Sources */,
 				S200000000000000000000001 /* ControlCenterSearchBridge.swift in Sources */,
@@ -956,6 +964,7 @@
 				R492000000000000000000001 /* WholeWorkflowResearchDataset.swift in Sources */,
 				R492000000000000000000003 /* WholeWorkflowResearchDatasetValidator.swift in Sources */,
 				R530000000000000000000001 /* ResearchSettingsDiagnosticsProjection.swift in Sources */,
+				R531000000000000000000001 /* ResearchFirstRunProjection.swift in Sources */,
 				R527000000000000000000001 /* ResearchEnvironmentCanonicalManagers.swift in Sources */,
 				R494000000000000000000001 /* UpgradeSheetPresentationSupport.swift in Sources */,
 			);
@@ -1010,6 +1019,7 @@
 				R492000000000000000000002 /* WholeWorkflowResearchDataset.swift in Sources */,
 				R492000000000000000000004 /* WholeWorkflowResearchDatasetValidator.swift in Sources */,
 				R530000000000000000000002 /* ResearchSettingsDiagnosticsProjection.swift in Sources */,
+				R531000000000000000000002 /* ResearchFirstRunProjection.swift in Sources */,
 				R527000000000000000000002 /* ResearchEnvironmentCanonicalManagers.swift in Sources */,
 				R492000000000000000000005 /* WholeWorkflowResearchDatasetTests.swift in Sources */,
 				R513000000000000000000002 /* LibraryResultProvenance.swift in Sources */,

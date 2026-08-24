@@ -442,6 +442,45 @@ final class LocalizationOverflowValidationTests: XCTestCase {
             }
         }
     }
+
+    func testTaskSevenFirstRunCopyIsCompleteAndMirroredAcrossLocales() throws {
+        let allLocales = ["en"] + locales
+        let english = try localeAppStrings("en")
+        let requiredKeys = Set(english.keys.filter {
+            $0.hasPrefix("app.first_run.research.")
+                || $0.hasPrefix("research.first_run.")
+        })
+
+        XCTAssertEqual(requiredKeys.count, 49)
+
+        for locale in allLocales {
+            let strings = try localeAppStrings(locale)
+            let availableKeys = Set(strings.keys)
+            XCTAssertTrue(
+                requiredKeys.isSubset(of: availableKeys),
+                "Missing Task 7 first-run copy in locale \(locale): \(requiredKeys.subtracting(availableKeys).sorted())"
+            )
+            for key in requiredKeys {
+                let text = try XCTUnwrap(strings[key])
+                XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                XCTAssertNotEqual(text, key, "Locale \(locale) exposes a raw key for \(key)")
+            }
+
+            let canonicalURL = repoRootURL
+                .appendingPathComponent("locales")
+                .appendingPathComponent(locale)
+                .appendingPathComponent("app.json")
+            let bundledURL = repoRootURL
+                .appendingPathComponent("apps/macos-ui/Helm/Resources/locales")
+                .appendingPathComponent(locale)
+                .appendingPathComponent("app.json")
+            XCTAssertEqual(
+                try Data(contentsOf: canonicalURL),
+                try Data(contentsOf: bundledURL),
+                "Canonical and bundled app catalogs drifted for locale \(locale)"
+            )
+        }
+    }
 }
 
 final class LocalizationPreferenceTests: XCTestCase {

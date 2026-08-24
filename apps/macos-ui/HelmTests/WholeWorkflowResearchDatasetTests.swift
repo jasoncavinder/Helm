@@ -1053,6 +1053,251 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         }
     }
 
+    func testTaskSevenProjectsCanonicalBriefPlanProgressAndReceipt() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            ResearchFirstRunProjector.project(dataset)
+        )
+
+        XCTAssertEqual(projection.datasetID, "v0.20-whole-workflow-v1")
+        XCTAssertEqual(projection.scenarioID, "project-wow-first-run")
+        XCTAssertEqual(
+            projection.environmentBrief.briefID,
+            WholeWorkflowResearchTaskSevenContract.briefID
+        )
+        XCTAssertEqual(
+            projection.setupSession.sessionID,
+            WholeWorkflowResearchTaskSevenContract.sessionID
+        )
+        XCTAssertEqual(
+            projection.plan.planID,
+            WholeWorkflowResearchTaskSevenContract.planID
+        )
+        XCTAssertEqual(
+            projection.recommendation.actionID,
+            WholeWorkflowResearchTaskSevenContract.actionID
+        )
+        XCTAssertEqual(
+            projection.actionReceipt.receiptID,
+            WholeWorkflowResearchTaskSevenContract.receiptID
+        )
+        XCTAssertEqual(projection.environmentBrief.coverage.failedManagers, ["macports"])
+        XCTAssertEqual(projection.recommendation.target.identifier, "mise")
+        XCTAssertFalse(projection.recommendation.requiresNetwork)
+        XCTAssertFalse(projection.recommendation.requiresPrivilege)
+        XCTAssertEqual(projection.receiptResult.applyResult, "applied")
+        XCTAssertEqual(projection.receiptResult.verificationResult, "passed")
+        XCTAssertEqual(projection.receiptResult.status, "verified")
+    }
+
+    func testTaskSevenExpectedStateCarriesTheManagerSubstitution() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            ResearchFirstRunProjector.project(dataset)
+        )
+
+        XCTAssertEqual(
+            projection.expectedStateFact.localizationKey,
+            "research.first_run.mise_shell_setup.expected"
+        )
+        XCTAssertEqual(
+            projection.expectedStateFact.localizationArgs,
+            ["manager": "mise"]
+        )
+    }
+
+    func testTaskSevenSessionRequiresTheReviewedWorkflowOrder() {
+        var session = ResearchFirstRunSession()
+
+        XCTAssertEqual(session.stage, .environmentBrief)
+        XCTAssertFalse(session.applyReviewedPlan())
+        XCTAssertFalse(session.viewActionReceipt())
+        XCTAssertTrue(session.reviewPlan())
+        XCTAssertEqual(session.stage, .planReview)
+        XCTAssertFalse(session.reviewPlan())
+        XCTAssertTrue(session.returnToBrief())
+        XCTAssertEqual(session.stage, .environmentBrief)
+        XCTAssertTrue(session.reviewPlan())
+        XCTAssertTrue(session.applyReviewedPlan())
+        XCTAssertEqual(session.stage, .verifiedProgress)
+        XCTAssertFalse(session.returnToBrief())
+        XCTAssertTrue(session.viewActionReceipt())
+        XCTAssertEqual(session.stage, .actionReceipt)
+        XCTAssertFalse(session.applyReviewedPlan())
+        XCTAssertTrue(session.reviewPlan())
+        XCTAssertEqual(session.stage, .planReview)
+    }
+
+    func testTaskSevenSummaryProjectionContainsOnlyStrictAggregateFields() throws {
+        let dataset = try WholeWorkflowResearchDatasetLoader.load(from: fixtureURL)
+        let projection = try XCTUnwrap(
+            ResearchFirstRunProjector.project(dataset)
+        )
+
+        XCTAssertEqual(
+            projection.summaryProjection,
+            ResearchFirstRunSummaryProjection(
+                status: "verified",
+                totalActions: 1,
+                verifiedActions: 1,
+                networkUsed: false,
+                administratorAuthorizationUsed: false,
+                osFamily: "macOS",
+                architecture: "arm64"
+            )
+        )
+
+        let reflectedSummary = String(reflecting: projection.summaryProjection)
+        for forbiddenValue in [
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+            "mise",
+            "macports",
+            "homebrew_formula",
+            "/Users/",
+        ] {
+            XCTAssertFalse(
+                reflectedSummary.contains(forbiddenValue),
+                "Strict summary leaked \(forbiddenValue)"
+            )
+        }
+    }
+
+    func testTaskSevenProjectionFailsClosedForCanonicalDrift() throws {
+        let source = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let mutations = [
+            (
+                "\"11111111-1111-4111-8111-111111111111\",\n        \"22222222-2222-4222-8222-222222222222\"",
+                "\"22222222-2222-4222-8222-222222222222\",\n        \"11111111-1111-4111-8111-111111111111\"",
+                "scenarios.record_order"
+            ),
+            (
+                "\"impactKey\": \"research.first_run.mise_shell_setup.impact\"",
+                "\"impactKey\": \"research.first_run.mise_shell_setup.drifted\"",
+                "first_run.canonical_snapshot"
+            ),
+            (
+                "\"localizationKey\": \"research.first_run.after.shell_hook_verified\"",
+                "\"localizationKey\": \"research.first_run.after.shell_hook_drifted\"",
+                "first_run.canonical_snapshot"
+            ),
+            (
+                "\"architecture\": \"arm64\"\n      }\n    }\n  }",
+                "\"architecture\": \"x86_64\"\n      }\n    }\n  }",
+                "first_run.canonical_snapshot"
+            ),
+        ]
+
+        for mutation in mutations {
+            let modified = try replacingFirst(
+                mutation.0,
+                with: mutation.1,
+                in: source
+            )
+            let dataset = try WholeWorkflowResearchDatasetLoader.decode(Data(modified.utf8))
+            let issues = WholeWorkflowResearchDatasetValidator.validate(dataset)
+
+            XCTAssertTrue(
+                issues.contains { $0.code == mutation.2 },
+                "Expected \(mutation.2) for \(mutation.0)"
+            )
+            XCTAssertNil(ResearchFirstRunProjector.project(dataset))
+        }
+    }
+
+    func testTaskSevenProviderAndCompletionPolicyFailClosed() throws {
+        let datasetEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path
+        ]
+        let previewEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path,
+            EnvironmentBriefFirstRunConfiguration.environmentKey: "preview",
+        ]
+        let enabledEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path,
+            EnvironmentBriefFirstRunConfiguration.environmentKey: "enabled",
+        ]
+        let missingPreviewEnvironment = [
+            WholeWorkflowResearchDatasetProvider.environmentKey:
+                "/tmp/missing-helm-task-seven.json",
+            EnvironmentBriefFirstRunConfiguration.environmentKey: "preview",
+        ]
+
+        #if DEBUG
+        let projection = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeFirstRunProjection(
+                environment: datasetEnvironment
+            )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: previewEnvironment
+            ),
+            .ready(projection)
+        )
+        XCTAssertTrue(
+            WholeWorkflowResearchDatasetProvider.isFirstRunPreviewSelected(
+                environment: previewEnvironment
+            )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: datasetEnvironment
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: enabledEnvironment
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(environment: [:]),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: missingPreviewEnvironment
+            ),
+            .unavailable
+        )
+        XCTAssertFalse(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: previewEnvironment
+            )
+        )
+        #else
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: previewEnvironment
+            ),
+            .inactive
+        )
+        XCTAssertTrue(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: previewEnvironment
+            )
+        )
+        #endif
+
+        XCTAssertTrue(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: [:]
+            )
+        )
+        XCTAssertTrue(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: datasetEnvironment
+            )
+        )
+        XCTAssertTrue(
+            FirstRunCompletionPolicy.shouldPersistOnboardingCompletion(
+                environment: enabledEnvironment
+            )
+        )
+    }
+
     func testWholeWorkflowSelectionFailsClosedForLiveOperations() throws {
         let environment = [WholeWorkflowResearchDatasetProvider.environmentKey: fixtureURL.path]
 
@@ -1094,6 +1339,26 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
                 environment: environment
             ),
             .ready(settingsDiagnosticsProjection)
+        )
+        let firstRunProjection = try XCTUnwrap(
+            WholeWorkflowResearchDatasetProvider.activeFirstRunProjection(
+                environment: environment
+            )
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: environment
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: environment.merging(
+                    [EnvironmentBriefFirstRunConfiguration.environmentKey: "preview"],
+                    uniquingKeysWith: { _, new in new }
+                )
+            ),
+            .ready(firstRunProjection)
         )
         let environmentProjection = try XCTUnwrap(
             WholeWorkflowResearchDatasetProvider.activeEnvironmentProjection(
@@ -1137,6 +1402,12 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
             ),
             .safetyBlocked
         )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: popoverEnvironment
+            ),
+            .inactive
+        )
         XCTAssertNil(
             WholeWorkflowResearchDatasetProvider.activeAmbientHealthRuntimeState(
                 environment: popoverEnvironment
@@ -1165,6 +1436,21 @@ final class WholeWorkflowResearchDatasetTests: XCTestCase {
         XCTAssertEqual(
             WholeWorkflowResearchDatasetProvider.settingsDiagnosticsRuntimeState(
                 environment: missingEnvironment
+            ),
+            .unavailable
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: missingEnvironment
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            WholeWorkflowResearchDatasetProvider.firstRunRuntimeState(
+                environment: missingEnvironment.merging(
+                    [EnvironmentBriefFirstRunConfiguration.environmentKey: "preview"],
+                    uniquingKeysWith: { _, new in new }
+                )
             ),
             .unavailable
         )

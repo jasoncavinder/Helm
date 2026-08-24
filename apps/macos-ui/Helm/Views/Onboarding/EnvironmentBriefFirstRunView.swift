@@ -5,6 +5,7 @@ struct EnvironmentBriefFirstRunView: View {
     @ObservedObject private var overviewState = HelmCore.shared.overviewState
     @ObservedObject private var presentationModel = HelmCore.shared.firstRunPresentationModel
     @State private var hasStartedDiscovery = false
+    private let researchRuntimeState = WholeWorkflowResearchDatasetProvider.firstRunRuntimeState()
 
     let onComplete: () -> Void
 
@@ -28,26 +29,37 @@ struct EnvironmentBriefFirstRunView: View {
 
     var body: some View {
         Group {
-            switch stage {
-            case .legal:
-                EnvironmentBriefLegalGateView(
-                    onAccept: {
-                        core.acceptCurrentLicenseTerms()
-                    }
+            switch researchRuntimeState {
+            case let .ready(projection):
+                ResearchFirstRunFlowView(
+                    projection: projection,
+                    onComplete: onComplete
                 )
-            case .discovering:
-                EnvironmentBriefDiscoveringView()
-            case .brief:
-                if let brief = overviewState.environmentBrief {
-                    EnvironmentBriefContentView(
-                        brief: brief,
-                        isRefreshing: core.onboardingDetectionInProgress,
-                        canScanAgain: EnvironmentBriefFixtureProvider.active() == nil,
-                        onScanAgain: runDiscovery,
-                        onComplete: onComplete
+            case .unavailable:
+                ResearchFirstRunUnavailableView(onComplete: onComplete)
+            case .inactive:
+                switch stage {
+                case .legal:
+                    EnvironmentBriefLegalGateView(
+                        onAccept: {
+                            core.acceptCurrentLicenseTerms()
+                        }
                     )
-                } else {
+                case .discovering:
                     EnvironmentBriefDiscoveringView()
+                case .brief:
+                    if let brief = overviewState.environmentBrief {
+                        EnvironmentBriefContentView(
+                            brief: brief,
+                            isRefreshing: core.onboardingDetectionInProgress,
+                            canScanAgain: EnvironmentBriefFixtureProvider.active() == nil,
+                            onScanAgain: runDiscovery,
+                            onComplete: onComplete,
+                            onReviewPlan: nil
+                        )
+                    } else {
+                        EnvironmentBriefDiscoveringView()
+                    }
                 }
             }
         }
@@ -63,6 +75,7 @@ struct EnvironmentBriefFirstRunView: View {
     }
 
     private func startDiscoveryIfNeeded() {
+        guard researchRuntimeState == .inactive else { return }
         guard !core.requiresLicenseTermsAcceptance else { return }
         guard !hasStartedDiscovery else { return }
         hasStartedDiscovery = true
@@ -152,12 +165,13 @@ private struct EnvironmentBriefDiscoveringView: View {
     }
 }
 
-private struct EnvironmentBriefContentView: View {
+struct EnvironmentBriefContentView: View {
     let brief: EnvironmentBrief
     let isRefreshing: Bool
     let canScanAgain: Bool
     let onScanAgain: () -> Void
     let onComplete: () -> Void
+    let onReviewPlan: (() -> Void)?
 
     private var summary: EnvironmentBriefPresentationSummary {
         .make(from: brief)
@@ -216,9 +230,18 @@ private struct EnvironmentBriefContentView: View {
 
     @ViewBuilder
     private var actionButtons: some View {
-        Button(L10n.App.FirstRun.Action.useHelm.localized, action: onComplete)
-            .buttonStyle(HelmPrimaryButtonStyle())
-            .keyboardShortcut(.defaultAction)
+        if let onReviewPlan {
+            Button(L10n.App.FirstRun.Research.Action.reviewPlan.localized, action: onReviewPlan)
+                .buttonStyle(HelmPrimaryButtonStyle())
+                .keyboardShortcut(.defaultAction)
+
+            Button(L10n.App.FirstRun.Action.useHelm.localized, action: onComplete)
+                .buttonStyle(HelmSecondaryButtonStyle())
+        } else {
+            Button(L10n.App.FirstRun.Action.useHelm.localized, action: onComplete)
+                .buttonStyle(HelmPrimaryButtonStyle())
+                .keyboardShortcut(.defaultAction)
+        }
 
         if summary.kind != .current && canScanAgain {
             Button(L10n.App.FirstRun.Action.scanAgain.localized, action: onScanAgain)

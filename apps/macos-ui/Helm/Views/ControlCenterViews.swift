@@ -377,7 +377,9 @@ struct ControlCenterWindowView: View {
 
     private func completeFirstRun() {
         context.dismissFirstRunPreview()
-        if !core.hasCompletedOnboarding {
+        let shouldPersistCompletion = FirstRunCompletionPolicy
+            .shouldPersistOnboardingCompletion()
+        if shouldPersistCompletion && !core.hasCompletedOnboarding {
             core.completeOnboarding()
             core.triggerRefresh()
         }
