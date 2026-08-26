@@ -64,13 +64,25 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         )
     }
 
-    func testEnvironmentBriefCourseIndicatorAnnouncementsLeadWithLocalizedTitles() throws {
+    func testEnvironmentBriefCourseIndicatorAnnouncementsUseLocalizedPercentagesAndLeadWithTitles() throws {
         let allLocales = ["en"] + locales
         let templateKey = "app.first_run.environment_brief.course_indicator.accessibility_label"
+        let titleKey = "app.first_run.environment_brief.section.sources"
+        let expectedPercentages = [
+            "en": "50%",
+            "es": "50\u{00a0}%",
+            "fr": "50\u{00a0}%",
+            "de": "50\u{00a0}%",
+            "pt-BR": "50%",
+            "ja": "50%",
+            "hu": "50%",
+        ]
 
         for locale in allLocales {
             let strings = try localeAppStrings(locale)
             let template = try XCTUnwrap(strings[templateKey])
+            let title = try XCTUnwrap(strings[titleKey])
+            let expectedPercentage = try XCTUnwrap(expectedPercentages[locale])
             let titleRange = try XCTUnwrap(template.range(of: "{title}"))
             let percentageRange = try XCTUnwrap(template.range(of: "{percentage}"))
 
@@ -78,6 +90,22 @@ final class LocalizationOverflowValidationTests: XCTestCase {
                 titleRange.lowerBound,
                 percentageRange.lowerBound,
                 "Environment Brief Course Indicator announcement order drifted in \(locale)"
+            )
+
+            let label = EnvironmentBriefCourseIndicatorAccessibility.label(
+                template: template,
+                title: title,
+                fraction: 0.5,
+                localeIdentifier: locale
+            )
+            let expectedLabel = template
+                .replacingOccurrences(of: "{title}", with: title)
+                .replacingOccurrences(of: "{percentage}", with: expectedPercentage)
+
+            XCTAssertEqual(
+                label,
+                expectedLabel,
+                "Environment Brief Course Indicator formatting drifted in \(locale)"
             )
         }
     }

@@ -42,6 +42,36 @@ enum EnvironmentBriefHeaderLayoutPolicy {
     }
 }
 
+enum EnvironmentBriefCourseIndicatorAccessibility {
+    static func percentageText(
+        fraction: Double,
+        localeIdentifier: String
+    ) -> String {
+        fraction.formatted(
+            .percent
+                .precision(.fractionLength(0))
+                .locale(Locale(identifier: localeIdentifier))
+        )
+    }
+
+    static func label(
+        template: String,
+        title: String,
+        fraction: Double,
+        localeIdentifier: String
+    ) -> String {
+        template
+            .replacingOccurrences(of: "{title}", with: title)
+            .replacingOccurrences(
+                of: "{percentage}",
+                with: percentageText(
+                    fraction: fraction,
+                    localeIdentifier: localeIdentifier
+                )
+            )
+    }
+}
+
 enum EnvironmentBriefFixtureName: String, Codable, CaseIterable {
     case firstUseful = "first-useful"
     case current
