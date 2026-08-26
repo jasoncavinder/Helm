@@ -302,6 +302,7 @@ extension L10n {
                 static let ready = "app.first_run.environment_brief.readiness.ready"
                 static let attention = "app.first_run.environment_brief.readiness.attention"
                 static let observedOnly = "app.first_run.environment_brief.readiness.observed_only"
+                static let accessibilityLabel = "app.first_run.environment_brief.readiness.accessibility_label"
             }
 
             struct Status {

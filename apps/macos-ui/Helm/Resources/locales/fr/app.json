@@ -83,6 +83,7 @@
   "app.first_run.environment_brief.readiness.ready": "Prêts à gérer",
   "app.first_run.environment_brief.readiness.attention": "À vérifier",
   "app.first_run.environment_brief.readiness.observed_only": "Observation uniquement",
+  "app.first_run.environment_brief.readiness.accessibility_label": "{title}, {count}",
   "app.first_run.environment_brief.status.ready": "Prêt",
   "app.first_run.environment_brief.status.cached": "En cache",
   "app.first_run.environment_brief.status.setup_required": "Configuration requise",

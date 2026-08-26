@@ -83,6 +83,7 @@
   "app.first_run.environment_brief.readiness.ready": "管理可能",
   "app.first_run.environment_brief.readiness.attention": "要確認",
   "app.first_run.environment_brief.readiness.observed_only": "検出のみ",
+  "app.first_run.environment_brief.readiness.accessibility_label": "{title}、{count}",
   "app.first_run.environment_brief.status.ready": "準備完了",
   "app.first_run.environment_brief.status.cached": "キャッシュ済み",
   "app.first_run.environment_brief.status.setup_required": "設定が必要",

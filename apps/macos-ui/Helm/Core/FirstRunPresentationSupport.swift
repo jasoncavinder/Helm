@@ -1,6 +1,47 @@
 import Foundation
 import Combine
 
+enum EnvironmentBriefHeaderAxis: Equatable {
+    case horizontal
+    case vertical
+}
+
+enum EnvironmentBriefHeaderLayoutPolicy {
+    static let previewAxisEnvironmentKey = "HELM_ENVIRONMENT_BRIEF_HEADER_AXIS"
+    static let horizontalSpacing: CGFloat = 30
+    static let verticalSpacing: CGFloat = 18
+    static let horizontalIndicatorLength: CGFloat = 156
+    static let verticalIndicatorLength: CGFloat = 132
+    static let minimumCopyWidth: CGFloat = 320
+
+    static var minimumHorizontalWidth: CGFloat {
+        horizontalIndicatorLength + horizontalSpacing + minimumCopyWidth
+    }
+
+    static func axis(
+        forAvailableWidth width: CGFloat?,
+        override: EnvironmentBriefHeaderAxis? = nil
+    ) -> EnvironmentBriefHeaderAxis {
+        if let override { return override }
+        guard let width, width.isFinite else { return .horizontal }
+        return width >= minimumHorizontalWidth ? .horizontal : .vertical
+    }
+
+    static func previewAxis(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> EnvironmentBriefHeaderAxis? {
+        #if DEBUG
+        switch environment[previewAxisEnvironmentKey] {
+        case "horizontal": return .horizontal
+        case "vertical": return .vertical
+        default: return nil
+        }
+        #else
+        return nil
+        #endif
+    }
+}
+
 enum EnvironmentBriefFixtureName: String, Codable, CaseIterable {
     case firstUseful = "first-useful"
     case current

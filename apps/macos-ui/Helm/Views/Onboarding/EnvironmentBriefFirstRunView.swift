@@ -257,20 +257,14 @@ struct EnvironmentBriefContentView: View {
     }
 
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 30) {
-                EnvironmentBriefCourseIndicator(summary: summary)
-                    .frame(width: 156, height: 156)
-                headerCopy
-                Spacer(minLength: 0)
-            }
-
-            VStack(alignment: .leading, spacing: 18) {
-                EnvironmentBriefCourseIndicator(summary: summary)
-                    .frame(width: 132, height: 132)
-                headerCopy
-            }
+        // A single subtree keeps accessibility identity stable as the header reflows.
+        EnvironmentBriefHeaderLayout(
+            axisOverride: EnvironmentBriefHeaderLayoutPolicy.previewAxis()
+        ) {
+            EnvironmentBriefCourseIndicator(summary: summary)
+            headerCopy
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var headerCopy: some View {
@@ -279,16 +273,21 @@ struct EnvironmentBriefContentView: View {
                 .font(.caption.weight(.bold))
                 .tracking(1.1)
                 .foregroundColor(HelmTheme.blue500)
+                .accessibilityHidden(true)
 
-            Text(titleKey.localized)
-                .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                .foregroundColor(HelmTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(summaryText)
-                .font(.title3)
-                .foregroundColor(HelmTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            GroupBox {
+                Text(summaryText)
+                    .font(.title3)
+                    .foregroundColor(HelmTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } label: {
+                Text(titleKey.localized)
+                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                    .foregroundColor(HelmTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("environmentBriefStateTitle")
+            }
+            .groupBoxStyle(EnvironmentBriefHeaderGroupBoxStyle())
         }
     }
 
@@ -417,6 +416,151 @@ struct EnvironmentBriefContentView: View {
     }
 }
 
+private struct EnvironmentBriefHeaderGroupBoxStyle: GroupBoxStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            configuration.label
+            configuration.content
+        }
+    }
+}
+
+struct EnvironmentBriefHeaderLayout: Layout {
+    let axisOverride: EnvironmentBriefHeaderAxis?
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+
+        let width = finiteWidth(proposal.width)
+        let axis = EnvironmentBriefHeaderLayoutPolicy.axis(
+            forAvailableWidth: width,
+            override: axisOverride
+        )
+        let sizes = measuredSizes(axis: axis, availableWidth: width, subviews: subviews)
+
+        switch axis {
+        case .horizontal:
+            return CGSize(
+                width: width
+                    ?? sizes.indicator.width
+                    + EnvironmentBriefHeaderLayoutPolicy.horizontalSpacing
+                    + sizes.copy.width,
+                height: max(sizes.indicator.height, sizes.copy.height)
+            )
+        case .vertical:
+            return CGSize(
+                width: width ?? max(sizes.indicator.width, sizes.copy.width),
+                height: sizes.indicator.height
+                    + EnvironmentBriefHeaderLayoutPolicy.verticalSpacing
+                    + sizes.copy.height
+            )
+        }
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        guard subviews.count == 2 else { return }
+
+        let axis = EnvironmentBriefHeaderLayoutPolicy.axis(
+            forAvailableWidth: bounds.width,
+            override: axisOverride
+        )
+        let sizes = measuredSizes(axis: axis, availableWidth: bounds.width, subviews: subviews)
+
+        switch axis {
+        case .horizontal:
+            let centerY = bounds.minY + max(sizes.indicator.height, sizes.copy.height) / 2
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: centerY),
+                anchor: .leading,
+                proposal: indicatorProposal(for: axis)
+            )
+            subviews[1].place(
+                at: CGPoint(
+                    x: bounds.minX
+                        + sizes.indicator.width
+                        + EnvironmentBriefHeaderLayoutPolicy.horizontalSpacing,
+                    y: centerY
+                ),
+                anchor: .leading,
+                proposal: copyProposal(for: axis, availableWidth: bounds.width)
+            )
+        case .vertical:
+            subviews[0].place(
+                at: bounds.origin,
+                anchor: .topLeading,
+                proposal: indicatorProposal(for: axis)
+            )
+            subviews[1].place(
+                at: CGPoint(
+                    x: bounds.minX,
+                    y: bounds.minY
+                        + sizes.indicator.height
+                        + EnvironmentBriefHeaderLayoutPolicy.verticalSpacing
+                ),
+                anchor: .topLeading,
+                proposal: copyProposal(for: axis, availableWidth: bounds.width)
+            )
+        }
+    }
+
+    private func measuredSizes(
+        axis: EnvironmentBriefHeaderAxis,
+        availableWidth: CGFloat?,
+        subviews: Subviews
+    ) -> (indicator: CGSize, copy: CGSize) {
+        (
+            indicator: subviews[0].sizeThatFits(indicatorProposal(for: axis)),
+            copy: subviews[1].sizeThatFits(
+                copyProposal(for: axis, availableWidth: availableWidth)
+            )
+        )
+    }
+
+    private func indicatorProposal(
+        for axis: EnvironmentBriefHeaderAxis
+    ) -> ProposedViewSize {
+        let length = axis == .horizontal
+            ? EnvironmentBriefHeaderLayoutPolicy.horizontalIndicatorLength
+            : EnvironmentBriefHeaderLayoutPolicy.verticalIndicatorLength
+        return ProposedViewSize(width: length, height: length)
+    }
+
+    private func copyProposal(
+        for axis: EnvironmentBriefHeaderAxis,
+        availableWidth: CGFloat?
+    ) -> ProposedViewSize {
+        guard let availableWidth else { return .unspecified }
+
+        let width: CGFloat
+        switch axis {
+        case .horizontal:
+            width = max(
+                0,
+                availableWidth
+                    - EnvironmentBriefHeaderLayoutPolicy.horizontalIndicatorLength
+                    - EnvironmentBriefHeaderLayoutPolicy.horizontalSpacing
+            )
+        case .vertical:
+            width = availableWidth
+        }
+        return ProposedViewSize(width: width, height: nil)
+    }
+
+    private func finiteWidth(_ width: CGFloat?) -> CGFloat? {
+        guard let width, width.isFinite else { return nil }
+        return width
+    }
+}
+
 private struct EnvironmentBriefCourseIndicator: View {
     let summary: EnvironmentBriefPresentationSummary
 
@@ -470,6 +614,8 @@ private struct EnvironmentBriefCourseIndicator: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.App.FirstRun.Section.sources.localized)
         .accessibilityValue("\(Int((summary.completionFraction * 100).rounded()))%")
+        .accessibilityRespondsToUserInteraction(false)
+        .accessibilityIdentifier("environmentBriefCourseIndicator")
     }
 }
 
@@ -537,9 +683,13 @@ private struct EnvironmentBriefReadinessRow: View {
                 .foregroundColor(tint)
         }
         .padding(.vertical, 8)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-        .accessibilityValue("\(count)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            L10n.App.FirstRun.Readiness.accessibilityLabel.localized(with: [
+                "title": title,
+                "count": count
+            ])
+        )
     }
 }
 

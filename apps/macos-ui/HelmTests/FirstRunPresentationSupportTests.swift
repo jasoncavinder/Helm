@@ -1,6 +1,66 @@
 import XCTest
 
 final class FirstRunPresentationSupportTests: XCTestCase {
+    func testEnvironmentBriefHeaderLayoutPolicyCoversWideAndNarrowWidths() {
+        XCTAssertEqual(
+            EnvironmentBriefHeaderLayoutPolicy.axis(forAvailableWidth: 880),
+            .horizontal
+        )
+        XCTAssertEqual(
+            EnvironmentBriefHeaderLayoutPolicy.axis(
+                forAvailableWidth: EnvironmentBriefHeaderLayoutPolicy.minimumHorizontalWidth
+            ),
+            .horizontal
+        )
+        XCTAssertEqual(
+            EnvironmentBriefHeaderLayoutPolicy.axis(
+                forAvailableWidth: EnvironmentBriefHeaderLayoutPolicy.minimumHorizontalWidth - 1
+            ),
+            .vertical
+        )
+        XCTAssertEqual(
+            EnvironmentBriefHeaderLayoutPolicy.axis(forAvailableWidth: nil),
+            .horizontal
+        )
+        XCTAssertEqual(
+            EnvironmentBriefHeaderLayoutPolicy.axis(
+                forAvailableWidth: 880,
+                override: .vertical
+            ),
+            .vertical
+        )
+    }
+
+    func testEnvironmentBriefHeaderAxisOverrideIsDebugOnlyAndFailClosed() {
+        XCTAssertNil(EnvironmentBriefHeaderLayoutPolicy.previewAxis(environment: [:]))
+        XCTAssertNil(
+            EnvironmentBriefHeaderLayoutPolicy.previewAxis(
+                environment: [
+                    EnvironmentBriefHeaderLayoutPolicy.previewAxisEnvironmentKey: "diagonal"
+                ]
+            )
+        )
+
+        #if DEBUG
+        XCTAssertEqual(
+            EnvironmentBriefHeaderLayoutPolicy.previewAxis(
+                environment: [
+                    EnvironmentBriefHeaderLayoutPolicy.previewAxisEnvironmentKey: "horizontal"
+                ]
+            ),
+            .horizontal
+        )
+        XCTAssertEqual(
+            EnvironmentBriefHeaderLayoutPolicy.previewAxis(
+                environment: [
+                    EnvironmentBriefHeaderLayoutPolicy.previewAxisEnvironmentKey: "vertical"
+                ]
+            ),
+            .vertical
+        )
+        #endif
+    }
+
     func testFixturesCoverRequiredFirstRunStatesDeterministically() {
         let fixtures = Dictionary(
             uniqueKeysWithValues: EnvironmentBriefFixtureName.allCases.map { name in
