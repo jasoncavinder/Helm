@@ -64,6 +64,24 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         )
     }
 
+    func testEnvironmentBriefCourseIndicatorAnnouncementsLeadWithLocalizedTitles() throws {
+        let allLocales = ["en"] + locales
+        let templateKey = "app.first_run.environment_brief.course_indicator.accessibility_label"
+
+        for locale in allLocales {
+            let strings = try localeAppStrings(locale)
+            let template = try XCTUnwrap(strings[templateKey])
+            let titleRange = try XCTUnwrap(template.range(of: "{title}"))
+            let percentageRange = try XCTUnwrap(template.range(of: "{percentage}"))
+
+            XCTAssertLessThan(
+                titleRange.lowerBound,
+                percentageRange.lowerBound,
+                "Environment Brief Course Indicator announcement order drifted in \(locale)"
+            )
+        }
+    }
+
     func testTaskFiveHungarianVisibleSurfaceStringsAreLocalized() throws {
         let english = try localeAppStrings("en")
         let hungarian = try localeAppStrings("hu")

@@ -114,6 +114,7 @@
   "app.first_run.environment_brief.section.this_mac": "Ez a Mac",
   "app.first_run.environment_brief.section.sources": "Szoftverforrások",
   "app.first_run.environment_brief.section.readiness": "Kezelési állapot",
+  "app.first_run.environment_brief.course_indicator.accessibility_label": "{title}, {percentage}",
   "app.first_run.environment_brief.readiness.ready": "Kezelésre kész",
   "app.first_run.environment_brief.readiness.attention": "Ellenőrzés szükséges",
   "app.first_run.environment_brief.readiness.observed_only": "Csak megfigyelt",

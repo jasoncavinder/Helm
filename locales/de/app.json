@@ -114,6 +114,7 @@
   "app.first_run.environment_brief.section.this_mac": "Dieser Mac",
   "app.first_run.environment_brief.section.sources": "Softwarequellen",
   "app.first_run.environment_brief.section.readiness": "Verwaltungsbereitschaft",
+  "app.first_run.environment_brief.course_indicator.accessibility_label": "{title}, {percentage}",
   "app.first_run.environment_brief.readiness.ready": "Bereit zur Verwaltung",
   "app.first_run.environment_brief.readiness.attention": "Überprüfung nötig",
   "app.first_run.environment_brief.readiness.observed_only": "Nur erfasst",

@@ -585,6 +585,17 @@ private struct EnvironmentBriefCourseIndicator: View {
         }
     }
 
+    private var percentageText: String {
+        "\(Int((summary.completionFraction * 100).rounded()))%"
+    }
+
+    private var accessibilityLabel: String {
+        L10n.App.FirstRun.CourseIndicator.accessibilityLabel.localized(with: [
+            "title": L10n.App.FirstRun.Section.sources.localized,
+            "percentage": percentageText
+        ])
+    }
+
     var body: some View {
         ZStack {
             Circle()
@@ -612,8 +623,7 @@ private struct EnvironmentBriefCourseIndicator: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.App.FirstRun.Section.sources.localized)
-        .accessibilityValue("\(Int((summary.completionFraction * 100).rounded()))%")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityRespondsToUserInteraction(false)
         .accessibilityIdentifier("environmentBriefCourseIndicator")
     }
