@@ -80,6 +80,7 @@
   "app.first_run.environment_brief.section.this_mac": "このMac",
   "app.first_run.environment_brief.section.sources": "ソフトウェアソース",
   "app.first_run.environment_brief.section.readiness": "管理の準備状況",
+  "app.first_run.environment_brief.course_indicator.accessibility_label": "{title}、{percentage}",
   "app.first_run.environment_brief.readiness.ready": "管理可能",
   "app.first_run.environment_brief.readiness.attention": "要確認",
   "app.first_run.environment_brief.readiness.observed_only": "検出のみ",

@@ -298,6 +298,10 @@ extension L10n {
                 static let readiness = "app.first_run.environment_brief.section.readiness"
             }
 
+            struct CourseIndicator {
+                static let accessibilityLabel = "app.first_run.environment_brief.course_indicator.accessibility_label"
+            }
+
             struct Readiness {
                 static let ready = "app.first_run.environment_brief.readiness.ready"
                 static let attention = "app.first_run.environment_brief.readiness.attention"

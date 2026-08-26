@@ -564,6 +564,7 @@ struct EnvironmentBriefHeaderLayout: Layout {
 private struct EnvironmentBriefCourseIndicator: View {
     let summary: EnvironmentBriefPresentationSummary
 
+    @ObservedObject private var localization = LocalizationManager.shared
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     private var tint: Color {
@@ -583,6 +584,22 @@ private struct EnvironmentBriefCourseIndicator: View {
         case .partial: return "exclamationmark"
         case .serviceFailure: return "exclamationmark.triangle"
         }
+    }
+
+    private var percentageText: String {
+        EnvironmentBriefCourseLabelFormatter.percentageText(
+            fraction: summary.completionFraction,
+            localeIdentifier: localization.currentLocale
+        )
+    }
+
+    private var accessibilityLabel: String {
+        EnvironmentBriefCourseLabelFormatter.label(
+            template: L10n.App.FirstRun.CourseIndicator.accessibilityLabel.localized,
+            title: L10n.App.FirstRun.Section.sources.localized,
+            fraction: summary.completionFraction,
+            localeIdentifier: localization.currentLocale
+        )
     }
 
     var body: some View {
@@ -607,13 +624,12 @@ private struct EnvironmentBriefCourseIndicator: View {
                     .font(.system(size: 30, weight: .medium))
                     .foregroundColor(tint)
 
-                Text(summary.completionFraction, format: .percent.precision(.fractionLength(0)))
+                Text(percentageText)
                     .font(.caption.weight(.bold).monospacedDigit())
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.App.FirstRun.Section.sources.localized)
-        .accessibilityValue("\(Int((summary.completionFraction * 100).rounded()))%")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityRespondsToUserInteraction(false)
         .accessibilityIdentifier("environmentBriefCourseIndicator")
     }

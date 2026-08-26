@@ -114,6 +114,7 @@
   "app.first_run.environment_brief.section.this_mac": "This Mac",
   "app.first_run.environment_brief.section.sources": "Software sources",
   "app.first_run.environment_brief.section.readiness": "Management readiness",
+  "app.first_run.environment_brief.course_indicator.accessibility_label": "{title}, {percentage}",
   "app.first_run.environment_brief.readiness.ready": "Ready to manage",
   "app.first_run.environment_brief.readiness.attention": "Needs review",
   "app.first_run.environment_brief.readiness.observed_only": "Observed only",

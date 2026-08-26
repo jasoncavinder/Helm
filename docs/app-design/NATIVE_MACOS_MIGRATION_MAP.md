@@ -249,6 +249,7 @@ Rollback/incremental strategy:
 ### Slice 20.1: Dashboard state and popover triage
 
 - PR #534 source `2c8726a0` replaces the duplicated Environment Brief header branches with one stable responsive subtree, exposes the rendered state title as a native heading, keeps the Course Indicator separately available without an interaction stop, and localizes title-before-count readiness announcements. Automated responsive/all-locale coverage and the 338-test arm64 gate pass. The 2026-08-25 owner artifact has no retained exact source revision, tracked-clean tree, or source-blob equivalence mapping, so its observations remain bounded unattributed evidence and Issue #388 stays open until an attributable exact-source wide/vertical VoiceOver and Full Keyboard Access rerun.
+- PR #535 code source `410abbf9` combines the Course Indicator title and zero-fraction-digit percentage into one selected-locale accessibility label without adding an interaction stop; the all-locale composed-label regression and 339-test arm64 UI gate pass. Its retained owner artifact contains changed objects compiled before `4b465342` was committed, so the observations remain bounded pre-commit, plausibly source-equivalent evidence. Issue #388 and the combined Task 7 accessibility item stay open for a tracked-clean current-source wide/vertical rerun.
 
 Owner-review and implementation record: `docs/app-design/proposals/v020-wayfinder-popover/README.md`. Its design-lab renderer remains non-shipping historical input; the review and production-replacement gates are resolved.
 

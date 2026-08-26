@@ -721,6 +721,7 @@ Exit Criteria:
 ## 0.20.x — Core Workflow & Information Architecture Redesign (rc)
 
 - PR #534 source `2c8726a0` implements the Environment Brief responsive-header accessibility correction and passes responsive/all-locale regressions plus the 338-test arm64 UI gate. Its 2026-08-25 owner artifact lacks a retained exact source revision, tracked-clean tree, or source-blob equivalence mapping, so those observations are bounded unattributed evidence; Issue #388 remains open pending an attributable exact-source rotor, focus-geometry, bidirectional Full Keyboard Access, and wide/vertical owner rerun.
+- PR #535 code source `410abbf9` composes the separate Course Indicator's label-before-percentage announcement with an explicit Helm-selected locale and passes the 339-test arm64 UI gate. The retained follow-up owner artifact was assembled from objects compiled before `4b465342` was committed; matching hashes and plausibly equivalent inputs do not make it tracked-clean exact-source evidence. Keep Issue #388 and the combined Task 7 accessibility item open pending a recorded clean-source rerun.
 
 Goal:
 

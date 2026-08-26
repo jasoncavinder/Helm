@@ -80,6 +80,7 @@
   "app.first_run.environment_brief.section.this_mac": "Ce Mac",
   "app.first_run.environment_brief.section.sources": "Sources logicielles",
   "app.first_run.environment_brief.section.readiness": "État de gestion",
+  "app.first_run.environment_brief.course_indicator.accessibility_label": "{title}, {percentage}",
   "app.first_run.environment_brief.readiness.ready": "Prêts à gérer",
   "app.first_run.environment_brief.readiness.attention": "À vérifier",
   "app.first_run.environment_brief.readiness.observed_only": "Observation uniquement",
