@@ -587,14 +587,14 @@ private struct EnvironmentBriefCourseIndicator: View {
     }
 
     private var percentageText: String {
-        EnvironmentBriefCourseIndicatorAccessibility.percentageText(
+        EnvironmentBriefCourseLabelFormatter.percentageText(
             fraction: summary.completionFraction,
             localeIdentifier: localization.currentLocale
         )
     }
 
     private var accessibilityLabel: String {
-        EnvironmentBriefCourseIndicatorAccessibility.label(
+        EnvironmentBriefCourseLabelFormatter.label(
             template: L10n.App.FirstRun.CourseIndicator.accessibilityLabel.localized,
             title: L10n.App.FirstRun.Section.sources.localized,
             fraction: summary.completionFraction,

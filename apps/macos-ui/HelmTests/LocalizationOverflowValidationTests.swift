@@ -92,7 +92,7 @@ final class LocalizationOverflowValidationTests: XCTestCase {
                 "Environment Brief Course Indicator announcement order drifted in \(locale)"
             )
 
-            let label = EnvironmentBriefCourseIndicatorAccessibility.label(
+            let label = EnvironmentBriefCourseLabelFormatter.label(
                 template: template,
                 title: title,
                 fraction: 0.5,

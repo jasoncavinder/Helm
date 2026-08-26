@@ -42,7 +42,7 @@ enum EnvironmentBriefHeaderLayoutPolicy {
     }
 }
 
-enum EnvironmentBriefCourseIndicatorAccessibility {
+enum EnvironmentBriefCourseLabelFormatter {
     static func percentageText(
         fraction: Double,
         localeIdentifier: String
