@@ -40,6 +40,30 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         return try JSONDecoder().decode([String: String].self, from: data)
     }
 
+    func testEnvironmentBriefReadinessAnnouncementsLeadWithLocalizedTitles() throws {
+        let allLocales = ["en"] + locales
+        let templateKey = "app.first_run.environment_brief.readiness.accessibility_label"
+
+        for locale in allLocales {
+            let strings = try localeAppStrings(locale)
+            let template = try XCTUnwrap(strings[templateKey])
+            let titleRange = try XCTUnwrap(template.range(of: "{title}"))
+            let countRange = try XCTUnwrap(template.range(of: "{count}"))
+
+            XCTAssertLessThan(
+                titleRange.lowerBound,
+                countRange.lowerBound,
+                "Environment Brief readiness announcement order drifted in \(locale)"
+            )
+        }
+
+        let english = try localeAppStrings("en")
+        XCTAssertEqual(
+            english["app.first_run.environment_brief.readiness.attention"],
+            "Needs review"
+        )
+    }
+
     func testTaskFiveHungarianVisibleSurfaceStringsAreLocalized() throws {
         let english = try localeAppStrings("en")
         let hungarian = try localeAppStrings("hu")

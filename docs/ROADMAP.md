@@ -720,6 +720,8 @@ Exit Criteria:
 
 ## 0.20.x — Core Workflow & Information Architecture Redesign (rc)
 
+- PR #534 source `2c8726a0` implements the Environment Brief responsive-header accessibility correction and passes responsive/all-locale regressions plus the 338-test arm64 UI gate. Its 2026-08-25 owner artifact lacks a retained exact source revision, tracked-clean tree, or source-blob equivalence mapping, so those observations are bounded unattributed evidence; Issue #388 remains open pending an attributable exact-source rotor, focus-geometry, bidirectional Full Keyboard Access, and wide/vertical owner rerun.
+
 Goal:
 
 - Redesign Dashboard, Plan, Library, Activity, contextual Environment, command-based search, contextual detail, and diagnostics around native macOS patterns.

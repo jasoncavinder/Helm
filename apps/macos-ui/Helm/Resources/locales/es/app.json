@@ -117,6 +117,7 @@
   "app.first_run.environment_brief.readiness.ready": "Listos para gestionar",
   "app.first_run.environment_brief.readiness.attention": "Requieren revisión",
   "app.first_run.environment_brief.readiness.observed_only": "Solo observados",
+  "app.first_run.environment_brief.readiness.accessibility_label": "{title}, {count}",
   "app.first_run.environment_brief.status.ready": "Listo",
   "app.first_run.environment_brief.status.cached": "En caché",
   "app.first_run.environment_brief.status.setup_required": "Requiere configuración",
