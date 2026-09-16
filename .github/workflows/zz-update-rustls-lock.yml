@@ -1,0 +1,38 @@
+name: Temporary Rustls Lockfile Update
+
+on:
+  push:
+    branches:
+      - security/rustls-0.23.45
+    paths:
+      - .github/workflows/zz-update-rustls-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-lockfile:
+    name: Update Cargo.lock
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.97.1
+
+      - name: Update rustls lockfile entry
+        working-directory: core/rust
+        run: cargo update -p rustls --precise 0.23.45
+
+      - name: Commit lockfile update and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/zz-update-rustls-lock.yml
+          git add core/rust/Cargo.lock
+          git diff --cached --check
+          git commit -m "fix(deps): update rustls to 0.23.45"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
