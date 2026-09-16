@@ -1,0 +1,36 @@
+name: Update rustls lockfile
+
+on:
+  push:
+    branches:
+      - security/rustls-0.23.45
+    paths:
+      - .github/workflows/update-rustls-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out security branch
+        uses: actions/checkout@v5
+        with:
+          ref: security/rustls-0.23.45
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update rustls and compatible transitive dependencies
+        working-directory: core/rust
+        run: cargo update -p rustls --precise 0.23.45
+
+      - name: Commit regenerated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/rust/Cargo.lock
+          git diff --cached --quiet && { echo "Cargo.lock did not change"; exit 1; }
+          git commit -m "fix(deps): update rustls to 0.23.45"
+          git push origin HEAD:security/rustls-0.23.45
