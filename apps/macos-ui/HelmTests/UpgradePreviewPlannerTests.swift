@@ -1,6 +1,30 @@
+import SwiftUI
 import XCTest
 
 final class UpgradePreviewPlannerTests: XCTestCase {
+    func testConfirmationSequenceColumnFitsLargePlansWithoutWrapping() {
+        for total in [1, 99, 101, 125, 1000, 10000] {
+            let reference = NSHostingView(
+                rootView: Text(verbatim: String(total))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .fixedSize()
+            ).fittingSize
+            let first = NSHostingView(
+                rootView: UpgradePlanSequenceLabel(sequence: 1, totalCount: total)
+            ).fittingSize
+            let last = NSHostingView(
+                rootView: UpgradePlanSequenceLabel(sequence: total, totalCount: total)
+            ).fittingSize
+
+            XCTAssertGreaterThan(reference.width, 0)
+            XCTAssertGreaterThan(reference.height, 0)
+            XCTAssertGreaterThanOrEqual(last.width, reference.width, "Plan size: \(total)")
+            XCTAssertEqual(last.height, reference.height, accuracy: 0.5, "Plan size: \(total)")
+            XCTAssertEqual(first.width, last.width, accuracy: 0.5, "Plan size: \(total)")
+            XCTAssertEqual(first.height, last.height, accuracy: 0.5, "Plan size: \(total)")
+        }
+    }
+
     func testCountRespectsPinnedDisabledAndOsFilters() {
         let candidates = [
             UpgradePreviewPlanner.Candidate(managerId: "homebrew_formula", pinned: false),
