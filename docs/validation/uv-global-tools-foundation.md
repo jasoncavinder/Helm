@@ -49,8 +49,9 @@ are not the maintainer's installed-tool inventory.
 The output shape was checked against the pinned upstream
 [uv 0.12.18 list implementation](https://github.com/astral-sh/uv/blob/0.12.18/crates/uv/src/commands/tool/list.rs)
 and [tool-list tests](https://github.com/astral-sh/uv/blob/0.12.18/crates/uv/tests/tool/tool_list.rs).
-Local uv 0.12.9 help confirms the requested switches, but does not establish the
-oldest supported release or certify nonempty real output across versions.
+Local uv 0.12.9 help confirms the requested switches. The opt-in real-command
+test below additionally checks nonempty output on 0.12.9 and 0.12.18, without
+establishing an oldest supported release or a complete adapter capability boundary.
 
 Local validation for this slice:
 
@@ -66,14 +67,63 @@ Local validation for this slice:
   certify nonempty inventory, network discovery, or mutations.
 - The host compiler lacked rustfmt/Clippy components, so validation used a
   worktree-local Rust 1.98.1 toolchain without changing the normal installation.
-- GUI builds, user QA, and real installed-tool lifecycle tests are not claimed
-  for this unregistered Rust-only slice.
+- GUI builds, user QA, and a real Helm-adapter lifecycle are not claimed for this
+  unregistered Rust-only slice. The separate opt-in test below exercises uv
+  itself with generated fixtures, not Helm's mutation/orchestration path.
 
 In particular, latest lookup does not supply the installed requirement as a
 version constraint. The regression fixture intentionally includes an exact pin
 and a newer latest version. It must never directly produce an `OutdatedPackage`
 or an executable upgrade step. uv's own upgrade behavior is constraint-aware;
 see the [upstream upgrade documentation](https://docs.astral.sh/uv/concepts/tools/#upgrading-tools).
+
+## Opt-In Real Command Test
+
+`uv_tool_real_contract.rs` launches a standard-library-only Python fixture driver
+with explicit executable paths and no shell. The driver creates two small local
+wheels in a fresh store, captures real command output, and passes those captures
+to the production Rust parser. List arguments come from the production builder.
+
+The harness clears inherited environment/configuration, sets its own HOME and
+tool/bin/cache/Python/config/data/temp directories, forces offline mode, disables
+Python downloads and managed Python, uses an explicitly supplied interpreter,
+and installs only generated wheels from a local `--no-index --find-links` source.
+No package build backend or fixture entrypoint runs. Each subprocess has a
+30-second deadline. Run artifacts and captures remain under
+`artifacts/uv-real-contract/`; there is no automatic cleanup or host tool mutation.
+
+```bash
+HELM_UV_CONTRACT_EXECUTABLE=/absolute/path/to/uv \
+HELM_UV_CONTRACT_PYTHON=/absolute/path/to/python3 \
+cargo test -p helm-core --test uv_tool_real_contract \
+  --manifest-path core/rust/Cargo.toml -- --ignored --nocapture
+```
+
+The test is ignored by default and does not install test tools during the normal
+Rust quality gate. Explicit invocation fails rather than skipping if either
+executable is missing. On 2026-09-23 it passed on arm64 macOS with Python 3.14.7
+and each of uv 0.12.9 (`9f9286029`) and 0.12.18 (`01cb90c1a`). The latter used the
+official release archive in the worktree, checked against its published SHA-256
+`cf40e0c6a202190ccd9e0406dcfdd5b2d6668a9a5c779b17948963df32aafe5b`, not a host upgrade.
+
+Verified scenarios:
+
+- Empty inventory and no newer versions parse through their distinct contracts.
+- One tool exporting two executables remains one observed distribution.
+- New local version 2.0 appears as latest for both an exact `==1.0` pin and a
+  `<2` constraint; upgrading preserves the pin and advances the range only to
+  1.1. Discovery therefore still does not authorize a mutation target.
+- A failed install of a nonexistent local package leaves inventory unchanged.
+- A malformed test receipt makes uv exit 0 with warnings and partial stdout;
+  both installed/latest parsers reject the incomplete result. Restoring the
+  receipt restores the original complete observation.
+- Uninstalling one test tool removes its executable links without damaging the
+  other tool; removing the second restores confirmed empty inventory.
+
+This is bounded real upstream-command and parser evidence, not a certified
+Helm manager. Network/index behavior, installed provenance, transport failures,
+cancellation, persistence acceptance, Python/uv version ranges, GUI/CLI wiring,
+and post-action reconciliation through Helm remain separate gates.
 
 ## Remaining Before Activation
 
