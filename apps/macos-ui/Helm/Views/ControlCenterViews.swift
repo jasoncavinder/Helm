@@ -189,13 +189,14 @@ struct ControlCenterWindowView: View {
         )
         .toolbar {
             if !presentsFirstRun {
-                if #unavailable(macOS 26.0) {
-                    ToolbarItem(placement: .principal) {
-                        Color.clear
-                            .frame(width: 1, height: 1)
-                            .accessibilityHidden(true)
-                    }
+                // A principal item keeps automatic items in the trailing section.
+                // ToolbarSpacer alone is placed before the split-view sidebar on macOS.
+                ToolbarItem(placement: .principal) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityHidden(true)
                 }
+                .controlCenterSeparateToolbarBackground()
 
                 if selectedSection == .updates {
                     ToolbarItem(placement: .automatic) {
@@ -246,35 +247,30 @@ struct ControlCenterWindowView: View {
                     }
                 }
 
-                if #available(macOS 26.0, *) {
-                    ToolbarSpacer(.flexible, placement: .automatic)
-                }
-
-                // Keep search and its adjacent details toggle in one item so macOS
-                // cannot regroup the toggle with Refresh and Review Plan.
                 ToolbarItem(placement: .automatic) {
-                    HStack(spacing: 8) {
-                        ControlCenterToolbarSearchField(
-                            text: toolbarSearchQuery,
-                            placeholder: toolbarSearchPlaceholder,
-                            focusRouter: context.controlCenterSearchFocusRouter,
-                            onSubmit: acceptFirstGlobalSearchResult,
-                            onCancel: {
-                                toolbarSearchQuery.wrappedValue = ""
-                                context.isControlCenterSearchPresented = false
-                            }
-                        )
-                        .frame(width: selectedSection == .updates ? 250 : 320)
-
-                        if selectedSection.supportsInspector {
-                            Button {
-                                context.toggleInspector()
-                            } label: {
-                                Image(systemName: "sidebar.trailing")
-                            }
-                            .help(inspectorToggleLabel)
-                            .accessibilityLabel(inspectorToggleLabel)
+                    ControlCenterToolbarSearchField(
+                        text: toolbarSearchQuery,
+                        placeholder: toolbarSearchPlaceholder,
+                        focusRouter: context.controlCenterSearchFocusRouter,
+                        onSubmit: acceptFirstGlobalSearchResult,
+                        onCancel: {
+                            toolbarSearchQuery.wrappedValue = ""
+                            context.isControlCenterSearchPresented = false
                         }
+                    )
+                    .frame(width: selectedSection == .updates ? 250 : 320)
+                }
+                .controlCenterSeparateToolbarBackground()
+
+                if selectedSection.supportsInspector {
+                    ToolbarItem(placement: .automatic) {
+                        Button {
+                            context.toggleInspector()
+                        } label: {
+                            Image(systemName: "sidebar.trailing")
+                        }
+                        .help(inspectorToggleLabel)
+                        .accessibilityLabel(inspectorToggleLabel)
                     }
                 }
             }
@@ -379,6 +375,17 @@ struct ControlCenterWindowView: View {
         context.isInspectorVisible
             ? "app.command.hide_inspector".localized
             : "app.command.show_inspector".localized
+    }
+}
+
+private extension ToolbarContent {
+    @ToolbarContentBuilder
+    func controlCenterSeparateToolbarBackground() -> some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
     }
 }
 
