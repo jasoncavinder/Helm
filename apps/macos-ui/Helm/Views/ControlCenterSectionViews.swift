@@ -1218,10 +1218,10 @@ struct ReviewedUpgradeConfirmationSheet: View {
 
                             ForEach(group.rows) { row in
                                 HStack(alignment: .top, spacing: 10) {
-                                    Text("\(row.sequence)")
-                                        .font(.caption.monospacedDigit().weight(.semibold))
-                                        .foregroundColor(.secondary)
-                                        .frame(width: 20, alignment: .trailing)
+                                    UpgradePlanSequenceLabel(
+                                        sequence: row.sequence,
+                                        totalCount: request.selectedSteps.count
+                                    )
 
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(stepTitle(row.step))

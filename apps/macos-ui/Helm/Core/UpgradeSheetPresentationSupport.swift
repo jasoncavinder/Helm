@@ -1,3 +1,25 @@
+import SwiftUI
+
+struct UpgradePlanSequenceLabel: View {
+    let sequence: Int
+    let totalCount: Int
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Reserve the same digit width for every row, including large plans.
+            Text(verbatim: String(repeating: "0", count: String(max(sequence, totalCount)).count))
+                .hidden()
+                .accessibilityHidden(true)
+            Text(verbatim: String(sequence))
+        }
+        .font(.caption.monospacedDigit().weight(.semibold))
+        .foregroundColor(.secondary)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: true)
+        .frame(minWidth: 20, alignment: .trailing)
+    }
+}
+
 enum UpgradeSheetHost: Equatable {
     case controlCenter
 }

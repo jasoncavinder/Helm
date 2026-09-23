@@ -60,6 +60,9 @@ jobs:
   xcode-build:
     name: Xcode Build Check
     runs-on: macos-26
+    env:
+      HELM_XCODE_ARCH: arm64
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,6 +77,9 @@ jobs:
           set -euo pipefail
           apps/macos-ui/scripts/check_channel_policy.sh
 
+      - name: Validate Ventura arm64 compatibility contract
+        run: scripts/ci/check_macos_ventura_compatibility.sh
+
       - name: Build and test Xcode project
         run: |
           set -euo pipefail
@@ -83,6 +89,9 @@ jobs:
             -scheme Helm \
             -destination "$XCODE_DESTINATION" \
             -configuration Debug \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            MACOSX_DEPLOYMENT_TARGET=13.0 \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
