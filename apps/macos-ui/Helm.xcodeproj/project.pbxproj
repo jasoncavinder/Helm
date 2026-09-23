@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A46300000000000000000001 /* ManagerInstallationCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46300000000000000000011 /* ManagerInstallationCatalog.swift */; };
+		A46300000000000000000002 /* ManagerInstallationCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46300000000000000000011 /* ManagerInstallationCatalog.swift */; };
+		A46300000000000000000003 /* DashboardManagerInstallationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46300000000000000000012 /* DashboardManagerInstallationView.swift */; };
+		A46300000000000000000004 /* ManagerInstallationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46300000000000000000013 /* ManagerInstallationCatalogTests.swift */; };
 		N42200000000000000000001 /* AppNotificationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = N42200000000000000000011 /* AppNotificationPolicy.swift */; };
 		N42200000000000000000002 /* AppNotificationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = N42200000000000000000011 /* AppNotificationPolicy.swift */; };
 		N42200000000000000000003 /* AppNotificationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N42200000000000000000012 /* AppNotificationPolicyTests.swift */; };
@@ -219,6 +223,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A46300000000000000000011 /* ManagerInstallationCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerInstallationCatalog.swift; sourceTree = "<group>"; };
+		A46300000000000000000012 /* DashboardManagerInstallationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardManagerInstallationView.swift; sourceTree = "<group>"; };
+		A46300000000000000000013 /* ManagerInstallationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerInstallationCatalogTests.swift; sourceTree = "<group>"; };
 		N42200000000000000000011 /* AppNotificationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotificationPolicy.swift; sourceTree = "<group>"; };
 		N42200000000000000000012 /* AppNotificationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotificationPolicyTests.swift; sourceTree = "<group>"; };
 		C41900000000000000000011 /* StatusItemActivationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemActivationPolicy.swift; sourceTree = "<group>"; };
@@ -448,6 +455,7 @@
 				M100000000000000000000001 /* LocalizationPreference.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
+				A46300000000000000000011 /* ManagerInstallationCatalog.swift */,
 				K100000000000000000000001 /* SupportRedactor.swift */,
 				B10000000000000000000017 /* L10n.swift */,
 				G10000000000000000000001 /* L10n+App.swift */,
@@ -488,6 +496,7 @@
 				R100000000000000000000001 /* WayfinderCourseIndicatorView.swift */,
 				B10000000000000000000008 /* DashboardView.swift */,
 				E10000000000000000000001 /* InspectorViews.swift */,
+				A46300000000000000000012 /* DashboardManagerInstallationView.swift */,
 					B10000000000000000000010 /* ManagersView.swift */,
 					B10000000000000000000007 /* NavigationBarView.swift */,
 					8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
@@ -639,6 +648,7 @@
 				W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */,
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
 				C38300000000000000000013 /* ControlCenterContextTests.swift */,
+				A46300000000000000000013 /* ManagerInstallationCatalogTests.swift */,
 				S100000000000000000000002 /* ControlCenterSearchBridgeTests.swift */,
 				T100000000000000000000002 /* SettingsOpeningBridgeTests.swift */,
 				U100000000000000000000001 /* SettingsPaneTests.swift */,
@@ -947,6 +957,8 @@
 				D20000000000000000000008 /* WalkthroughState.swift in Sources */,
 				D20000000000000000000009 /* SpotlightOverlay.swift in Sources */,
 				E20000000000000000000001 /* InspectorViews.swift in Sources */,
+				A46300000000000000000001 /* ManagerInstallationCatalog.swift in Sources */,
+				A46300000000000000000003 /* DashboardManagerInstallationView.swift in Sources */,
 					F20000000000000000000003 /* ControlCenterSectionViews.swift in Sources */,
 					R495000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */,
 					R515000000000000000000001 /* LibraryTableView.swift in Sources */,
@@ -993,6 +1005,8 @@
 				S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */,
 				S200000000000000000000003 /* ControlCenterSearchBridgeTests.swift in Sources */,
 				C38300000000000000000003 /* ControlCenterContextTests.swift in Sources */,
+				A46300000000000000000002 /* ManagerInstallationCatalog.swift in Sources */,
+				A46300000000000000000004 /* ManagerInstallationCatalogTests.swift in Sources */,
 				R520400000000000000000002 /* ControlCenterContextBase.swift in Sources */,
 				R52300000000000000000002 /* TaskDescriptionPresentation.swift in Sources */,
 				T200000000000000000000002 /* SettingsOpeningBridge.swift in Sources */,

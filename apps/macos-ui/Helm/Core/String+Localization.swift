@@ -49,6 +49,32 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
     }
 }
 
+extension ManagerDistributionMethod {
+    var localizedName: String {
+        switch self {
+        case .homebrew: return L10n.App.Inspector.InstallMethod.homebrew.localized
+        case .macports: return L10n.App.Inspector.InstallMethod.macports.localized
+        case .appStore: return L10n.App.Inspector.InstallMethod.appStore.localized
+        case .setapp: return L10n.App.Inspector.InstallMethod.setapp.localized
+        case .officialInstaller: return L10n.App.Inspector.InstallMethod.officialInstaller.localized
+        case .scriptInstaller: return L10n.App.Inspector.InstallMethod.scriptInstaller.localized
+        case .corepack: return L10n.App.Inspector.InstallMethod.corepack.localized
+        case .rustupInstaller: return L10n.App.Inspector.InstallMethod.rustupInstaller.localized
+        case .xcodeSelect: return L10n.App.Inspector.InstallMethod.xcodeSelect.localized
+        case .softwareUpdate: return L10n.App.Inspector.InstallMethod.softwareUpdate.localized
+        case .systemProvided: return L10n.App.Inspector.InstallMethod.systemProvided.localized
+        case .npm: return L10n.App.Inspector.InstallMethod.npm.localized
+        case .pip: return L10n.App.Inspector.InstallMethod.pip.localized
+        case .pipx: return L10n.App.Inspector.InstallMethod.pipx.localized
+        case .gem: return L10n.App.Inspector.InstallMethod.gem.localized
+        case .cargoInstall: return L10n.App.Inspector.InstallMethod.cargoInstall.localized
+        case .asdf: return L10n.App.Inspector.InstallMethod.asdf.localized
+        case .mise: return L10n.App.Inspector.InstallMethod.mise.localized
+        case .notManageable: return L10n.App.Inspector.InstallMethod.notManageable.localized
+        }
+    }
+}
+
 enum ManagerDependencyResolver {
     static func dependencyManagerId(for managerId: String, provenance: String?) -> String? {
         let normalized = normalizedProvenance(provenance)

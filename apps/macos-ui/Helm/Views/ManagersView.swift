@@ -569,55 +569,8 @@ private struct ManagerSectionRow: View {
         packageCount > 0 && enabled && !isManagerUninstalling
     }
 
-    private var installMethodPolicyContext: ManagerInstallMethodPolicyContext {
-        ManagerInstallMethodPolicyContext.fromEnvironment()
-    }
-
-    private var resolvedInstallMethodOptions: [ManagerInstallMethodOption] {
-        guard let coreOptions = status?.installMethodOptions,
-              !coreOptions.isEmpty else {
-            return manager.installMethodOptions
-        }
-
-        let fallbackByMethod = Dictionary(
-            uniqueKeysWithValues: manager.installMethodOptions.map { ($0.method.rawValue, $0) }
-        )
-        let mapped = coreOptions.compactMap { option in
-            ManagerInstallMethodOption.fromCoreStatus(
-                option,
-                fallback: fallbackByMethod[option.methodId]
-            )
-        }
-        return mapped.isEmpty ? manager.installMethodOptions : mapped
-    }
-
     private var managerCanInstall: Bool {
-        let supportsHelmInstall = Set([
-            "mise",
-            "asdf",
-            "mas",
-            "rustup",
-            "npm",
-            "pnpm",
-            "yarn",
-            "pipx",
-            "pip",
-            "poetry",
-            "rubygems",
-            "bundler",
-            "cargo",
-            "cargo_binstall",
-            "podman",
-            "colima"
-        ]).contains(manager.id)
-        guard supportsHelmInstall, !manager.isDetectionOnly else { return false }
-        let allowedInstallOptions = resolvedInstallMethodOptions.filter { option in
-            option.method != .notManageable && option.isAllowed(in: installMethodPolicyContext)
-        }
-        if !allowedInstallOptions.isEmpty {
-            return true
-        }
-        return manager.canInstall
+        core.managerInstallationCatalog.canReview(manager.id)
     }
 
     private var reviewFindingSummary: String? {

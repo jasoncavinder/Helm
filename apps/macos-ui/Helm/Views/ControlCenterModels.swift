@@ -509,6 +509,18 @@ final class ControlCenterContext: ControlCenterContextBase {
         managerInstallSheetRequestToken += 1
     }
 
+    func openManagerInstallationReview(for managerId: String) {
+        dismissGlobalSearchResults()
+        clearEnvironmentRouteStage()
+        selectedSection = .managers
+        selectedPackageId = nil
+        selectedTaskId = nil
+        selectedUpgradePlanStepId = nil
+        selectedManagerId = managerId
+        isInspectorVisible = true
+        requestManagerInstallSheet(for: managerId)
+    }
+
     func shouldPresentFirstRun(
         mode: EnvironmentBriefFirstRunMode,
         hasCompletedOnboarding: Bool

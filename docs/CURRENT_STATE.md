@@ -21,6 +21,8 @@ On 2026-09-21, the owner confirmed the live-data Sparkle Plan/confirmation check
 See:
 - CHANGELOG.md
 
+The v0.20 Dashboard now ends Manager Health with a distinct Add manager card. Its chooser uses only implemented, undetected managers with core-published, planner-supported installation methods; missing metadata never falls back to the UI registry. Policy, eligibility, dependency readiness, active operations, network/service availability, and research-fixture safety gate review. Selection opens the existing Environment inspector installation review rather than submitting work. That review revalidates the selected method before submission and after preference callbacks, preserves structured service execution and existing Activity recovery, and cannot bypass review when method metadata is empty. Owner visual/accessibility and isolated installation-lifecycle evidence remain open under issue #463; this does not certify new adapter capabilities or change the public release.
+
 Active milestone:
 - latest stable release currently published on `main`: **0.19.1**, represented by a published non-prerelease GitHub release with signed/notarized GUI artifacts and direct CLI artifacts; GitHub `releases/latest` resolves to `v0.19.1`
 - published opt-in prerelease retained alongside stable: **0.19.0-rc.7**, represented by a published GitHub prerelease whose beta appcast and RC CLI metadata remain isolated from the stable channel
