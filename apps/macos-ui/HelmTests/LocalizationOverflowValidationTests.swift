@@ -40,6 +40,48 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         return try JSONDecoder().decode([String: String].self, from: data)
     }
 
+    func testManagerInstallationReviewCopyIsTranslatedAndMirroredAcrossLocales() throws {
+        let english = try localeAppStrings("en")
+        let keys = [
+            "app.managers.alert.install.title",
+            "app.managers.alert.install.message",
+            "app.settings.section.advanced",
+            "app.inspector.install_method",
+            "app.inspector.install_method.tag.managed_restricted",
+            "app.inspector.install_method.tag.blocked",
+            "app.inspector.install.complete_post_install_setup_automatically",
+            "app.inspector.timeout_hard",
+            "app.inspector.timeout_idle",
+            "app.inspector.timeout.use_default",
+            "app.inspector.install_source",
+            "app.inspector.install_source.official_download",
+            "app.inspector.install_source.existing_binary_path",
+            "app.inspector.install_source.existing_mise_binary_path",
+            "app.inspector.install_source.select_binary",
+        ]
+
+        for locale in locales {
+            let strings = try localeAppStrings(locale)
+            let bundledURL = repoRootURL
+                .appendingPathComponent("apps/macos-ui/Helm/Resources/locales")
+                .appendingPathComponent(locale)
+                .appendingPathComponent("app.json")
+            let bundled = try JSONDecoder().decode(
+                [String: String].self,
+                from: Data(contentsOf: bundledURL)
+            )
+
+            for key in keys {
+                let text = try XCTUnwrap(strings[key])
+                let englishText = try XCTUnwrap(english[key])
+                XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                XCTAssertNotEqual(text, key)
+                XCTAssertNotEqual(text, englishText, "Untranslated installation copy in \(locale): \(key)")
+                XCTAssertEqual(text, bundled[key], "Bundled installation copy drifted in \(locale): \(key)")
+            }
+        }
+    }
+
     func testEnvironmentBriefReadinessAnnouncementsLeadWithLocalizedTitles() throws {
         let allLocales = ["en"] + locales
         let templateKey = "app.first_run.environment_brief.readiness.accessibility_label"
