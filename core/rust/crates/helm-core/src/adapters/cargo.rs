@@ -258,6 +258,10 @@ pub fn cargo_install_request(
     version: Option<&str>,
 ) -> ProcessSpawnRequest {
     let mut command = CommandSpec::new(CARGO_COMMAND).args(["install", crate_name]);
+    // Follow cargo-binstall's documented source-install recipe without changing other crates.
+    if crate_name == "cargo-binstall" {
+        command = command.arg("--locked");
+    }
     if let Some(version) = version
         && !version.trim().is_empty()
     {
@@ -679,6 +683,24 @@ mod tests {
         );
 
         let uninstall = cargo_uninstall_request(None, "ripgrep");
+        assert_eq!(
+            cargo_install_request(None, "cargo-binstall", None)
+                .command
+                .args,
+            vec!["install", "cargo-binstall", "--locked"]
+        );
+        assert_eq!(
+            cargo_install_request(None, "cargo-binstall", Some("1.17.5"))
+                .command
+                .args,
+            vec![
+                "install",
+                "cargo-binstall",
+                "--locked",
+                "--version",
+                "1.17.5"
+            ]
+        );
         assert_eq!(uninstall.command.args, vec!["uninstall", "ripgrep"]);
 
         let upgrade = cargo_upgrade_request(None, "ripgrep");

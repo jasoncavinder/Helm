@@ -227,41 +227,7 @@ struct ControlCenterWindowView: View {
                     }
                 }
 
-                if #unavailable(macOS 26.0) {
-                    ToolbarItem(placement: .automatic) {
-                        ControlCenterToolbarSearchField(
-                            text: toolbarSearchQuery,
-                            placeholder: toolbarSearchPlaceholder,
-                            focusRouter: context.controlCenterSearchFocusRouter,
-                            onSubmit: acceptFirstGlobalSearchResult,
-                            onCancel: {
-                                toolbarSearchQuery.wrappedValue = ""
-                                context.isControlCenterSearchPresented = false
-                            }
-                        )
-                        .frame(width: selectedSection == .updates ? 250 : 320)
-                    }
-                }
-
-                ToolbarItemGroup(placement: .primaryAction) {
-                    if selectedSection.supportsInspector {
-                        Button {
-                            context.toggleInspector()
-                        } label: {
-                            Image(systemName: "sidebar.trailing")
-                        }
-                        .help(
-                            context.isInspectorVisible
-                                ? "app.command.hide_inspector".localized
-                                : "app.command.show_inspector".localized
-                        )
-                        .accessibilityLabel(
-                            context.isInspectorVisible
-                                ? "app.command.hide_inspector".localized
-                                : "app.command.show_inspector".localized
-                        )
-                    }
-
+                ToolbarItemGroup(placement: .automatic) {
                     Button {
                         core.triggerRefresh()
                     } label: {
@@ -286,6 +252,36 @@ struct ControlCenterWindowView: View {
                         .controlSize(.regular)
                         .fixedSize()
                         .help(L10n.App.Updates.Notification.reviewPlan.localized)
+                    }
+                }
+
+                if #available(macOS 26.0, *) {
+                    DefaultToolbarItem(kind: .search, placement: .automatic)
+                } else {
+                    ToolbarItem(placement: .automatic) {
+                        ControlCenterToolbarSearchField(
+                            text: toolbarSearchQuery,
+                            placeholder: toolbarSearchPlaceholder,
+                            focusRouter: context.controlCenterSearchFocusRouter,
+                            onSubmit: acceptFirstGlobalSearchResult,
+                            onCancel: {
+                                toolbarSearchQuery.wrappedValue = ""
+                                context.isControlCenterSearchPresented = false
+                            }
+                        )
+                        .frame(width: selectedSection == .updates ? 250 : 320)
+                    }
+                }
+
+                if selectedSection.supportsInspector {
+                    ToolbarItem(placement: .automatic) {
+                        Button {
+                            context.toggleInspector()
+                        } label: {
+                            Image(systemName: "sidebar.trailing")
+                        }
+                        .help(inspectorToggleLabel)
+                        .accessibilityLabel(inspectorToggleLabel)
                     }
                 }
             }
@@ -384,6 +380,12 @@ struct ControlCenterWindowView: View {
             core.triggerRefresh()
         }
         onFirstRunComplete()
+    }
+
+    private var inspectorToggleLabel: String {
+        context.isInspectorVisible
+            ? "app.command.hide_inspector".localized
+            : "app.command.show_inspector".localized
     }
 }
 

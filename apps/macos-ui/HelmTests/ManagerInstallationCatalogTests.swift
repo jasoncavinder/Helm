@@ -126,4 +126,45 @@ final class ManagerInstallationCatalogTests: XCTestCase {
         XCTAssertFalse(value.canReview("mise", methodID: "removedMethod"))
         XCTAssertTrue(value.canReview("mise", methodID: "scriptInstaller"))
     }
+
+    func testCargoBinstallCargoMethodDoesNotRequireHomebrewOrCachedSearchResults() {
+        let candidate = source("cargo_binstall", methods: [
+            .init(id: "cargoInstall", policyAllowed: true, dependencyID: "cargo"),
+            .init(id: "homebrew", policyAllowed: true, dependencyID: "homebrew_formula")
+        ])
+        let ready = catalog([candidate, source("cargo", detected: true)])
+        XCTAssertTrue(ready.canReview("cargo_binstall", methodID: "cargoInstall"))
+        XCTAssertFalse(ready.canReview("cargo_binstall", methodID: "homebrew"))
+        for dependency in [source("cargo"), source("cargo", detected: true, enabled: false),
+                           source("cargo", detected: true, busy: true)] {
+            XCTAssertFalse(catalog([candidate, dependency])
+                .canReview("cargo_binstall", methodID: "cargoInstall"))
+        }
+    }
+
+    func testManagerRevealWaitsForVisibleDestinationAndCompletesOnlyOnce() throws {
+        var state = ManagerRevealRequestState()
+        state.request("cargo_binstall")
+        let request = try XCTUnwrap(state.pending)
+        state.complete(request, visibleManagerIDs: ["mise"])
+        XCTAssertEqual(state.pending, request)
+        state.complete(request, visibleManagerIDs: ["mise", "cargo_binstall"])
+        XCTAssertNil(state.pending)
+        state.complete(request, visibleManagerIDs: ["cargo_binstall"])
+        XCTAssertNil(state.pending)
+    }
+
+    func testRepeatedReviewIsANewRevealAndOldCallbacksCannotConsumeIt() throws {
+        var state = ManagerRevealRequestState()
+        state.request("cargo_binstall")
+        let old = try XCTUnwrap(state.pending)
+        state.request("cargo_binstall")
+        let latest = try XCTUnwrap(state.pending)
+        XCTAssertNotEqual(old, latest)
+        state.complete(old, visibleManagerIDs: ["cargo_binstall"])
+        XCTAssertEqual(state.pending, latest)
+        state.cancel()
+        state.complete(latest, visibleManagerIDs: ["cargo_binstall"])
+        XCTAssertNil(state.pending)
+    }
 }

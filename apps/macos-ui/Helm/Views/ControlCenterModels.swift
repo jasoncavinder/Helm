@@ -204,6 +204,17 @@ final class ControlCenterContext: ControlCenterContextBase {
     @Published var isInspectorVisible: Bool = true
     @Published var managerInstallSheetRequestManagerId: String?
     @Published var managerInstallSheetRequestToken: Int = 0
+    @Published private var managerRevealState = ManagerRevealRequestState()
+
+    var pendingManagerRevealRequest: ManagerRevealRequestState.Request? {
+        managerRevealState.pending
+    }
+
+    func completeManagerRevealRequest(
+        _ request: ManagerRevealRequestState.Request, visibleManagerIDs: Set<String>
+    ) {
+        managerRevealState.complete(request, visibleManagerIDs: visibleManagerIDs)
+    }
     @Published private var firstRunSession = EnvironmentBriefFirstRunSession()
     @Published private(set) var dashboardFocusRequestToken: Int = 0
     @Published private(set) var wayfinderNavigationState = WayfinderNavigationState()
@@ -518,6 +529,7 @@ final class ControlCenterContext: ControlCenterContextBase {
         selectedUpgradePlanStepId = nil
         selectedManagerId = managerId
         isInspectorVisible = true
+        managerRevealState.request(managerId)
         requestManagerInstallSheet(for: managerId)
     }
 
@@ -536,6 +548,9 @@ final class ControlCenterContext: ControlCenterContextBase {
     }
 
     private func clearInspectorSelection(except section: ControlCenterSection?) {
+        if section != .managers {
+            managerRevealState.cancel()
+        }
         if section != .managers, selectedManagerId != nil {
             selectedManagerId = nil
         }

@@ -1,5 +1,27 @@
 import Foundation
 
+struct ManagerRevealRequestState {
+    struct Request: Equatable {
+        let id = UUID()
+        let managerID: String
+    }
+
+    private(set) var pending: Request?
+
+    mutating func request(_ managerID: String) {
+        pending = Request(managerID: managerID)
+    }
+
+    mutating func complete(_ request: Request, visibleManagerIDs: Set<String>) {
+        guard pending == request, visibleManagerIDs.contains(request.managerID) else { return }
+        pending = nil
+    }
+
+    mutating func cancel() {
+        pending = nil
+    }
+}
+
 /// Presentation of planner-supported methods, never a second installation planner.
 struct ManagerInstallationCatalog {
     struct Method: Equatable, Identifiable {

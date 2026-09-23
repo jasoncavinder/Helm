@@ -211,6 +211,10 @@ pub fn plan_manager_install(
             Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
         },
         ManagerId::CargoBinstall => match selected_method {
+            Some("cargoInstall") => Ok(package_manager_install_plan(
+                ManagerId::Cargo,
+                "cargo-binstall",
+            )),
             Some("homebrew") | None => Ok(homebrew_manager_install_plan("cargo-binstall")),
             Some(_) => Err(ManagerInstallPlanError::UnsupportedMethod),
         },
@@ -1558,6 +1562,10 @@ mod tests {
     #[test]
     fn manager_supported_install_methods_filters_to_planner_supported_subset() {
         assert_eq!(
+            manager_supported_install_methods(ManagerId::CargoBinstall),
+            vec!["cargoInstall", "homebrew"]
+        );
+        assert_eq!(
             manager_supported_install_methods(ManagerId::Npm),
             vec!["homebrew"]
         );
@@ -1576,6 +1584,46 @@ mod tests {
         assert_eq!(
             manager_supported_install_methods(ManagerId::DockerDesktop),
             Vec::<&'static str>::new()
+        );
+    }
+
+    #[test]
+    fn cargo_binstall_install_routes_explicit_cargo_method_without_catalog_lookup() {
+        let options = ManagerInstallOptions {
+            install_method_override: Some("cargoInstall".to_string()),
+            ..ManagerInstallOptions::default()
+        };
+        let plan = plan_manager_install(ManagerId::CargoBinstall, Some("homebrew"), &options)
+            .expect("explicit Cargo method should override stored Homebrew selection");
+        assert_eq!(plan.target_manager, ManagerId::Cargo);
+        assert_eq!(
+            plan.request,
+            crate::adapters::AdapterRequest::Install(crate::adapters::InstallRequest {
+                package: crate::models::PackageRef {
+                    manager: ManagerId::Cargo,
+                    name: "cargo-binstall".to_string(),
+                },
+                target_name: None,
+                version: None,
+            })
+        );
+        assert_eq!(
+            plan_manager_install(
+                ManagerId::CargoBinstall,
+                None,
+                &ManagerInstallOptions::default()
+            )
+            .unwrap()
+            .target_manager,
+            ManagerId::HomebrewFormula
+        );
+        assert!(
+            plan_manager_install(
+                ManagerId::CargoBinstall,
+                Some("scriptInstaller"),
+                &ManagerInstallOptions::default()
+            )
+            .is_err()
         );
     }
 
