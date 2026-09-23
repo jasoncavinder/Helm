@@ -54,6 +54,7 @@ pub mod softwareupdate;
 pub mod softwareupdate_process;
 pub mod sparkle;
 pub mod sparkle_process;
+pub mod uv_tool;
 pub mod xcode_command_line_tools;
 pub mod xcode_command_line_tools_process;
 pub mod yarn;
