@@ -740,6 +740,7 @@ Goal:
 - Task 1's automated evidence at this checkpoint is bounded to provider/projection/policy/request-state unit coverage and a successful full app-target build. Production overview/navigation wiring and SwiftUI keyboard/VoiceOver focus transfer have attributable current-host owner evidence on `3de57a81` rather than automated production-integration coverage.
 - Continue Project WOW through personalized plan preview and one supported safe, verified improvement.
 - Deliver true direct updating for eligible third-party Sparkle apps through a dedicated, uniquely identified, Developer ID-signed and notarized external-updater boundary (or an equivalently reviewed architecture) that preserves Helm's app sandbox, accepts only structured validated requests, and fails safely to Open App when compatibility cannot be established.
+- Add `uv` as a manager for globally installed Python tools, with the bounded scope and pre-RC certification requirements below.
 
 Exit Criteria:
 
@@ -749,6 +750,17 @@ Exit Criteria:
 - Dashboard remains responsive and preserves selection/context while tasks and snapshot updates arrive.
 - Presentation changes do not move business or orchestration logic out of service/core boundaries.
 - Signed installed-candidate QA proves download, installation, relaunch, version verification, cancellation/failure recovery, and unsupported-app fallback across representative third-party Sparkle apps and framework versions without weakening Helm's sandbox or claiming completion before the target version is observed.
+
+### Planned uv Global-Tool Manager
+
+Target: `v0.20.0`, before the first release candidate. Status: planned, not implemented. Tracks [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
+
+- Detect `uv` installations with accurate executable provenance and inventory tools managed through `uv tool`.
+- Support installed-tool search, outdated detection, and reviewed install, upgrade, and uninstall actions with post-action verification. Integrate tools and results into Environment, Library, Plan, and Activity with GUI/CLI parity.
+- Preserve configured tool version constraints, Helm pin/selection policy, and existing installation ownership. Managing tools through `uv` must not take over updates or removal of the `uv` executable from mise, Homebrew, or another owning manager.
+- Exclude project dependency management, arbitrary virtual environments, Python-runtime management, and a new general-purpose PyPI catalog search from this initial scope.
+- Declare the supported uv version/capability boundary and handle older versions truthfully rather than assuming all installed versions expose the same commands or output.
+- Implement before the all-manager certification pass tracked in [issue #500](https://github.com/jasoncavinder/Helm/issues/500). Require evidence for every declared capability, including executable resolution, constrained upgrades, conflicting installations, offline behavior, cancellation, failure reporting, and post-action reconciliation before `v0.20.0-rc.1`.
 
 ---
 

@@ -193,12 +193,14 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 | 0.17.x | Diagnostics & Logging — log viewer, structured error export, health panel | Completed (`v0.17.x` stable, latest patch `v0.17.12`) |
 | 0.18.x | Doctor & Repair + Local Security Groundwork — SQLite-backed repair knowledge, migration-safety hardening, internal advisory cache foundation, and pre-1.0 experience-definition contracts (no public advisory feature surface) | Completed (`v0.18.2` final containment release; `v0.18.0` withdrawn) |
 | 0.19.x | Native Experience Foundation & First-Run Value — native app shell, commands, Settings/window behavior, Environment Brief, and stability baselines | Released (stable latest patch `v0.19.1`; `v0.19.0-rc.7` retained on the beta/RC channel) |
-| 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, continuous plan-to-recovery presentation, and secure direct third-party Sparkle updating | Planned |
+| 0.20.x | Core Workflow & Information Architecture Redesign — Wayfinder workflows, native information architecture, continuous plan-to-recovery presentation, secure direct third-party Sparkle updating, and `uv` global-tool management | Planned |
 | 0.21.x | Accessibility, System Integration & Resilience — keyboard and VoiceOver parity, system integration, offline/partial-state recovery, and first-run receipts | Planned |
 | 0.22.x | Fit, Finish & Pre-1.0 Hardening — performance, integration stress, theme-ready semantic styling, visual/state validation, moderated usability, and UI lock | Planned |
 | 1.0.0 | Stable Control Plane Release — production-safe execution, full feature set | Planned |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
+
+Planned `uv` support in v0.20 covers globally installed Python tools, not project dependencies, arbitrary virtual environments, or Python-runtime management. It is not yet implemented; see the [uv scope and pre-RC certification requirements](docs/ROADMAP.md#planned-uv-global-tool-manager) and [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
 
 Post-1.0, the `1.1.x` Globalization & Theme Expansion milestone plans a Settings-selectable theme system with Wayfinder as the default, Corporate as the second named theme, and a third direction chosen after prototype and usability review.
 
