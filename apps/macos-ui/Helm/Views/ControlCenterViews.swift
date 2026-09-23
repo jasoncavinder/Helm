@@ -187,15 +187,6 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
-        .modifier(
-            ControlCenterNativeSearchModifier(
-                text: toolbarSearchQuery,
-                isPresented: $context.isControlCenterSearchPresented,
-                prompt: toolbarSearchPlaceholder,
-                isEnabled: !presentsFirstRun,
-                onSubmit: acceptFirstGlobalSearchResult
-            )
-        )
         .toolbar {
             if !presentsFirstRun {
                 if #unavailable(macOS 26.0) {
@@ -256,9 +247,13 @@ struct ControlCenterWindowView: View {
                 }
 
                 if #available(macOS 26.0, *) {
-                    DefaultToolbarItem(kind: .search, placement: .automatic)
-                } else {
-                    ToolbarItem(placement: .automatic) {
+                    ToolbarSpacer(.flexible, placement: .automatic)
+                }
+
+                // Keep search and its adjacent details toggle in one item so macOS
+                // cannot regroup the toggle with Refresh and Review Plan.
+                ToolbarItem(placement: .automatic) {
+                    HStack(spacing: 8) {
                         ControlCenterToolbarSearchField(
                             text: toolbarSearchQuery,
                             placeholder: toolbarSearchPlaceholder,
@@ -270,18 +265,16 @@ struct ControlCenterWindowView: View {
                             }
                         )
                         .frame(width: selectedSection == .updates ? 250 : 320)
-                    }
-                }
 
-                if selectedSection.supportsInspector {
-                    ToolbarItem(placement: .automatic) {
-                        Button {
-                            context.toggleInspector()
-                        } label: {
-                            Image(systemName: "sidebar.trailing")
+                        if selectedSection.supportsInspector {
+                            Button {
+                                context.toggleInspector()
+                            } label: {
+                                Image(systemName: "sidebar.trailing")
+                            }
+                            .help(inspectorToggleLabel)
+                            .accessibilityLabel(inspectorToggleLabel)
                         }
-                        .help(inspectorToggleLabel)
-                        .accessibilityLabel(inspectorToggleLabel)
                     }
                 }
             }
@@ -386,31 +379,6 @@ struct ControlCenterWindowView: View {
         context.isInspectorVisible
             ? "app.command.hide_inspector".localized
             : "app.command.show_inspector".localized
-    }
-}
-
-private struct ControlCenterNativeSearchModifier: ViewModifier {
-    @Binding var text: String
-    @Binding var isPresented: Bool
-    let prompt: String
-    let isEnabled: Bool
-    let onSubmit: () -> Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *), isEnabled {
-            content.searchable(
-                text: $text,
-                isPresented: $isPresented,
-                placement: .automatic,
-                prompt: Text(prompt)
-            )
-            .onSubmit(of: .search) {
-                _ = onSubmit()
-            }
-        } else {
-            content
-        }
     }
 }
 
