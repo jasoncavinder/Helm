@@ -755,6 +755,8 @@ Exit Criteria:
 
 Target: `v0.20.0`, before the first release candidate. Status: planned, not implemented. Tracks [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
 
+Implementation preparation: [verified command observations and proposed certification matrix](validation/uv-global-tools-preparation.md). This identifies the constrained-update candidate gap without claiming adapter implementation or lifecycle certification.
+
 - Detect `uv` installations with accurate executable provenance and inventory tools managed through `uv tool`.
 - Support installed-tool search, outdated detection, and reviewed install, upgrade, and uninstall actions with post-action verification. Integrate tools and results into Environment, Library, Plan, and Activity with GUI/CLI parity.
 - Preserve configured tool version constraints, Helm pin/selection policy, and existing installation ownership. Managing tools through `uv` must not take over updates or removal of the `uv` executable from mise, Homebrew, or another owning manager.
