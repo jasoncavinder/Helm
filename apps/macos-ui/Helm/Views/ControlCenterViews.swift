@@ -189,17 +189,8 @@ struct ControlCenterWindowView: View {
         )
         .toolbar {
             if !presentsFirstRun {
-                // A principal item keeps automatic items in the trailing section.
-                // ToolbarSpacer alone is placed before the split-view sidebar on macOS.
-                ToolbarItem(placement: .principal) {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
-                }
-                .controlCenterSeparateToolbarBackground()
-
                 if selectedSection == .updates {
-                    ToolbarItem(placement: .automatic) {
+                    ToolbarItem(placement: .navigation) {
                         Picker(
                             L10n.App.Inspector.manager.localized,
                             selection: $context.planManagerScopeId
@@ -219,7 +210,7 @@ struct ControlCenterWindowView: View {
                     }
                 }
 
-                ToolbarItemGroup(placement: .automatic) {
+                ToolbarItemGroup(placement: .navigation) {
                     Button {
                         core.triggerRefresh()
                     } label: {
@@ -247,6 +238,15 @@ struct ControlCenterWindowView: View {
                     }
                 }
 
+                // A principal item separates leading navigation from trailing controls.
+                // ToolbarSpacer alone is placed before the split-view sidebar on macOS.
+                ToolbarItem(placement: .principal) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityHidden(true)
+                }
+                .controlCenterSeparateToolbarBackground()
+
                 ToolbarItem(placement: .automatic) {
                     ControlCenterToolbarSearchField(
                         text: toolbarSearchQuery,
@@ -258,6 +258,7 @@ struct ControlCenterWindowView: View {
                             context.isControlCenterSearchPresented = false
                         }
                     )
+                    .modifier(ControlCenterToolbarSearchSurface())
                     .frame(width: selectedSection == .updates ? 250 : 320)
                 }
                 .controlCenterSeparateToolbarBackground()
@@ -375,6 +376,21 @@ struct ControlCenterWindowView: View {
         context.isInspectorVisible
             ? "app.command.hide_inspector".localized
             : "app.command.show_inspector".localized
+    }
+}
+
+private struct ControlCenterToolbarSearchSurface: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            // Give search its own native glass surface, not one shared with Details.
+            content
+                .padding(.horizontal, 6)
+                .frame(height: 36)
+                .glassEffect()
+        } else {
+            content
+        }
     }
 }
 
