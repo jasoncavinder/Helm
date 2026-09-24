@@ -1295,6 +1295,38 @@ extension HelmCore {
         }
     }
 
+    var managerInstallationCatalog: ManagerInstallationCatalog {
+        let policy = ManagerInstallMethodPolicyContext.fromEnvironment()
+        let sources = managerStatuses.values.compactMap { status -> ManagerInstallationCatalog.Source? in
+            guard ManagerInfo.find(byId: status.managerId) != nil else { return nil }
+            // An empty/missing core list is authoritative. Do not fall back to the UI registry.
+            let methods = (status.installMethodOptions ?? []).compactMap { value -> ManagerInstallationCatalog.Method? in
+                guard let option = ManagerInstallMethodOption.fromCoreStatus(value, fallback: nil),
+                      option.method != .notManageable else { return nil }
+                let knownPolicy = ["allowed", "managed_restricted", "blocked_by_policy",
+                                   "managedRestricted", "blockedByPolicy"].contains(value.policyTag)
+                return ManagerInstallationCatalog.Method(
+                    id: value.methodId,
+                    policyAllowed: knownPolicy && option.isAllowed(in: policy),
+                    dependencyID: ManagerDependencyResolver.dependencyManagerId(
+                        for: status.managerId, installMethod: option.method
+                    )
+                )
+            }
+            return ManagerInstallationCatalog.Source(
+                id: status.managerId, detected: status.detected, enabled: status.enabled,
+                implemented: status.isImplemented && !status.isDetectionOnly, eligible: status.isEligible == true,
+                busy: managerActionTaskByManager[status.managerId] != nil
+                    || activeTasks.contains { $0.managerId == status.managerId && $0.isRunning },
+                methods: methods
+            )
+        }
+        return ManagerInstallationCatalog(
+            sources: sources, connected: isConnected, online: networkOperationsAvailable,
+            research: ResearchFixtureSafetyPolicy.blocksLiveOperations()
+        )
+    }
+
     func installManager(
         _ managerId: String,
         options: ManagerInstallActionOptions? = nil

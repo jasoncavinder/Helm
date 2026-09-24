@@ -187,27 +187,10 @@ struct ControlCenterWindowView: View {
                 endPoint: .bottom
             )
         )
-        .modifier(
-            ControlCenterNativeSearchModifier(
-                text: toolbarSearchQuery,
-                isPresented: $context.isControlCenterSearchPresented,
-                prompt: toolbarSearchPlaceholder,
-                isEnabled: !presentsFirstRun,
-                onSubmit: acceptFirstGlobalSearchResult
-            )
-        )
         .toolbar {
             if !presentsFirstRun {
-                if #unavailable(macOS 26.0) {
-                    ToolbarItem(placement: .principal) {
-                        Color.clear
-                            .frame(width: 1, height: 1)
-                            .accessibilityHidden(true)
-                    }
-                }
-
                 if selectedSection == .updates {
-                    ToolbarItem(placement: .automatic) {
+                    ToolbarItem(placement: .navigation) {
                         Picker(
                             L10n.App.Inspector.manager.localized,
                             selection: $context.planManagerScopeId
@@ -227,41 +210,7 @@ struct ControlCenterWindowView: View {
                     }
                 }
 
-                if #unavailable(macOS 26.0) {
-                    ToolbarItem(placement: .automatic) {
-                        ControlCenterToolbarSearchField(
-                            text: toolbarSearchQuery,
-                            placeholder: toolbarSearchPlaceholder,
-                            focusRouter: context.controlCenterSearchFocusRouter,
-                            onSubmit: acceptFirstGlobalSearchResult,
-                            onCancel: {
-                                toolbarSearchQuery.wrappedValue = ""
-                                context.isControlCenterSearchPresented = false
-                            }
-                        )
-                        .frame(width: selectedSection == .updates ? 250 : 320)
-                    }
-                }
-
-                ToolbarItemGroup(placement: .primaryAction) {
-                    if selectedSection.supportsInspector {
-                        Button {
-                            context.toggleInspector()
-                        } label: {
-                            Image(systemName: "sidebar.trailing")
-                        }
-                        .help(
-                            context.isInspectorVisible
-                                ? "app.command.hide_inspector".localized
-                                : "app.command.show_inspector".localized
-                        )
-                        .accessibilityLabel(
-                            context.isInspectorVisible
-                                ? "app.command.hide_inspector".localized
-                                : "app.command.show_inspector".localized
-                        )
-                    }
-
+                ToolbarItemGroup(placement: .navigation) {
                     Button {
                         core.triggerRefresh()
                     } label: {
@@ -286,6 +235,43 @@ struct ControlCenterWindowView: View {
                         .controlSize(.regular)
                         .fixedSize()
                         .help(L10n.App.Updates.Notification.reviewPlan.localized)
+                    }
+                }
+
+                // A principal item separates leading navigation from trailing controls.
+                // ToolbarSpacer alone is placed before the split-view sidebar on macOS.
+                ToolbarItem(placement: .principal) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityHidden(true)
+                }
+                .controlCenterSeparateToolbarBackground()
+
+                ToolbarItem(placement: .automatic) {
+                    ControlCenterToolbarSearchField(
+                        text: toolbarSearchQuery,
+                        placeholder: toolbarSearchPlaceholder,
+                        focusRouter: context.controlCenterSearchFocusRouter,
+                        onSubmit: acceptFirstGlobalSearchResult,
+                        onCancel: {
+                            toolbarSearchQuery.wrappedValue = ""
+                            context.isControlCenterSearchPresented = false
+                        }
+                    )
+                    .modifier(ControlCenterToolbarSearchSurface())
+                    .frame(width: selectedSection == .updates ? 250 : 320)
+                }
+                .controlCenterSeparateToolbarBackground()
+
+                if selectedSection.supportsInspector {
+                    ToolbarItem(placement: .automatic) {
+                        Button {
+                            context.toggleInspector()
+                        } label: {
+                            Image(systemName: "sidebar.trailing")
+                        }
+                        .help(inspectorToggleLabel)
+                        .accessibilityLabel(inspectorToggleLabel)
                     }
                 }
             }
@@ -385,29 +371,36 @@ struct ControlCenterWindowView: View {
         }
         onFirstRunComplete()
     }
+
+    private var inspectorToggleLabel: String {
+        context.isInspectorVisible
+            ? "app.command.hide_inspector".localized
+            : "app.command.show_inspector".localized
+    }
 }
 
-private struct ControlCenterNativeSearchModifier: ViewModifier {
-    @Binding var text: String
-    @Binding var isPresented: Bool
-    let prompt: String
-    let isEnabled: Bool
-    let onSubmit: () -> Bool
-
+private struct ControlCenterToolbarSearchSurface: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *), isEnabled {
-            content.searchable(
-                text: $text,
-                isPresented: $isPresented,
-                placement: .automatic,
-                prompt: Text(prompt)
-            )
-            .onSubmit(of: .search) {
-                _ = onSubmit()
-            }
+        if #available(macOS 26.0, *) {
+            // Give search its own native glass surface, not one shared with Details.
+            content
+                .padding(.horizontal, 6)
+                .frame(height: 36)
+                .glassEffect()
         } else {
             content
+        }
+    }
+}
+
+private extension ToolbarContent {
+    @ToolbarContentBuilder
+    func controlCenterSeparateToolbarBackground() -> some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
         }
     }
 }

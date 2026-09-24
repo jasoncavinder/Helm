@@ -49,6 +49,7 @@ struct RedesignOverviewSectionView: View {
                             }
                             .helmPointer()
                         }
+                        DashboardAddManagerCard()
                     }
 
                     Text(L10n.App.Overview.recentTasks.localized)
