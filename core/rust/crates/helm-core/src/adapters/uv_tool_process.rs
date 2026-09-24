@@ -1,5 +1,5 @@
 //! Explicitly scoped, offline uv inventory through the shared process/runtime boundary.
-//! Not registered by the app or CLI; executable discovery and write capabilities are separate gates.
+//! Not registered by the app or CLI; write capabilities remain a separate gate.
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -13,6 +13,7 @@ use crate::adapters::manager::{
 use crate::adapters::uv_tool::{
     UvToolListMode, UvToolObservation, parse_uv_tool_list, uv_tool_list_command,
 };
+use crate::adapters::uv_tool_scope::UvScopeBinding;
 use crate::execution::{
     CommandSpec, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
     spawn_validated,
@@ -35,6 +36,7 @@ const OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 pub struct UvToolContext {
     executable: PathBuf,
     tool_dir: PathBuf,
+    binding: Option<UvScopeBinding>,
 }
 
 impl UvToolContext {
@@ -59,7 +61,20 @@ impl UvToolContext {
         Ok(Self {
             executable: executable.components().collect(),
             tool_dir: tool_dir.components().collect(),
+            binding: None,
         })
+    }
+
+    pub(crate) fn with_binding(mut self, binding: UvScopeBinding) -> Self {
+        self.binding = Some(binding);
+        self
+    }
+
+    fn validate_binding(&self) -> AdapterResult<()> {
+        if let Some(binding) = &self.binding {
+            binding.validate()?;
+        }
+        Ok(())
     }
 
     pub fn executable(&self) -> &Path {
@@ -137,17 +152,10 @@ impl ProcessUvToolSource {
     }
 
     fn run(&self, action: ManagerAction) -> AdapterResult<ProcessOutput> {
-        let process = spawn_validated(self.executor.as_ref(), self.context.request(action))
-            .map_err(|error| uv_error(action, error.kind, "uv process could not start"))?;
-        tokio::runtime::Handle::current()
-            .block_on(process.wait())
-            .map_err(|error| {
-                uv_error(
-                    action,
-                    error.kind,
-                    "uv process did not produce a complete capture",
-                )
-            })
+        self.context.validate_binding()?;
+        let output = run_uv_request(self.executor.as_ref(), self.context.request(action))?;
+        self.context.validate_binding()?;
+        Ok(output)
     }
 
     pub fn detect(&self) -> AdapterResult<DetectionInfo> {
@@ -174,7 +182,25 @@ impl ProcessUvToolSource {
     }
 }
 
-fn checked_version(output: &ProcessOutput) -> AdapterResult<String> {
+pub(crate) fn run_uv_request(
+    executor: &dyn ProcessExecutor,
+    request: ProcessSpawnRequest,
+) -> AdapterResult<ProcessOutput> {
+    let action = request.action;
+    let process = spawn_validated(executor, request)
+        .map_err(|error| uv_error(action, error.kind, "uv process could not start"))?;
+    tokio::runtime::Handle::current()
+        .block_on(process.wait())
+        .map_err(|error| {
+            uv_error(
+                action,
+                error.kind,
+                "uv process did not produce a complete capture",
+            )
+        })
+}
+
+pub(crate) fn checked_version(output: &ProcessOutput) -> AdapterResult<String> {
     let failure = || {
         uv_error(
             ManagerAction::Detect,
