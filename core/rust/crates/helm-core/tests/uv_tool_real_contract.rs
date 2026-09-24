@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime};
 use helm_core::adapters::uv_tool::{
     UvToolListError, UvToolListMode, UvToolObservation, parse_uv_tool_list, uv_tool_list_command,
 };
+use helm_core::adapters::uv_tool_eligibility::{UvEligibilityError, UvToolEligibilityPolicy};
 use helm_core::execution::{ProcessExitStatus, ProcessOutput};
 use serde::Deserialize;
 
@@ -39,6 +40,7 @@ struct Transcript {
     artifacts: String,
     python: String,
     records: BTreeMap<String, Capture>,
+    receipts: BTreeMap<String, String>,
 }
 
 impl Transcript {
@@ -121,6 +123,15 @@ async fn real_uv_output_roundtrips_without_using_host_tool_state() {
     assert!(transcript.records["current_latest"].stderr.is_empty());
     let before = transcript.parsed("installed", installed).unwrap();
     assert_eq!(before.len(), 2);
+    for tool in &before {
+        // Real receipts must parse through identity/constraint/entrypoint checks,
+        // but this offline wheel source must not become a public-index candidate.
+        assert_eq!(
+            UvToolEligibilityPolicy::from_receipt(tool, transcript.receipts[&tool.name].as_bytes())
+                .unwrap_err(),
+            UvEligibilityError::SourceConfigurationRequiresResolution
+        );
+    }
     assert_eq!(before[0].name, "helm-uv-pinned");
     assert_eq!(before[0].installed_version, "1.0");
     assert_eq!(before[0].requirement.as_deref(), Some("==1.0"));

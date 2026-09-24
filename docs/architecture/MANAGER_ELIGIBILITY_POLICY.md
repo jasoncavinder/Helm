@@ -43,8 +43,11 @@ Homebrew/mise/asdf layout hints while keeping executable lifecycle strategies
 read-only, even with an unknown-provenance override. Concrete version selection
 must pass the guarded resolver; path attribution does not authorize global-tool
 mutation. Tool-store permission/ownership and per-tool source/constraint/Python
-eligibility remain activation gates. See
-[uv installation policy](../validation/uv-installation-policy.md).
+eligibility remain activation gates. The pure receipt-based candidate filter can
+reject incompatible versions but never grants mutation authority; matching
+candidates still need source-aware full resolution and scope-bound evidence.
+See [uv installation policy](../validation/uv-installation-policy.md) and
+[candidate eligibility](../validation/uv-tool-eligibility.md).
 
 Policy checks are applied in these places:
 

@@ -117,6 +117,10 @@ def main():
     run("install_pin", ["tool", "install", pinned + "==1.0", *install_options])
     listing("installed")
     listing("current_latest", outdated=True)
+    receipts = {
+        tool: (paths["tools"] / tool / "uv-receipt.toml").read_text(encoding="utf-8")
+        for tool in (name, pinned)
+    }
 
     make_wheel(paths["wheels"], name, "1.1", executables)
     make_wheel(paths["wheels"], name, "2.0", executables)
@@ -154,7 +158,8 @@ def main():
     listing("final_empty_latest", outdated=True)
     if os.path.lexists(paths["bin"] / pinned):
         raise RuntimeError("removed pinned fixture left an executable behind")
-    print(json.dumps({"artifacts": str(root), "python": sys.version, "records": records}))
+    print(json.dumps({"artifacts": str(root), "python": sys.version, "records": records,
+                      "receipts": receipts}))
 
 
 if __name__ == "__main__":

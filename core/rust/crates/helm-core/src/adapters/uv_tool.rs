@@ -200,7 +200,7 @@ fn is_version_token(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b".!+_-".contains(&byte))
 }
 
-fn normalize_name(value: &str) -> Option<String> {
+pub(crate) fn normalize_name(value: &str) -> Option<String> {
     if !value.as_bytes().first()?.is_ascii_alphanumeric()
         || !value.as_bytes().last()?.is_ascii_alphanumeric()
         || !value
