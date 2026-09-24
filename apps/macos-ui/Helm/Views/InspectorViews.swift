@@ -2902,7 +2902,7 @@ private struct InspectorManagerDetailView: View {
         guard let option = selectedPendingInstallMethodOption else {
             return false
         }
-        return installMethodOptionAllowed(option)
+        return core.managerInstallationCatalog.canReview(manager.id, methodID: option.id)
     }
 
     private var selectedPendingInstallMethodOption: ManagerInstallMethodOption? {
@@ -3188,32 +3188,7 @@ private struct InspectorManagerDetailView: View {
     }
 
     private var managerCanInstall: Bool {
-        let supportsHelmInstall = Set([
-            "mise",
-            "asdf",
-            "mas",
-            "rustup",
-            "npm",
-            "pnpm",
-            "yarn",
-            "pipx",
-            "pip",
-            "poetry",
-            "rubygems",
-            "bundler",
-            "cargo",
-            "cargo_binstall",
-            "podman",
-            "colima"
-        ]).contains(manager.id)
-        guard supportsHelmInstall else { return false }
-        let allowedOptions = sortedHelmSupportedInstallMethodOptions.filter { option in
-            option.method != .notManageable && option.isAllowed(in: installMethodPolicyContext)
-        }
-        if !allowedOptions.isEmpty {
-            return true
-        }
-        return manager.canInstall
+        core.managerInstallationCatalog.canReview(manager.id)
     }
 
     private var supportsShellSetupTeardownOption: Bool {
@@ -3532,6 +3507,18 @@ private struct InspectorManagerDetailView: View {
                 .font(.callout)
                 .foregroundColor(.secondary)
 
+                Text("app.managers.add.authorization".localized)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !selectedPendingInstallMethodIsAllowed {
+                    Text("app.managers.add.changed".localized)
+                        .font(.caption)
+                        .foregroundColor(HelmTheme.stateNeedsReview)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L10n.App.Inspector.installMethod.localized)
                         .font(.caption.weight(.semibold))
@@ -3666,6 +3653,7 @@ private struct InspectorManagerDetailView: View {
                         showInstallOptionsSheet = false
                     }
                     .keyboardShortcut(.cancelAction)
+                    .disabled(installSubmissionInFlight)
 
                     Button(L10n.Common.install.localized) {
                         submitInstallWithSelectedMethod()
@@ -3684,6 +3672,8 @@ private struct InspectorManagerDetailView: View {
             }
             .padding(20)
             .frame(minWidth: 420)
+            .disabled(installSubmissionInFlight)
+            .interactiveDismissDisabled(installSubmissionInFlight)
         }
         .sheet(item: $uninstallConfirmation) { confirmation in
             uninstallConfirmationSheet(confirmation)
@@ -4380,12 +4370,11 @@ extension InspectorManagerDetailView {
     }
 
     private func prepareInstallMethodSelection() {
-        guard core.networkOperationsAvailable else { return }
-        let supportedOptions = sortedHelmSupportedInstallMethodOptions
-        guard !supportedOptions.isEmpty else {
-            core.installManager(manager.id)
-            return
-        }
+        guard managerCanInstall else { return }
+        let coreMethods = Set(core.managerInstallationCatalog.candidates
+            .first(where: { $0.id == manager.id })?.methods.map(\.id) ?? [])
+        let supportedOptions = sortedHelmSupportedInstallMethodOptions.filter { coreMethods.contains($0.id) }
+        guard !supportedOptions.isEmpty else { return }
 
         pendingInstallMethodOptions = supportedOptions
         pendingHardTimeoutSeconds = status?.timeoutHardSeconds
@@ -4397,7 +4386,9 @@ extension InspectorManagerDetailView {
         pendingMiseBinaryPath = ""
         pendingCompletePostInstallSetupAutomatically = false
 
-        let allowedOptions = supportedOptions.filter(installMethodOptionAllowed)
+        let allowedMethods = Set(core.managerInstallationCatalog.candidates
+            .first(where: { $0.id == manager.id })?.methods.filter { $0.block == nil }.map(\.id) ?? [])
+        let allowedOptions = supportedOptions.filter { allowedMethods.contains($0.id) }
         let selectedMethodRaw = selectedInstallMethodOption.method.rawValue
         if allowedOptions.contains(where: { $0.method.rawValue == selectedMethodRaw }) {
             pendingInstallMethodRawValue = selectedMethodRaw
@@ -4411,6 +4402,7 @@ extension InspectorManagerDetailView {
     }
 
     private func submitInstallWithSelectedMethod() {
+        guard !installSubmissionInFlight, selectedPendingInstallMethodIsAllowed else { return }
         guard let installMethod = pendingInstallMethodRawValue, !installMethod.isEmpty else {
             return
         }
@@ -4418,7 +4410,7 @@ extension InspectorManagerDetailView {
               installMethodOptionAllowed(option) else {
             return
         }
-        guard rustupInstallSourceSelectionValid else {
+        guard rustupInstallSourceSelectionValid && miseInstallSourceSelectionValid else {
             return
         }
 
@@ -4428,13 +4420,17 @@ extension InspectorManagerDetailView {
                 installSubmissionInFlight = false
                 return
             }
+            guard selectedPendingInstallMethodIsAllowed else {
+                installSubmissionInFlight = false
+                return
+            }
             core.setManagerTimeoutProfile(
                 manager.id,
                 hardTimeoutSeconds: pendingHardTimeoutSeconds,
                 idleTimeoutSeconds: pendingIdleTimeoutSeconds
             ) { timeoutApplied in
                 installSubmissionInFlight = false
-                guard timeoutApplied else { return }
+                guard timeoutApplied, selectedPendingInstallMethodIsAllowed else { return }
                 showInstallOptionsSheet = false
                 core.installManager(
                     manager.id,
@@ -4861,27 +4857,7 @@ extension InspectorManagerDetailView {
     }
 
     private func localizedInstallMethod(_ method: ManagerDistributionMethod) -> String {
-        switch method {
-        case .homebrew: return L10n.App.Inspector.InstallMethod.homebrew.localized
-        case .macports: return L10n.App.Inspector.InstallMethod.macports.localized
-        case .appStore: return L10n.App.Inspector.InstallMethod.appStore.localized
-        case .setapp: return L10n.App.Inspector.InstallMethod.setapp.localized
-        case .officialInstaller: return L10n.App.Inspector.InstallMethod.officialInstaller.localized
-        case .scriptInstaller: return L10n.App.Inspector.InstallMethod.scriptInstaller.localized
-        case .corepack: return L10n.App.Inspector.InstallMethod.corepack.localized
-        case .rustupInstaller: return L10n.App.Inspector.InstallMethod.rustupInstaller.localized
-        case .xcodeSelect: return L10n.App.Inspector.InstallMethod.xcodeSelect.localized
-        case .softwareUpdate: return L10n.App.Inspector.InstallMethod.softwareUpdate.localized
-        case .systemProvided: return L10n.App.Inspector.InstallMethod.systemProvided.localized
-        case .npm: return L10n.App.Inspector.InstallMethod.npm.localized
-        case .pip: return L10n.App.Inspector.InstallMethod.pip.localized
-        case .pipx: return L10n.App.Inspector.InstallMethod.pipx.localized
-        case .gem: return L10n.App.Inspector.InstallMethod.gem.localized
-        case .cargoInstall: return L10n.App.Inspector.InstallMethod.cargoInstall.localized
-        case .asdf: return L10n.App.Inspector.InstallMethod.asdf.localized
-        case .mise: return L10n.App.Inspector.InstallMethod.mise.localized
-        case .notManageable: return L10n.App.Inspector.InstallMethod.notManageable.localized
-        }
+        method.localizedName
     }
 
     private func installMethodLabel(_ option: ManagerInstallMethodOption, includeTag: Bool) -> String {

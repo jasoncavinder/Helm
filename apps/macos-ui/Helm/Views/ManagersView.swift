@@ -79,6 +79,36 @@ struct ManagersSectionView: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
+            managerList
+                .onAppear { revealRequestedManager(using: proxy) }
+                .onChange(of: context.pendingManagerRevealRequest) { _ in
+                    revealRequestedManager(using: proxy)
+                }
+                .onChange(of: visibleManagerIDs) { _ in
+                    revealRequestedManager(using: proxy)
+                }
+        }
+    }
+
+    private var visibleManagerIDs: Set<String> {
+        Set(groupedManagers.flatMap { $0.managers.map(\.id) })
+    }
+
+    private func revealRequestedManager(using proxy: ScrollViewProxy) {
+        guard let request = context.pendingManagerRevealRequest else { return }
+        // Wait for the destination and its unfiltered rows to join the view hierarchy.
+        DispatchQueue.main.async {
+            guard context.selectedSection == .managers,
+                  context.selectedManagerId == request.managerID,
+                  context.pendingManagerRevealRequest == request,
+                  visibleManagerIDs.contains(request.managerID) else { return }
+            proxy.scrollTo(request.managerID, anchor: .center)
+            context.completeManagerRevealRequest(request, visibleManagerIDs: visibleManagerIDs)
+        }
+    }
+
+    private var managerList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
@@ -244,6 +274,7 @@ struct ManagersSectionView: View {
                     managerGroupHeading(group.authority)
                     ForEach(group.managers) { manager in
                         productionManagerRow(manager, authority: group.authority)
+                            .id(manager.id)
                     }
                 }
             }
@@ -569,55 +600,8 @@ private struct ManagerSectionRow: View {
         packageCount > 0 && enabled && !isManagerUninstalling
     }
 
-    private var installMethodPolicyContext: ManagerInstallMethodPolicyContext {
-        ManagerInstallMethodPolicyContext.fromEnvironment()
-    }
-
-    private var resolvedInstallMethodOptions: [ManagerInstallMethodOption] {
-        guard let coreOptions = status?.installMethodOptions,
-              !coreOptions.isEmpty else {
-            return manager.installMethodOptions
-        }
-
-        let fallbackByMethod = Dictionary(
-            uniqueKeysWithValues: manager.installMethodOptions.map { ($0.method.rawValue, $0) }
-        )
-        let mapped = coreOptions.compactMap { option in
-            ManagerInstallMethodOption.fromCoreStatus(
-                option,
-                fallback: fallbackByMethod[option.methodId]
-            )
-        }
-        return mapped.isEmpty ? manager.installMethodOptions : mapped
-    }
-
     private var managerCanInstall: Bool {
-        let supportsHelmInstall = Set([
-            "mise",
-            "asdf",
-            "mas",
-            "rustup",
-            "npm",
-            "pnpm",
-            "yarn",
-            "pipx",
-            "pip",
-            "poetry",
-            "rubygems",
-            "bundler",
-            "cargo",
-            "cargo_binstall",
-            "podman",
-            "colima"
-        ]).contains(manager.id)
-        guard supportsHelmInstall, !manager.isDetectionOnly else { return false }
-        let allowedInstallOptions = resolvedInstallMethodOptions.filter { option in
-            option.method != .notManageable && option.isAllowed(in: installMethodPolicyContext)
-        }
-        if !allowedInstallOptions.isEmpty {
-            return true
-        }
-        return manager.canInstall
+        core.managerInstallationCatalog.canReview(manager.id)
     }
 
     private var reviewFindingSummary: String? {

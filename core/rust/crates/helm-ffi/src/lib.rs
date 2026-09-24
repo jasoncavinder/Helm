@@ -14089,6 +14089,14 @@ mod tests {
     #[test]
     fn manager_status_includes_core_install_method_metadata() {
         let statuses = build_manager_statuses(None, None, &HashMap::new(), &HashMap::new());
+        assert_eq!(
+            status_for(&statuses, ManagerId::CargoBinstall)
+                .install_method_options
+                .iter()
+                .map(|method| method.method_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["cargoInstall", "homebrew"]
+        );
         let rustup = status_for(&statuses, ManagerId::Rustup);
         let methods = rustup
             .install_method_options
