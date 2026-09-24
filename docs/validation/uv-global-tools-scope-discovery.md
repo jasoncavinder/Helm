@@ -108,6 +108,10 @@ Helm database are not inspected or modified. The signed QA application is unchan
 
 ## Remaining Before Activation
 
+Follow-up: [installation attribution and concrete selection](uv-installation-policy.md)
+adds bounded mise/asdf version enumeration and read-only install-layout hints.
+It does not convert path evidence into ownership proof or mutation permission.
+
 Ownership/eligibility, version-manager concrete selection, source and Python
 constraints, candidate authorization, reviewed mutations, post-action verification,
 local search, network discovery, and GUI/CLI runtime registration remain separate

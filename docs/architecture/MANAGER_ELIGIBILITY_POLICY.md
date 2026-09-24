@@ -37,6 +37,15 @@ Core source of truth:
 
 ## Enforcement Points
 
+Staged uv policy: the unregistered core read adapter is not an enablement or
+mutation grant. Its shared install-instance classifier records conservative
+Homebrew/mise/asdf layout hints while keeping executable lifecycle strategies
+read-only, even with an unknown-provenance override. Concrete version selection
+must pass the guarded resolver; path attribution does not authorize global-tool
+mutation. Tool-store permission/ownership and per-tool source/constraint/Python
+eligibility remain activation gates. See
+[uv installation policy](../validation/uv-installation-policy.md).
+
 Policy checks are applied in these places:
 
 - manager status computation (`enabled` is effective `configured && eligible`)

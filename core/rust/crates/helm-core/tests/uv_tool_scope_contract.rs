@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
+use helm_core::adapters::uv_installation::{UvInstallationRoots, UvLayoutEvidence, UvManagedRoot};
 use helm_core::adapters::uv_tool_process::{ProcessUvToolSource, UvToolReadAdapter};
 use helm_core::adapters::uv_tool_scope::{
     UvExecutableSelection, UvResolvedToolScope, UvScopeDiscovery, UvToolDiscovery,
@@ -17,7 +18,7 @@ use helm_core::execution::{
     ExecutionResult, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
     ProcessTerminationMode, ProcessWaitFuture, RunningProcess, TokioProcessExecutor,
 };
-use helm_core::models::{CoreError, CoreErrorKind, ManagerId};
+use helm_core::models::{CoreError, CoreErrorKind, InstallProvenance, ManagerId};
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 use helm_core::persistence::PackageStore;
 use helm_core::sqlite::SqliteStore;
@@ -154,6 +155,197 @@ fn executable_file(path: &Path) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, b"fixture, executed only by the mock executor").unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn managed_roots(owner: InstallProvenance, root: &Path) -> UvInstallationRoots {
+    UvInstallationRoots::new(vec![UvManagedRoot::new(owner, root.to_owned()).unwrap()]).unwrap()
+}
+
+#[tokio::test]
+async fn version_manager_candidates_are_concrete_deduplicated_and_explicitly_selected() {
+    let fixture = Fixture::new();
+    let root = fixture.root.join("mise/installs/uv");
+    let old = root.join("0.12.9/uv-aarch64-apple-darwin/uv");
+    let new = root.join("0.12.18/bin/uv");
+    executable_file(&old);
+    executable_file(&new);
+    symlink(root.join("0.12.18"), root.join("latest")).unwrap();
+    let roots = managed_roots(InstallProvenance::Mise, &root);
+    let candidates = roots.versioned_candidates().unwrap();
+    assert_eq!(candidates.len(), 2);
+    assert!(fixture.executor.requests.lock().unwrap().is_empty());
+    let candidate = candidates
+        .iter()
+        .find(|candidate| candidate.canonical_path == new.canonicalize().unwrap())
+        .unwrap();
+    assert_eq!(candidate.aliases.len(), 2);
+    assert_eq!(
+        roots.classify(&candidate.canonical_path),
+        UvLayoutEvidence::ManagedLayout(InstallProvenance::Mise)
+    );
+    fixture.executor.version();
+    fixture.executor.directory(&fixture.store);
+    let result = fixture
+        .discover(
+            UvExecutableSelection::Selected(candidate.canonical_path.clone()),
+            &fixture.store,
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(result, UvScopeDiscovery::Ready(scope) if scope.context().executable() == new.canonicalize().unwrap())
+    );
+    assert_eq!(fixture.executor.requests.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn asdf_bin_and_flat_layouts_remain_distinct_without_execution() {
+    let fixture = Fixture::new();
+    let root = fixture.root.join("asdf/installs/uv");
+    executable_file(&root.join("0.12.9/bin/uv"));
+    executable_file(&root.join("0.12.18/uv"));
+    let roots = managed_roots(InstallProvenance::Asdf, &root);
+    let candidates = roots.versioned_candidates().unwrap();
+    assert_eq!(candidates.len(), 2);
+    for candidate in candidates {
+        assert_eq!(
+            roots.classify(&candidate.canonical_path),
+            UvLayoutEvidence::ManagedLayout(InstallProvenance::Asdf)
+        );
+    }
+    assert!(fixture.executor.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn homebrew_kegs_are_attributed_but_never_enumerated_as_competing_copies() {
+    let fixture = Fixture::new();
+    let root = fixture.root.join("Cellar/uv");
+    let executable = root.join("0.12.18/bin/uv");
+    executable_file(&executable);
+    executable_file(&root.join("0.12.9/bin/uv"));
+    let roots = managed_roots(InstallProvenance::Homebrew, &root);
+    assert!(roots.versioned_candidates().unwrap().is_empty());
+    assert_eq!(
+        roots.classify(&executable.canonicalize().unwrap()),
+        UvLayoutEvidence::ManagedLayout(InstallProvenance::Homebrew)
+    );
+    assert_eq!(
+        roots.classify(&fixture.executable.canonicalize().unwrap()),
+        UvLayoutEvidence::Unknown
+    );
+}
+
+#[test]
+fn layout_attribution_requires_exact_components_and_does_not_trust_alias_prefixes() {
+    let fixture = Fixture::new();
+    let root = fixture.root.join("mise/installs/uv");
+    fs::create_dir_all(&root).unwrap();
+    let roots = managed_roots(InstallProvenance::Mise, &root);
+    for wrong in [
+        root.with_file_name("uv-other").join("0.12.9/bin/uv"),
+        root.join("0.12.9/other/bin/uv"),
+        root.join("0.12.9/bin/uvx"),
+    ] {
+        executable_file(&wrong);
+        assert_eq!(
+            roots.classify(&wrong.canonicalize().unwrap()),
+            UvLayoutEvidence::Unknown
+        );
+    }
+    let alias = root.join("0.12.9/bin/uv");
+    symlink(&fixture.executable, &alias).unwrap();
+    assert_eq!(
+        roots.classify(&alias.canonicalize().unwrap()),
+        UvLayoutEvidence::Unknown
+    );
+    assert!(roots.versioned_candidates().is_err());
+}
+
+#[test]
+fn conflicting_root_attribution_does_not_choose_an_owner() {
+    let fixture = Fixture::new();
+    let root = fixture.root.join("installs/uv");
+    let executable = root.join("0.12.9/bin/uv");
+    executable_file(&executable);
+    let roots = UvInstallationRoots::new(vec![
+        UvManagedRoot::new(InstallProvenance::Mise, root.clone()).unwrap(),
+        UvManagedRoot::new(InstallProvenance::Asdf, root).unwrap(),
+    ])
+    .unwrap();
+    assert_eq!(
+        roots.classify(&executable.canonicalize().unwrap()),
+        UvLayoutEvidence::Conflicting
+    );
+}
+
+#[test]
+fn version_manager_missing_roots_are_empty_but_invalid_layouts_fail_closed() {
+    let fixture = Fixture::new();
+    let root = fixture.root.join("missing");
+    assert!(
+        managed_roots(InstallProvenance::Mise, &root)
+            .versioned_candidates()
+            .unwrap()
+            .is_empty()
+    );
+    let bad_roots = ["unknown-layout", "dangling", "escaping", "shim"];
+    for name in bad_roots {
+        let root = fixture.root.join(name);
+        let version = root.join("0.12.9");
+        fs::create_dir_all(&root).unwrap();
+        match name {
+            "unknown-layout" => executable_file(&version.join("elsewhere/uv")),
+            "dangling" => symlink(fixture.root.join("absent"), &version).unwrap(),
+            "escaping" => symlink(fixture.executable.parent().unwrap(), &version).unwrap(),
+            "shim" => {
+                let shim = version.join("shims/uv");
+                executable_file(&shim);
+                fs::create_dir(version.join("bin")).unwrap();
+                symlink(&shim, version.join("bin/uv")).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            managed_roots(InstallProvenance::Mise, &root)
+                .versioned_candidates()
+                .is_err(),
+            "{name}"
+        );
+    }
+    assert!(fixture.executor.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn version_manager_enumeration_is_bounded_and_never_returns_a_truncated_set() {
+    let fixture = Fixture::new();
+    let root = fixture.root.join("many");
+    for n in 0..257 {
+        executable_file(&root.join(format!("{n}/bin/uv")));
+    }
+    let roots = managed_roots(InstallProvenance::Mise, &root);
+    assert!(
+        matches!(roots.versioned_candidates(), Err(error) if error.kind == CoreErrorKind::UnsupportedCapability)
+    );
+    assert!(UvManagedRoot::new(InstallProvenance::Mise, "relative".into()).is_err());
+    assert!(UvManagedRoot::new(InstallProvenance::Unknown, root.clone()).is_err());
+    let root = UvManagedRoot::new(InstallProvenance::Mise, root).unwrap();
+    assert!(UvInstallationRoots::new(vec![root; 17]).is_err());
+}
+
+#[test]
+fn custom_root_symlinks_are_supported_without_losing_canonical_attribution() {
+    let fixture = Fixture::new();
+    let real = fixture.root.join("data/uv");
+    let executable = real.join("0.12.9/bin/uv");
+    executable_file(&executable);
+    let alias = fixture.root.join("configured-root");
+    symlink(real, &alias).unwrap();
+    let roots = managed_roots(InstallProvenance::Mise, &alias);
+    assert_eq!(roots.versioned_candidates().unwrap().len(), 1);
+    assert_eq!(
+        roots.classify(&executable.canonicalize().unwrap()),
+        UvLayoutEvidence::ManagedLayout(InstallProvenance::Mise)
+    );
 }
 
 #[tokio::test]
@@ -752,4 +944,47 @@ async fn real_uv_discovers_scoped_directory_and_reads_empty_inventory() {
         UvScopeDiscovery::ToolStoreMissing { .. }
     ));
     assert!(!missing.exists());
+}
+
+#[tokio::test]
+#[ignore = "opt-in: copies explicit HELM_UV_CONTRACT_EXECUTABLE into a disposable versioned layout; no host tool changes"]
+async fn real_uv_versioned_selection_flows_into_guarded_offline_inventory() {
+    let source = PathBuf::from(
+        std::env::var_os("HELM_UV_CONTRACT_EXECUTABLE").expect("explicit uv executable"),
+    );
+    assert!(source.is_absolute());
+    let fixture = Fixture::new();
+    let root = fixture.root.join("mise/installs/uv");
+    let executable = root.join("fixture-version/bin/uv");
+    fs::create_dir_all(executable.parent().unwrap()).unwrap();
+    fs::copy(source, &executable).unwrap();
+    symlink(root.join("fixture-version"), root.join("latest")).unwrap();
+    let roots = managed_roots(InstallProvenance::Mise, &root);
+    let candidates = roots.versioned_candidates().unwrap();
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].aliases.len(), 2);
+    let selected = candidates[0].canonical_path.clone();
+    let store = fixture.store.clone();
+    let scope = tokio::task::spawn_blocking(move || {
+        UvToolDiscovery::new(Arc::new(TokioProcessExecutor))
+            .discover(UvExecutableSelection::Selected(selected), Some(store))
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    let UvScopeDiscovery::Ready(scope) = scope else {
+        panic!("ready")
+    };
+    assert_eq!(
+        roots.classify(scope.context().executable()),
+        UvLayoutEvidence::ManagedLayout(InstallProvenance::Mise)
+    );
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(UvToolReadAdapter::new(
+        ProcessUvToolSource::new(Arc::new(TokioProcessExecutor), scope.context().clone()),
+    ));
+    let runtime = AdapterRuntime::new([adapter]).unwrap();
+    runtime.set_network_available(false);
+    assert!(
+        matches!(runtime.submit_refresh_request_response(ManagerId::Uv, AdapterRequest::ListInstalled(ListInstalledRequest)).await.unwrap(), AdapterResponse::SnapshotSync { installed: Some(packages), outdated: None } if packages.is_empty())
+    );
 }

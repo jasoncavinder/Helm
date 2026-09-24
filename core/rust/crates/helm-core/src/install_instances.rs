@@ -12,6 +12,7 @@ use tracing::{debug, warn};
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
+use crate::adapters::uv_installation::{UvInstallationRoots, UvLayoutEvidence};
 use crate::models::{
     AutomationLevel, DetectionInfo, InstallInstanceIdentityKind, InstallProvenance, ManagerId,
     ManagerInstallInstance, StrategyKind,
@@ -109,11 +110,32 @@ struct UvProvenanceSpec;
 impl ProvenanceSpec for UvProvenanceSpec {
     fn classify(
         &self,
-        _instance: &mut ManagerInstallInstance,
+        instance: &mut ManagerInstallInstance,
         _context: &mut ExternalEvidenceContext,
     ) {
-        // Discovery/ownership classification is not enabled by the explicit-scope read adapter.
+        let evidence = UvInstallationRoots::current_environment()
+            .ok()
+            .zip(instance.canonical_path.as_deref())
+            .map(|(roots, executable)| roots.classify(executable))
+            .unwrap_or(UvLayoutEvidence::Unknown);
+        apply_uv_layout_evidence(instance, evidence);
     }
+}
+fn apply_uv_layout_evidence(instance: &mut ManagerInstallInstance, evidence: UvLayoutEvidence) {
+    instance.provenance = match evidence {
+        UvLayoutEvidence::ManagedLayout(owner) => owner,
+        UvLayoutEvidence::Unknown | UvLayoutEvidence::Conflicting => InstallProvenance::Unknown,
+    };
+    // Layout is useful attribution, but cannot authorize executable replacement/removal.
+    instance.confidence = if instance.provenance == InstallProvenance::Unknown {
+        0.0
+    } else {
+        0.60
+    };
+    instance.automation_level = AutomationLevel::ReadOnly;
+    instance.update_strategy = StrategyKind::ReadOnly;
+    instance.uninstall_strategy = StrategyKind::ReadOnly;
+    instance.remediation_strategy = StrategyKind::ReadOnly;
 }
 struct PoetryProvenanceSpec;
 struct RubyGemsProvenanceSpec;
@@ -3002,6 +3024,37 @@ mod tests {
         };
         let mut context = ExternalEvidenceContext::without_external_queries();
         classify_instance(manager, &detection, candidate, &mut context)
+    }
+
+    #[test]
+    fn uv_layout_evidence_never_grants_executable_lifecycle_authority() {
+        use crate::manager_lifecycle::{plan_manager_uninstall_route, plan_manager_update};
+        for evidence in [
+            UvLayoutEvidence::Unknown,
+            UvLayoutEvidence::Conflicting,
+            UvLayoutEvidence::ManagedLayout(InstallProvenance::Homebrew),
+            UvLayoutEvidence::ManagedLayout(InstallProvenance::Mise),
+            UvLayoutEvidence::ManagedLayout(InstallProvenance::Asdf),
+        ] {
+            let mut instance = manager_instance(ManagerId::Uv, "/selected/uv", "/selected/uv");
+            apply_uv_layout_evidence(&mut instance, evidence);
+            assert_eq!(instance.automation_level, AutomationLevel::ReadOnly);
+            assert_eq!(instance.update_strategy, StrategyKind::ReadOnly);
+            assert_eq!(instance.uninstall_strategy, StrategyKind::ReadOnly);
+            assert_eq!(instance.remediation_strategy, StrategyKind::ReadOnly);
+            assert!(plan_manager_update(ManagerId::Uv, Some(&instance)).is_err());
+            assert!(
+                plan_manager_uninstall_route(ManagerId::Uv, Some(&instance), true, false).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn uv_generic_install_collection_does_not_infer_standalone_ownership() {
+        let instance = classify_manager_path(ManagerId::Uv, "/Users/test/.local/bin/uv");
+        assert_eq!(instance.provenance, InstallProvenance::Unknown);
+        assert_eq!(instance.confidence, 0.0);
+        assert_eq!(instance.uninstall_strategy, StrategyKind::ReadOnly);
     }
 
     #[test]
