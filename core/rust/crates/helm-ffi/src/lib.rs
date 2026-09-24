@@ -14205,6 +14205,11 @@ mod tests {
         let statuses = build_manager_statuses(None, None, &HashMap::new(), &HashMap::new());
 
         for manager_id in ManagerId::ALL {
+            if manager_id == ManagerId::Uv {
+                // A staged v0.20 identity is not part of the delivered 0.14 adapter set.
+                assert!(!status_for(&statuses, manager_id).is_implemented);
+                continue;
+            }
             assert!(
                 status_for(&statuses, manager_id).is_implemented,
                 "manager {manager_id:?} expected implemented in 0.14 baseline"

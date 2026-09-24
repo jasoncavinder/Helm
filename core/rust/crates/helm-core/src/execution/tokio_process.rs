@@ -3,6 +3,7 @@ use std::io::Write;
 #[cfg(target_os = "macos")]
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
@@ -97,6 +98,7 @@ impl ProcessExecutor for TokioProcessExecutor {
             started_at,
             timeout: request.timeout,
             idle_timeout: request.idle_timeout,
+            private_output_limit: request.private_output_limit,
             manager,
             task_type,
             action,
@@ -474,6 +476,7 @@ struct TokioRunningProcess {
     started_at: SystemTime,
     timeout: Option<Duration>,
     idle_timeout: Option<Duration>,
+    private_output_limit: Option<usize>,
     manager: ManagerId,
     task_type: TaskType,
     action: ManagerAction,
@@ -752,6 +755,66 @@ fn sample_process_total_cpu_time(_pid: u32) -> Option<Duration> {
     None
 }
 
+struct CaptureBudget {
+    limit: Option<usize>,
+    bytes: AtomicUsize,
+    incomplete: AtomicBool,
+}
+
+impl CaptureBudget {
+    fn accepts(&self, count: usize) -> bool {
+        let Some(limit) = self.limit else { return true };
+        if self.incomplete.load(Ordering::Relaxed) {
+            return false;
+        }
+        let previous = self.bytes.fetch_add(count, Ordering::Relaxed);
+        if count > limit.saturating_sub(previous) {
+            self.incomplete.store(true, Ordering::Relaxed);
+            return false;
+        }
+        true
+    }
+}
+
+async fn capture_stream<R: tokio::io::AsyncRead + Unpin>(
+    stream: Option<R>,
+    budget: Arc<CaptureBudget>,
+    task_id: Option<TaskId>,
+    stdout: bool,
+    activity: tokio::sync::mpsc::UnboundedSender<()>,
+) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    if let Some(mut stream) = stream {
+        let mut chunk = [0_u8; 4096];
+        loop {
+            match stream.read(&mut chunk).await {
+                Ok(0) => break,
+                Ok(count) => {
+                    let bytes = &chunk[..count];
+                    if budget.accepts(count) {
+                        buffer.extend_from_slice(bytes);
+                    }
+                    let _ = activity.send(());
+                    if budget.limit.is_none()
+                        && let Some(task_id) = task_id
+                    {
+                        if stdout {
+                            crate::execution::task_output_store::append_stdout(task_id, bytes);
+                        } else {
+                            crate::execution::task_output_store::append_stderr(task_id, bytes);
+                        }
+                    }
+                }
+                Err(_) => {
+                    budget.incomplete.store(true, Ordering::Relaxed);
+                    break;
+                }
+            }
+        }
+    }
+    buffer
+}
+
 impl RunningProcess for TokioRunningProcess {
     fn pid(&self) -> Option<u32> {
         self.pid
@@ -784,6 +847,7 @@ impl RunningProcess for TokioRunningProcess {
         let command_display = self.command_display;
         let program_path = self.program_path;
         let path_snippet = self.path_snippet;
+        let private_output_limit = self.private_output_limit;
 
         Box::pin(async move {
             let _control = control;
@@ -810,62 +874,25 @@ impl RunningProcess for TokioRunningProcess {
 
             let (activity_tx, mut activity_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
 
-            let stdout_reader = {
-                let mut stdout = child.stdout.take();
-                let stream_task_id = task_id;
-                let activity_tx = activity_tx.clone();
-                tokio::spawn(async move {
-                    let mut buffer = Vec::new();
-                    if let Some(mut handle) = stdout.take() {
-                        let mut chunk = vec![0_u8; 4096];
-                        loop {
-                            match handle.read(&mut chunk).await {
-                                Ok(0) => break,
-                                Ok(read_count) => {
-                                    let bytes = &chunk[..read_count];
-                                    buffer.extend_from_slice(bytes);
-                                    let _ = activity_tx.send(());
-                                    if let Some(task_id) = stream_task_id {
-                                        crate::execution::task_output_store::append_stdout(
-                                            task_id, bytes,
-                                        );
-                                    }
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                    }
-                    buffer
-                })
-            };
-            let stderr_reader = {
-                let mut stderr = child.stderr.take();
-                let stream_task_id = task_id;
-                let activity_tx = activity_tx.clone();
-                tokio::spawn(async move {
-                    let mut buffer = Vec::new();
-                    if let Some(mut handle) = stderr.take() {
-                        let mut chunk = vec![0_u8; 4096];
-                        loop {
-                            match handle.read(&mut chunk).await {
-                                Ok(0) => break,
-                                Ok(read_count) => {
-                                    let bytes = &chunk[..read_count];
-                                    buffer.extend_from_slice(bytes);
-                                    let _ = activity_tx.send(());
-                                    if let Some(task_id) = stream_task_id {
-                                        crate::execution::task_output_store::append_stderr(
-                                            task_id, bytes,
-                                        );
-                                    }
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                    }
-                    buffer
-                })
-            };
+            let budget = Arc::new(CaptureBudget {
+                limit: private_output_limit,
+                bytes: AtomicUsize::new(0),
+                incomplete: AtomicBool::new(false),
+            });
+            let stdout_reader = tokio::spawn(capture_stream(
+                child.stdout.take(),
+                budget.clone(),
+                task_id,
+                true,
+                activity_tx.clone(),
+            ));
+            let stderr_reader = tokio::spawn(capture_stream(
+                child.stderr.take(),
+                budget.clone(),
+                task_id,
+                false,
+                activity_tx.clone(),
+            ));
             drop(activity_tx);
 
             let wait_err = |error: std::io::Error| {
@@ -1229,6 +1256,7 @@ impl RunningProcess for TokioRunningProcess {
             let stdout = match stdout_reader.await {
                 Ok(buffer) => buffer,
                 Err(join_error) => {
+                    budget.incomplete.store(true, Ordering::Relaxed);
                     let message = append_error_context(
                         format!("failed to join stdout reader: {join_error}").as_str(),
                         program_path.as_str(),
@@ -1253,6 +1281,7 @@ impl RunningProcess for TokioRunningProcess {
             let stderr = match stderr_reader.await {
                 Ok(buffer) => buffer,
                 Err(join_error) => {
+                    budget.incomplete.store(true, Ordering::Relaxed);
                     let message = append_error_context(
                         format!("failed to join stderr reader: {join_error}").as_str(),
                         program_path.as_str(),
@@ -1332,7 +1361,28 @@ impl RunningProcess for TokioRunningProcess {
                 }
             }
 
-            if let Some(task_id) = task_id {
+            if private_output_limit.is_some() && budget.incomplete.load(Ordering::Relaxed) {
+                let message = "private process output was incomplete or exceeded its capture limit";
+                if let Some(task_id) = task_id {
+                    crate::execution::task_output_store::record_error(
+                        task_id,
+                        "capture_failed",
+                        message,
+                        Some("error"),
+                        Some(finished_at),
+                    );
+                }
+                return Err(process_failure(
+                    manager,
+                    task_type,
+                    action,
+                    message.to_owned(),
+                ));
+            }
+
+            if private_output_limit.is_none()
+                && let Some(task_id) = task_id
+            {
                 crate::execution::task_output_store::record(
                     task_id,
                     Some(command_display.as_str()),

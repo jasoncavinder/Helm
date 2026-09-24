@@ -17,6 +17,7 @@ pub enum ManagerId {
     Npm,
     Yarn,
     Pipx,
+    Uv,
     Pip,
     Poetry,
     #[serde(rename = "rubygems")]
@@ -38,7 +39,7 @@ pub enum ManagerId {
 }
 
 impl ManagerId {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::Mise,
         Self::Asdf,
         Self::Rustup,
@@ -50,6 +51,7 @@ impl ManagerId {
         Self::Npm,
         Self::Yarn,
         Self::Pipx,
+        Self::Uv,
         Self::Pip,
         Self::Poetry,
         Self::RubyGems,
@@ -82,6 +84,7 @@ impl ManagerId {
             Self::Npm => "npm",
             Self::Yarn => "yarn",
             Self::Pipx => "pipx",
+            Self::Uv => "uv",
             Self::Pip => "pip",
             Self::Poetry => "poetry",
             Self::RubyGems => "rubygems",
@@ -119,6 +122,7 @@ impl std::str::FromStr for ManagerId {
             "npm" => Ok(Self::Npm),
             "yarn" => Ok(Self::Yarn),
             "pipx" => Ok(Self::Pipx),
+            "uv" => Ok(Self::Uv),
             "pip" => Ok(Self::Pip),
             "poetry" => Ok(Self::Poetry),
             "rubygems" => Ok(Self::RubyGems),

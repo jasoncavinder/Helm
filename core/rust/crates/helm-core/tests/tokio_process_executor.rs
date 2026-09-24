@@ -20,6 +20,75 @@ fn echo_request() -> ProcessSpawnRequest {
     )
 }
 
+#[tokio::test]
+async fn private_capture_is_returned_but_never_copied_to_task_output() {
+    let path =
+        std::env::temp_dir().join(format!("helm-private-capture-{}.txt", std::process::id()));
+    let secret = "tool v1.0 [required: @ https://user:secret@example.invalid/tool]\n- tool\n";
+    fs::write(&path, secret).unwrap();
+    let task = TaskId(990_710_021);
+    let mut request = ProcessSpawnRequest::new(
+        ManagerId::Uv,
+        TaskType::Refresh,
+        ManagerAction::ListInstalled,
+        CommandSpec::new("/bin/cat").arg(path.to_str().unwrap()),
+    )
+    .task_id(task)
+    .timeout(Duration::from_secs(3));
+    request.private_output_limit = Some(1024);
+    let output = spawn_validated(&TokioProcessExecutor, request)
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    assert_eq!(output.stdout, secret.as_bytes());
+    let log = helm_core::execution::task_output(task).unwrap();
+    assert!(!format!("{log:?}").contains("user:secret"));
+    assert!(!format!("{log:?}").contains("required:"));
+    fs::remove_file(path).unwrap();
+}
+
+#[tokio::test]
+async fn private_capture_limit_is_combined_and_never_succeeds_with_truncated_output() {
+    for (limit, succeeds) in [(10, true), (9, false)] {
+        let mut request = ProcessSpawnRequest::new(
+            ManagerId::Uv,
+            TaskType::Refresh,
+            ManagerAction::ListInstalled,
+            CommandSpec::new("/bin/sh").args(["-c", "printf 12345; printf 67890 >&2"]),
+        )
+        .timeout(Duration::from_secs(3));
+        request.private_output_limit = Some(limit);
+        let result = spawn_validated(&TokioProcessExecutor, request)
+            .unwrap()
+            .wait()
+            .await;
+        assert_eq!(result.is_ok(), succeeds);
+        if let Err(error) = result {
+            assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+            assert!(error.message.contains("capture limit"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn private_capture_drains_large_output_without_returning_a_prefix() {
+    let mut request = ProcessSpawnRequest::new(
+        ManagerId::Uv,
+        TaskType::Refresh,
+        ManagerAction::ListInstalled,
+        CommandSpec::new("/usr/bin/head").args(["-c", "131072", "/dev/zero"]),
+    )
+    .timeout(Duration::from_secs(3));
+    request.private_output_limit = Some(4096);
+    let error = spawn_validated(&TokioProcessExecutor, request)
+        .unwrap()
+        .wait()
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+}
+
 fn sleep_request() -> ProcessSpawnRequest {
     ProcessSpawnRequest::new(
         ManagerId::HomebrewFormula,

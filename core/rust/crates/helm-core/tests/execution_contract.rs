@@ -9,6 +9,21 @@ use helm_core::execution::{
 };
 use helm_core::models::{CoreErrorKind, ManagerAction, ManagerId, TaskType};
 
+#[test]
+fn private_capture_rejects_zero_limit() {
+    let mut request = ProcessSpawnRequest::new(
+        ManagerId::Uv,
+        TaskType::Refresh,
+        ManagerAction::ListInstalled,
+        CommandSpec::new("/chosen/uv"),
+    );
+    request.private_output_limit = Some(0);
+    assert_eq!(
+        request.validate().unwrap_err().kind,
+        CoreErrorKind::InvalidInput
+    );
+}
+
 #[derive(Clone)]
 struct FakeExecutor {
     captured: Arc<Mutex<Option<ProcessSpawnRequest>>>,

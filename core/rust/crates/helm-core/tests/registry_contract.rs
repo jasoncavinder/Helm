@@ -36,10 +36,9 @@ fn language_managers_declare_required_capabilities() {
         Capability::Search,
     ];
 
-    for descriptor in registry::managers()
-        .iter()
-        .filter(|descriptor| descriptor.category == ManagerCategory::Language)
-    {
+    for descriptor in registry::managers().iter().filter(|descriptor| {
+        descriptor.category == ManagerCategory::Language && descriptor.id != ManagerId::Uv
+    }) {
         for capability in required {
             assert!(
                 descriptor.supports(capability),
@@ -49,6 +48,26 @@ fn language_managers_declare_required_capabilities() {
             );
         }
     }
+}
+
+#[test]
+fn uv_staging_descriptor_does_not_advertise_unimplemented_actions() {
+    let descriptor = registry::manager(ManagerId::Uv).unwrap();
+    assert_eq!(
+        descriptor.capabilities,
+        &[
+            Capability::Detect,
+            Capability::Refresh,
+            Capability::ListInstalled
+        ]
+    );
+    assert!(registry::manager_install_method_specs(ManagerId::Uv).is_empty());
+    assert!(!registry::manager_participates_in_package_search(
+        ManagerId::Uv
+    ));
+    assert!(!registry::manager_participates_in_catalog_sync(
+        ManagerId::Uv
+    ));
 }
 
 #[test]
