@@ -7,6 +7,10 @@ for [Issue #526](https://github.com/jasoncavinder/Helm/issues/526). This is not
 shipped manager activation or certification under
 [Issue #500](https://github.com/jasoncavinder/Helm/issues/500).
 
+Follow-up: [scope discovery](uv-global-tools-scope-discovery.md) now resolves
+direct executables and tool directories into guarded read contexts. The explicit
+constructor and evidence recorded below remain the original integration baseline.
+
 ## Scope and Safety Contract
 
 `adapters::uv_tool_process` provides `UvToolContext`, `ProcessUvToolSource`, and
@@ -97,8 +101,9 @@ claimed. This core-only slice leaves the current signed QA application unchanged
 
 ## Remaining Gates
 
-1. Discover and select executable/store provenance, including canonical paths,
-   distinct installations, compatibility policy, and explicit ownership evidence.
+1. Complete installation ownership/eligibility and concrete version-manager
+   selection. Direct discovery and canonical read-scope binding are now covered by
+   the follow-up, but are not mutation authority or a final compatibility policy.
 2. Add local search and network-aware discovery with Python/PEP 440 constraints,
    pins, source/index eligibility, and unknown-state preservation.
 3. Add reviewed mutations and installed-state reconciliation without treating an
