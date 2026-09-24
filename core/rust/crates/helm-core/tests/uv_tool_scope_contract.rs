@@ -370,6 +370,37 @@ async fn incompatible_version_stops_before_directory_query() {
 }
 
 #[tokio::test]
+async fn selected_alias_to_known_shim_is_rejected_without_execution() {
+    assert_alias_to_known_shim_is_rejected(false).await;
+}
+
+#[tokio::test]
+async fn searched_alias_to_known_shim_is_rejected_without_execution() {
+    assert_alias_to_known_shim_is_rejected(true).await;
+}
+
+async fn assert_alias_to_known_shim_is_rejected(search: bool) {
+    let fixture = Fixture::new();
+    let shim = fixture.root.join("asdf/shims/uv");
+    executable_file(&shim);
+    let bin = fixture.root.join("alias-bin");
+    fs::create_dir(&bin).unwrap();
+    let alias = bin.join("uv");
+    symlink(shim, &alias).unwrap();
+    // A shim can return valid probe output; it must be rejected before either probe.
+    fixture.executor.version();
+    fixture.executor.directory(&fixture.store);
+    let selection = if search {
+        UvExecutableSelection::SearchDirectories(vec![bin])
+    } else {
+        UvExecutableSelection::Selected(alias)
+    };
+    let result = fixture.discover(selection, &fixture.store).await;
+    assert_eq!(fixture.executor.requests.lock().unwrap().len(), 0);
+    assert!(matches!(result, Err(error) if error.kind == CoreErrorKind::UnsupportedCapability));
+}
+
+#[tokio::test]
 async fn executable_replaced_during_version_probe_stops_before_directory_query() {
     let fixture = Fixture::new();
     let executable = fixture.executable.clone();

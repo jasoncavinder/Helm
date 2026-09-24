@@ -22,8 +22,9 @@ and their tool storage before constructing a guarded `UvToolContext`.
   candidate. An empty search returns `NotFound`; an unavailable explicit selection
   is an error. Hard-link equivalence and inactive versioned installation enumeration
   are not claimed by this slice.
-- Known `shims` paths and aliases resolving to mise/asdf/rtx dispatchers fail before
-  execution and require selection of a concrete uv executable. No login shell,
+- Known `shims` components in either the supplied or canonical executable path,
+  and aliases resolving to mise/asdf/rtx dispatchers, fail before execution and
+  require selection of a concrete uv executable. No login shell,
   shim dispatcher resolution, recursive Cellar scan, or project activation runs.
   Unrecognized wrappers are not authenticated by this resolver.
 - The selected canonical executable must be an executable regular file and pass
@@ -78,6 +79,17 @@ during probing, strict directory output, absent storage, task identity, alias
 retargeting, and store replacement during an accepted-inventory refresh. The
 SQLite regression waits for persistence completion and proves that rejected
 replacement reads leave committed inventory intact.
+
+Independent-review regressions additionally cover ordinary-looking aliases to
+`asdf/shims/uv` through explicit selection and directory search. Both reproduced
+two probe executions on the original PR head; checking the canonical path's
+components rejects both cases before any process starts.
+
+After remediation, the full Rust quality gate passed with 1,369 tests passed,
+0 failed, and 3 deliberately ignored opt-in tests. Formatting and both workspace
+and all-target warnings-as-errors Clippy passed. The scope and read-integration
+suites, including their real smoke tests, passed on uv 0.12.9 with 16 and 10 tests
+respectively.
 
 The opt-in real smoke exercises discovery followed by the existing adapter's
 offline `ListInstalled` request in disposable stores. It also confirms that

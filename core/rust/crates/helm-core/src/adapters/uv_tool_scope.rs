@@ -259,6 +259,9 @@ fn discover_candidates(
         // Do not invoke a project-dependent version-manager dispatcher as uv.
         if path.components().any(|part| part.as_os_str() == "shims")
             || canonical
+                .components()
+                .any(|part| part.as_os_str() == "shims")
+            || canonical
                 .file_name()
                 .is_some_and(|name| ["mise", "asdf", "rtx"].iter().any(|shim| name == *shim))
         {
