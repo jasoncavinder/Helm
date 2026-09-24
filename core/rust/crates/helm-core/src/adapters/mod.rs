@@ -54,6 +54,7 @@ pub mod softwareupdate;
 pub mod softwareupdate_process;
 pub mod sparkle;
 pub mod sparkle_process;
+pub mod uv_installation;
 pub mod uv_tool;
 pub mod uv_tool_process;
 pub mod uv_tool_scope;

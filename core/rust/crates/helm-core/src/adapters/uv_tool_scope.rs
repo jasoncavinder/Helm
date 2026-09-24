@@ -237,6 +237,13 @@ fn discover_candidates(
             )
         }
     };
+    collect_candidates(paths, selected)
+}
+
+pub(crate) fn collect_candidates(
+    paths: Vec<PathBuf>,
+    selected: bool,
+) -> AdapterResult<Vec<UvExecutableCandidate>> {
     let mut candidates: Vec<UvExecutableCandidate> = Vec::new();
     for path in paths {
         if !valid_path(&path) {
@@ -317,7 +324,7 @@ fn parse_tool_dir(output: &ProcessOutput) -> AdapterResult<PathBuf> {
     Ok(path.components().collect())
 }
 
-fn valid_path(path: &Path) -> bool {
+pub(crate) fn valid_path(path: &Path) -> bool {
     path.is_absolute()
         && path.file_name().is_some()
         && path
@@ -333,7 +340,7 @@ fn same_directory(left: &Path, right: &Path) -> bool {
         || matches!((left.canonicalize(), right.canonicalize()), (Ok(left), Ok(right)) if left == right)
 }
 
-fn canonical_path(path: &Path) -> AdapterResult<PathBuf> {
+pub(crate) fn canonical_path(path: &Path) -> AdapterResult<PathBuf> {
     let canonical = path.canonicalize().map_err(|_| {
         scope_error(
             CoreErrorKind::ProcessFailure,
@@ -463,7 +470,7 @@ impl UvScopeBinding {
     }
 }
 
-fn scope_error(kind: CoreErrorKind, message: &str) -> CoreError {
+pub(crate) fn scope_error(kind: CoreErrorKind, message: &str) -> CoreError {
     CoreError {
         manager: Some(ManagerId::Uv),
         task: Some(TaskType::Detection),
