@@ -6,9 +6,9 @@
 
 use std::collections::BTreeSet;
 
-use pep440_rs::{Version, VersionSpecifiers};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use uv_pep440::{Version, VersionSpecifiers};
 
 use super::uv_tool::{UvToolObservation, normalize_name};
 

@@ -89,6 +89,110 @@ fn wildcard_and_compatible_release_are_python_not_semver_constraints() {
 }
 
 #[test]
+fn exclusive_prerelease_bounds_preserve_matching_candidates_for_resolution() {
+    for (specifier, installed, newer) in [
+        ("<2.0rc3", "2.0rc1", "2.0rc2"),
+        ("<2.0.dev3", "2.0.dev1", "2.0.dev2"),
+    ] {
+        for (options, expected) in [
+            (
+                "[tool.options]\nprerelease = 'allow'",
+                Eligibility::NeedsResolution,
+            ),
+            ("", Eligibility::NeedsPrereleaseResolution),
+        ] {
+            assert_eq!(
+                check(&policy(installed, specifier, options), newer),
+                expected,
+                "{specifier}: {installed} -> {newer} ({options})"
+            );
+        }
+    }
+}
+
+#[test]
+fn exclusive_upper_bounds_respect_epochs_and_postrelease_boundaries() {
+    for (specifier, newer, expected) in [
+        ("<1!2.0", "2.0rc2", Eligibility::NeedsResolution),
+        ("<2.0.post1", "2.0rc2", Eligibility::NeedsResolution),
+        ("<2.0.post1", "2.0.post0.dev1", Eligibility::NeedsResolution),
+        (
+            "<2.0",
+            "2.0rc2",
+            Eligibility::Rejected(Rejection::OutsideConstraints),
+        ),
+        (
+            "<2.0.post1",
+            "2.0.post1.dev0",
+            Eligibility::Rejected(Rejection::OutsideConstraints),
+        ),
+        (
+            "<2.0rc3",
+            "2.0rc3",
+            Eligibility::Rejected(Rejection::OutsideConstraints),
+        ),
+    ] {
+        assert_eq!(
+            check(
+                &policy("0.5", specifier, "[tool.options]\nprerelease = 'allow'"),
+                newer
+            ),
+            expected,
+            "{specifier}: {newer}"
+        );
+    }
+}
+
+#[test]
+fn wildcard_matching_zero_pads_equivalent_short_versions() {
+    for version in ["1", "1.0", "1.0.0"] {
+        for (specifier, expected) in [
+            ("!=1.4.*", Eligibility::NeedsResolution),
+            ("==1.0.*", Eligibility::NeedsResolution),
+            (
+                "==1.4.*",
+                Eligibility::Rejected(Rejection::OutsideConstraints),
+            ),
+            (
+                "!=1.0.*",
+                Eligibility::Rejected(Rejection::OutsideConstraints),
+            ),
+        ] {
+            assert_eq!(
+                check(&policy("0.5", specifier, ""), version),
+                expected,
+                "{specifier}: {version}"
+            );
+        }
+    }
+}
+
+#[test]
+fn requires_python_wildcards_zero_pad_the_interpreter_release() {
+    let policy = policy("1.0", "", "");
+    for (specifier, expected) in [
+        ("!=3.12.9.1.*", Eligibility::NeedsResolution),
+        ("==3.12.9.0.*", Eligibility::NeedsResolution),
+        (
+            "==3.12.9.1.*",
+            Eligibility::Rejected(Rejection::PythonIncompatible),
+        ),
+        (
+            "!=3.12.9.0.*",
+            Eligibility::Rejected(Rejection::PythonIncompatible),
+        ),
+    ] {
+        let mut release = candidate("2.0");
+        release.requires_python = Some(specifier.into());
+        assert_eq!(
+            policy.assess(&release, Some("3.12.9")).unwrap(),
+            expected,
+            "{specifier}"
+        );
+    }
+}
+
+#[test]
 fn python_versions_use_numeric_epoch_post_dev_and_local_ordering() {
     for (installed, newer) in [
         ("1.9", "1.10"),

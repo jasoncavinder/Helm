@@ -15,8 +15,10 @@ all inputs to the same selected executable, tool store, tool, and owning source.
 - The primary receipt requirement and entrypoint names must match the accepted
   installed observation. Distribution names use the inventory parser's Python
   normalization. Display-only `required` and `latest` annotations are not policy.
-- PEP 440 parsing, ordering, and membership use `pep440_rs` 0.7.3, not SemVer or
-  lexical comparison. All same-tool requirements and constraints intersect.
+- PEP 440 parsing, ordering, and membership use exact-pinned `uv-pep440` 0.0.85
+  from uv 0.12.18, not SemVer or lexical comparison. All same-tool requirements
+  and constraints intersect. Exclusive prerelease/epoch/postrelease bounds and
+  zero-padded wildcard matching are covered for tool and Python constraints.
   Exact pins, ranges, exclusions, wildcards, compatible releases, epochs, and
   pre/dev/post/local versions have deterministic coverage. A newer in-range
   version can pass filtering even when the displayed latest version cannot.
@@ -60,24 +62,44 @@ implementations. [Tool upgrade documentation](https://docs.astral.sh/uv/concepts
 requires retaining installation constraints/settings. The pinned
 [prerelease resolver](https://github.com/astral-sh/uv/blob/0.12.18/crates/uv-resolver/src/prerelease.rs)
 demonstrates why PEP 440 membership alone does not decide prerelease preference.
-The dependency API is documented by [pep440_rs](https://docs.rs/pep440_rs/0.7.3/pep440_rs/).
+The dependency API is documented by
+[uv-pep440](https://docs.rs/uv-pep440/0.0.85/uv_pep440/).
+Its internal API is not stable, so upgrades require an explicit version change
+and the eligibility regression suite. This version requires Rust 1.96 or newer,
+within Helm's pinned CI toolchain (1.97.1); legacy local Rust 1.92 builds cannot
+compile this staged slice.
 
 ## Verification
 
-The focused eligibility contract has 20 deterministic tests. The opt-in real uv
+The focused eligibility contract has 24 deterministic tests. The opt-in real uv
 harness also passes its actual generated-wheel receipts into this parser: tool
 identity, requirements, and entrypoints must parse, then the isolated find-links
 source must remain source-unresolved rather than become public-index eligibility.
 This is bounded receipt evidence, not live candidate discovery or registered
 adapter lifecycle certification.
 
-Validation passed on arm64 macOS using the existing isolated Rust 1.98.1 toolchain:
+Initial validation passed on arm64 macOS using the existing isolated Rust 1.98.1 toolchain:
 the Rust quality gate reported 1,401 passed, 0 failed, and 4 intentional opt-in
 skips; formatting, workspace Clippy, separate all-target Clippy with warnings
 denied, docs-sync/release-line, and whitespace checks passed. The real-command
 harness passed independently on uv 0.12.9 and 0.12.18 with Python 3.14.7. It used
 disposable, offline local-wheel stores, not host tools or the stable Helm database.
 No Ventura runtime or GUI/CLI activation claim is made.
+
+Independent review reproduced incorrect membership in the initial `pep440_rs`
+0.7.3 dependency: `<2.0rc3` rejected `2.0rc2`, `<1!2.0` rejected lower-epoch
+`2.0rc2`, and wildcard matching treated `1` differently from equivalent `1.0`.
+The latter also affected Requires-Python. Four new regression tests failed before
+replacing that dependency with uv's corrected matcher and passed afterward.
+No acceptance result grants resolution or mutation authority. The replacement
+also adds uv's cache-key/redaction and URL/Unicode dependencies; their declared
+licenses are recorded in `docs/legal/THIRD_PARTY_LICENSES.md`.
+
+Remediation validation on arm64 macOS with Rust 1.98.1 passed the full Rust
+quality gate (1,405 passed, 0 failed, 4 opt-in skips), formatting, workspace and
+all-target Clippy with warnings denied, Cargo Audit, docs-sync/release-line, and
+whitespace checks. The isolated real-command harness passed again on uv 0.12.9
+with Python 3.14.7. No host tool store, stable database, or release was changed.
 
 ```sh
 cargo test -p helm-core --manifest-path core/rust/Cargo.toml \
