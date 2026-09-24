@@ -133,7 +133,7 @@ const MAS_CAPABILITIES: &[Capability] = &[
     Capability::Upgrade,
 ];
 
-const ALL_MANAGERS: [ManagerDescriptor; 28] = [
+const ALL_MANAGERS: [ManagerDescriptor; 29] = [
     ManagerDescriptor {
         id: ManagerId::Mise,
         display_name: "mise",
@@ -203,6 +203,13 @@ const ALL_MANAGERS: [ManagerDescriptor; 28] = [
         category: ManagerCategory::Language,
         authority: ManagerAuthority::Standard,
         capabilities: SEARCHABLE_PACKAGE_CAPABILITIES,
+    },
+    ManagerDescriptor {
+        id: ManagerId::Uv,
+        display_name: "uv",
+        category: ManagerCategory::Language,
+        authority: ManagerAuthority::Standard,
+        capabilities: crate::adapters::uv_tool_process::UV_READ_CAPABILITIES,
     },
     ManagerDescriptor {
         id: ManagerId::Pipx,
@@ -988,6 +995,14 @@ const FIRMWARE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMe
     participates_in_package_search: false,
     participates_in_catalog_sync: false,
 };
+// The uv core read path is not registered by the app or CLI yet.
+const UV_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
+    install_method_ids: &[],
+    install_methods: &[],
+    participates_in_package_search: false,
+    participates_in_catalog_sync: false,
+};
+
 pub fn managers() -> &'static [ManagerDescriptor] {
     &ALL_MANAGERS
 }
@@ -1009,6 +1024,7 @@ pub fn manager_lifecycle_metadata(id: ManagerId) -> &'static ManagerLifecycleMet
         ManagerId::Npm => &NPM_LIFECYCLE_METADATA,
         ManagerId::Yarn => &YARN_LIFECYCLE_METADATA,
         ManagerId::Pipx => &PIPX_LIFECYCLE_METADATA,
+        ManagerId::Uv => &UV_LIFECYCLE_METADATA,
         ManagerId::Pip => &PIP_LIFECYCLE_METADATA,
         ManagerId::Poetry => &POETRY_LIFECYCLE_METADATA,
         ManagerId::RubyGems => &RUBYGEMS_LIFECYCLE_METADATA,

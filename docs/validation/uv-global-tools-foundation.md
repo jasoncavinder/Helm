@@ -6,6 +6,11 @@ Status: bounded Rust foundation for the v0.20 global-tool manager requested in
 [Issue #526](https://github.com/jasoncavinder/Helm/issues/526). This is not a
 registered adapter or a completed certification record.
 
+Follow-up: the [core read integration](uv-global-tools-read-integration.md) now
+binds explicit executable/store paths to shared task execution and persistence.
+The foundation evidence below remains historical and bounded; that follow-up
+does not activate uv in the app/CLI or complete lifecycle certification.
+
 ## Implemented Contract
 
 `core/rust/crates/helm-core/src/adapters/uv_tool.rs` provides a structured
@@ -127,11 +132,14 @@ and post-action reconciliation through Helm remain separate gates.
 
 ## Remaining Before Activation
 
-1. Establish supported uv versions and selected executable/tool-store ownership,
-   including multiple installations and non-registry tools.
-2. Integrate read-only detection, installed inventory, local search, and
-   network-aware discovery through the existing process/orchestration boundary.
-   Prove parse/transport failures cannot clear authoritative cached inventory.
+1. Complete supported-version policy and selected executable/tool-store discovery
+   and ownership, including multiple installations and non-registry tools. The
+   core read integration has explicit caller-selected paths and a provisional
+   0.12.9-0.12.18 version gate, not automatic discovery or ownership proof.
+2. Extend the explicit-scope read integration with local search and network-aware
+   discovery. Detection, offline installed inventory, task cancellation, and
+   cache-preserving parse/transport failure regressions now have bounded core
+   coverage; live GUI/CLI wiring remains gated.
 3. Resolve PEP 440 ordering, constraints, pins, configured indexes, and source
    eligibility before creating any actionable update candidate. Preserve unknown
    eligibility rather than equating latest discovery with a permitted upgrade.

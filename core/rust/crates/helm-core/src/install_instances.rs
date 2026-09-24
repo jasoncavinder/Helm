@@ -104,6 +104,17 @@ struct PnpmProvenanceSpec;
 struct YarnProvenanceSpec;
 struct PipProvenanceSpec;
 struct PipxProvenanceSpec;
+struct UvProvenanceSpec;
+
+impl ProvenanceSpec for UvProvenanceSpec {
+    fn classify(
+        &self,
+        _instance: &mut ManagerInstallInstance,
+        _context: &mut ExternalEvidenceContext,
+    ) {
+        // Discovery/ownership classification is not enabled by the explicit-scope read adapter.
+    }
+}
 struct PoetryProvenanceSpec;
 struct RubyGemsProvenanceSpec;
 struct BundlerProvenanceSpec;
@@ -653,6 +664,7 @@ fn provenance_spec_for(manager: ManagerId) -> &'static dyn ProvenanceSpec {
         ManagerId::Yarn => &YARN_PROVENANCE_SPEC,
         ManagerId::Pip => &PIP_PROVENANCE_SPEC,
         ManagerId::Pipx => &PIPX_PROVENANCE_SPEC,
+        ManagerId::Uv => &UvProvenanceSpec,
         ManagerId::Poetry => &POETRY_PROVENANCE_SPEC,
         ManagerId::RubyGems => &RUBYGEMS_PROVENANCE_SPEC,
         ManagerId::Bundler => &BUNDLER_PROVENANCE_SPEC,

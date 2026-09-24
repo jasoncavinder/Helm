@@ -183,6 +183,9 @@ pub struct ProcessSpawnRequest {
     pub privileged_operation: Option<PrivilegedOperation>,
     pub timeout: Option<Duration>,
     pub idle_timeout: Option<Duration>,
+    /// Combined stdout/stderr capture bound; when set, raw output is not logged.
+    /// An incomplete or oversized capture must fail, never return a truncated snapshot.
+    pub private_output_limit: Option<usize>,
     pub requested_at: SystemTime,
 }
 
@@ -203,6 +206,7 @@ impl ProcessSpawnRequest {
             privileged_operation: None,
             timeout: None,
             idle_timeout: None,
+            private_output_limit: None,
             requested_at: SystemTime::now(),
         }
     }
@@ -237,6 +241,14 @@ impl ProcessSpawnRequest {
     }
 
     pub fn validate(&self) -> ExecutionResult<()> {
+        if self.private_output_limit == Some(0) {
+            return Err(invalid_input(
+                self.manager,
+                self.task_type,
+                self.action,
+                "private output limit must be greater than zero",
+            ));
+        }
         self.command
             .validate(self.manager, self.task_type, self.action)?;
 
