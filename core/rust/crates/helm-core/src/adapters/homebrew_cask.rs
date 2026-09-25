@@ -405,18 +405,23 @@ fn parse_homebrew_cask_installed(output: &str) -> AdapterResult<Vec<InstalledPac
             continue;
         };
 
-        let installed_version =
-            cask.get("installed")
-                .and_then(Value::as_array)
-                .and_then(|versions| {
-                    versions
-                        .iter()
-                        .rev()
-                        .filter_map(Value::as_str)
-                        .map(str::trim)
-                        .find(|value| !value.is_empty())
-                        .map(str::to_string)
-                });
+        let installed_version = cask
+            .get("installed")
+            .and_then(|value| {
+                value.as_str().map(str::to_string).or_else(|| {
+                    value.as_array().and_then(|versions| {
+                        versions
+                            .iter()
+                            .rev()
+                            .filter_map(Value::as_str)
+                            .map(str::trim)
+                            .find(|value| !value.is_empty())
+                            .map(str::to_string)
+                    })
+                })
+            })
+            .map(|version| version.trim().to_string())
+            .filter(|version| !version.is_empty());
 
         let Some(installed_version) = installed_version else {
             continue;
@@ -757,6 +762,25 @@ mod tests {
         include_str!("../../tests/fixtures/homebrew_cask/installed.json");
     const OUTDATED_FIXTURE: &str = include_str!("../../tests/fixtures/homebrew_cask/outdated.json");
     const SEARCH_FIXTURE: &str = "Warning: Use `--eval-all` to search 1 additional cask in third party taps.\n==> Casks\nfont-ia-writer-mono: (iA Writer Mono) [no description]\niterm2: (iTerm2) Terminal emulator as alternative to Apple's Terminal app\niterm2@beta: (iTerm2) Terminal emulator as alternative to Apple's Terminal app\n";
+
+    #[test]
+    fn parses_current_scalar_and_legacy_array_installed_versions() {
+        let packages = parse_homebrew_cask_installed(
+            r#"{"casks":[
+            {"token":"docker-desktop","installed":"4.92.0,240144"},
+            {"token":"legacy","installed":["1.0","2.0"]},
+            {"token":"absent","installed":null},
+            {"token":"empty","installed":" "}
+        ]}"#,
+        )
+        .unwrap();
+        assert_eq!(packages.len(), 2);
+        assert_eq!(
+            packages[0].installed_version.as_deref(),
+            Some("4.92.0,240144")
+        );
+        assert_eq!(packages[1].installed_version.as_deref(), Some("2.0"));
+    }
 
     #[test]
     fn parses_installed_casks_from_fixture() {

@@ -55,6 +55,7 @@ pub struct AdapterRuntime {
     search_cache_store: Option<Arc<dyn SearchCacheStore>>,
     detection_store: Option<Arc<dyn DetectionStore>>,
     persistence_ordering: Arc<ResponsePersistenceOrdering>,
+    submission_ordering: Arc<Mutex<()>>,
     network_availability: Arc<AtomicU8>,
 }
 
@@ -258,7 +259,7 @@ impl AdapterRuntime {
         adapters: impl IntoIterator<Item = Arc<dyn ManagerAdapter>>,
         task_store: Arc<dyn TaskStore>,
     ) -> OrchestrationResult<Self> {
-        let start_id = task_store.next_task_id().unwrap_or(0);
+        let start_id = task_store.next_task_id()?;
         let queue = crate::orchestration::InMemoryAsyncTaskQueue::with_initial_id(start_id);
         Self::with_stores(
             AdapterExecutionRuntime::with_queue(queue),
@@ -284,7 +285,7 @@ impl AdapterRuntime {
         search_cache_store: Arc<dyn SearchCacheStore>,
         detection_store: Arc<dyn DetectionStore>,
     ) -> OrchestrationResult<Self> {
-        let start_id = task_store.next_task_id().unwrap_or(0);
+        let start_id = task_store.next_task_id()?;
         let queue = crate::orchestration::InMemoryAsyncTaskQueue::with_initial_id(start_id);
         Self::build(
             AdapterExecutionRuntime::with_queue(queue),
@@ -326,6 +327,7 @@ impl AdapterRuntime {
             search_cache_store,
             detection_store,
             persistence_ordering: Arc::new(ResponsePersistenceOrdering::default()),
+            submission_ordering: Arc::new(Mutex::new(())),
             network_availability: Arc::new(AtomicU8::new(NETWORK_AVAILABILITY_UNKNOWN)),
         })
     }
@@ -928,7 +930,60 @@ impl AdapterRuntime {
             upgrade.version = Some(candidate.candidate_version.clone());
             upgrade.target_name = candidate.package_identifier.clone();
         }
-        let task_id = self.execution.submit(adapter, request).await?;
+        // Keep durable reservation, queue submission and response-order reservation
+        // in the same order. No adapter may run before its queued record is durable.
+        let _submission_guard = self.submission_ordering.lock().await;
+        let reserved = if let Some(task_store) = &self.task_store {
+            Some(
+                persist_reserve_task(
+                    task_store.clone(),
+                    TaskRecord {
+                        id: TaskId(0),
+                        manager,
+                        task_type,
+                        status: TaskStatus::Queued,
+                        created_at: SystemTime::now(),
+                    },
+                    manager,
+                    task_type,
+                    action,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        let task_id = match self
+            .execution
+            .submit_reserved(adapter, request, reserved.as_ref())
+            .await
+        {
+            Ok(task_id) => task_id,
+            Err(error) => {
+                if let (Some(task_store), Some(mut record)) = (&self.task_store, reserved) {
+                    record.status = TaskStatus::Failed;
+                    let entry = NewTaskLogRecord {
+                        task_id: record.id,
+                        manager,
+                        task_type,
+                        status: Some(TaskStatus::Failed),
+                        level: TaskLogLevel::Error,
+                        message: error.message.clone(),
+                        created_at: SystemTime::now(),
+                    };
+                    persist_update_task_with_log(
+                        task_store.clone(),
+                        record,
+                        entry,
+                        manager,
+                        task_type,
+                        action,
+                    )
+                    .await?;
+                }
+                return Err(error);
+            }
+        };
 
         let persistence = if let Some(task_store) = &self.task_store {
             // Reserve the domain-persistence turn before queued-task persistence can yield.
@@ -936,24 +991,6 @@ impl AdapterRuntime {
             // submission order for each shared execution domain.
             let persistence_turn = self.persistence_ordering.reserve(manager).await;
             let persistence = persistence_turn.handle();
-            let record = TaskRecord {
-                id: task_id,
-                manager,
-                task_type,
-                status: TaskStatus::Queued,
-                created_at: SystemTime::now(),
-            };
-
-            if let Err(error) =
-                persist_create_task(task_store.clone(), record, manager, task_type, action).await
-            {
-                let _ = self
-                    .execution
-                    .cancel(task_id, CancellationMode::Immediate)
-                    .await;
-                return Err(error);
-            }
-
             if let Err(error) = persist_append_task_log(
                 task_store.clone(),
                 NewTaskLogRecord {
@@ -1563,24 +1600,6 @@ async fn persist_detection_response(
     .map_err(|error| attribute_error(error, manager, task_type, action))
 }
 
-async fn persist_create_task(
-    task_store: Arc<dyn TaskStore>,
-    task_record: TaskRecord,
-    manager: ManagerId,
-    task_type: TaskType,
-    action: ManagerAction,
-) -> OrchestrationResult<()> {
-    persist_task_record_with_retry(
-        task_store,
-        task_record,
-        manager,
-        task_type,
-        action,
-        TaskStoreOperation::Create,
-    )
-    .await
-}
-
 async fn persist_update_task_with_log(
     task_store: Arc<dyn TaskStore>,
     task_record: TaskRecord,
@@ -1983,37 +2002,29 @@ fn truncate_for_diagnostic(value: &str, max_chars: usize) -> String {
     rendered
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TaskStoreOperation {
-    Create,
-}
-
-async fn persist_task_record_with_retry(
+async fn persist_reserve_task(
     task_store: Arc<dyn TaskStore>,
     task_record: TaskRecord,
     manager: ManagerId,
     task_type: TaskType,
     action: ManagerAction,
-    operation: TaskStoreOperation,
-) -> OrchestrationResult<()> {
+) -> OrchestrationResult<TaskRecord> {
     let mut remaining_attempts = TASK_PERSIST_RETRY_ATTEMPTS;
     loop {
         let store = task_store.clone();
         let record = task_record.clone();
-        let op_result = tokio::task::spawn_blocking(move || match operation {
-            TaskStoreOperation::Create => store.create_task(&record),
-        })
-        .await
-        .map_err(|join_error| CoreError {
-            manager: Some(manager),
-            task: Some(task_type),
-            action: Some(action),
-            kind: CoreErrorKind::Internal,
-            message: format!("task persistence join failure: {join_error}"),
-        })?;
+        let op_result = tokio::task::spawn_blocking(move || store.reserve_task(&record))
+            .await
+            .map_err(|join_error| CoreError {
+                manager: Some(manager),
+                task: Some(task_type),
+                action: Some(action),
+                kind: CoreErrorKind::Internal,
+                message: format!("task persistence join failure: {join_error}"),
+            })?;
 
         match op_result {
-            Ok(()) => return Ok(()),
+            Ok(record) => return Ok(record),
             Err(error) => {
                 let attributed = attribute_error(error, manager, task_type, action);
                 remaining_attempts = remaining_attempts.saturating_sub(1);
@@ -2154,9 +2165,18 @@ fn reconcile_detected_install_instances(
     let selected_index = normalized_selected.as_deref().and_then(|value| {
         let selected_path = PathBuf::from(value);
         let selected_canonical = selected_path.canonicalize().ok();
-        instances.iter().position(|instance| {
-            instance_matches_selected_path(instance, &selected_path, selected_canonical.as_deref())
-        })
+        instances
+            .iter()
+            .position(|instance| instance.display_path == selected_path)
+            .or_else(|| {
+                instances.iter().position(|instance| {
+                    instance_matches_selected_path(
+                        instance,
+                        &selected_path,
+                        selected_canonical.as_deref(),
+                    )
+                })
+            })
     });
 
     let active_index = selected_index
@@ -2858,6 +2878,39 @@ mod tests {
         );
         assert!(instances[1].is_active);
         assert!(!instances[0].is_active);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reconcile_selected_environment_precedes_shared_canonical_interpreter() {
+        let root = std::env::temp_dir().join(format!("helm-reconcile-venv-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("venv/bin")).unwrap();
+        let base = root.join("python3");
+        let selected = root.join("venv/bin/python3");
+        std::fs::write(&base, b"python").unwrap();
+        std::os::unix::fs::symlink(&base, &selected).unwrap();
+        let mut instances = vec![
+            test_instance(
+                ManagerId::Pip,
+                "base",
+                base.to_str().unwrap(),
+                InstallProvenance::Homebrew,
+            ),
+            test_instance(
+                ManagerId::Pip,
+                "venv",
+                selected.to_str().unwrap(),
+                InstallProvenance::Unknown,
+            ),
+        ];
+        for instance in &mut instances {
+            instance.canonical_path = Some(base.canonicalize().unwrap());
+        }
+        let update =
+            reconcile_detected_install_instances(ManagerId::Pip, &mut instances, selected.to_str());
+        assert_eq!(update, SelectedExecutablePathUpdate::Keep);
+        assert!(!instances[0].is_active);
+        assert!(instances[1].is_active);
     }
 
     #[test]

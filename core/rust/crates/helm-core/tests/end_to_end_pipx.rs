@@ -16,18 +16,22 @@ use helm_core::execution::{
 use helm_core::models::{ManagerId, PackageRef, SearchQuery};
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 
-const VERSION_FIXTURE: &str = include_str!("fixtures/pipx/version.txt");
+const VERSION_FIXTURE: &str = "1.17.6\n";
 const INSTALLED_FIXTURE: &str = include_str!("fixtures/pipx/list_global.json");
 const OUTDATED_FIXTURE: &str = include_str!("fixtures/pipx/list_outdated.json");
 
 struct PipxFakeExecutor {
     httpie_upgraded: AtomicBool,
+    httpie_removed: AtomicBool,
+    poetry_installed: AtomicBool,
 }
 
 impl PipxFakeExecutor {
     fn new() -> Self {
         Self {
             httpie_upgraded: AtomicBool::new(false),
+            httpie_removed: AtomicBool::new(false),
+            poetry_installed: AtomicBool::new(false),
         }
     }
 }
@@ -62,42 +66,38 @@ impl ProcessExecutor for PipxFakeExecutor {
         } else if program == "pipx" || program.ends_with("/pipx") {
             match args.as_slice() {
                 [arg] if arg == "--version" => VERSION_FIXTURE.as_bytes().to_vec(),
-                [arg0, arg1] if arg0 == "list" && arg1 == "--json" => {
+                [arg0, arg1, arg2]
+                    if arg0 == "list" && arg1 == "--outdated" && arg2 == "--json" =>
+                {
                     if self.httpie_upgraded.load(Ordering::SeqCst) {
-                        br#"{
-  "pipx_spec_version": "0.1",
-  "venvs": {
-    "black": {
-      "metadata": {
-        "main_package": {
-          "package": "black",
-          "package_version": "24.10.0",
-          "latest_version": "24.10.0"
-        }
-      }
-    },
-    "httpie": {
-      "metadata": {
-        "main_package": {
-          "package": "httpie",
-          "package_version": "3.2.4",
-          "latest_version": "3.2.4"
-        }
-      }
-    }
-  }
-}"#
-                        .to_vec()
-                    } else if request.task_type == helm_core::models::TaskType::Refresh
-                        && request.action == helm_core::models::ManagerAction::ListOutdated
-                    {
-                        OUTDATED_FIXTURE.as_bytes().to_vec()
+                        br#"{"venvs":{}}"#.to_vec()
                     } else {
-                        INSTALLED_FIXTURE.as_bytes().to_vec()
+                        OUTDATED_FIXTURE.as_bytes().to_vec()
                     }
                 }
-                [arg0, spec] if arg0 == "install" && spec == "poetry==1.8.4" => Vec::new(),
-                [arg0, name] if arg0 == "uninstall" && name == "httpie" => Vec::new(),
+                [arg0, arg1] if arg0 == "list" && arg1 == "--json" => {
+                    let mut inventory: serde_json::Value =
+                        serde_json::from_str(INSTALLED_FIXTURE).unwrap();
+                    let venvs = inventory["venvs"].as_object_mut().unwrap();
+                    if self.httpie_removed.load(Ordering::SeqCst) {
+                        venvs.remove("httpie");
+                    } else if self.httpie_upgraded.load(Ordering::SeqCst) {
+                        venvs.get_mut("httpie").unwrap()["metadata"]["main_package"]["package_version"] =
+                            serde_json::json!("3.2.4");
+                    }
+                    if self.poetry_installed.load(Ordering::SeqCst) {
+                        venvs.insert("poetry".into(), serde_json::json!({"metadata":{"main_package":{"package":"poetry","package_version":"1.8.4"}}}));
+                    }
+                    serde_json::to_vec(&inventory).unwrap()
+                }
+                [arg0, spec] if arg0 == "install" && spec == "poetry==1.8.4" => {
+                    self.poetry_installed.store(true, Ordering::SeqCst);
+                    Vec::new()
+                }
+                [arg0, name] if arg0 == "uninstall" && name == "httpie" => {
+                    self.httpie_removed.store(true, Ordering::SeqCst);
+                    Vec::new()
+                }
                 [arg0, name] if arg0 == "upgrade" && name == "httpie" => {
                     self.httpie_upgraded.store(true, Ordering::SeqCst);
                     Vec::new()
@@ -145,7 +145,7 @@ async fn pipx_detect_list_search_and_mutate_through_orchestration() {
     match detect_snapshot.terminal_state {
         Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::Detection(info))) => {
             assert!(info.installed);
-            assert_eq!(info.version.as_deref(), Some("1.7.1"));
+            assert_eq!(info.version.as_deref(), Some("1.17.6"));
             assert_eq!(
                 info.executable_path,
                 Some(PathBuf::from("/Users/test/.local/bin/pipx"))

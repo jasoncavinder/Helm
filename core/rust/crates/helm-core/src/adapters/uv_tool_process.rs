@@ -77,6 +77,14 @@ impl UvToolContext {
         Ok(())
     }
 
+    pub(crate) fn removal_guard(
+        &self,
+    ) -> AdapterResult<Option<super::uv_tool_scope::UvStoreRemovalGuard>> {
+        self.binding
+            .as_ref()
+            .map_or(Ok(None), UvScopeBinding::removal_guard)
+    }
+
     pub fn executable(&self) -> &Path {
         &self.executable
     }

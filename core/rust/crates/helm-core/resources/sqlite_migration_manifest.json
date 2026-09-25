@@ -101,6 +101,11 @@
       "version": 20,
       "name": "add_migration_definition_checksums",
       "definition_sha256": "5f8e9945c9335f53b70295ab77926c2c724936013ef0923fb89fa8f811d51e3e"
+    },
+    {
+      "version": 21,
+      "name": "add_durable_task_id_sequence",
+      "definition_sha256": "83910546a9d29f35adc97d6ff7c082b3214ece11bdceffcd7a8594a506587f98"
     }
   ]
 }

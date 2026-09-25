@@ -1,5 +1,33 @@
 import Foundation
 
+enum TaskSafetyGuidance {
+    static func localizationKey(taskLogMessages: [String]) -> String? {
+        for message in taskLogMessages {
+            for code in ["unsupported_capability", "invalid_input"] {
+                let prefix = "task failed [\(code)]: "
+                if message.hasPrefix(prefix),
+                   let key = localizationKey(errorCode: code, errorMessage: String(message.dropFirst(prefix.count))) {
+                    return key
+                }
+            }
+        }
+        return nil
+    }
+
+    static func localizationKey(errorCode: String?, errorMessage: String?) -> String? {
+        guard let errorMessage else { return nil }
+        if errorCode == "unsupported_capability",
+           errorMessage.hasPrefix("[pnpm_global_mutation_unsupported] ") {
+            return "service.error.pnpm_global_mutation_unsupported"
+        }
+        if errorCode == "invalid_input",
+           errorMessage.hasPrefix("[developer_tools_required] ") {
+            return "service.error.developer_tools_required"
+        }
+        return nil
+    }
+}
+
 struct TaskDescriptionLocalization: Equatable {
     enum Argument: Equatable {
         case literal(String)

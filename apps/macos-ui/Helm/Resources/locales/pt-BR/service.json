@@ -1,4 +1,6 @@
 {
+  "service.error.pnpm_global_mutation_unsupported": "O Helm não pode alterar com segurança pacotes globais com pnpm 11 ou posterior, ou uma versão não reconhecida. Grupos de instalação podem alterar ou remover outros pacotes. O inventário e a busca de atualizações continuam disponíveis. Revise o grupo completo diretamente com pnpm; não use uma versão anterior nem reinstale o ambiente existente como alternativa.",
+  "service.error.developer_tools_required": "Esta operação exige as ferramentas de linha de comando da Apple ou uma instalação configurada do Xcode. Execute xcode-select --install no Terminal, conclua o instalador da Apple e tente novamente. O Helm não precisa de ferramentas de desenvolvimento para iniciar ou exibir dados em cache.",
   "service.error.cancelled": "Operação cancelada.",
   "service.error.internal": "Erro interno do serviço.",
   "service.error.invalid_input": "Entrada inválida.",

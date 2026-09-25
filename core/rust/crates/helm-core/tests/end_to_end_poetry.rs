@@ -73,7 +73,7 @@ impl ProcessExecutor for PoetryFakeExecutor {
                 [arg0, arg1, arg2, arg3, arg4]
                     if arg0 == "self"
                         && arg1 == "show"
-                        && arg2 == "plugins"
+                        && arg2 == "--addons"
                         && arg3 == "--outdated"
                         && arg4 == "--no-ansi" =>
                 {
@@ -94,7 +94,7 @@ impl ProcessExecutor for PoetryFakeExecutor {
                     Vec::new()
                 }
                 [arg0, arg1, name]
-                    if arg0 == "self" && arg1 == "update" && name == "poetry-plugin-export" =>
+                    if arg0 == "self" && arg1 == "add" && name == "poetry-plugin-export@latest" =>
                 {
                     self.export_upgraded.store(true, Ordering::SeqCst);
                     Vec::new()

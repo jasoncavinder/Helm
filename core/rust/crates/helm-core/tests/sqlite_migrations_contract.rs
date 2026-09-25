@@ -640,8 +640,7 @@ fn migration_backup_retention_is_bounded() {
         .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
         .collect::<Vec<_>>();
     assert!(names.iter().all(|name| {
-        name.contains("pre-migration-v17-")
-            || name.contains("pre-migration-v18-")
-            || name.contains("pre-migration-v19-")
+        ((current_schema_version() - 3)..current_schema_version())
+            .any(|version| name.contains(&format!("pre-migration-v{version}-")))
     }));
 }

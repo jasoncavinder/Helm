@@ -4,6 +4,58 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The v0.20 disposable-VM adapter certification campaign has started. The initial
+29-manager detection/policy baseline is recorded in
+`docs/validation/v0.20-adapter-vm-certification.md`, not claimed as full lifecycle
+certification. It exposed a CLI process-exit/persistence race corrected by awaiting
+the existing ordered persistence receipt in synchronous commands. Real uv 0.12.18
+CLI lifecycle checks now proceed through constrained upgrade, install and recovery;
+last-tool uninstall reconciliation (#556) now accepts verified empty-store cleanup
+after a successful sole-tool removal. Both supported uv endpoints pass the bounded
+CLI lifecycle, including reinstall after cleanup. Missing stores outside that
+specific mutation still fail closed. No release gate is closed.
+
+The unmerged manager-family certification corrections and bounded live results
+are tracked in `docs/validation/v0.20-adapter-vm-family-results.md`. They cover
+current command/output contracts, global scope, pipx identity, selected Python
+venvs and CLI exact-version uninstall. Durable task reservations now pass
+cross-process and migration-compatibility checks. Homebrew cask formats and
+authorization delegation, tap-qualified formula identities, RubyGems search,
+and Docker/nix-darwin detection have bounded live evidence. Operation-specific
+developer-tools preflight is implemented; simulated missing-tool checks pass,
+but truly CLT-free and localized GUI prerequisite QA remain open. App Store/Setapp
+account-dependent checks are blocked by owner decision. pnpm 12 compatibility
+(#559), remaining capability/environment gates and the campaign review remain open.
+
+The per-capability disposition for all 29 adapters is recorded in
+`docs/validation/v0.20-adapter-cli-capability-matrix.md`. The final shared-scope
+read sweep passes after correcting pnpm 10's never-created-store diagnostic;
+uv retains its separately validated store/endpoint evidence. Controlled MacPorts
+version-changing upgrade, authoritative mise/npm/pip Plan order and public mas
+search pass. This does not turn account-blocked or empty-candidate scenarios into
+full lifecycle certification, and detection-only managers gain no new capability.
+
+Further pnpm 12.6.0 reduction reproduced whole-group removal when a single member
+was selected. pnpm documents this as its v11+ global installation model, which
+Helm's per-package consent does not cover. The shared adapter now rejects install,
+upgrade and uninstall on pnpm 11+, prereleases and unrecognized versions before
+mutation, while keeping detection/inventory/update discovery available. Legacy
+stable versions below 11 retain their existing path; bounded lifecycle evidence is
+for 10.16.1, not every older release. Both targeted and bulk legacy updates reject
+false success. #559 remains open for group-aware support and the native 12.6.0
+update no-op. No automatic downgrade, reinstall or policy bypass was introduced.
+Task diagnostics now provide translated pnpm-limit and developer-tools guidance
+from the core failure markers, including persisted task logs when process output
+is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.md)
+is pending; CLI evidence does not close those interactive gates.
+
+A repeated live uv cancellation check exposed duplicate CLI coordinator
+submission from processing temporary request files before atomic publication.
+Only final regular `.json` requests are now accepted. The real-process regression
+and two live cancellation runs on each supported uv endpoint pass; failure and
+corrected artifact hashes remain in the campaign ledger. This is not a general
+crash-recovery or all-adapter cancellation certification claim.
+
 ---
 
 ## Version

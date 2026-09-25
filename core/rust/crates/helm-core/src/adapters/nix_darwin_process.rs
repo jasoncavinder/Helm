@@ -81,8 +81,14 @@ impl NixDarwinSource for ProcessNixDarwinSource {
             ManagerId::NixDarwin,
         );
 
-        let request = self.configure_request(nix_darwin_detect_request(None));
-        let version_output = run_and_collect_version_output(self.executor.as_ref(), request);
+        let version_output = if executable_path.is_some() {
+            let request = self.configure_request(nix_darwin_detect_request(None));
+            // Upstream prints usage and exits 1 for --help; only the adapter's
+            // recognized usage signature counts as installed, not arbitrary errors.
+            run_and_collect_version_output(self.executor.as_ref(), request)
+        } else {
+            String::new()
+        };
 
         Ok(NixDarwinDetectOutput {
             executable_path,

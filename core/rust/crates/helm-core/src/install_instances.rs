@@ -794,6 +794,13 @@ impl ProvenanceSpec for PipProvenanceSpec {
         instance: &mut ManagerInstallInstance,
         _context: &mut ExternalEvidenceContext,
     ) {
+        if python_virtual_environment_root(&instance.display_path).is_some() {
+            set_instance_provenance(instance, InstallProvenance::Unknown, 0.0, None, ProvenanceExplainability {
+                explanation_primary: "pip belongs to a virtual environment; its base interpreter does not own the environment".into(),
+                explanation_secondary: None, competing: None,
+            });
+            return;
+        }
         classify_python_runtime_instance(instance, "pip", &["pip", "pip3", "python3"]);
     }
 }
@@ -2697,9 +2704,17 @@ fn python_runtime_install_root(
     display_path: &Path,
     canonical_path: Option<&Path>,
 ) -> Option<PathBuf> {
+    if let Some(root) = python_virtual_environment_root(display_path) {
+        return Some(root);
+    }
     canonical_path
         .and_then(|path| runtime_install_root(path, &["python3", "pip3", "pip"]))
         .or_else(|| runtime_install_root(display_path, &["python3", "pip3", "pip"]))
+}
+
+fn python_virtual_environment_root(path: &Path) -> Option<PathBuf> {
+    let root = runtime_install_root(path, &["python3", "pip3", "pip"])?;
+    root.join("pyvenv.cfg").is_file().then_some(root)
 }
 
 fn runtime_install_root(path: &Path, executable_names: &[&str]) -> Option<PathBuf> {
@@ -2778,9 +2793,9 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::Cargo => &["cargo"],
         ManagerId::CargoBinstall => &["cargo-binstall"],
         ManagerId::MacPorts => &["port", "/opt/local/bin/port"],
-        ManagerId::NixDarwin => &["darwin-rebuild", "nix"],
+        ManagerId::NixDarwin => &["darwin-rebuild"],
         ManagerId::Mas => &["mas"],
-        ManagerId::DockerDesktop => &["docker"],
+        ManagerId::DockerDesktop => &["/Applications/Docker.app/Contents/Resources/bin/docker"],
         ManagerId::Podman => &["podman"],
         ManagerId::Colima => &["colima"],
         ManagerId::XcodeCommandLineTools => &["/Library/Developer/CommandLineTools/usr/bin/clang"],
@@ -3024,6 +3039,18 @@ mod tests {
         };
         let mut context = ExternalEvidenceContext::without_external_queries();
         classify_instance(manager, &detection, candidate, &mut context)
+    }
+
+    #[test]
+    fn application_managers_do_not_claim_unrelated_command_line_tools() {
+        assert_eq!(
+            manager_executable_candidates(ManagerId::NixDarwin),
+            &["darwin-rebuild"]
+        );
+        assert_eq!(
+            manager_executable_candidates(ManagerId::DockerDesktop),
+            &["/Applications/Docker.app/Contents/Resources/bin/docker"]
+        );
     }
 
     #[test]
@@ -3728,6 +3755,46 @@ mod tests {
         let _ = fs::remove_file(root.join(".local/share/mise/installs/node/24"));
         let _ = fs::remove_file(root.join(".local/share/mise/installs/node/lts-krypton"));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn pip_virtual_environment_has_distinct_identity_and_no_base_ownership() {
+        let root = std::env::temp_dir().join(format!("helm-pip-venv-{}", std::process::id()));
+        let base = root.join("opt/homebrew/Cellar/python/3.14/bin/python3");
+        let venv = root.join("venv");
+        fs::create_dir_all(base.parent().unwrap()).unwrap();
+        fs::create_dir_all(venv.join("bin")).unwrap();
+        fs::write(&base, b"python").unwrap();
+        fs::write(
+            venv.join("pyvenv.cfg"),
+            b"include-system-site-packages = false",
+        )
+        .unwrap();
+        let selected = venv.join("bin/python3");
+        std::os::unix::fs::symlink(&base, &selected).unwrap();
+        let detection = DetectionInfo {
+            installed: true,
+            executable_path: Some(selected.clone()),
+            version: None,
+        };
+        let mut context = ExternalEvidenceContext::with_runner(|_, _, _| None);
+        let instances = collect_manager_install_instances_from_candidates_with_context(
+            ManagerId::Pip,
+            &detection,
+            &[base, selected.clone()],
+            &mut context,
+        );
+        assert_eq!(instances.len(), 2);
+        let environment = instances
+            .iter()
+            .find(|instance| instance.display_path == selected)
+            .unwrap();
+        assert_eq!(environment.provenance, InstallProvenance::Unknown);
+        assert_eq!(
+            python_runtime_install_root(&selected, environment.canonical_path.as_deref()),
+            Some(venv)
+        );
     }
 
     #[test]

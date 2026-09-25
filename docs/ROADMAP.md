@@ -755,7 +755,7 @@ Exit Criteria:
 
 Target: `v0.20.0`, before the first release candidate. Status: scoped runtime/lifecycle implemented; certification pending. Tracks [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
 
-Implementation: [runtime scope, verification, limitations, and certification gate](validation/uv-global-tools-lifecycle.md). The resolver preserves supported saved requirements and source configuration; GUI/CLI registration and verified per-tool actions are in place. Historical [preparation](validation/uv-global-tools-preparation.md) explains why a latest-only listing is insufficient. The owner-provided Parallels macOS VM/SSH will host the all-adapter certification pass; it is not yet completed.
+Implementation: [runtime scope, verification, limitations, and certification gate](validation/uv-global-tools-lifecycle.md). The resolver preserves supported saved requirements and source configuration; GUI/CLI registration and verified per-tool actions are in place. Historical [preparation](validation/uv-global-tools-preparation.md) explains why a latest-only listing is insufficient. The owner-provided Parallels macOS VM/SSH now hosts the [all-adapter campaign](validation/v0.20-adapter-vm-family-results.md); bounded CLI results do not yet close the complete certification gate.
 
 - Detect `uv` installations with accurate executable provenance and inventory tools managed through `uv tool`.
 - Support installed-tool search, outdated detection, and reviewed install, upgrade, and uninstall actions with post-action verification. Integrate tools and results into Environment, Library, Plan, and Activity with GUI/CLI parity.

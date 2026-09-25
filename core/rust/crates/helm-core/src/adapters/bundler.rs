@@ -287,6 +287,9 @@ fn parse_bundler_version(output: &str) -> Option<String> {
         .map(str::trim)
         .filter(|line| !line.is_empty())
     {
+        if line.split('.').count() >= 2 && line.chars().all(|ch| ch.is_ascii_digit() || ch == '.') {
+            return Some(line.to_string());
+        }
         if line.to_ascii_lowercase().starts_with("bundler version") {
             let version = line
                 .trim_start_matches("Bundler version")
@@ -523,6 +526,11 @@ fn parse_bundler_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
         let mut installed_version: Option<String> = None;
         let mut candidate_version: Option<String> = None;
 
+        if let Some((installed, candidate)) = details.split_once('<') {
+            installed_version = Some(installed.trim().to_string());
+            candidate_version = Some(candidate.trim().to_string());
+        }
+
         for field in details.split(',').map(str::trim) {
             if let Some(value) = field.strip_prefix("newest ") {
                 let value = value.trim();
@@ -540,6 +548,17 @@ fn parse_bundler_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             }
         }
 
+        if installed_version.as_deref().is_none_or(str::is_empty)
+            || candidate_version.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(CoreError {
+                manager: Some(ManagerId::Bundler),
+                task: Some(TaskType::Refresh),
+                action: Some(ManagerAction::ListOutdated),
+                kind: CoreErrorKind::ParseFailure,
+                message: "invalid bundler outdated version pair".into(),
+            });
+        }
         if let Some(candidate_version) = candidate_version {
             packages.push(OutdatedPackage {
                 package: PackageRef {
@@ -691,6 +710,8 @@ mod tests {
         let raw = std::fs::read_to_string("tests/fixtures/bundler/version.txt")
             .expect("bundler version fixture");
         assert_eq!(parse_bundler_version(&raw).as_deref(), Some("2.5.22"));
+        assert_eq!(parse_bundler_version("4.0.20\n").as_deref(), Some("4.0.20"));
+        assert_eq!(parse_bundler_version("warning: cannot load bundler"), None);
     }
 
     #[test]
@@ -703,6 +724,16 @@ mod tests {
         assert_eq!(packages[0].package.name, "bundler");
         assert_eq!(packages[0].installed_version.as_deref(), Some("2.5.22"));
         assert_eq!(packages[1].installed_version.as_deref(), Some("1.17.2"));
+    }
+
+    #[test]
+    fn parses_current_gem_outdated_format_without_other_gems() {
+        let packages =
+            parse_bundler_outdated("bundler (4.0.20 < 4.0.21)\njson (2.18.0 < 3.0.2)\n").unwrap();
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].installed_version.as_deref(), Some("4.0.20"));
+        assert_eq!(packages[0].candidate_version, "4.0.21");
+        assert!(parse_bundler_outdated("bundler (4.0.20 < )").is_err());
     }
 
     #[test]

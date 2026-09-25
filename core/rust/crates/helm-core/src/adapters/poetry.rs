@@ -92,8 +92,7 @@ impl<S: PoetrySource> ManagerAdapter for PoetryAdapter<S> {
                 }
 
                 let installed = parse_poetry_plugins_installed(&self.source.list_plugins()?)?;
-                let outdated =
-                    parse_poetry_plugins_outdated(&self.source.list_outdated_plugins()?)?;
+                let outdated = list_poetry_plugin_updates(&self.source)?;
                 Ok(AdapterResponse::SnapshotSync {
                     installed: Some(installed),
                     outdated: Some(outdated),
@@ -105,8 +104,7 @@ impl<S: PoetrySource> ManagerAdapter for PoetryAdapter<S> {
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
-                let raw = self.source.list_outdated_plugins()?;
-                let packages = parse_poetry_plugins_outdated(&raw)?;
+                let packages = list_poetry_plugin_updates(&self.source)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
             }
             AdapterRequest::Search(search_request) => {
@@ -184,9 +182,18 @@ impl<S: PoetrySource> ManagerAdapter for PoetryAdapter<S> {
                     .map(|name| find_poetry_outdated_plugin(&self.source, name))
                     .transpose()?
                     .flatten();
-                let _ = self.source.upgrade_plugins(target_name)?;
                 if let Some(name) = target_name {
+                    require_installed_poetry_plugin_version(&self.source, name)?;
+                    self.source.upgrade_plugins(Some(name))?;
                     ensure_poetry_plugin_no_longer_outdated(&self.source, name)?;
+                } else {
+                    for update in list_poetry_plugin_updates(&self.source)? {
+                        self.source.upgrade_plugins(Some(&update.package.name))?;
+                        ensure_poetry_plugin_no_longer_outdated(
+                            &self.source,
+                            &update.package.name,
+                        )?;
+                    }
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
@@ -241,7 +248,7 @@ pub fn poetry_list_outdated_plugins_request(task_id: Option<TaskId>) -> ProcessS
         CommandSpec::new(POETRY_COMMAND).args([
             "self",
             "show",
-            "plugins",
+            "--addons",
             "--outdated",
             "--no-ansi",
         ]),
@@ -285,9 +292,11 @@ pub fn poetry_upgrade_plugins_request(
     name: Option<&str>,
 ) -> ProcessSpawnRequest {
     let command = if let Some(name) = name {
-        CommandSpec::new(POETRY_COMMAND).args(["self", "update", name])
+        CommandSpec::new(POETRY_COMMAND).args(["self", "add", &format!("{name}@latest")])
     } else {
-        CommandSpec::new(POETRY_COMMAND).args(["self", "update"])
+        // No target deliberately fails instead of updating Poetry itself.
+        // Adapter bulk upgrades expand into individual installed-plugin actions.
+        CommandSpec::new(POETRY_COMMAND).args(["self", "add"])
     };
 
     poetry_request(
@@ -392,8 +401,7 @@ fn ensure_poetry_plugin_no_longer_outdated<S: PoetrySource>(
     source: &S,
     plugin_name: &str,
 ) -> AdapterResult<()> {
-    let raw = source.list_outdated_plugins()?;
-    let outdated = parse_poetry_plugins_outdated(&raw)?;
+    let outdated = list_poetry_plugin_updates(source)?;
     if outdated.iter().any(|item| item.package.name == plugin_name) {
         return Err(CoreError {
             manager: Some(ManagerId::Poetry),
@@ -437,11 +445,26 @@ fn find_poetry_outdated_plugin<S: PoetrySource>(
     source: &S,
     plugin_name: &str,
 ) -> AdapterResult<Option<OutdatedPackage>> {
-    let raw = source.list_outdated_plugins()?;
-    let outdated = parse_poetry_plugins_outdated(&raw)?;
+    let outdated = list_poetry_plugin_updates(source)?;
     Ok(outdated
         .into_iter()
         .find(|item| item.package.name == plugin_name))
+}
+
+fn list_poetry_plugin_updates<S: PoetrySource>(source: &S) -> AdapterResult<Vec<OutdatedPackage>> {
+    let installed = parse_poetry_plugins_installed(&source.list_plugins()?)?;
+    // A fresh Poetry installation has no self lockfile and no plugin candidates.
+    if installed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut outdated = parse_poetry_plugins_outdated(&source.list_outdated_plugins()?)?;
+    // --addons also includes transitive dependencies. Helm owns plugins only.
+    outdated.retain(|update| {
+        installed
+            .iter()
+            .any(|plugin| plugin.package.name == update.package.name)
+    });
+    Ok(outdated)
 }
 
 fn parse_poetry_plugins_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
@@ -453,6 +476,24 @@ fn parse_poetry_plugins_outdated(output: &str) -> AdapterResult<Vec<OutdatedPack
         .filter(|line| !line.is_empty())
     {
         if !line.starts_with('-') {
+            let columns: Vec<_> = line.split_whitespace().collect();
+            if columns.len() >= 3
+                && columns[1].starts_with(|c: char| c.is_ascii_digit())
+                && columns[2].starts_with(|c: char| c.is_ascii_digit())
+            {
+                packages.push(OutdatedPackage {
+                    package: PackageRef {
+                        manager: ManagerId::Poetry,
+                        name: columns[0].into(),
+                    },
+                    package_identifier: None,
+                    installed_version: Some(columns[1].into()),
+                    candidate_version: columns[2].into(),
+                    pinned: false,
+                    restart_required: false,
+                    runtime_state: Default::default(),
+                });
+            }
             continue;
         }
         let body = line.trim_start_matches('-').trim();
@@ -604,6 +645,23 @@ mod tests {
     }
 
     #[test]
+    fn actual_addon_rows_are_filtered_to_installed_plugins() {
+        let mut source = StubPoetrySource::success();
+        source.outdated_result = Ok("poetry-plugin-export 1.8.0 1.10.1 Export plugin\nunrelated-dependency 1.0 2.0 Library\n".into());
+        let updates = super::list_poetry_plugin_updates(&source).unwrap();
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].package.name, "poetry-plugin-export");
+        assert_eq!(updates[0].candidate_version, "1.10.1");
+        source.list_result = Ok(String::new());
+        source.outdated_result = Err(super::parse_error("lockfile does not exist"));
+        assert!(
+            super::list_poetry_plugin_updates(&source)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn parses_search_results_from_fixture() {
         let query = SearchQuery {
             text: "export".to_string(),
@@ -633,7 +691,7 @@ mod tests {
         let outdated = poetry_list_outdated_plugins_request(None);
         assert_eq!(
             outdated.command.args,
-            vec!["self", "show", "plugins", "--outdated", "--no-ansi"]
+            vec!["self", "show", "--addons", "--outdated", "--no-ansi"]
         );
 
         let install = poetry_install_plugin_request(None, "poetry-plugin-export", Some("1.9.0"));
@@ -651,11 +709,11 @@ mod tests {
         let upgrade_one = poetry_upgrade_plugins_request(None, Some("poetry-plugin-export"));
         assert_eq!(
             upgrade_one.command.args,
-            vec!["self", "update", "poetry-plugin-export"]
+            vec!["self", "add", "poetry-plugin-export@latest"]
         );
 
         let upgrade_all = poetry_upgrade_plugins_request(None, None);
-        assert_eq!(upgrade_all.command.args, vec!["self", "update"]);
+        assert_eq!(upgrade_all.command.args, vec!["self", "add"]);
     }
 
     #[derive(Clone)]
