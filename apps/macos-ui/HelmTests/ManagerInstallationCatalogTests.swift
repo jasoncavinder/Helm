@@ -3,6 +3,12 @@ import XCTest
 final class ManagerInstallationCatalogTests: XCTestCase {
     typealias Catalog = ManagerInstallationCatalog
 
+    func testUvToolManagementDoesNotInventExecutableInstallationStrategies() {
+        let value = catalog([source("uv", methods: [])])
+        XCTAssertTrue(value.candidates.isEmpty)
+        XCTAssertFalse(value.canReview("uv"))
+    }
+
     private func source(
         _ id: String = "mise", detected: Bool = false, enabled: Bool = true,
         implemented: Bool = true, eligible: Bool = true, busy: Bool = false,

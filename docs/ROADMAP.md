@@ -751,11 +751,11 @@ Exit Criteria:
 - Presentation changes do not move business or orchestration logic out of service/core boundaries.
 - Signed installed-candidate QA proves download, installation, relaunch, version verification, cancellation/failure recovery, and unsupported-app fallback across representative third-party Sparkle apps and framework versions without weakening Helm's sandbox or claiming completion before the target version is observed.
 
-### Planned uv Global-Tool Manager
+### uv Global-Tool Manager
 
-Target: `v0.20.0`, before the first release candidate. Status: planned, not implemented. Tracks [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
+Target: `v0.20.0`, before the first release candidate. Status: scoped runtime/lifecycle implemented; certification pending. Tracks [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
 
-Implementation preparation: [verified command observations and proposed certification matrix](validation/uv-global-tools-preparation.md). This identifies the constrained-update candidate gap without claiming adapter implementation or lifecycle certification.
+Implementation: [runtime scope, verification, limitations, and certification gate](validation/uv-global-tools-lifecycle.md). The resolver preserves supported saved requirements and source configuration; GUI/CLI registration and verified per-tool actions are in place. Historical [preparation](validation/uv-global-tools-preparation.md) explains why a latest-only listing is insufficient. The owner-provided Parallels macOS VM/SSH will host the all-adapter certification pass; it is not yet completed.
 
 - Detect `uv` installations with accurate executable provenance and inventory tools managed through `uv tool`.
 - Support installed-tool search, outdated detection, and reviewed install, upgrade, and uninstall actions with post-action verification. Integrate tools and results into Environment, Library, Plan, and Activity with GUI/CLI parity.

@@ -4,6 +4,11 @@ Date: 2026-09-24. Status: pure core policy, not runtime activation or a complete
 update resolver. This continues [installation policy](uv-installation-policy.md)
 for #526; neither #526 nor certification issue #500 is closed by this slice.
 
+Follow-up: [global-tool runtime and lifecycle](uv-global-tools-lifecycle.md)
+integrates guarded acquisition, full uv resolution, reviewed operations, and
+GUI/CLI registration. The statements below describe this earlier pure-policy
+slice; release certification is still a separate gate.
+
 ## Implemented Contract
 
 `adapters::uv_tool_eligibility` consumes caller-supplied installed observations,

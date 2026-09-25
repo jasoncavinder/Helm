@@ -51,18 +51,23 @@ fn language_managers_declare_required_capabilities() {
 }
 
 #[test]
-fn uv_staging_descriptor_does_not_advertise_unimplemented_actions() {
+fn uv_global_tool_capabilities_do_not_grant_executable_lifecycle_or_catalog_sync() {
     let descriptor = registry::manager(ManagerId::Uv).unwrap();
     assert_eq!(
         descriptor.capabilities,
         &[
             Capability::Detect,
             Capability::Refresh,
-            Capability::ListInstalled
+            Capability::ListInstalled,
+            Capability::ListOutdated,
+            Capability::Search,
+            Capability::Install,
+            Capability::Upgrade,
+            Capability::Uninstall,
         ]
     );
     assert!(registry::manager_install_method_specs(ManagerId::Uv).is_empty());
-    assert!(!registry::manager_participates_in_package_search(
+    assert!(registry::manager_participates_in_package_search(
         ManagerId::Uv
     ));
     assert!(!registry::manager_participates_in_catalog_sync(

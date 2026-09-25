@@ -104,6 +104,9 @@ struct PackageItem: Identifiable {
     }
 
     var mutationTargetPackageName: String? {
+        if managerId.lowercased() == "uv" {
+            return packageIdentifier
+        }
         let displayName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let targetName = mutationPackageName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !targetName.isEmpty else { return nil }
@@ -118,6 +121,13 @@ struct PackageItem: Identifiable {
         }
         let trimmedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedVersion.isEmpty ? nil : trimmedVersion
+    }
+
+    var upgradeMutationVersion: String? {
+        if managerId.lowercased() == "uv" {
+            return PackageIdentity.normalizedKnownVersion(latestVersion)
+        }
+        return mutationVersion
     }
 }
 

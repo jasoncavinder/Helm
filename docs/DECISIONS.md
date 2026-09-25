@@ -1013,6 +1013,37 @@ Project outdated third-party Sparkle apps into Plan as interactive vendor-manage
 
 ---
 
+## Decision 047 - Bind uv Tool Updates to Resolved and Observed State
+
+**Decision:**
+Manage uv global tools separately from the uv executable. Use the selected
+concrete executable and tool store, resolve supported saved requirements against
+the existing interpreter and source policy, carry the reviewed candidate/store
+through GUI and CLI execution, and verify installed state before reporting success.
+
+**Consequences:**
+
+- Latest-version listings and pure version filtering are not upgrade authority.
+- Source builds, Python downloads, unsupported receipts/configuration, stale
+  targets, and unsafe storage cannot become automatic updates.
+- Executable lifecycle actions remain with the owning manager; global-tool
+  support does not authorize uv self-update or removal.
+- Failed or unverified operations retain previously committed inventory and
+  require review, rather than claiming success from a process exit code.
+- Bounded fixture and real-command evidence do not replace the owner's planned
+  Parallels macOS VM certification for every supported manager.
+
+**Rationale:**
+
+Installed tools can be constrained or use non-default sources. A public latest
+version can be incompatible, and a successful command can leave the installed
+version unchanged. Scope-bound resolution and verification keep Helm's plan and
+completion claims faithful to what was approved and actually happened.
+
+Contract and limits: [uv global-tool lifecycle](validation/uv-global-tools-lifecycle.md).
+
+---
+
 ## Summary
 
 Helm prioritizes:

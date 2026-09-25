@@ -70,7 +70,7 @@ impl UvToolContext {
         self
     }
 
-    fn validate_binding(&self) -> AdapterResult<()> {
+    pub(crate) fn validate_binding(&self) -> AdapterResult<()> {
         if let Some(binding) = &self.binding {
             binding.validate()?;
         }
@@ -126,7 +126,7 @@ impl UvToolContext {
         request
     }
 
-    fn package_identifier(&self, name: &str) -> String {
+    pub(crate) fn package_identifier(&self, name: &str) -> String {
         let digest = Sha256::digest(
             self.tool_dir
                 .to_str()
@@ -260,7 +260,14 @@ impl UvToolReadAdapter {
 
 impl ManagerAdapter for UvToolReadAdapter {
     fn descriptor(&self) -> &ManagerDescriptor {
-        crate::registry::manager(ManagerId::Uv).expect("uv descriptor")
+        static READ_DESCRIPTOR: ManagerDescriptor = ManagerDescriptor {
+            id: ManagerId::Uv,
+            display_name: "uv",
+            category: crate::models::ManagerCategory::Language,
+            authority: crate::models::ManagerAuthority::Standard,
+            capabilities: UV_READ_CAPABILITIES,
+        };
+        &READ_DESCRIPTOR
     }
 
     fn action_safety(&self, action: ManagerAction) -> ActionSafety {

@@ -18,14 +18,16 @@ import tempfile
 import zipfile
 
 
-def make_wheel(directory, name, version, executables):
+def make_wheel(directory, name, version, executables, python_requires=">=3.9", dependencies=()):
     normalized = name.replace("-", "_")
     info = f"{normalized}-{version}.dist-info"
     files = {
         f"{normalized}.py": b"def main():\n    return 0\n",
         f"{info}/METADATA": (
             f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
-            "Requires-Python: >=3.9\n\nHelm isolated uv contract fixture.\n"
+            f"Requires-Python: {python_requires}\n"
+            + "".join(f"Requires-Dist: {dependency}\n" for dependency in dependencies)
+            + "\nHelm isolated uv contract fixture.\n"
         ).encode(),
         f"{info}/WHEEL": (
             "Wheel-Version: 1.0\nGenerator: helm-contract-fixture\n"
@@ -125,6 +127,13 @@ def main():
     make_wheel(paths["wheels"], name, "1.1", executables)
     make_wheel(paths["wheels"], name, "2.0", executables)
     make_wheel(paths["wheels"], pinned, "2.0", [pinned])
+    if len(sys.argv) > 4 and sys.argv[4] == "prepare-adapter":
+        make_wheel(paths["wheels"], name, "1.2", executables, python_requires=">=4")
+        make_wheel(paths["wheels"], name, "1.3", executables,
+                   dependencies=("helm-uv-unavailable-dependency>=1",))
+        print(json.dumps({"artifacts": str(root), "python": sys.version, "records": records,
+                          "receipts": receipts}))
+        return
     listing("latest", outdated=True)
     run("upgrade", ["tool", "upgrade", name, pinned, "--no-build"])
     listing("after_upgrade")

@@ -2,6 +2,16 @@ import Foundation
 import XCTest
 
 final class LibraryResultProvenanceTests: XCTestCase {
+    func testUvMutationPreservesStoreIdentityAndUpgradeCandidateWithoutChangingRemovalVersion() {
+        let package = PackageItem(id: "uv:ruff", name: "ruff",
+                                  packageIdentifier: "uv-tool:store:ruff", version: "1.0",
+                                  latestVersion: "2.0", managerId: "uv", manager: "uv")
+        XCTAssertEqual(package.mutationPackageName, "ruff")
+        XCTAssertEqual(package.mutationTargetPackageName, "uv-tool:store:ruff")
+        XCTAssertEqual(package.upgradeMutationVersion, "2.0")
+        XCTAssertNil(package.mutationVersion)
+    }
+
     func testValidatesEverySupportedBoundaryCombination() throws {
         let cases: [(String, PackageResultProvenanceBoundary)] = [
             (

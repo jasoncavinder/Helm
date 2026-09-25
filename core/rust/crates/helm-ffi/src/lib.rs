@@ -666,6 +666,7 @@ fn is_implemented_manager(id: ManagerId) -> bool {
             | ManagerId::CargoBinstall
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Poetry
             | ManagerId::RubyGems
             | ManagerId::Bundler
@@ -1345,6 +1346,7 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::Yarn => &["yarn"],
         ManagerId::Pip => &["python3", "pip3", "pip"],
         ManagerId::Pipx => &["pipx"],
+        ManagerId::Uv => &["uv"],
         ManagerId::Poetry => &["poetry"],
         ManagerId::RubyGems => &["gem"],
         ManagerId::Bundler => &["bundle"],
@@ -1426,6 +1428,7 @@ fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
             | ManagerId::Yarn
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Poetry
             | ManagerId::RubyGems
             | ManagerId::Bundler
@@ -1447,6 +1450,7 @@ fn manager_versioned_install_roots(id: ManagerId) -> Vec<std::path::PathBuf> {
             | ManagerId::Yarn
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Poetry
             | ManagerId::RubyGems
             | ManagerId::Bundler
@@ -3355,6 +3359,7 @@ fn manager_allows_individual_package_install(manager: ManagerId) -> bool {
             | ManagerId::CargoBinstall
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Poetry
             | ManagerId::RubyGems
             | ManagerId::Rustup
@@ -3387,6 +3392,7 @@ fn manager_allows_individual_package_uninstall(manager: ManagerId) -> bool {
             | ManagerId::CargoBinstall
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Poetry
             | ManagerId::RubyGems
             | ManagerId::Rustup
@@ -3411,6 +3417,7 @@ fn supports_individual_package_upgrade(runtime: &AdapterRuntime, manager: Manage
             | ManagerId::Npm
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Cargo
             | ManagerId::CargoBinstall
             | ManagerId::Rustup
@@ -3643,6 +3650,7 @@ struct UpgradeAllTargets {
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
+    uv: Vec<String>,
     poetry: Vec<String>,
     rubygems: Vec<String>,
     bundler: Vec<String>,
@@ -3809,7 +3817,7 @@ fn collect_upgrade_all_targets(
     let mut seen_rustup = std::collections::HashSet::new();
 
     for package in outdated {
-        if !include_pinned && package.pinned {
+        if package.pinned && (!include_pinned || package.package.manager == ManagerId::Uv) {
             continue;
         }
 
@@ -3872,6 +3880,11 @@ fn collect_upgrade_all_targets(
             ManagerId::Pipx => {
                 if seen_pipx.insert(package.package.name.clone()) {
                     targets.pipx.push(package.package.name.clone());
+                }
+            }
+            ManagerId::Uv => {
+                if !targets.uv.contains(&package.package.name) {
+                    targets.uv.push(package.package.name.clone());
                 }
             }
             ManagerId::Poetry => {
@@ -5704,6 +5717,9 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     ));
     let pip_adapter = Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone())));
     let pipx_adapter = Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone())));
+    let uv_adapter = Arc::new(helm_core::adapters::uv_tool_runtime::UvToolAdapter::new(
+        executor.clone(),
+    ));
     let poetry_adapter = Arc::new(PoetryAdapter::new(ProcessPoetrySource::new(
         executor.clone(),
     )));
@@ -5766,6 +5782,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         cargo_binstall_adapter,
         pip_adapter,
         pipx_adapter,
+        uv_adapter,
         poetry_adapter,
         rubygems_adapter,
         bundler_adapter,
@@ -7635,6 +7652,30 @@ pub extern "C" fn helm_preview_upgrade_plan(
         }
     }
 
+    if state.runtime.is_manager_enabled(ManagerId::Uv) {
+        for package_name in targets.uv {
+            let Some(row) = outdated.iter().find(|row| {
+                row.package.manager == ManagerId::Uv && row.package.name == package_name
+            }) else {
+                continue;
+            };
+            let Some(identifier) = row.package_identifier.clone() else {
+                continue;
+            };
+            push_upgrade_plan_step_with_extra_reason_args(
+                &mut steps,
+                ManagerId::Uv,
+                package_name,
+                false,
+                &mut order_index,
+                vec![
+                    ("uv_candidate_version", row.candidate_version.clone()),
+                    ("uv_package_identifier", identifier),
+                ],
+            );
+        }
+    }
+
     if state.runtime.is_manager_enabled(ManagerId::Poetry) {
         for package_name in targets.poetry {
             push_upgrade_plan_step(
@@ -7861,6 +7902,14 @@ fn upgrade_workflow_request(
     step: &FfiUpgradePlanStep,
 ) -> Option<(ManagerId, AdapterRequest, bool)> {
     let manager = step.manager_id.parse::<ManagerId>().ok()?;
+    let (target_name, version) = if manager == ManagerId::Uv {
+        (
+            Some(step.reason_label_args.get("uv_package_identifier")?.clone()),
+            Some(step.reason_label_args.get("uv_candidate_version")?.clone()),
+        )
+    } else {
+        (None, None)
+    };
     let cleanup_old_kegs = manager == ManagerId::HomebrewFormula
         && step.reason_label_key == HOMEBREW_CLEANUP_REASON_LABEL_KEY;
     let package_name = if manager == ManagerId::HomebrewFormula {
@@ -7875,8 +7924,8 @@ fn upgrade_workflow_request(
                 manager,
                 name: package_name,
             }),
-            target_name: None,
-            version: None,
+            target_name,
+            version,
         }),
         cleanup_old_kegs,
     ))
@@ -8520,6 +8569,29 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
             }
         }
 
+        if runtime.is_manager_enabled(ManagerId::Uv) {
+            for package_name in targets.uv {
+                let request = AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Uv,
+                        name: package_name.clone(),
+                    }),
+                    target_name: None,
+                    version: None,
+                });
+                match runtime.submit(ManagerId::Uv, request).await {
+                    Ok(task_id) => {
+                        let (label_key, label_args) =
+                            upgrade_task_label_for(ManagerId::Uv, &package_name, false);
+                        set_task_label(task_id, label_key, &label_args);
+                    }
+                    Err(error) => {
+                        eprintln!("upgrade_all: failed to queue uv upgrade task: {error}")
+                    }
+                }
+            }
+        }
+
         if runtime.is_manager_enabled(ManagerId::Poetry) {
             for package_name in targets.poetry {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
@@ -8883,6 +8955,22 @@ pub unsafe extern "C" fn helm_upgrade_package(
             vec![
                 ("package", package_label_target.clone()),
                 ("manager", manager_display_name(ManagerId::Pipx).to_string()),
+            ],
+        ),
+        ManagerId::Uv => (
+            ManagerId::Uv,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Uv,
+                    name: package_name.clone(),
+                }),
+                target_name: package_target_name.clone(),
+                version: version.clone(),
+            }),
+            Some("service.task.label.upgrade.package"),
+            vec![
+                ("package", package_label_target.clone()),
+                ("manager", "uv".to_string()),
             ],
         ),
         ManagerId::Poetry => (
@@ -13395,6 +13483,7 @@ mod tests {
             outdated_pkg(ManagerId::Mise, "node", false),
             outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", false),
             outdated_pkg(ManagerId::SoftwareUpdate, "macos", false),
+            outdated_pkg(ManagerId::Uv, "ruff", false),
         ];
         let targets = collect_upgrade_all_targets(&outdated, true);
         assert_eq!(targets.asdf, vec!["python".to_string()]);
@@ -13406,6 +13495,37 @@ mod tests {
             vec!["stable-x86_64-apple-darwin".to_string()]
         );
         assert!(targets.softwareupdate_outdated);
+        assert_eq!(targets.uv, vec!["ruff".to_string()]);
+    }
+
+    #[test]
+    fn uv_plan_preserves_reviewed_store_and_version_and_rejects_drift() {
+        let mut steps = Vec::new();
+        let mut order = 0;
+        super::push_upgrade_plan_step_with_extra_reason_args(
+            &mut steps,
+            ManagerId::Uv,
+            "ruff".into(),
+            false,
+            &mut order,
+            vec![
+                ("uv_candidate_version", "2.0".into()),
+                ("uv_package_identifier", "uv-tool:scope:ruff".into()),
+            ],
+        );
+        let (_, request, _) = super::upgrade_workflow_request(&steps[0]).unwrap();
+        let AdapterRequest::Upgrade(request) = request else {
+            panic!("upgrade")
+        };
+        assert_eq!(request.version.as_deref(), Some("2.0"));
+        assert_eq!(request.target_name.as_deref(), Some("uv-tool:scope:ruff"));
+        let mut changed = steps.clone();
+        changed[0]
+            .reason_label_args
+            .insert("uv_candidate_version".into(), "3.0".into());
+        assert!(super::retain_reviewed_upgrade_workflow_steps(&mut changed, &steps).is_err());
+        steps[0].reason_label_args.remove("uv_package_identifier");
+        assert!(super::upgrade_workflow_request(&steps[0]).is_none());
     }
 
     #[test]
@@ -13416,6 +13536,9 @@ mod tests {
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
             outdated_pkg(ManagerId::HomebrewFormula, "git", false),
             outdated_pkg(ManagerId::Mas, "Keynote", true),
+            outdated_pkg(ManagerId::Uv, "ruff", true),
+            outdated_pkg(ManagerId::Uv, "black", false),
+            outdated_pkg(ManagerId::Uv, "black", false),
             outdated_pkg(ManagerId::Mise, "node", true),
             outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", true),
         ];
@@ -13426,6 +13549,7 @@ mod tests {
         assert!(targets.mise.is_empty());
         assert!(targets.rustup.is_empty());
         assert!(!targets.softwareupdate_outdated);
+        assert_eq!(targets.uv, vec!["black".to_string()]);
     }
 
     #[test]
@@ -14205,11 +14329,6 @@ mod tests {
         let statuses = build_manager_statuses(None, None, &HashMap::new(), &HashMap::new());
 
         for manager_id in ManagerId::ALL {
-            if manager_id == ManagerId::Uv {
-                // A staged v0.20 identity is not part of the delivered 0.14 adapter set.
-                assert!(!status_for(&statuses, manager_id).is_implemented);
-                continue;
-            }
             assert!(
                 status_for(&statuses, manager_id).is_implemented,
                 "manager {manager_id:?} expected implemented in 0.14 baseline"

@@ -2,7 +2,7 @@
 
 Date: 2026-09-23. Status: investigation and proposed test contract only; **no uv adapter is implemented or certified by this record**.
 
-Scope comes from the [v0.20 roadmap](../ROADMAP.md#planned-uv-global-tool-manager), [feature #526](https://github.com/jasoncavinder/Helm/issues/526), and [all-manager certification #500](https://github.com/jasoncavinder/Helm/issues/500). This preparation does not change the approved scope or the first-RC certification gate.
+Scope comes from the [v0.20 roadmap](../ROADMAP.md#uv-global-tool-manager), [feature #526](https://github.com/jasoncavinder/Helm/issues/526), and [all-manager certification #500](https://github.com/jasoncavinder/Helm/issues/500). This preparation does not change the approved scope or the first-RC certification gate. The subsequent [runtime/lifecycle implementation](uv-global-tools-lifecycle.md) closes the implementation sequence, not the certification gate.
 
 ## Verified Inputs
 

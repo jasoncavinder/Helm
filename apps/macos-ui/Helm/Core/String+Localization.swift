@@ -10,43 +10,51 @@ extension String {
     }
 }
 
+private enum ManagerDisplayNameKeys {
+    // Cache keys only; resolving each call keeps language changes live.
+    static let byID: [String: String] = [
+        "homebrew_formula": L10n.App.Managers.Name.homebrew,
+        "homebrew_cask": L10n.App.Managers.Name.homebrewCask,
+        "npm": L10n.App.Managers.Name.npm,
+        "npm_global": L10n.App.Managers.Name.npm,
+        "pnpm": L10n.App.Managers.Name.pnpm,
+        "yarn": L10n.App.Managers.Name.yarn,
+        "poetry": L10n.App.Managers.Name.poetry,
+        "rubygems": L10n.App.Managers.Name.rubygems,
+        "bundler": L10n.App.Managers.Name.bundler,
+        "pip": L10n.App.Managers.Name.pip,
+        "pipx": L10n.App.Managers.Name.pipx,
+        "uv": L10n.App.Managers.Name.uv,
+        "cargo": L10n.App.Managers.Name.cargo,
+        "cargo_binstall": L10n.App.Managers.Name.cargoBinstall,
+        "mise": L10n.App.Managers.Name.mise,
+        "rustup": L10n.App.Managers.Name.rustup,
+        "softwareupdate": L10n.App.Managers.Name.softwareUpdate,
+        "mas": L10n.App.Managers.Name.appStore,
+        "sparkle": L10n.App.Managers.Name.sparkle,
+        HelmCore.helmSelfUpdateManagerId: L10n.App.Updates.helmSelfUpdateManager,
+        "setapp": L10n.App.Managers.Name.setapp,
+        "asdf": L10n.App.Managers.Name.asdf,
+        "macports": L10n.App.Managers.Name.macports,
+        "nix_darwin": L10n.App.Managers.Name.nixDarwin,
+        "docker_desktop": L10n.App.Managers.Name.dockerDesktop,
+        "podman": L10n.App.Managers.Name.podman,
+        "colima": L10n.App.Managers.Name.colima,
+        "parallels_desktop": L10n.App.Managers.Name.parallelsDesktop,
+        "xcode_command_line_tools": L10n.App.Managers.Name.xcodeCommandLineTools,
+        "rosetta2": L10n.App.Managers.Name.rosetta2,
+        "firmware_updates": L10n.App.Managers.Name.firmwareUpdates
+    ]
+}
+
 func localizedManagerDisplayName(_ managerId: String) -> String {
-    switch managerId.lowercased() {
-    case "homebrew_formula": return L10n.App.Managers.Name.homebrew.localized
-    case "homebrew_cask": return L10n.App.Managers.Name.homebrewCask.localized
-    case "npm", "npm_global": return L10n.App.Managers.Name.npm.localized
-    case "pnpm": return L10n.App.Managers.Name.pnpm.localized
-    case "yarn": return L10n.App.Managers.Name.yarn.localized
-    case "poetry": return L10n.App.Managers.Name.poetry.localized
-    case "rubygems": return L10n.App.Managers.Name.rubygems.localized
-    case "bundler": return L10n.App.Managers.Name.bundler.localized
-    case "pip": return L10n.App.Managers.Name.pip.localized
-    case "pipx": return L10n.App.Managers.Name.pipx.localized
-    case "cargo": return L10n.App.Managers.Name.cargo.localized
-    case "cargo_binstall": return L10n.App.Managers.Name.cargoBinstall.localized
-    case "mise": return L10n.App.Managers.Name.mise.localized
-    case "rustup": return L10n.App.Managers.Name.rustup.localized
-    case "softwareupdate": return L10n.App.Managers.Name.softwareUpdate.localized
-    case "mas": return L10n.App.Managers.Name.appStore.localized
-    case "sparkle": return L10n.App.Managers.Name.sparkle.localized
-    case HelmCore.helmSelfUpdateManagerId: return L10n.App.Updates.helmSelfUpdateManager.localized
-    case "setapp": return L10n.App.Managers.Name.setapp.localized
-    case "asdf": return L10n.App.Managers.Name.asdf.localized
-    case "macports": return L10n.App.Managers.Name.macports.localized
-    case "nix_darwin": return L10n.App.Managers.Name.nixDarwin.localized
-    case "docker_desktop": return L10n.App.Managers.Name.dockerDesktop.localized
-    case "podman": return L10n.App.Managers.Name.podman.localized
-    case "colima": return L10n.App.Managers.Name.colima.localized
-    case "parallels_desktop": return L10n.App.Managers.Name.parallelsDesktop.localized
-    case "xcode_command_line_tools": return L10n.App.Managers.Name.xcodeCommandLineTools.localized
-    case "rosetta2": return L10n.App.Managers.Name.rosetta2.localized
-    case "firmware_updates": return L10n.App.Managers.Name.firmwareUpdates.localized
-    default:
-        if let manager = ManagerInfo.find(byId: managerId) {
-            return manager.displayName
-        }
-        return managerId.replacingOccurrences(of: "_", with: " ").capitalized
+    if let key = ManagerDisplayNameKeys.byID[managerId.lowercased()] {
+        return key.localized
     }
+    if let manager = ManagerInfo.find(byId: managerId) {
+        return manager.displayName
+    }
+    return managerId.replacingOccurrences(of: "_", with: " ").capitalized
 }
 
 extension ManagerDistributionMethod {

@@ -143,7 +143,7 @@ extension HelmCore {
                 managerId: package.managerId,
                 packageName: package.name,
                 packageTargetName: package.mutationTargetPackageName,
-                version: package.mutationVersion
+                version: package.upgradeMutationVersion
             ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
