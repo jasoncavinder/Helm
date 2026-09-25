@@ -489,6 +489,26 @@ fn manager_uses_node_runtime(manager: ManagerId) -> bool {
     matches!(manager, ManagerId::Npm | ManagerId::Pnpm | ManagerId::Yarn)
 }
 
+pub(crate) fn selected_manager_command_path(manager: ManagerId, name: &str) -> Option<PathBuf> {
+    let selected = manager_selected_executable(manager)?;
+    let aliases = manager_command_aliases(manager);
+    let selected_name = command_basename(&selected)?;
+    if !aliases.contains(&name) || !aliases.contains(&selected_name) {
+        return None;
+    }
+    let script = manager_uses_node_runtime(manager)
+        && selected
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| matches!(extension, "js" | "cjs" | "mjs"));
+    let command = if selected_name == name || script {
+        selected
+    } else {
+        selected.parent()?.join(name)
+    };
+    command.is_file().then_some(command)
+}
+
 fn command_basename(path: &std::path::Path) -> Option<&str> {
     path.file_name().and_then(|name| name.to_str())
 }
@@ -991,6 +1011,39 @@ mod tests {
         ] {
             assert!(!operation.supports_privileged_executor());
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn selected_python_detection_and_execution_preserve_venv_symlink() {
+        let _lock = manager_execution_preferences_test_guard();
+        clear_manager_selected_executables();
+        let temp = test_temp_dir("selected-python-venv");
+        let base = temp.join("base/bin/python3");
+        let selected = temp.join("venv/bin/python3");
+        create_placeholder_binary(&base);
+        fs::create_dir_all(selected.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&base, &selected).unwrap();
+        set_manager_selected_executable(ManagerId::Pip, Some(selected.clone()));
+        let executor = CapturingExecutor::default();
+        assert_eq!(
+            crate::adapters::detect_utils::which_executable(
+                &executor,
+                "python3",
+                &[],
+                ManagerId::Pip
+            ),
+            Some(selected.clone())
+        );
+        let request = ProcessSpawnRequest::new(
+            ManagerId::Pip,
+            TaskType::Refresh,
+            ManagerAction::ListInstalled,
+            CommandSpec::new("python3"),
+        );
+        spawn_validated(&executor, request).unwrap();
+        assert_eq!(executor.captured_program(), selected);
+        clear_manager_selected_executables();
     }
 
     #[test]

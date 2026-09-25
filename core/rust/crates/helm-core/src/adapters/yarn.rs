@@ -256,7 +256,9 @@ pub fn yarn_list_installed_request(task_id: Option<TaskId>) -> ProcessSpawnReque
         task_id,
         TaskType::Refresh,
         ManagerAction::ListInstalled,
-        CommandSpec::new(YARN_COMMAND).args(["global", "list", "--depth=0", "--json"]),
+        // ProcessYarnSource binds this to `yarn global dir`. `global list`
+        // reports executable banners rather than a complete package tree.
+        CommandSpec::new(YARN_COMMAND).args(["list", "--depth=0", "--json"]),
         LIST_TIMEOUT,
     )
 }
@@ -277,8 +279,9 @@ pub fn yarn_search_request(task_id: Option<TaskId>, query: &SearchQuery) -> Proc
         TaskType::Search,
         ManagerAction::Search,
         CommandSpec::new(YARN_COMMAND)
-            .arg("search")
+            .arg("info")
             .arg(query.text.clone())
+            .arg("version")
             .arg("--json"),
         SEARCH_TIMEOUT,
     )
@@ -317,7 +320,7 @@ pub fn yarn_uninstall_request(task_id: Option<TaskId>, name: &str) -> ProcessSpa
 
 pub fn yarn_upgrade_request(task_id: Option<TaskId>, name: Option<&str>) -> ProcessSpawnRequest {
     let command = if let Some(name) = name {
-        CommandSpec::new(YARN_COMMAND).args(["global", "upgrade", name])
+        CommandSpec::new(YARN_COMMAND).args(["global", "upgrade", name, "--latest"])
     } else {
         CommandSpec::new(YARN_COMMAND).args(["global", "upgrade", "--latest"])
     };
@@ -531,7 +534,7 @@ fn parse_yarn_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
     let mut recognized_shape = false;
     let mut packages = Vec::new();
     if let Ok(json) = serde_json::from_str::<Value>(trimmed)
-        && let Some(map) = json.as_object()
+        && let Some(map) = json.as_object().filter(|map| !map.contains_key("type"))
     {
         parse_attempted = true;
         recognized_shape = true;
@@ -580,6 +583,13 @@ fn parse_yarn_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             let Ok(value) = serde_json::from_str::<Value>(line) else {
                 continue;
             };
+            if matches!(
+                value.get("type").and_then(Value::as_str),
+                Some("warning" | "info" | "progressStart" | "progressTick" | "progressFinish")
+            ) {
+                recognized_shape = true;
+                continue;
+            }
             if value.get("type").and_then(Value::as_str) != Some("table") {
                 continue;
             }
@@ -657,7 +667,20 @@ fn parse_yarn_search(output: &str, query: &SearchQuery) -> AdapterResult<Vec<Cac
         return Ok(Vec::new());
     }
 
-    let entries: Vec<YarnSearchEntry> = if trimmed.starts_with('[') {
+    let entries: Vec<YarnSearchEntry> = if let Ok(value) = serde_json::from_str::<Value>(trimmed)
+        && value.get("type").and_then(Value::as_str) == Some("inspect")
+    {
+        let version = value
+            .get("data")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| parse_error("invalid yarn info version"))?;
+        vec![YarnSearchEntry {
+            name: Some(query.text.clone()),
+            version: Some(version.into()),
+            description: None,
+        }]
+    } else if trimmed.starts_with('[') {
         serde_json::from_str(trimmed)
             .map_err(|e| parse_error(&format!("invalid yarn search JSON: {e}")))?
     } else {
@@ -807,6 +830,29 @@ mod tests {
     }
 
     #[test]
+    fn parses_real_classic_global_tree_and_exact_lookup() {
+        let installed = parse_yarn_list_installed(r#"{"type":"tree","data":{"type":"list","trees":[{"name":"prettier@3.5.3","children":[],"depth":0}]}}"#).unwrap();
+        assert_eq!(installed[0].package.name, "prettier");
+        assert!(
+            parse_yarn_list_installed(r#"{"type":"tree","data":{"trees":[]}}"#)
+                .unwrap()
+                .is_empty()
+        );
+        let query = SearchQuery {
+            text: "prettier".into(),
+            issued_at: std::time::SystemTime::now(),
+        };
+        let results = parse_yarn_search(r#"{"type":"inspect","data":"3.9.9"}"#, &query).unwrap();
+        assert_eq!(results[0].result.version.as_deref(), Some("3.9.9"));
+        assert!(parse_yarn_outdated(r#"{"type":"error","data":"network failed"}"#).is_err());
+        assert!(
+            parse_yarn_outdated(r#"{"type":"warning","data":"package.json: No license field"}"#)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn request_builders_use_expected_commands() {
         let detect = yarn_detect_request(Some(TaskId(11)));
         assert_eq!(detect.manager, ManagerId::Yarn);
@@ -816,10 +862,7 @@ mod tests {
         assert_eq!(detect.command.args, vec!["--version"]);
 
         let list = yarn_list_installed_request(None);
-        assert_eq!(
-            list.command.args,
-            vec!["global", "list", "--depth=0", "--json"]
-        );
+        assert_eq!(list.command.args, vec!["list", "--depth=0", "--json"]);
 
         let outdated = yarn_list_outdated_request(None);
         assert_eq!(outdated.command.args, vec!["outdated", "--json"]);
@@ -831,7 +874,10 @@ mod tests {
                 issued_at: std::time::SystemTime::now(),
             },
         );
-        assert_eq!(search.command.args, vec!["search", "ripgrep", "--json"]);
+        assert_eq!(
+            search.command.args,
+            vec!["info", "ripgrep", "version", "--json"]
+        );
 
         let install = yarn_install_request(None, "typescript", Some("5.7.2"));
         assert_eq!(
@@ -848,7 +894,7 @@ mod tests {
         let upgrade_one = yarn_upgrade_request(None, Some("typescript"));
         assert_eq!(
             upgrade_one.command.args,
-            vec!["global", "upgrade", "typescript"]
+            vec!["global", "upgrade", "typescript", "--latest"]
         );
 
         let upgrade_all = yarn_upgrade_request(None, None);

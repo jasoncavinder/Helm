@@ -13,6 +13,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Plan retains its native authority-grouped outline, keyboard behavior, and virtualized scrolling while presenting updates as a Wayfinder vertical card list with visible authority headings, leading inclusion controls, trailing status alignment, secondary manager labels, balanced selection treatment, and no spreadsheet-style header or grid.
 
 ### Fixed
+- Disposable-VM CLI certification corrected current asdf, cargo-binstall, Bundler, pipx, Poetry, Yarn Classic, npm and pnpm command/output handling. Python executable selections now preserve virtual-environment identity, and CLI uninstall exposes exact-version selection for supported multi-version managers.
 - Plan filters no longer collapse authority sections that temporarily have no visible updates; prior expanded and intentionally collapsed disclosure choices return when the filter is cleared.
 - Oversized saved Dashboard frames are now reduced to the current display's visible bounds before their origin is restored, while preserving the Dashboard minimum when the display can accommodate it.
 

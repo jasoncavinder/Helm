@@ -2154,9 +2154,18 @@ fn reconcile_detected_install_instances(
     let selected_index = normalized_selected.as_deref().and_then(|value| {
         let selected_path = PathBuf::from(value);
         let selected_canonical = selected_path.canonicalize().ok();
-        instances.iter().position(|instance| {
-            instance_matches_selected_path(instance, &selected_path, selected_canonical.as_deref())
-        })
+        instances
+            .iter()
+            .position(|instance| instance.display_path == selected_path)
+            .or_else(|| {
+                instances.iter().position(|instance| {
+                    instance_matches_selected_path(
+                        instance,
+                        &selected_path,
+                        selected_canonical.as_deref(),
+                    )
+                })
+            })
     });
 
     let active_index = selected_index
@@ -2858,6 +2867,39 @@ mod tests {
         );
         assert!(instances[1].is_active);
         assert!(!instances[0].is_active);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reconcile_selected_environment_precedes_shared_canonical_interpreter() {
+        let root = std::env::temp_dir().join(format!("helm-reconcile-venv-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("venv/bin")).unwrap();
+        let base = root.join("python3");
+        let selected = root.join("venv/bin/python3");
+        std::fs::write(&base, b"python").unwrap();
+        std::os::unix::fs::symlink(&base, &selected).unwrap();
+        let mut instances = vec![
+            test_instance(
+                ManagerId::Pip,
+                "base",
+                base.to_str().unwrap(),
+                InstallProvenance::Homebrew,
+            ),
+            test_instance(
+                ManagerId::Pip,
+                "venv",
+                selected.to_str().unwrap(),
+                InstallProvenance::Unknown,
+            ),
+        ];
+        for instance in &mut instances {
+            instance.canonical_path = Some(base.canonicalize().unwrap());
+        }
+        let update =
+            reconcile_detected_install_instances(ManagerId::Pip, &mut instances, selected.to_str());
+        assert_eq!(update, SelectedExecutablePathUpdate::Keep);
+        assert!(!instances[0].is_active);
+        assert!(instances[1].is_active);
     }
 
     #[test]

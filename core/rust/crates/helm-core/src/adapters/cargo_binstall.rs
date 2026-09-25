@@ -335,7 +335,7 @@ pub fn cargo_binstall_detect_request(task_id: Option<TaskId>) -> ProcessSpawnReq
         task_id,
         TaskType::Detection,
         ManagerAction::Detect,
-        CommandSpec::new(CARGO_BINSTALL_COMMAND).arg("--version"),
+        CommandSpec::new(CARGO_BINSTALL_COMMAND).arg("-V"),
         DETECT_TIMEOUT,
     )
 }
@@ -450,9 +450,9 @@ pub(crate) fn parse_cargo_binstall_version(output: &str) -> Option<String> {
             .lines()
             .map(str::trim)
             .find(|line| !line.is_empty())?;
-        let rest = line.strip_prefix("cargo-binstall ")?;
+        let rest = line.strip_prefix("cargo-binstall ").unwrap_or(line);
         let version = rest.split_whitespace().next()?.trim();
-        if version.is_empty() {
+        if !version.starts_with(|c: char| c.is_ascii_digit()) {
             return None;
         }
         Some(version.to_string())
@@ -492,6 +492,14 @@ mod tests {
     #[test]
     fn parses_cargo_binstall_version_from_fixture() {
         assert_eq!(
+            parse_cargo_binstall_version("1.23.0\n").as_deref(),
+            Some("1.23.0")
+        );
+        assert_eq!(
+            parse_cargo_binstall_version("error: requires a value"),
+            None
+        );
+        assert_eq!(
             parse_cargo_binstall_version(VERSION_FIXTURE).as_deref(),
             Some("1.12.1")
         );
@@ -503,7 +511,7 @@ mod tests {
         assert_eq!(detect.manager, ManagerId::CargoBinstall);
         assert_eq!(detect.task_type, TaskType::Detection);
         assert_eq!(detect.command.program, PathBuf::from("cargo-binstall"));
-        assert_eq!(detect.command.args, vec!["--version"]);
+        assert_eq!(detect.command.args, vec!["-V"]);
 
         let list = cargo_binstall_list_installed_request(None);
         assert_eq!(list.command.program, PathBuf::from("cargo"));

@@ -15,6 +15,12 @@ after a successful sole-tool removal. Both supported uv endpoints pass the bound
 CLI lifecycle, including reinstall after cleanup. Missing stores outside that
 specific mutation still fail closed. No release gate is closed.
 
+The unmerged manager-family certification corrections and bounded live results
+are tracked in `docs/validation/v0.20-adapter-vm-family-results.md`. They cover
+current command/output contracts, global scope, pipx identity, selected Python
+venvs and CLI exact-version uninstall. Cross-process task-ID allocation, CLT
+prerequisite UX and remaining capability/environment gates are still open.
+
 ---
 
 ## Version

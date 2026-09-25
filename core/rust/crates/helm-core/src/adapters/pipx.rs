@@ -132,22 +132,16 @@ impl<S: PipxSource> ManagerAdapter for PipxAdapter<S> {
                 let _ = self
                     .source
                     .install(target_name, install_request.version.as_deref())?;
-                let after_version = install_request.version.clone().or_else(|| {
-                    resolve_installed_pipx_version(&self.source, target_name)
-                        .ok()
-                        .flatten()
-                });
+                let installed = resolve_installed_pipx_package(&self.source, target_name)?
+                    .ok_or_else(|| {
+                        parse_error("pipx install succeeded but the environment was not found")
+                    })?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: PackageRef {
-                        manager: install_request.package.manager,
-                        name: target_name.to_string(),
-                    },
-                    package_identifier: install_request
-                        .target_name
-                        .filter(|target| target != &install_request.package.name),
+                    package: installed.package,
+                    package_identifier: installed.package_identifier,
                     action: ManagerAction::Install,
                     before_version,
-                    after_version,
+                    after_version: installed.installed_version,
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -160,18 +154,22 @@ impl<S: PipxSource> ManagerAdapter for PipxAdapter<S> {
                     ManagerAction::Uninstall,
                     target_name,
                 )?;
-                let before_version = require_installed_pipx_version(&self.source, target_name)?;
-                let _ = self.source.uninstall(target_name)?;
+                let installed = resolve_installed_pipx_package(&self.source, target_name)?
+                    .ok_or_else(|| parse_error("pipx uninstall target is not installed"))?;
+                let _ = self.source.uninstall(&installed.package.name)?;
+                if parse_pipx_list(&self.source.list_installed()?)?
+                    .iter()
+                    .any(|item| item.package == installed.package)
+                {
+                    return Err(parse_error(
+                        "pipx uninstall succeeded but the environment remains installed",
+                    ));
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: PackageRef {
-                        manager: uninstall_request.package.manager,
-                        name: target_name.to_string(),
-                    },
-                    package_identifier: uninstall_request
-                        .target_name
-                        .filter(|target| target != &uninstall_request.package.name),
+                    package: installed.package,
+                    package_identifier: installed.package_identifier,
                     action: ManagerAction::Uninstall,
-                    before_version: Some(before_version),
+                    before_version: installed.installed_version,
                     after_version: None,
                 }))
             }
@@ -200,7 +198,9 @@ impl<S: PipxSource> ManagerAdapter for PipxAdapter<S> {
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
-                    package_identifier: None,
+                    package_identifier: targeted_outdated
+                        .as_ref()
+                        .and_then(|entry| entry.package_identifier.clone()),
                     action: ManagerAction::Upgrade,
                     before_version: upgrade_request.version.or_else(|| {
                         targeted_outdated
@@ -242,13 +242,11 @@ pub fn pipx_list_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
 }
 
 pub fn pipx_list_outdated_request(task_id: Option<TaskId>) -> ProcessSpawnRequest {
-    // pipx does not expose a stable dedicated outdated JSON command across versions.
-    // We parse optional latest-version metadata from `pipx list --json` when available.
     pipx_request(
         task_id,
         TaskType::Refresh,
         ManagerAction::ListOutdated,
-        CommandSpec::new(PIPX_COMMAND).args(["list", "--json"]),
+        CommandSpec::new(PIPX_COMMAND).args(["list", "--outdated", "--json"]),
         LIST_TIMEOUT,
     )
 }
@@ -338,7 +336,6 @@ fn parse_pipx_version(output: &str) -> Option<String> {
 
 #[derive(Debug, Deserialize)]
 struct PipxListRoot {
-    #[serde(default)]
     venvs: BTreeMap<String, PipxVenv>,
 }
 
@@ -358,6 +355,8 @@ struct PipxPackageMetadata {
     package_or_url: Option<String>,
     package_version: Option<String>,
     latest_version: Option<String>,
+    #[serde(default)]
+    pinned: bool,
 }
 
 fn normalize_name(name: Option<&str>, fallback: &str) -> String {
@@ -422,7 +421,7 @@ fn parse_pipx_list(output: &str) -> AdapterResult<Vec<InstalledPackage>> {
             },
             package_identifier,
             installed_version,
-            pinned: false,
+            pinned: main.as_ref().is_some_and(|main| main.pinned),
             runtime_state: Default::default(),
         });
     }
@@ -512,29 +511,35 @@ fn resolve_installed_pipx_version<S: PipxSource>(
     source: &S,
     target_name: &str,
 ) -> AdapterResult<Option<String>> {
-    Ok(parse_pipx_list(&source.list_installed()?)?
-        .into_iter()
-        .find(|package| {
-            matches_pipx_target(
-                target_name,
-                package.package.name.as_str(),
-                package.package_identifier.as_deref(),
-            )
-        })
+    Ok(resolve_installed_pipx_package(source, target_name)?
         .and_then(|package| package.installed_version))
 }
 
-fn require_installed_pipx_version<S: PipxSource>(
+fn resolve_installed_pipx_package<S: PipxSource>(
     source: &S,
     target_name: &str,
-) -> AdapterResult<String> {
-    resolve_installed_pipx_version(source, target_name)?.ok_or_else(|| CoreError {
-        manager: Some(ManagerId::Pipx),
-        task: Some(TaskType::Uninstall),
-        action: Some(ManagerAction::Uninstall),
-        kind: CoreErrorKind::InvalidInput,
-        message: format!("pipx package '{target_name}' is not installed"),
-    })
+) -> AdapterResult<Option<InstalledPackage>> {
+    let packages = parse_pipx_list(&source.list_installed()?)?;
+    if let Some(package) = packages
+        .iter()
+        .find(|package| package.package.name == target_name)
+    {
+        return Ok(Some(package.clone()));
+    }
+    let mut matches = packages.into_iter().filter(|package| {
+        matches_pipx_target(
+            target_name,
+            package.package.name.as_str(),
+            package.package_identifier.as_deref(),
+        )
+    });
+    let package = matches.next();
+    if matches.next().is_some() {
+        return Err(parse_error(
+            "multiple pipx environments match; select an explicit environment name",
+        ));
+    }
+    Ok(package)
 }
 
 fn find_pipx_outdated_entry<S: PipxSource>(
@@ -553,6 +558,11 @@ fn find_pipx_outdated_entry<S: PipxSource>(
 }
 
 fn parse_pipx_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
+    let value: serde_json::Value = serde_json::from_str(output)
+        .map_err(|error| parse_error(&format!("invalid pipx outdated JSON: {error}")))?;
+    if value.get("pipx_result_version").is_some() {
+        return parse_pipx_outdated_result(value);
+    }
     let root: PipxListRoot = serde_json::from_str(output)
         .map_err(|e| parse_error(&format!("invalid pipx list JSON: {e}")))?;
 
@@ -609,12 +619,85 @@ fn parse_pipx_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
             package_identifier,
             installed_version: Some(installed_version),
             candidate_version,
-            pinned: false,
+            pinned: main.pinned,
             restart_required: false,
             runtime_state: Default::default(),
         });
     }
 
+    packages.sort_by(|a, b| a.package.name.cmp(&b.package.name));
+    Ok(packages)
+}
+
+fn parse_pipx_outdated_result(value: serde_json::Value) -> AdapterResult<Vec<OutdatedPackage>> {
+    #[derive(Deserialize)]
+    struct ResultEnvelope {
+        pipx_result_version: String,
+        command: Vec<String>,
+        status: String,
+        exit_code: i32,
+        errors: Vec<serde_json::Value>,
+        data: OutdatedData,
+    }
+    #[derive(Deserialize)]
+    struct OutdatedData {
+        packages: Vec<OutdatedEntry>,
+    }
+    #[derive(Deserialize)]
+    struct OutdatedEntry {
+        environment: String,
+        package: String,
+        version: String,
+        latest_version: String,
+        injected: bool,
+        pinned: bool,
+    }
+    let result: ResultEnvelope = serde_json::from_value(value)
+        .map_err(|error| parse_error(&format!("invalid pipx outdated result: {error}")))?;
+    if result.pipx_result_version != "1"
+        || result.command != ["list"]
+        || result.status != "success"
+        || result.exit_code != 0
+        || !result.errors.is_empty()
+    {
+        return Err(parse_error(
+            "pipx outdated check did not return a complete successful result",
+        ));
+    }
+    let mut packages = Vec::new();
+    for entry in result.data.packages {
+        if entry.injected {
+            continue;
+        }
+        if [
+            entry.environment.as_str(),
+            entry.package.as_str(),
+            entry.version.as_str(),
+            entry.latest_version.as_str(),
+        ]
+        .iter()
+        .any(|field| field.trim().is_empty())
+        {
+            return Err(parse_error(
+                "pipx outdated result has an empty package identity or version",
+            ));
+        }
+        if entry.version == entry.latest_version {
+            continue;
+        }
+        packages.push(OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::Pipx,
+                name: entry.environment,
+            },
+            package_identifier: Some(entry.package),
+            installed_version: Some(entry.version),
+            candidate_version: entry.latest_version,
+            pinned: entry.pinned,
+            restart_required: false,
+            runtime_state: Default::default(),
+        });
+    }
     packages.sort_by(|a, b| a.package.name.cmp(&b.package.name));
     Ok(packages)
 }
@@ -673,6 +756,23 @@ mod tests {
     fn parses_pipx_version_from_fixture() {
         let version = parse_pipx_version(VERSION_FIXTURE);
         assert_eq!(version.as_deref(), Some("1.7.1"));
+    }
+
+    #[test]
+    fn current_outdated_result_preserves_venv_identity_and_native_pin() {
+        let mut result = serde_json::json!({"pipx_result_version":"1","command":["list"],"status":"success","exit_code":0,"errors":[],"data":{"packages":[
+            {"environment":"httpie-dev","package":"httpie","version":"3.2.2","latest_version":"3.2.4","injected":false,"pinned":true},
+            {"environment":"httpie-dev","package":"requests","version":"1","latest_version":"2","injected":true,"pinned":false}
+        ]}});
+        let packages = parse_pipx_outdated(&result.to_string()).unwrap();
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].package.name, "httpie-dev");
+        assert_eq!(packages[0].package_identifier.as_deref(), Some("httpie"));
+        assert!(packages[0].pinned);
+        result["errors"] = serde_json::json!([{"message":"registry unavailable"}]);
+        assert!(parse_pipx_outdated(&result.to_string()).is_err());
+        assert!(parse_pipx_outdated("{}").is_err());
+        assert!(parse_pipx_list("{}").is_err());
     }
 
     #[test]
@@ -736,7 +836,7 @@ mod tests {
         assert_eq!(list.command.args, vec!["list", "--json"]);
 
         let outdated = pipx_list_outdated_request(None);
-        assert_eq!(outdated.command.args, vec!["list", "--json"]);
+        assert_eq!(outdated.command.args, vec!["list", "--outdated", "--json"]);
 
         let search = pipx_search_request(
             None,
@@ -768,6 +868,7 @@ mod tests {
         detect_result: AdapterResult<PipxDetectOutput>,
         list_result: AdapterResult<String>,
         outdated_result: AdapterResult<String>,
+        removed: Arc<std::sync::atomic::AtomicBool>,
     }
 
     impl StubPipxSource {
@@ -780,6 +881,7 @@ mod tests {
                 }),
                 list_result: Ok(LIST_FIXTURE.to_string()),
                 outdated_result: Ok(OUTDATED_FIXTURE.to_string()),
+                removed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             }
         }
     }
@@ -791,7 +893,11 @@ mod tests {
         }
 
         fn list_installed(&self) -> AdapterResult<String> {
-            self.list_result.clone()
+            if self.removed.load(Ordering::SeqCst) {
+                Ok(r#"{"venvs":{}}"#.into())
+            } else {
+                self.list_result.clone()
+            }
         }
 
         fn list_outdated(&self) -> AdapterResult<String> {
@@ -807,6 +913,7 @@ mod tests {
         }
 
         fn uninstall(&self, _name: &str) -> AdapterResult<String> {
+            self.removed.store(true, Ordering::SeqCst);
             Ok(String::new())
         }
 
@@ -898,9 +1005,53 @@ mod tests {
             AdapterResponse::Mutation(mutation) => {
                 assert_eq!(mutation.action, ManagerAction::Install);
                 assert_eq!(mutation.package.manager, ManagerId::Pipx);
+                assert_eq!(mutation.package_identifier.as_deref(), Some("black"));
             }
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn uninstall_result_removes_the_same_sqlite_identity_as_inventory() {
+        use crate::persistence::PackageStore;
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::sqlite::SqliteStore::new(directory.path().join("helm.db"));
+        store.migrate_to_latest().unwrap();
+        let source = StubPipxSource {
+            list_result: Ok(SUFFIXED_VENV_FIXTURE.into()),
+            ..StubPipxSource::success()
+        };
+        store
+            .replace_installed_snapshot(
+                ManagerId::Pipx,
+                &parse_pipx_list(SUFFIXED_VENV_FIXTURE).unwrap(),
+            )
+            .unwrap();
+        let result = PipxAdapter::new(source)
+            .execute(AdapterRequest::Uninstall(
+                crate::adapters::UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::Pipx,
+                        name: "httpie-dev".into(),
+                    },
+                    target_name: None,
+                    version: None,
+                },
+            ))
+            .unwrap();
+        let AdapterResponse::Mutation(result) = result else {
+            panic!("expected mutation")
+        };
+        assert_eq!(result.package.name, "httpie-dev");
+        assert_eq!(result.package_identifier.as_deref(), Some("httpie"));
+        store
+            .apply_uninstall_result(
+                &result.package,
+                result.package_identifier.as_deref(),
+                result.before_version.as_deref(),
+            )
+            .unwrap();
+        assert!(store.list_installed().unwrap().is_empty());
     }
 
     #[test]

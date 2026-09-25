@@ -291,9 +291,9 @@ pub fn pnpm_uninstall_request(task_id: Option<TaskId>, name: &str) -> ProcessSpa
 
 pub fn pnpm_upgrade_request(task_id: Option<TaskId>, name: Option<&str>) -> ProcessSpawnRequest {
     let command = if let Some(name) = name {
-        CommandSpec::new(PNPM_COMMAND).args(["update", "-g", name])
+        CommandSpec::new(PNPM_COMMAND).args(["update", "-g", "--latest", name])
     } else {
-        CommandSpec::new(PNPM_COMMAND).args(["update", "-g"])
+        CommandSpec::new(PNPM_COMMAND).args(["update", "-g", "--latest"])
     };
 
     pnpm_request(
@@ -679,10 +679,13 @@ mod tests {
         );
 
         let upgrade_one = pnpm_upgrade_request(None, Some("typescript"));
-        assert_eq!(upgrade_one.command.args, vec!["update", "-g", "typescript"]);
+        assert_eq!(
+            upgrade_one.command.args,
+            vec!["update", "-g", "--latest", "typescript"]
+        );
 
         let upgrade_all = pnpm_upgrade_request(None, None);
-        assert_eq!(upgrade_all.command.args, vec!["update", "-g"]);
+        assert_eq!(upgrade_all.command.args, vec!["update", "-g", "--latest"]);
     }
 
     #[derive(Clone)]

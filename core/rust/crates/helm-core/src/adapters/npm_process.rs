@@ -154,6 +154,15 @@ impl NpmSource for ProcessNpmSource {
     }
 
     fn list_installed_global(&self) -> AdapterResult<String> {
+        let mut root_request = npm_list_installed_request(None);
+        root_request.command.args = vec!["root".into(), "--global".into(), "--silent".into()];
+        let root =
+            run_and_collect_stdout(self.executor.as_ref(), self.configure_request(root_request))?;
+        // npm ls fails with ENOENT before the first global install in a custom
+        // prefix. Inspect the manager-selected root without creating it.
+        if absent_global_root(root.trim()) {
+            return Ok(r#"{"dependencies":{}}"#.into());
+        }
         let request = self.configure_request(npm_list_installed_request(None));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
@@ -190,11 +199,46 @@ impl NpmSource for ProcessNpmSource {
     }
 }
 
+fn absent_global_root(root: &str) -> bool {
+    let root = std::path::Path::new(root);
+    if !root.is_absolute() || root.to_string_lossy().chars().any(char::is_control) {
+        return false;
+    }
+    for (index, path) in root.ancestors().enumerate() {
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => return index > 0 && std::fs::canonicalize(path).is_ok(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskType};
 
     use super::interpret_allowed_exit_output;
+
+    #[test]
+    fn missing_new_global_root_is_empty_but_existing_or_dangling_roots_are_not() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("fresh/lib/node_modules");
+        assert!(super::absent_global_root(root.to_str().unwrap()));
+        assert!(!super::absent_global_root(
+            directory.path().to_str().unwrap()
+        ));
+        assert!(!super::absent_global_root("relative/path"));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(
+                directory.path().join("missing"),
+                directory.path().join("fresh"),
+            )
+            .unwrap();
+            assert!(!super::absent_global_root(root.to_str().unwrap()));
+        }
+    }
 
     #[test]
     fn allowed_exit_accepts_empty_search_output_without_stderr() {

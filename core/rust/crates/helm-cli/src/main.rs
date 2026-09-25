@@ -10956,7 +10956,7 @@ fn parse_package_mutation_args(
                 index += 2;
             }
             "--version" => {
-                if !allow_version {
+                if !allow_version && !uninstall_command {
                     return Err("this package command does not support --version".to_string());
                 }
                 if index + 1 >= command_args.len() {
@@ -10985,6 +10985,23 @@ fn parse_package_mutation_args(
 
     let manager = manager
         .ok_or_else(|| "package mutation requires --manager <id> or name@manager".to_string())?;
+
+    if uninstall_command
+        && version.is_some()
+        && !matches!(
+            manager,
+            ManagerId::Asdf
+                | ManagerId::Mise
+                | ManagerId::RubyGems
+                | ManagerId::Bundler
+                | ManagerId::MacPorts
+        )
+    {
+        return Err(
+            "--version for uninstall is supported by asdf, mise, rubygems, bundler, and macports"
+                .into(),
+        );
+    }
 
     if allow_version
         && let Some((coordinate_package_name, coordinate_version)) =
@@ -12688,7 +12705,15 @@ fn parse_selected_executable_arg(raw: &str) -> Result<Option<String>, String> {
     }
 
     let path = PathBuf::from(trimmed);
-    let normalized = path.canonicalize().unwrap_or_else(|_| path.clone());
+    // Invocation paths can define an environment (for example a Python venv).
+    // Resolving the final symlink can silently select its base interpreter instead.
+    let normalized = if path.is_absolute() {
+        path
+    } else {
+        env::current_dir()
+            .map_err(|error| format!("cannot resolve executable path: {error}"))?
+            .join(path)
+    };
     if !normalized.is_file() {
         return Err(format!(
             "selected executable path '{}' is not a file",
@@ -15676,7 +15701,12 @@ fn print_packages_install_help() {
 
 fn print_packages_uninstall_help() {
     println!("USAGE:");
-    println!("  helm packages uninstall <name|name@manager> --manager <id> [--preview] [--yes]");
+    println!(
+        "  helm packages uninstall <name|name@manager> --manager <id> [--version <v>] [--preview] [--yes]"
+    );
+    println!(
+        "  --version selects an exact installed version for asdf, mise, rubygems, bundler, or macports."
+    );
     println!();
     println!("DESCRIPTION:");
     println!(
@@ -16651,6 +16681,28 @@ mod tests {
         let (multiple_code, multiple_message) = strip_exit_code_marker(multiple.as_str());
         assert_eq!(multiple_code, Some(3));
         assert_eq!(multiple_message, "2 manager upgrade operations failed");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn selected_executable_argument_preserves_virtual_environment_symlink() {
+        let root = std::env::temp_dir().join(format!(
+            "helm-cli-selected-venv-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("venv/bin")).unwrap();
+        let base = root.join("python3");
+        let selected = root.join("venv/bin/python3");
+        std::fs::write(&base, b"python").unwrap();
+        std::os::unix::fs::symlink(&base, &selected).unwrap();
+        assert_eq!(
+            super::parse_selected_executable_arg(selected.to_str().unwrap()).unwrap(),
+            Some(selected.to_string_lossy().into_owned())
+        );
     }
 
     #[test]
@@ -18424,6 +18476,25 @@ mod tests {
         )
         .expect_err("invalid mise config-removal mode should fail");
         assert!(error.contains("unsupported mise config removal mode"));
+    }
+
+    #[test]
+    fn parse_package_uninstall_accepts_exact_version_only_for_versioned_managers() {
+        for manager in ["asdf", "mise", "rubygems", "bundler", "macports"] {
+            let args = [
+                "example",
+                "--manager",
+                manager,
+                "--version",
+                "1.2.3",
+                "--yes",
+            ]
+            .map(str::to_string);
+            let parsed = parse_package_mutation_args("uninstall", &args, false).unwrap();
+            assert_eq!(parsed.version.as_deref(), Some("1.2.3"));
+        }
+        let args = ["example", "--manager", "npm", "--version", "1.2.3"].map(str::to_string);
+        assert!(parse_package_mutation_args("uninstall", &args, false).is_err());
     }
 
     #[test]
