@@ -209,7 +209,7 @@ const ALL_MANAGERS: [ManagerDescriptor; 29] = [
         display_name: "uv",
         category: ManagerCategory::Language,
         authority: ManagerAuthority::Standard,
-        capabilities: crate::adapters::uv_tool_process::UV_READ_CAPABILITIES,
+        capabilities: crate::adapters::uv_tool_runtime::UV_CAPABILITIES,
     },
     ManagerDescriptor {
         id: ManagerId::Pipx,
@@ -995,11 +995,11 @@ const FIRMWARE_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMe
     participates_in_package_search: false,
     participates_in_catalog_sync: false,
 };
-// The uv core read path is not registered by the app or CLI yet.
+// uv manages global tools, never its owning manager's executable or a PyPI catalog.
 const UV_LIFECYCLE_METADATA: ManagerLifecycleMetadata = ManagerLifecycleMetadata {
     install_method_ids: &[],
     install_methods: &[],
-    participates_in_package_search: false,
+    participates_in_package_search: true,
     participates_in_catalog_sync: false,
 };
 

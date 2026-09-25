@@ -94,6 +94,7 @@ pub struct CommandSpec {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
+    pub env_remove: Vec<String>,
     pub working_dir: Option<PathBuf>,
 }
 
@@ -103,6 +104,7 @@ impl CommandSpec {
             program: program.into(),
             args: Vec::new(),
             env: BTreeMap::new(),
+            env_remove: Vec::new(),
             working_dir: None,
         }
     }
@@ -124,6 +126,11 @@ impl CommandSpec {
 
     pub fn working_dir(mut self, working_dir: impl Into<PathBuf>) -> Self {
         self.working_dir = Some(working_dir.into());
+        self
+    }
+
+    pub fn remove_env(mut self, key: impl Into<String>) -> Self {
+        self.env_remove.push(key.into());
         self
     }
 
@@ -165,6 +172,19 @@ impl CommandSpec {
                 task_type,
                 action,
                 "environment keys and values must be non-empty and must not contain NUL bytes",
+            ));
+        }
+
+        if self
+            .env_remove
+            .iter()
+            .any(|key| key.is_empty() || key.contains(['\0', '=']))
+        {
+            return Err(invalid_input(
+                manager,
+                task_type,
+                action,
+                "environment removal key is invalid",
             ));
         }
 
@@ -448,6 +468,8 @@ fn manager_command_aliases(manager: ManagerId) -> &'static [&'static str] {
         ManagerId::CargoBinstall => &["cargo-binstall", "cargo"],
         ManagerId::Pip => &["python3", "pip3", "pip"],
         ManagerId::Pipx => &["pipx"],
+        // uv binds its selected executable/store before submission. Never retarget it here.
+        ManagerId::Uv => &[],
         ManagerId::Poetry => &["poetry"],
         ManagerId::RubyGems => &["gem"],
         ManagerId::Bundler => &["bundle", "gem"],

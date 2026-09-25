@@ -440,3 +440,30 @@ async fn env_vars_are_passed_to_child() {
         "expected env var in output, got: {stdout}"
     );
 }
+
+#[tokio::test]
+async fn inherited_environment_can_be_removed_without_mutating_the_parent() {
+    let key = "HOME";
+    let before = std::env::var_os(key).expect("test host has HOME");
+    for restore in [false, true] {
+        let mut command = CommandSpec::new("/usr/bin/env").remove_env(key);
+        if restore {
+            command = command.env(key, "/isolated/home");
+        }
+        let request = ProcessSpawnRequest::new(
+            ManagerId::Uv,
+            TaskType::Detection,
+            ManagerAction::Detect,
+            command,
+        );
+        let output = spawn_validated(&TokioProcessExecutor, request)
+            .unwrap()
+            .wait()
+            .await
+            .unwrap();
+        let text = String::from_utf8(output.stdout).unwrap();
+        let value = text.lines().find_map(|line| line.strip_prefix("HOME="));
+        assert_eq!(value, restore.then_some("/isolated/home"));
+        assert_eq!(std::env::var_os(key), Some(before.clone()));
+    }
+}

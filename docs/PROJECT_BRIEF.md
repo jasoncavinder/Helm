@@ -102,6 +102,7 @@ Focus on global packages; project-local dependencies are excluded unless explici
 - **npm** (global)
 - **yarn** (classic + berry)
 - **pipx** (recommended)
+- **uv** (v0.20 global-tool scope; runtime/lifecycle implemented, certification pending)
 - **pip** (`python3 -m pip`)
 - **poetry**
 - **RubyGems**

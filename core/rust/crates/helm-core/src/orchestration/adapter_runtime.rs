@@ -821,13 +821,15 @@ impl AdapterRuntime {
     async fn submit_with_enablement(
         &self,
         manager: ManagerId,
-        request: AdapterRequest,
+        mut request: AdapterRequest,
         enablement_snapshot: Option<&ManagerEnablementSnapshot>,
     ) -> OrchestrationResult<SubmittedAdapterTask> {
         let action = request.action();
         let task_type = task_type_for_request(&request);
 
-        if request_requires_network(&request) && !self.network_work_allowed() {
+        let local_uv_search =
+            manager == ManagerId::Uv && matches!(request, AdapterRequest::Search(_));
+        if request_requires_network(&request) && !local_uv_search && !self.network_work_allowed() {
             return Err(CoreError {
                 manager: Some(manager),
                 task: Some(task_type),
@@ -876,6 +878,56 @@ impl AdapterRuntime {
                 message: format!("no adapter is registered for manager '{manager:?}'"),
             })?;
 
+        if manager == ManagerId::Uv
+            && let AdapterRequest::Upgrade(upgrade) = &mut request
+            && let Some(store) = self.package_store.clone()
+        {
+            let package = upgrade.package.as_ref().ok_or_else(|| CoreError {
+                manager: Some(manager),
+                task: Some(task_type),
+                action: Some(action),
+                kind: CoreErrorKind::InvalidInput,
+                message: "uv upgrades require one reviewed tool".into(),
+            })?;
+            let outdated = tokio::task::spawn_blocking(move || store.list_outdated())
+                .await
+                .map_err(|_| CoreError {
+                    manager: Some(manager),
+                    task: Some(task_type),
+                    action: Some(action),
+                    kind: CoreErrorKind::Internal,
+                    message: "uv reviewed snapshot could not be read".into(),
+                })??;
+            let candidate = outdated
+                .iter()
+                .find(|row| &row.package == package && !row.pinned)
+                .ok_or_else(|| CoreError {
+                    manager: Some(manager),
+                    task: Some(task_type),
+                    action: Some(action),
+                    kind: CoreErrorKind::InvalidInput,
+                    message: "uv tool has no eligible reviewed update; refresh first".into(),
+                })?;
+            if upgrade
+                .version
+                .as_ref()
+                .is_some_and(|version| version != &candidate.candidate_version)
+                || upgrade
+                    .target_name
+                    .as_ref()
+                    .is_some_and(|target| Some(target) != candidate.package_identifier.as_ref())
+            {
+                return Err(CoreError {
+                    manager: Some(manager),
+                    task: Some(task_type),
+                    action: Some(action),
+                    kind: CoreErrorKind::InvalidInput,
+                    message: "uv reviewed target changed; refresh and review again".into(),
+                });
+            }
+            upgrade.version = Some(candidate.candidate_version.clone());
+            upgrade.target_name = candidate.package_identifier.clone();
+        }
         let task_id = self.execution.submit(adapter, request).await?;
 
         let persistence = if let Some(task_store) = &self.task_store {

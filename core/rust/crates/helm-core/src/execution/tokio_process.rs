@@ -48,6 +48,9 @@ impl ProcessExecutor for TokioProcessExecutor {
         let mut cmd = tokio::process::Command::new(&prepared.command.program);
         cmd.args(&prepared.command.args);
 
+        for key in &prepared.command.env_remove {
+            cmd.env_remove(key);
+        }
         for (key, value) in &prepared.command.env {
             cmd.env(key, value);
         }
@@ -206,6 +209,9 @@ fn prepare_command_for_spawn_with_privileged_executor(
 
     for (key, value) in &request.command.env {
         elevated = elevated.env(key.clone(), value.clone());
+    }
+    for key in &request.command.env_remove {
+        elevated = elevated.remove_env(key.clone());
     }
 
     if let Some(dir) = &request.command.working_dir {

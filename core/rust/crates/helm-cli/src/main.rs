@@ -508,6 +508,7 @@ struct UpgradeExecutionStep {
     cleanup_old_kegs: bool,
     pinned: bool,
     restart_required: bool,
+    uv_target: Option<(String, String)>,
 }
 
 #[derive(Serialize)]
@@ -3568,8 +3569,8 @@ fn cmd_updates_run(
                 manager: step.manager,
                 name: upgrade_request_name(step),
             }),
-            target_name: None,
-            version: None,
+            target_name: step.uv_target.as_ref().map(|(target, _)| target.clone()),
+            version: step.uv_target.as_ref().map(|(_, version)| version.clone()),
         });
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
         match response {
@@ -9383,8 +9384,8 @@ fn run_coordinator_workflow(
                         manager: step.manager,
                         name: upgrade_request_name(step),
                     }),
-                    target_name: None,
-                    version: None,
+                    target_name: step.uv_target.as_ref().map(|(target, _)| target.clone()),
+                    version: step.uv_target.as_ref().map(|(_, version)| version.clone()),
                 });
                 tokio_runtime
                     .block_on(submit_request_wait(&runtime, step.manager, request))
@@ -11139,6 +11140,9 @@ fn build_adapter_runtime(store: Arc<SqliteStore>) -> Result<AdapterRuntime, Stri
         ))),
         Arc::new(PipAdapter::new(ProcessPipSource::new(executor.clone()))),
         Arc::new(PipxAdapter::new(ProcessPipxSource::new(executor.clone()))),
+        Arc::new(helm_core::adapters::uv_tool_runtime::UvToolAdapter::new(
+            executor.clone(),
+        )),
         Arc::new(PoetryAdapter::new(ProcessPoetrySource::new(
             executor.clone(),
         ))),
@@ -11916,6 +11920,7 @@ fn manager_default_local_rank(manager: ManagerId) -> usize {
             ManagerId::Pnpm,
             ManagerId::Yarn,
             ManagerId::Pipx,
+            ManagerId::Uv,
             ManagerId::Pip,
             ManagerId::Poetry,
             ManagerId::Cargo,
@@ -12723,6 +12728,7 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::Yarn => &["yarn"],
         ManagerId::Pip => &["python3", "pip3", "pip"],
         ManagerId::Pipx => &["pipx"],
+        ManagerId::Uv => &["uv"],
         ManagerId::Poetry => &["poetry"],
         ManagerId::RubyGems => &["gem"],
         ManagerId::Bundler => &["bundle"],
@@ -12831,6 +12837,7 @@ fn manager_versioned_install_roots_for_home(
             | ManagerId::Yarn
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Poetry
             | ManagerId::RubyGems
             | ManagerId::Bundler
@@ -12852,6 +12859,7 @@ fn manager_versioned_install_roots_for_home(
             | ManagerId::Yarn
             | ManagerId::Pip
             | ManagerId::Pipx
+            | ManagerId::Uv
             | ManagerId::Poetry
             | ManagerId::RubyGems
             | ManagerId::Bundler
@@ -14830,7 +14838,9 @@ fn collect_upgrade_execution_steps(
         }
 
         let package_key = format!("{}:{}", manager.as_str(), package.package.name);
-        if !include_pinned && (package.pinned || pinned_keys.contains(&package_key)) {
+        if (!include_pinned || manager == ManagerId::Uv)
+            && (package.pinned || pinned_keys.contains(&package_key))
+        {
             continue;
         }
 
@@ -14860,6 +14870,14 @@ fn collect_upgrade_execution_steps(
                 cleanup_old_kegs,
                 pinned: package.pinned || pinned_keys.contains(&package_key),
                 restart_required: package.restart_required,
+                uv_target: if manager == ManagerId::Uv {
+                    Some((
+                        package.package_identifier.clone().unwrap_or_default(),
+                        package.candidate_version.clone(),
+                    ))
+                } else {
+                    None
+                },
             });
     }
 
@@ -16734,6 +16752,7 @@ mod tests {
             UpgradeExecutionStep {
                 manager: ManagerId::Npm,
                 package_name: "first".to_string(),
+                uv_target: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16741,6 +16760,7 @@ mod tests {
             UpgradeExecutionStep {
                 manager: ManagerId::Pnpm,
                 package_name: "second".to_string(),
+                uv_target: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16748,6 +16768,7 @@ mod tests {
             UpgradeExecutionStep {
                 manager: ManagerId::Yarn,
                 package_name: "third".to_string(),
+                uv_target: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16778,6 +16799,7 @@ mod tests {
     #[test]
     fn upgrade_request_name_encodes_homebrew_cleanup_targets() {
         let homebrew_step = UpgradeExecutionStep {
+            uv_target: None,
             manager: ManagerId::HomebrewFormula,
             package_name: "wget".to_string(),
             cleanup_old_kegs: true,
@@ -16785,6 +16807,7 @@ mod tests {
             restart_required: false,
         };
         let npm_step = UpgradeExecutionStep {
+            uv_target: None,
             manager: ManagerId::Npm,
             package_name: "eslint".to_string(),
             cleanup_old_kegs: true,

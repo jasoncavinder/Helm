@@ -49,8 +49,11 @@ Staged v0.20 uv eligibility additions (declared-license review, 2026-09-24):
 - The added URL/IDNA, reference-cast, and parsing helpers declare MIT and/or
   Apache-2.0; `seahash` `4.1.0` and `synstructure` `0.14.0` declare MIT.
 - The added ICU4X and supporting zero-copy/string crates declare Unicode-3.0.
-- Parser-only `toml` `1.1.6+spec-1.1.0`, its `toml_datetime`
+- `toml` `1.1.6+spec-1.1.0` (parsing and serialization), its `toml_datetime`
   `1.1.1+spec-1.1.0` dependency, and `unscanny` `0.1.0` declare MIT OR Apache-2.0.
+- The uv lifecycle uses existing locked `tempfile` `3.27.0` (MIT OR Apache-2.0)
+  and `url` `2.5.8` (MIT OR Apache-2.0) as direct dependencies for private resolver
+  inputs and index identity validation; no new versions are introduced.
 - These additions are outside the historical 80-package release snapshot above.
   Preserve their license texts in the next distribution's notices; none declares
   a strong-copyleft license. This is not a new release or a complete graph audit.

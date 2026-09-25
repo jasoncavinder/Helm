@@ -200,7 +200,7 @@ Or open `apps/macos-ui/Helm.xcodeproj` in Xcode and run the **Helm** scheme. The
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full roadmap through 1.x.
 
-Planned `uv` support in v0.20 covers globally installed Python tools, not project dependencies, arbitrary virtual environments, or Python-runtime management. It is not yet implemented; see the [uv scope and pre-RC certification requirements](docs/ROADMAP.md#planned-uv-global-tool-manager) and [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
+The v0.20 `uv` implementation covers globally installed Python tools, not project dependencies, arbitrary virtual environments, or Python-runtime management. Runtime integration and verified tool operations are implemented but not yet released or fully certified; see the [scope and pre-RC certification requirements](docs/ROADMAP.md#uv-global-tool-manager), [supported version/source boundaries](docs/validation/uv-global-tools-lifecycle.md), and [issue #526](https://github.com/jasoncavinder/Helm/issues/526).
 
 Post-1.0, the `1.1.x` Globalization & Theme Expansion milestone plans a Settings-selectable theme system with Wayfinder as the default, Corporate as the second named theme, and a third direction chosen after prototype and usability review.
 

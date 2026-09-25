@@ -22,6 +22,7 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
     case "bundler": return L10n.App.Managers.Name.bundler.localized
     case "pip": return L10n.App.Managers.Name.pip.localized
     case "pipx": return L10n.App.Managers.Name.pipx.localized
+    case "uv": return L10n.App.Managers.Name.uv.localized
     case "cargo": return L10n.App.Managers.Name.cargo.localized
     case "cargo_binstall": return L10n.App.Managers.Name.cargoBinstall.localized
     case "mise": return L10n.App.Managers.Name.mise.localized

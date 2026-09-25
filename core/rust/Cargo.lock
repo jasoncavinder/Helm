@@ -741,12 +741,14 @@ dependencies = [
  "serde_jcs",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 2.0.19",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
  "unicode-normalization",
+ "url",
  "uv-pep440",
 ]
 

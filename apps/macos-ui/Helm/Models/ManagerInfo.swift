@@ -346,6 +346,7 @@ struct ManagerInfo: Identifiable {
             "yarn",
             "pip",
             "pipx",
+            "uv",
             "poetry",
             "rubygems",
             "bundler",
@@ -752,6 +753,17 @@ struct ManagerInfo: Identifiable {
             ]
         ),
         ManagerInfo(
+            id: "uv",
+            displayName: "uv",
+            shortName: "uv",
+            category: "Language",
+            isImplemented: true,
+            isOptional: false,
+            isDetectionOnly: false,
+            installMethod: .notManageable,
+            installMethodOptions: []
+        ),
+        ManagerInfo(
             id: "cargo_binstall",
             displayName: "cargo-binstall",
             shortName: "binstall",
@@ -963,6 +975,7 @@ struct ManagerInfo: Identifiable {
             "pnpm",
             "yarn",
             "pipx",
+            "uv",
             "pip",
             "poetry",
             "cargo",

@@ -155,6 +155,7 @@ extension L10n {
                 static let bundler = "app.managers.name.bundler"
                 static let pip = "app.managers.name.pip"
                 static let pipx = "app.managers.name.pipx"
+                static let uv = "app.managers.name.uv"
                 static let cargo = "app.managers.name.cargo"
                 static let cargoBinstall = "app.managers.name.cargo_binstall"
                 static let mise = "app.managers.name.mise"

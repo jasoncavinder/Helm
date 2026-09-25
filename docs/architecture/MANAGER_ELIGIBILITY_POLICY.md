@@ -37,16 +37,17 @@ Core source of truth:
 
 ## Enforcement Points
 
-Staged uv policy: the unregistered core read adapter is not an enablement or
-mutation grant. Its shared install-instance classifier records conservative
-Homebrew/mise/asdf layout hints while keeping executable lifecycle strategies
-read-only, even with an unknown-provenance override. Concrete version selection
-must pass the guarded resolver; path attribution does not authorize global-tool
-mutation. Tool-store permission/ownership and per-tool source/constraint/Python
-eligibility remain activation gates. The pure receipt-based candidate filter can
-reject incompatible versions but never grants mutation authority; matching
-candidates still need source-aware full resolution and scope-bound evidence.
-See [uv installation policy](../validation/uv-installation-policy.md) and
+Uv global-tool policy: the registered GUI/CLI adapter does not grant uv executable
+lifecycle authority. Its install-instance classifier retains conservative
+Homebrew/mise/asdf layout hints and read-only executable strategies, even with
+unknown-provenance override. Per-tool operations require guarded concrete scope,
+user-owned non-writable-by-others storage, matching receipts/entrypoints, and
+post-action verification. Updates additionally require a current unpinned cached
+candidate/store target and fresh source-aware dependency/Python resolution;
+PEP 440 filtering alone is not authorization. Unsupported versions or source
+policies fail closed without replacing cached state or falling back to PyPI.
+See [lifecycle scope and certification](../validation/uv-global-tools-lifecycle.md),
+[installation policy](../validation/uv-installation-policy.md), and
 [candidate eligibility](../validation/uv-tool-eligibility.md).
 
 Policy checks are applied in these places:
