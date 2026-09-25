@@ -57,6 +57,15 @@ impl AdapterExecutionRuntime {
         adapter: Arc<dyn ManagerAdapter>,
         request: AdapterRequest,
     ) -> OrchestrationResult<TaskId> {
+        self.submit_reserved(adapter, request, None).await
+    }
+
+    pub(crate) async fn submit_reserved(
+        &self,
+        adapter: Arc<dyn ManagerAdapter>,
+        request: AdapterRequest,
+        reserved: Option<&crate::models::TaskRecord>,
+    ) -> OrchestrationResult<TaskId> {
         let manager = adapter.descriptor().id;
         let action = request.action();
         let task_type = task_type_for_request(&request);
@@ -134,9 +143,10 @@ impl AdapterExecutionRuntime {
                 TaskSubmission {
                     manager,
                     task_type,
-                    requested_at: SystemTime::now(),
+                    requested_at: reserved.map_or_else(SystemTime::now, |record| record.created_at),
                 },
                 operation,
+                reserved.map(|record| record.id),
             )
             .await?;
 

@@ -1053,7 +1053,29 @@ SELECT 1;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 20] = [
+const MIGRATION_0021: SqliteMigration = SqliteMigration {
+    version: 21,
+    name: "add_durable_task_id_sequence",
+    up_sql: r#"
+CREATE TABLE task_id_sequence (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    last_task_id INTEGER NOT NULL CHECK (last_task_id >= -1)
+);
+INSERT INTO task_id_sequence (singleton, last_task_id)
+SELECT 1, COALESCE(MAX(task_id), -1) FROM task_records;
+CREATE TRIGGER advance_task_id_sequence AFTER INSERT ON task_records
+BEGIN
+    UPDATE task_id_sequence SET last_task_id = MAX(last_task_id, NEW.task_id)
+    WHERE singleton = 1;
+END;
+"#,
+    down_sql: r#"
+DROP TRIGGER advance_task_id_sequence;
+DROP TABLE task_id_sequence;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 21] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -1074,6 +1096,7 @@ const MIGRATIONS: [SqliteMigration; 20] = [
     MIGRATION_0018,
     MIGRATION_0019,
     MIGRATION_0020,
+    MIGRATION_0021,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

@@ -1010,6 +1010,38 @@ LIMIT ?3
 }
 
 impl TaskStore for SqliteStore {
+    fn reserve_task(&self, template: &TaskRecord) -> PersistenceResult<TaskRecord> {
+        self.with_connection("reserve_task", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let last: i64 = transaction.query_row(
+                "SELECT last_task_id FROM task_id_sequence WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )?;
+            let id = last
+                .checked_add(1)
+                .ok_or_else(|| storage_error_sqlite("task id sequence exhausted"))?;
+            let mut record = template.clone();
+            record.id = TaskId(i64_to_u64(id)?);
+            record.status = TaskStatus::Queued;
+            transaction.execute(
+                "INSERT INTO task_records (task_id, manager_id, task_type, status, created_at_unix)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    id,
+                    record.manager.as_str(),
+                    task_type_to_str(record.task_type),
+                    task_status_to_str(record.status),
+                    to_unix_seconds(record.created_at)?
+                ],
+            )?;
+            transaction.commit()?;
+            Ok(record)
+        })
+    }
+
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
         self.with_connection("create_task", |connection| {
             ensure_schema_ready(connection)?;
@@ -1142,14 +1174,15 @@ LIMIT ?1
     fn next_task_id(&self) -> PersistenceResult<u64> {
         self.with_connection("next_task_id", |connection| {
             ensure_schema_ready(connection)?;
-            let max_id: Option<i64> =
-                connection.query_row("SELECT MAX(task_id) FROM task_records", [], |row| {
-                    row.get(0)
-                })?;
-            match max_id {
-                Some(id) => Ok(i64_to_u64(id)?.saturating_add(1)),
-                None => Ok(0),
-            }
+            let last: i64 = connection.query_row(
+                "SELECT last_task_id FROM task_id_sequence WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )?;
+            i64_to_u64(
+                last.checked_add(1)
+                    .ok_or_else(|| storage_error_sqlite("task id sequence exhausted"))?,
+            )
         })
     }
 
