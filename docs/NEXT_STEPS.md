@@ -15,6 +15,14 @@ reservation, current pnpm compatibility and explicit account/OS evidence gaps.
 Retain the coordinator atomic-publication regression and corrected uv cancellation
 reruns: staging files must never be executable requests. pnpm 12.6.0's native
 no-op remains open in #559; do not bypass verification or source/build policies.
+The additional native grouped-removal reproduction now requires a shared-core
+mutation guard for pnpm 11+ and unknown/prerelease versions. Keep reads available,
+retain the passing pnpm 10.16.1 lifecycle, and do not interpret the guard as pnpm
+12 lifecycle certification. Review this explicit compatibility boundary with the
+campaign batch; lifting it requires group-aware consent and preservation evidence.
+Use `docs/validation/v0.20-adapter-gui-checklist.md` to stage the small remaining
+GUI pass. Do not launch an unsigned test app or ask the owner to repeat every
+passing CLI scenario. Account sign-in remains deferred.
 Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
 applicable cells rather than treating detection-only features as missing work.
 Preserve the corrected pnpm 10 fresh-store lifecycle, final read sweep, controlled

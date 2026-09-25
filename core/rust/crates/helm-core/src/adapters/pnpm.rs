@@ -62,6 +62,33 @@ impl<S: PnpmSource> PnpmAdapter<S> {
     pub fn new(source: S) -> Self {
         Self { source }
     }
+
+    fn ensure_mutations_supported(&self, action: ManagerAction) -> AdapterResult<()> {
+        let output = self.source.detect()?;
+        let version = parse_pnpm_version(&output.version_output);
+        let components = version.as_deref().and_then(|version| {
+            version
+                .split('.')
+                .map(|part| {
+                    (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+                        .then(|| part.parse::<u64>().ok())
+                        .flatten()
+                })
+                .collect::<Option<Vec<_>>>()
+        });
+        // v11 introduced install groups: removing one alias removes its peers,
+        // and updates also target the whole group. A per-package plan is not consent.
+        if components.is_some_and(|parts| parts.len() == 3 && (1..=10).contains(&parts[0])) {
+            return Ok(());
+        }
+        Err(CoreError {
+            manager: Some(ManagerId::Pnpm),
+            task: None,
+            action: Some(action),
+            kind: CoreErrorKind::UnsupportedCapability,
+            message: "[pnpm_global_mutation_unsupported] Helm cannot safely change global packages with pnpm 11 or newer, or an unrecognized pnpm version. Newer versions use install groups that can change or remove other packages. Inventory and update checks remain available. Review the complete group with pnpm directly; do not downgrade or reinstall the existing scope as a workaround.".into(),
+        })
+    }
 }
 
 impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
@@ -125,6 +152,7 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
+                self.ensure_mutations_supported(ManagerAction::Install)?;
                 let before_version = resolve_installed_pnpm_version(
                     &self.source,
                     install_request.package.name.as_str(),
@@ -155,6 +183,7 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
                     ManagerAction::Uninstall,
                     uninstall_request.package.name.as_str(),
                 )?;
+                self.ensure_mutations_supported(ManagerAction::Uninstall)?;
                 let before_version = require_installed_pnpm_version(
                     &self.source,
                     uninstall_request.package.name.as_str(),
@@ -185,14 +214,13 @@ impl<S: PnpmSource> ManagerAdapter for PnpmAdapter<S> {
                     )?;
                     Some(package.name.as_str())
                 };
+                self.ensure_mutations_supported(ManagerAction::Upgrade)?;
                 let targeted_outdated = target_name
                     .map(|name| find_pnpm_outdated_entry(&self.source, name))
                     .transpose()?
                     .flatten();
                 let _ = self.source.upgrade_global(target_name)?;
-                if let Some(name) = target_name {
-                    ensure_pnpm_no_longer_outdated(&self.source, name)?;
-                }
+                ensure_pnpm_no_longer_outdated(&self.source, target_name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     package_identifier: None,
@@ -378,20 +406,23 @@ fn parse_pnpm_list_installed(output: &str) -> AdapterResult<Vec<InstalledPackage
 
 fn ensure_pnpm_no_longer_outdated<S: PnpmSource>(
     source: &S,
-    package_name: &str,
+    package_name: Option<&str>,
 ) -> AdapterResult<()> {
     let raw = source.list_outdated_global()?;
     let outdated = parse_pnpm_outdated(&raw)?;
-    if outdated
+    if let Some(remaining) = outdated
         .iter()
-        .any(|item| item.package.name == package_name)
+        .find(|item| package_name.is_none_or(|name| item.package.name == name))
     {
         return Err(CoreError {
             manager: Some(ManagerId::Pnpm),
             task: Some(TaskType::Upgrade),
             action: Some(ManagerAction::Upgrade),
             kind: CoreErrorKind::ProcessFailure,
-            message: format!("pnpm update reported success but '{package_name}' remains outdated"),
+            message: format!(
+                "pnpm update reported success but '{}' remains outdated",
+                remaining.package.name
+            ),
         });
     }
     Ok(())
@@ -691,6 +722,7 @@ mod tests {
     #[derive(Clone)]
     struct StubPnpmSource {
         detect_calls: Arc<AtomicUsize>,
+        mutation_calls: Arc<AtomicUsize>,
         detect_result: AdapterResult<PnpmDetectOutput>,
         list_installed_result: AdapterResult<String>,
         list_outdated_result: AdapterResult<String>,
@@ -701,6 +733,7 @@ mod tests {
         fn success() -> Self {
             Self {
                 detect_calls: Arc::new(AtomicUsize::new(0)),
+                mutation_calls: Arc::new(AtomicUsize::new(0)),
                 detect_result: Ok(PnpmDetectOutput {
                     executable_path: Some(PathBuf::from("/opt/homebrew/bin/pnpm")),
                     version_output: "10.9.2\n".to_string(),
@@ -731,14 +764,17 @@ mod tests {
         }
 
         fn install_global(&self, _name: &str, _version: Option<&str>) -> AdapterResult<String> {
+            self.mutation_calls.fetch_add(1, Ordering::SeqCst);
             Ok(String::new())
         }
 
         fn uninstall_global(&self, _name: &str) -> AdapterResult<String> {
+            self.mutation_calls.fetch_add(1, Ordering::SeqCst);
             Ok(String::new())
         }
 
         fn upgrade_global(&self, _name: Option<&str>) -> AdapterResult<String> {
+            self.mutation_calls.fetch_add(1, Ordering::SeqCst);
             Ok(String::new())
         }
     }
@@ -787,6 +823,7 @@ mod tests {
     fn refresh_clears_snapshots_when_pnpm_is_not_usable() {
         let adapter = PnpmAdapter::new(StubPnpmSource {
             detect_calls: Arc::new(AtomicUsize::new(0)),
+            mutation_calls: Arc::new(AtomicUsize::new(0)),
             detect_result: Ok(PnpmDetectOutput {
                 executable_path: Some(PathBuf::from("/usr/local/bin/pnpm")),
                 version_output: String::new(),
@@ -906,6 +943,83 @@ mod tests {
                 version: None,
             }))
             .expect_err("exit zero is not proof that the update was applied");
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.contains("remains outdated"));
+    }
+
+    #[test]
+    fn modern_or_unknown_pnpm_never_mutates_but_still_refreshes() {
+        for version in [
+            "11.0.0",
+            "12.6.0",
+            "13.0.0",
+            "11.0.0-rc.1",
+            "unknown",
+            "10",
+            "10.9.bad",
+            "10.9.2-dev",
+        ] {
+            let mut source = StubPnpmSource::success();
+            source.detect_result.as_mut().unwrap().version_output = version.into();
+            let mutations = source.mutation_calls.clone();
+            let adapter = PnpmAdapter::new(source);
+            let package = PackageRef {
+                manager: ManagerId::Pnpm,
+                name: "typescript".into(),
+            };
+            for request in [
+                AdapterRequest::Install(crate::adapters::InstallRequest {
+                    package: package.clone(),
+                    target_name: None,
+                    version: None,
+                }),
+                AdapterRequest::Uninstall(crate::adapters::UninstallRequest {
+                    package: package.clone(),
+                    target_name: None,
+                    version: None,
+                }),
+                AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                    package: Some(package),
+                    target_name: None,
+                    version: None,
+                }),
+                AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                    package: None,
+                    target_name: None,
+                    version: None,
+                }),
+            ] {
+                let error = adapter.execute(request).unwrap_err();
+                assert_eq!(
+                    error.kind,
+                    CoreErrorKind::UnsupportedCapability,
+                    "{version}"
+                );
+                assert!(
+                    error
+                        .message
+                        .starts_with("[pnpm_global_mutation_unsupported]")
+                );
+            }
+            assert_eq!(mutations.load(Ordering::SeqCst), 0);
+            assert!(
+                adapter
+                    .execute(AdapterRequest::Refresh(crate::adapters::RefreshRequest))
+                    .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_bulk_upgrade_rejects_false_success_too() {
+        let adapter = PnpmAdapter::new(StubPnpmSource::success());
+        let error = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: None,
+                target_name: None,
+                version: None,
+            }))
+            .unwrap_err();
         assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
         assert!(error.message.contains("remains outdated"));
     }

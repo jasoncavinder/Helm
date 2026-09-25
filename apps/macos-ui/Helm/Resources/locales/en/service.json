@@ -1,4 +1,6 @@
 {
+  "service.error.pnpm_global_mutation_unsupported": "Helm cannot safely change global packages with pnpm 11 or newer, or an unrecognized pnpm version. Install groups may change or remove other packages. Inventory and update checks remain available. Review the complete group with pnpm directly; do not downgrade or reinstall the existing scope as a workaround.",
+  "service.error.developer_tools_required": "This operation requires Apple Command Line Tools or a configured Xcode installation. Run xcode-select --install in Terminal, finish Apple's installer, then retry. Helm does not require developer tools to launch or view cached data.",
   "service.error.not_installed": "Not installed: {manager}",
   "service.error.homebrew_required": "Homebrew is required for this action.",
   "service.error.unsupported_capability": "Manager {manager} does not support this action.",

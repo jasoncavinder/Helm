@@ -35,6 +35,20 @@ version-changing upgrade, authoritative mise/npm/pip Plan order and public mas
 search pass. This does not turn account-blocked or empty-candidate scenarios into
 full lifecycle certification, and detection-only managers gain no new capability.
 
+Further pnpm 12.6.0 reduction reproduced whole-group removal when a single member
+was selected. pnpm documents this as its v11+ global installation model, which
+Helm's per-package consent does not cover. The shared adapter now rejects install,
+upgrade and uninstall on pnpm 11+, prereleases and unrecognized versions before
+mutation, while keeping detection/inventory/update discovery available. Legacy
+stable versions below 11 retain their existing path; bounded lifecycle evidence is
+for 10.16.1, not every older release. Both targeted and bulk legacy updates reject
+false success. #559 remains open for group-aware support and the native 12.6.0
+update no-op. No automatic downgrade, reinstall or policy bypass was introduced.
+Task diagnostics now provide translated pnpm-limit and developer-tools guidance
+from the core failure markers, including persisted task logs when process output
+is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.md)
+is pending; CLI evidence does not close those interactive gates.
+
 A repeated live uv cancellation check exposed duplicate CLI coordinator
 submission from processing temporary request files before atomic publication.
 Only final regular `.json` requests are now accepted. The real-process regression
