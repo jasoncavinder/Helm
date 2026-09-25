@@ -9220,9 +9220,10 @@ fn handle_coordinator_request(
                 }
             };
 
-            let submitted = tokio_runtime.block_on(runtime.submit(manager, adapter_request));
-            let task_id = match submitted {
-                Ok(task_id) => task_id,
+            let submitted =
+                tokio_runtime.block_on(runtime.submit_with_persistence(manager, adapter_request));
+            let (task_id, persistence) = match submitted {
+                Ok(submitted) => submitted,
                 Err(error) => {
                     return CoordinatorResponse {
                         ok: false,
@@ -9247,6 +9248,8 @@ fn handle_coordinator_request(
             }
 
             let snapshot = tokio_runtime.block_on(runtime.wait_for_terminal(task_id, None));
+            // A short-lived CLI process must not exit while its response is still being saved.
+            tokio_runtime.block_on(persistence.wait_for_completion());
             match snapshot {
                 Ok(snapshot) => match snapshot.terminal_state {
                     Some(AdapterTaskTerminalState::Succeeded(response)) => CoordinatorResponse {
@@ -11256,14 +11259,16 @@ async fn submit_request_wait(
     manager: ManagerId,
     request: AdapterRequest,
 ) -> Result<(TaskId, helm_core::adapters::AdapterResponse), String> {
-    let task_id = runtime
-        .submit(manager, request)
+    let (task_id, persistence) = runtime
+        .submit_with_persistence(manager, request)
         .await
         .map_err(format_core_error)?;
     let snapshot = runtime
         .wait_for_terminal(task_id, None)
         .await
         .map_err(format_core_error)?;
+
+    persistence.wait_for_completion().await;
 
     match snapshot.terminal_state {
         Some(AdapterTaskTerminalState::Succeeded(response)) => Ok((task_id, response)),
@@ -16483,6 +16488,9 @@ fn print_completion_help() {
     println!("DESCRIPTION:");
     println!("  Print shell completion script to stdout for the selected shell.");
 }
+
+#[cfg(test)]
+mod persistence_completion_tests;
 
 #[cfg(test)]
 mod tests {
