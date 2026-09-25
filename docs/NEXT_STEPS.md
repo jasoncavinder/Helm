@@ -3,8 +3,8 @@
 The disposable-VM campaign continues without merging its fix PRs until the owner
 reviews the completed batch. Preserve #557's CLI persistence correction and the
 #556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
-the bounded offline CLI lifecycle and reinstall checks; finish cancellation,
-source-policy and remaining manager-family evidence before claiming certification.
+the bounded offline CLI lifecycle, reinstall and repeated loopback authenticated
+cancellation checks; retain their exact scope while finishing the remaining gates.
 Preserve the operation-specific Command Line Tools preflight and complete its
 CLT-free/GUI evidence, not an implicit requirement to launch Helm. The owner
 directed that account-dependent App Store/Setapp checks be recorded as blocked.
@@ -15,6 +15,10 @@ reservation, current pnpm compatibility and explicit account/OS evidence gaps.
 Retain the coordinator atomic-publication regression and corrected uv cancellation
 reruns: staging files must never be executable requests. pnpm 12.6.0's native
 no-op remains open in #559; do not bypass verification or source/build policies.
+Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
+applicable cells rather than treating detection-only features as missing work.
+Preserve the corrected pnpm 10 fresh-store lifecycle, final read sweep, controlled
+MacPorts guarded Plan upgrade and authoritative mise/npm/pip Plan evidence.
 
 This document defines the immediate priorities for Helm development.
 

@@ -27,6 +27,14 @@ but truly CLT-free and localized GUI prerequisite QA remain open. App Store/Seta
 account-dependent checks are blocked by owner decision. pnpm 12 compatibility
 (#559), remaining capability/environment gates and the campaign review remain open.
 
+The per-capability disposition for all 29 adapters is recorded in
+`docs/validation/v0.20-adapter-cli-capability-matrix.md`. The final shared-scope
+read sweep passes after correcting pnpm 10's never-created-store diagnostic;
+uv retains its separately validated store/endpoint evidence. Controlled MacPorts
+version-changing upgrade, authoritative mise/npm/pip Plan order and public mas
+search pass. This does not turn account-blocked or empty-candidate scenarios into
+full lifecycle certification, and detection-only managers gain no new capability.
+
 A repeated live uv cancellation check exposed duplicate CLI coordinator
 submission from processing temporary request files before atomic publication.
 Only final regular `.json` requests are now accepted. The real-process regression
