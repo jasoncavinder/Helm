@@ -893,6 +893,24 @@ mod tests {
     }
 
     #[test]
+    fn upgrade_rejects_successful_process_that_leaves_target_outdated() {
+        // Reproduces the native pnpm 12.6.0 no-op observed in VM certification.
+        let adapter = PnpmAdapter::new(StubPnpmSource::success());
+        let error = adapter
+            .execute(AdapterRequest::Upgrade(crate::adapters::UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Pnpm,
+                    name: "typescript".to_string(),
+                }),
+                target_name: None,
+                version: None,
+            }))
+            .expect_err("exit zero is not proof that the update was applied");
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.contains("remains outdated"));
+    }
+
+    #[test]
     fn parse_errors_are_structured() {
         let error = parse_pnpm_list_installed("{not json").expect_err("expected parse failure");
         assert_eq!(error.manager, Some(ManagerId::Pnpm));

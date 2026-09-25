@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -158,6 +159,10 @@ def main():
         publish("1.2")
         cli("next-candidate", "refresh", "--manager", "uv")
         original = receipt.read_bytes()
+        with sqlite3.connect(root / "helm.db") as db:
+            previous_upgrade_count = db.execute(
+                "SELECT count(*) FROM task_records WHERE task_type = 'upgrade'"
+            ).fetchone()[0]
         coordinator = subprocess.Popen([str(args.helm), "__coordinator__", "serve"],
                                        env=env, cwd=root, stdin=subprocess.DEVNULL,
                                        stdout=coordinator_log, stderr=coordinator_log)
@@ -178,6 +183,11 @@ def main():
                 break
             assert time.monotonic() < deadline, task
             time.sleep(0.2)
+        with sqlite3.connect(root / "helm.db") as db:
+            upgrade_count = db.execute(
+                "SELECT count(*) FROM task_records WHERE task_type = 'upgrade'"
+            ).fetchone()[0]
+        assert upgrade_count == previous_upgrade_count + 1, "duplicate upgrade submission"
         assert receipt.read_bytes() == original
         mode["stall"] = False
         release.set()

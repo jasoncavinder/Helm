@@ -13,6 +13,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Plan retains its native authority-grouped outline, keyboard behavior, and virtualized scrolling while presenting updates as a Wayfinder vertical card list with visible authority headings, leading inclusion controls, trailing status alignment, secondary manager labels, balanced selection treatment, and no spreadsheet-style header or grid.
 
 ### Fixed
+- CLI background requests are executed only after atomic publication, preventing duplicate mutations when a coordinator sees a temporary request file while it is being written.
 - Disposable-VM CLI certification corrected current asdf, cargo-binstall, Bundler, pipx, Poetry, Yarn Classic, npm and pnpm command/output handling. Python executable selections now preserve virtual-environment identity, and CLI uninstall exposes exact-version selection for supported multi-version managers.
 - Task IDs are durably reserved before execution across CLI processes, preventing collisions and reuse after task deletion. Homebrew formula tap identities, current cask installed versions, nested cask authorization, Docker/nix-darwin detection, and bounded RubyGems search are corrected. pipx update discovery rejects unsupported versions instead of reporting empty success.
 - Operations that need Apple developer tools now fail before launching compiler shims with installation guidance; binary cargo-binstall operations remain available with source fallback disabled. Helm launch and cached inventory do not gain a Command Line Tools requirement.

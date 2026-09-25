@@ -27,6 +27,13 @@ but truly CLT-free and localized GUI prerequisite QA remain open. App Store/Seta
 account-dependent checks are blocked by owner decision. pnpm 12 compatibility
 (#559), remaining capability/environment gates and the campaign review remain open.
 
+A repeated live uv cancellation check exposed duplicate CLI coordinator
+submission from processing temporary request files before atomic publication.
+Only final regular `.json` requests are now accepted. The real-process regression
+and two live cancellation runs on each supported uv endpoint pass; failure and
+corrected artifact hashes remain in the campaign ledger. This is not a general
+crash-recovery or all-adapter cancellation certification claim.
+
 ---
 
 ## Version

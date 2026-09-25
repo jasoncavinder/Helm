@@ -9093,7 +9093,11 @@ fn run_coordinator_server(store: Arc<SqliteStore>, socket_path: PathBuf) -> Resu
 
         for entry in entries {
             let request_path = entry.path();
-            if !request_path.is_file() {
+            // Only the atomically published .json name is a request. Reading a
+            // writer's .json.tmp-* file can execute the same mutation twice.
+            if request_path.extension().and_then(|value| value.to_str()) != Some("json")
+                || !entry.file_type().is_ok_and(|kind| kind.is_file())
+            {
                 continue;
             }
 
