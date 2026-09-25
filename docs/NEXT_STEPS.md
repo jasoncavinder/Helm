@@ -1,5 +1,13 @@
 # Next Steps
 
+The disposable-VM campaign continues without merging its fix PRs until the owner
+reviews the completed batch. Preserve #557's CLI persistence correction and the
+#556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
+the bounded offline CLI lifecycle and reinstall checks; finish cancellation,
+source-policy and remaining manager-family evidence before claiming certification.
+Audit Command Line Tools as an operation-specific prerequisite, not an implicit
+requirement to launch Helm. See `docs/validation/v0.20-adapter-vm-certification.md`.
+
 This document defines the immediate priorities for Helm development.
 
 It is intentionally tactical.

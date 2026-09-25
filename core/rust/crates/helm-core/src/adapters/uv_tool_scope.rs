@@ -444,6 +444,29 @@ pub(crate) struct UvScopeBinding {
 }
 
 impl UvScopeBinding {
+    pub(crate) fn removal_guard(&self) -> AdapterResult<Option<UvStoreRemovalGuard>> {
+        self.validate()?;
+        // Missing aliases cannot prove that the reviewed store was removed rather
+        // than redirected. Keep those uncommon layouts on the conservative path.
+        if self.reported_tool_dir != self.canonical_tool_dir
+            || self
+                .configured_tool_dir
+                .as_ref()
+                .is_some_and(|p| p != &self.canonical_tool_dir)
+        {
+            return Ok(None);
+        }
+        let parent = self.canonical_tool_dir.parent().ok_or_else(removal_error)?;
+        let anchor = parent.parent().ok_or_else(removal_error)?;
+        Ok(Some(UvStoreRemovalGuard {
+            binding: self.clone(),
+            parent: parent.to_path_buf(),
+            parent_identity: directory_identity(parent)?,
+            anchor: anchor.to_path_buf(),
+            anchor_identity: directory_identity(anchor)?,
+        }))
+    }
+
     pub(crate) fn validate(&self) -> AdapterResult<()> {
         validate_executable_binding(
             &self.selected_executable,
@@ -467,6 +490,137 @@ impl UvScopeBinding {
             ));
         }
         Ok(())
+    }
+}
+
+/// Only a successful, reviewed last-tool uninstall may use this evidence.
+pub(crate) struct UvStoreRemovalGuard {
+    binding: UvScopeBinding,
+    parent: PathBuf,
+    parent_identity: FileIdentity,
+    anchor: PathBuf,
+    anchor_identity: FileIdentity,
+}
+
+impl UvStoreRemovalGuard {
+    pub(crate) fn validate_removed(&self) -> AdapterResult<()> {
+        validate_executable_binding(
+            &self.binding.selected_executable,
+            &self.binding.canonical_executable,
+            &self.binding.executable_identity,
+        )?;
+        if !path_is_absent(&self.binding.canonical_tool_dir)
+            || canonical_path(&self.anchor)? != self.anchor
+            || directory_identity(&self.anchor)? != self.anchor_identity
+        {
+            return Err(removal_error());
+        }
+        // uv may also delete the immediate parent if it contains only temporary
+        // files. Any surviving parent must still be the directory we reviewed.
+        if !path_is_absent(&self.parent)
+            && (canonical_path(&self.parent)? != self.parent
+                || directory_identity(&self.parent)? != self.parent_identity)
+        {
+            return Err(removal_error());
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn path_is_absent(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+}
+
+fn removal_error() -> CoreError {
+    scope_error(
+        CoreErrorKind::ProcessFailure,
+        "uv store removal could not be verified",
+    )
+}
+
+#[cfg(all(test, unix))]
+mod removal_tests {
+    use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    fn fixture(root: &Path) -> UvScopeBinding {
+        let executable = root.join("uv");
+        fs::write(&executable, "fixture").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let store = root.join("data/tools");
+        fs::create_dir_all(&store).unwrap();
+        UvScopeBinding {
+            selected_executable: executable.clone(),
+            canonical_executable: executable.clone(),
+            executable_identity: executable_identity(&executable).unwrap(),
+            configured_tool_dir: Some(store.clone()),
+            reported_tool_dir: store.clone(),
+            canonical_tool_dir: store.clone(),
+            tool_identity: directory_identity(&store).unwrap(),
+        }
+    }
+
+    #[test]
+    fn last_store_removal_accepts_only_expected_cleanup() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let binding = fixture(&root);
+        let guard = binding.removal_guard().unwrap().unwrap();
+        assert!(
+            guard.validate_removed().is_err(),
+            "existing store is not empty evidence"
+        );
+        fs::remove_dir(root.join("data/tools")).unwrap();
+        assert!(
+            binding.validate().is_err(),
+            "read-only validation still rejects a missing store"
+        );
+        guard.validate_removed().unwrap();
+        fs::remove_dir(root.join("data")).unwrap();
+        guard.validate_removed().unwrap();
+    }
+
+    #[test]
+    fn last_store_removal_rejects_replaced_parent_store_or_executable() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let binding = fixture(&root);
+        let guard = binding.removal_guard().unwrap().unwrap();
+        fs::rename(root.join("data"), root.join("old-data")).unwrap();
+        fs::create_dir(root.join("data")).unwrap();
+        assert!(guard.validate_removed().is_err());
+        fs::remove_dir(root.join("data")).unwrap();
+        fs::rename(root.join("old-data"), root.join("data")).unwrap();
+        fs::rename(root.join("data/tools"), root.join("old-tools")).unwrap();
+        symlink(root.join("missing"), root.join("data/tools")).unwrap();
+        assert!(!path_is_absent(&root.join("data/tools")));
+        assert!(
+            guard.validate_removed().is_err(),
+            "dangling symlink is not absence"
+        );
+        fs::remove_file(root.join("data/tools")).unwrap();
+        guard.validate_removed().unwrap();
+        fs::rename(root.join("uv"), root.join("old-uv")).unwrap();
+        fs::write(root.join("uv"), "replacement").unwrap();
+        fs::set_permissions(root.join("uv"), fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(guard.validate_removed().is_err());
+    }
+
+    #[test]
+    fn missing_alias_and_unexpected_ancestor_changes_fail_closed() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().canonicalize().unwrap();
+        let root = base.join("anchor");
+        fs::create_dir(&root).unwrap();
+        let mut binding = fixture(&root);
+        symlink(root.join("data/tools"), root.join("alias")).unwrap();
+        binding.configured_tool_dir = Some(root.join("alias"));
+        assert!(binding.removal_guard().unwrap().is_none());
+        binding.configured_tool_dir = None;
+        let guard = binding.removal_guard().unwrap().unwrap();
+        fs::rename(&root, base.join("old-anchor")).unwrap();
+        fs::create_dir(&root).unwrap();
+        assert!(guard.validate_removed().is_err());
     }
 }
 

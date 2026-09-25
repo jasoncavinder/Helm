@@ -10,7 +10,10 @@ The v0.20 disposable-VM adapter certification campaign has started. The initial
 certification. It exposed a CLI process-exit/persistence race corrected by awaiting
 the existing ordered persistence receipt in synchronous commands. Real uv 0.12.18
 CLI lifecycle checks now proceed through constrained upgrade, install and recovery;
-last-tool uninstall reconciliation remains blocked by #556. No release gate is closed.
+last-tool uninstall reconciliation (#556) now accepts verified empty-store cleanup
+after a successful sole-tool removal. Both supported uv endpoints pass the bounded
+CLI lifecycle, including reinstall after cleanup. Missing stores outside that
+specific mutation still fail closed. No release gate is closed.
 
 ---
 
