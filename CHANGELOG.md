@@ -14,6 +14,8 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 
 ### Fixed
 - Disposable-VM CLI certification corrected current asdf, cargo-binstall, Bundler, pipx, Poetry, Yarn Classic, npm and pnpm command/output handling. Python executable selections now preserve virtual-environment identity, and CLI uninstall exposes exact-version selection for supported multi-version managers.
+- Task IDs are durably reserved before execution across CLI processes, preventing collisions and reuse after task deletion. Homebrew formula tap identities, current cask installed versions, nested cask authorization, Docker/nix-darwin detection, and bounded RubyGems search are corrected. pipx update discovery rejects unsupported versions instead of reporting empty success.
+- Operations that need Apple developer tools now fail before launching compiler shims with installation guidance; binary cargo-binstall operations remain available with source fallback disabled. Helm launch and cached inventory do not gain a Command Line Tools requirement.
 - Plan filters no longer collapse authority sections that temporarily have no visible updates; prior expanded and intentionally collapsed disclosure choices return when the filter is cleared.
 - Oversized saved Dashboard frames are now reduced to the current display's visible bounds before their origin is restored, while preserving the Dashboard minimum when the display can accommodate it.
 

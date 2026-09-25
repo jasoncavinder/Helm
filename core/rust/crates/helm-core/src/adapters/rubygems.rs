@@ -273,7 +273,9 @@ pub fn rubygems_search_request(
         CommandSpec::new(RUBYGEMS_COMMAND)
             .arg("search")
             .arg(query.text.clone())
-            .args(["--remote", "--details"]),
+            // Details fetch a gemspec for every match and can exhaust the
+            // interactive search deadline even for ordinary broad queries.
+            .args(["--remote", "--no-details"]),
         SEARCH_TIMEOUT,
     )
 }
@@ -830,7 +832,7 @@ mod tests {
         );
         assert_eq!(
             search.command.args,
-            vec!["search", "rake", "--remote", "--details"]
+            vec!["search", "rake", "--remote", "--no-details"]
         );
 
         let install = rubygems_install_request(None, "rubocop", Some("1.72.0"));

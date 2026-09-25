@@ -9,7 +9,7 @@ use crate::adapters::pipx::{
 };
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
-use crate::models::{ManagerId, SearchQuery};
+use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, SearchQuery, TaskType};
 
 pub struct ProcessPipxSource {
     executor: Arc<dyn ProcessExecutor>,
@@ -71,6 +71,8 @@ impl PipxSource for ProcessPipxSource {
     }
 
     fn list_outdated(&self) -> AdapterResult<String> {
+        let version = self.detect()?.version_output;
+        require_outdated_support(&version)?;
         let request = self.configure_request(pipx_list_outdated_request(None));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
@@ -97,5 +99,41 @@ impl PipxSource for ProcessPipxSource {
     fn upgrade(&self, name: Option<&str>) -> AdapterResult<String> {
         let request = self.configure_request(pipx_upgrade_request(None, name));
         run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+}
+
+fn require_outdated_support(raw_version: &str) -> AdapterResult<()> {
+    let parts = raw_version
+        .trim()
+        .split('.')
+        .map(|part| part.parse::<u64>())
+        .collect::<Result<Vec<_>, _>>();
+    if matches!(parts.as_deref(), Ok([major, minor, patch]) if (*major, *minor, *patch) >= (1, 16, 0))
+    {
+        return Ok(());
+    }
+    Err(CoreError {
+        manager: Some(ManagerId::Pipx),
+        task: Some(TaskType::Refresh),
+        action: Some(ManagerAction::ListOutdated),
+        kind: CoreErrorKind::UnsupportedCapability,
+        message: "pipx update discovery requires pipx 1.16.0 or newer (pipx list --outdated). Upgrade pipx using its owning manager, then refresh. Cached updates are not treated as current.".into(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outdated_requires_the_native_capability_and_never_falls_back_to_empty() {
+        for version in ["1.16.0", "1.17.6\n"] {
+            assert!(require_outdated_support(version).is_ok());
+        }
+        for version in ["1.15.0", "1.16.0rc1", "unknown", ""] {
+            let error = require_outdated_support(version).unwrap_err();
+            assert_eq!(error.kind, CoreErrorKind::UnsupportedCapability);
+            assert!(error.message.contains("owning manager"));
+        }
     }
 }

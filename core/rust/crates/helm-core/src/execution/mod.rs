@@ -1,3 +1,5 @@
+#[cfg(any(target_os = "macos", test))]
+mod developer_tools;
 pub mod task_log_note_store;
 pub mod task_output_store;
 pub mod timeout_prompt_store;

@@ -2793,9 +2793,9 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::Cargo => &["cargo"],
         ManagerId::CargoBinstall => &["cargo-binstall"],
         ManagerId::MacPorts => &["port", "/opt/local/bin/port"],
-        ManagerId::NixDarwin => &["darwin-rebuild", "nix"],
+        ManagerId::NixDarwin => &["darwin-rebuild"],
         ManagerId::Mas => &["mas"],
-        ManagerId::DockerDesktop => &["docker"],
+        ManagerId::DockerDesktop => &["/Applications/Docker.app/Contents/Resources/bin/docker"],
         ManagerId::Podman => &["podman"],
         ManagerId::Colima => &["colima"],
         ManagerId::XcodeCommandLineTools => &["/Library/Developer/CommandLineTools/usr/bin/clang"],
@@ -3039,6 +3039,18 @@ mod tests {
         };
         let mut context = ExternalEvidenceContext::without_external_queries();
         classify_instance(manager, &detection, candidate, &mut context)
+    }
+
+    #[test]
+    fn application_managers_do_not_claim_unrelated_command_line_tools() {
+        assert_eq!(
+            manager_executable_candidates(ManagerId::NixDarwin),
+            &["darwin-rebuild"]
+        );
+        assert_eq!(
+            manager_executable_candidates(ManagerId::DockerDesktop),
+            &["/Applications/Docker.app/Contents/Resources/bin/docker"]
+        );
     }
 
     #[test]

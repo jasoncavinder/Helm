@@ -55,6 +55,7 @@ fn locate_docker_desktop_app() -> Option<PathBuf> {
 
 fn resolve_docker_desktop_executable_path(app_path: &Path) -> Option<PathBuf> {
     let candidates = [
+        app_path.join("Contents/Resources/bin/docker"),
         app_path.join("Contents/MacOS/Docker Desktop"),
         app_path.join("Contents/MacOS/Docker"),
     ];
@@ -99,5 +100,24 @@ impl DockerDesktopSource for ProcessDockerDesktopSource {
             &["/opt/homebrew/bin", "/usr/local/bin"],
         );
         run_and_collect_stdout(self.executor.as_ref(), request)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_current_bundled_cli_before_legacy_app_executables() {
+        let directory = tempfile::tempdir().unwrap();
+        let app = directory.path().join("Docker.app");
+        std::fs::create_dir_all(app.join("Contents/Resources/bin")).unwrap();
+        std::fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
+        let legacy = app.join("Contents/MacOS/Docker");
+        std::fs::write(&legacy, b"").unwrap();
+        assert_eq!(resolve_docker_desktop_executable_path(&app), Some(legacy));
+        let current = app.join("Contents/Resources/bin/docker");
+        std::fs::write(&current, b"").unwrap();
+        assert_eq!(resolve_docker_desktop_executable_path(&app), Some(current));
     }
 }

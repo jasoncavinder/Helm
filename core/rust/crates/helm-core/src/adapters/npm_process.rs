@@ -22,6 +22,13 @@ impl ProcessNpmSource {
         Self { executor }
     }
 
+    fn global_root_is_absent(&self) -> AdapterResult<bool> {
+        let mut request = npm_list_installed_request(None);
+        request.command.args = vec!["root".into(), "--global".into(), "--silent".into()];
+        let root = run_and_collect_stdout(self.executor.as_ref(), self.configure_request(request))?;
+        Ok(absent_global_root(root.trim()))
+    }
+
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
         // XPC services have a constrained PATH; include common npm binary locations.
         let path = std::env::var("PATH").unwrap_or_default();
@@ -154,13 +161,9 @@ impl NpmSource for ProcessNpmSource {
     }
 
     fn list_installed_global(&self) -> AdapterResult<String> {
-        let mut root_request = npm_list_installed_request(None);
-        root_request.command.args = vec!["root".into(), "--global".into(), "--silent".into()];
-        let root =
-            run_and_collect_stdout(self.executor.as_ref(), self.configure_request(root_request))?;
         // npm ls fails with ENOENT before the first global install in a custom
         // prefix. Inspect the manager-selected root without creating it.
-        if absent_global_root(root.trim()) {
+        if self.global_root_is_absent()? {
             return Ok(r#"{"dependencies":{}}"#.into());
         }
         let request = self.configure_request(npm_list_installed_request(None));
@@ -168,6 +171,9 @@ impl NpmSource for ProcessNpmSource {
     }
 
     fn list_outdated_global(&self) -> AdapterResult<String> {
+        if self.global_root_is_absent()? {
+            return Ok("{}".into());
+        }
         // npm uses exit code 1 to indicate outdated packages were found.
         let request = self.configure_request(npm_list_outdated_request(None));
         self.run_and_collect_stdout_accepting(request, &[1], false)

@@ -79,7 +79,7 @@ impl ProcessExecutor for RubyGemsFakeExecutor {
                     if arg0 == "search"
                         && query == "rake"
                         && arg2 == "--remote"
-                        && arg3 == "--details" =>
+                        && arg3 == "--no-details" =>
                 {
                     SEARCH_FIXTURE.as_bytes().to_vec()
                 }

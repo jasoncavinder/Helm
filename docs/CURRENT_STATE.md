@@ -18,8 +18,14 @@ specific mutation still fail closed. No release gate is closed.
 The unmerged manager-family certification corrections and bounded live results
 are tracked in `docs/validation/v0.20-adapter-vm-family-results.md`. They cover
 current command/output contracts, global scope, pipx identity, selected Python
-venvs and CLI exact-version uninstall. Cross-process task-ID allocation, CLT
-prerequisite UX and remaining capability/environment gates are still open.
+venvs and CLI exact-version uninstall. Durable task reservations now pass
+cross-process and migration-compatibility checks. Homebrew cask formats and
+authorization delegation, tap-qualified formula identities, RubyGems search,
+and Docker/nix-darwin detection have bounded live evidence. Operation-specific
+developer-tools preflight is implemented; simulated missing-tool checks pass,
+but truly CLT-free and localized GUI prerequisite QA remain open. App Store/Setapp
+account-dependent checks are blocked by owner decision. pnpm 12 compatibility
+(#559), remaining capability/environment gates and the campaign review remain open.
 
 ---
 
