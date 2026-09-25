@@ -167,7 +167,9 @@ async fn exercise_adapter(executable: PathBuf, root: PathBuf) {
             .execute(AdapterRequest::Install(InstallRequest {
                 package: package.clone(),
                 target_name: None,
-                version: Some("1.1".into()),
+                // PEP 440 release segments are zero-padded for equality. uv
+                // satisfies 1.1.0 with our 1.1 wheel and reports its metadata.
+                version: Some("1.1.0".into()),
             }))
             .unwrap();
         let AdapterResponse::Mutation(result) = response else {
@@ -200,7 +202,7 @@ async fn exercise_adapter(executable: PathBuf, root: PathBuf) {
             .execute(AdapterRequest::Uninstall(UninstallRequest {
                 package,
                 target_name: None,
-                version: Some("1.1".into()),
+                version: Some("1.1.0".into()),
             }))
             .unwrap();
     })

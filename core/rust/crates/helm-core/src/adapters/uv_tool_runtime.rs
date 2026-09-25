@@ -358,7 +358,7 @@ impl UvToolAdapter {
                 let tool = existing.ok_or_else(stale)?;
                 if expected
                     .as_ref()
-                    .is_some_and(|v| v != &tool.installed_version)
+                    .is_some_and(|v| !same_version(v, &tool.installed_version))
                 {
                     return Err(stale());
                 }
@@ -441,7 +441,7 @@ impl UvToolAdapter {
             let observed = observed.ok_or_else(|| verification_failed(action))?;
             if expected
                 .as_ref()
-                .is_some_and(|version| version != &observed.installed_version)
+                .is_some_and(|version| !same_version(version, &observed.installed_version))
             {
                 return Err(verification_failed(action));
             }
@@ -900,6 +900,16 @@ fn discover_runtime_selection() -> AdapterResult<UvExecutableSelection> {
     Ok(UvExecutableSelection::SearchDirectories(directories))
 }
 
+// Distribution metadata can spell a requested version differently (1.1 vs
+// 1.1.0, rc vs c, etc.). Compare parsed versions, but keep the observed spelling
+// in MutationResult so persistence reflects the actual installed metadata.
+fn same_version(expected: &str, observed: &str) -> bool {
+    match (expected.parse::<Version>(), observed.parse::<Version>()) {
+        (Ok(expected), Ok(observed)) => expected == observed,
+        _ => false,
+    }
+}
+
 fn utf8(path: &Path) -> AdapterResult<&str> {
     path.to_str().ok_or_else(unsupported)
 }
@@ -942,6 +952,40 @@ fn verification_failed(action: ManagerAction) -> CoreError {
         CoreErrorKind::ProcessFailure,
         "uv operation finished but its installed result is unverified; refresh before retrying",
     )
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::same_version;
+
+    #[test]
+    fn mutation_version_equality_uses_pep440_without_accepting_different_versions() {
+        for (expected, observed) in [
+            ("1.1.0", "1.1"),
+            ("2", "2.0.0"),
+            ("v1.0", "1.0"),
+            ("1.0c1", "1.0rc1"),
+            ("1.0-1", "1.0.post1"),
+            ("1.0+LOCAL-1", "1.0+local.1"),
+        ] {
+            assert!(same_version(expected, observed), "{expected} == {observed}");
+            assert!(same_version(observed, expected), "{observed} == {expected}");
+        }
+        for (expected, observed) in [
+            ("1.0", "2.0"),
+            ("1.0", "1.0rc1"),
+            ("1.0", "1.0.post1"),
+            ("1.0", "1.0+local"),
+            ("1!1.0", "1.0"),
+            ("invalid", "invalid"),
+            ("1.0", "invalid"),
+        ] {
+            assert!(
+                !same_version(expected, observed),
+                "{expected} != {observed}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

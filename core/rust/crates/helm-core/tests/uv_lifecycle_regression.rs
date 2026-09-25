@@ -27,6 +27,7 @@ impl RunningProcess for Process {
 #[derive(Clone, Copy)]
 enum Behavior {
     Normal,
+    EquivalentVersion,
     Unchanged,
     Failed,
     Cancelled,
@@ -106,6 +107,7 @@ impl ProcessExecutor for FakeExecutor {
                     });
                 }
                 Behavior::Unchanged => {}
+                Behavior::EquivalentVersion => *version = Some("2.0.0".into()),
                 _ => *version = Some("2.0".into()),
             }
         } else if pair("tool", "uninstall") {
@@ -193,6 +195,7 @@ async fn mutation_requires_observed_version_not_just_zero_exit() {
     tokio::task::spawn_blocking(|| {
         for behavior in [
             Behavior::Normal,
+            Behavior::EquivalentVersion,
             Behavior::Unchanged,
             Behavior::Failed,
             Behavior::Cancelled,
@@ -201,11 +204,18 @@ async fn mutation_requires_observed_version_not_just_zero_exit() {
         ] {
             let fixture = Fixture::new(behavior);
             let result = fixture.adapter.execute(fixture.request("2.0"));
-            if matches!(behavior, Behavior::Normal) {
+            if matches!(behavior, Behavior::Normal | Behavior::EquivalentVersion) {
                 let AdapterResponse::Mutation(mutation) = result.unwrap() else {
                     panic!("mutation")
                 };
-                assert_eq!(mutation.after_version.as_deref(), Some("2.0"));
+                assert_eq!(
+                    mutation.after_version.as_deref(),
+                    Some(if matches!(behavior, Behavior::EquivalentVersion) {
+                        "2.0.0"
+                    } else {
+                        "2.0"
+                    })
+                );
             } else {
                 let error = result.unwrap_err();
                 assert!(!format!("{error:?}").contains("secret"));
@@ -288,8 +298,52 @@ async fn untrusted_store_and_redirected_entrypoints_block_mutations() {
 struct RecordingAdapter(Mutex<Vec<AdapterRequest>>);
 
 #[tokio::test]
+async fn uninstall_accepts_equivalent_versions_but_rejects_different_or_invalid_versions() {
+    tokio::task::spawn_blocking(|| {
+        for version in ["1.0.0", "2.0", "1.0rc1", "1.0+local", "invalid"] {
+            let fixture = Fixture::new(Behavior::Normal);
+            let result = fixture
+                .adapter
+                .execute(AdapterRequest::Uninstall(UninstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::Uv,
+                        name: "black".into(),
+                    },
+                    target_name: None,
+                    version: Some(version.into()),
+                }));
+            if version == "1.0.0" {
+                let AdapterResponse::Mutation(mutation) = result.unwrap() else {
+                    panic!("verified removal")
+                };
+                assert_eq!(mutation.before_version.as_deref(), Some("1.0"));
+                assert_eq!(mutation.after_version, None);
+            } else {
+                assert!(result.is_err());
+                assert!(
+                    !fixture
+                        .executor
+                        .commands
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|r| { r.command.args.contains(&"uninstall".into()) })
+                );
+            }
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
 async fn runtime_persists_only_verified_mutations_and_preserves_failed_inventory() {
-    for behavior in [Behavior::Normal, Behavior::Unchanged, Behavior::Failed] {
+    for behavior in [
+        Behavior::Normal,
+        Behavior::EquivalentVersion,
+        Behavior::Unchanged,
+        Behavior::Failed,
+    ] {
         let fixture = Fixture::new(behavior);
         let request = fixture.request("2.0");
         let store = Arc::new(SqliteStore::new(fixture.root.join("test.sqlite")));
@@ -331,7 +385,7 @@ async fn runtime_persists_only_verified_mutations_and_preserves_failed_inventory
             .await
             .unwrap();
         persistence.wait_for_completion().await;
-        let success = matches!(behavior, Behavior::Normal);
+        let success = matches!(behavior, Behavior::Normal | Behavior::EquivalentVersion);
         assert_eq!(
             matches!(
                 terminal.terminal_state,
@@ -343,7 +397,11 @@ async fn runtime_persists_only_verified_mutations_and_preserves_failed_inventory
             store.list_installed().unwrap()[0]
                 .installed_version
                 .as_deref(),
-            Some(if success { "2.0" } else { "1.0" })
+            Some(match behavior {
+                Behavior::Normal => "2.0",
+                Behavior::EquivalentVersion => "2.0.0",
+                _ => "1.0",
+            })
         );
         assert_eq!(store.list_outdated().unwrap().len(), usize::from(!success));
     }

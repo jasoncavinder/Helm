@@ -49,8 +49,12 @@ Before mutation Helm resolves again and rejects stale scope/version targets.
 the original installed requirement. Helm pins require explicit unpinning before
 an upgrade. Every operation verifies the actual installed version or absence,
 entrypoint placement/removal, saved requirement/effective source policy, and
-unaffected tools. A zero exit status alone is not success. Failed/incomplete
-reads retain committed package state; an authoritative empty listing can clear it.
+unaffected tools. Requested/observed mutation versions use PEP 440 equality, so
+equivalent spellings such as `1.1.0` and `1.1` do not produce a false failure;
+results retain the actual observed version. Invalid or genuinely different
+versions still fail verification. A zero exit status alone is not success.
+Failed/incomplete reads retain committed package state; an authoritative empty
+listing can clear it.
 Shared task cancellation, timeouts, network deferral, and response persistence
 remain in use. Offline local inventory/search and removal do not require network;
 network discovery/install/upgrade follow Helm's connectivity gate.
@@ -81,7 +85,7 @@ network discovery/install/upgrade follow Helm's connectivity gate.
 
 ## Evidence and Next Gate
 
-Local verification on 2026-09-24 passed: 1,421 Rust tests (five opt-in tests
+Initial implementation verification on 2026-09-24 passed: 1,421 Rust tests (five opt-in tests
 remain ignored by the default suite), workspace formatting and all-target Clippy,
 359 arm64 macOS tests, all seven locale/mirror checks, channel/docs checks, and
 SQLite compatibility checks. The separate real adapter lifecycle test passed on
@@ -100,6 +104,12 @@ network. It exercises constrained candidate discovery, incompatible Python and
 unsatisfiable dependency rejection, exact pins, unchanged discovery receipts,
 reviewed upgrade, verified removal, known-name install, failed install, and
 preservation of another tool. It never touches host tools or the stable database.
+
+Independent review reproduced a false install-verification failure on uv 0.12.9
+with Python 3.14.7 when requesting `1.1.0` installed the equivalent `1.1` wheel.
+The regression now passes for installation and removal, alongside deterministic
+equivalent-version upgrade/persistence cases and rejection of different or
+invalid versions. Reviewed candidate/store binding remains unchanged.
 
 ```sh
 HELM_UV_CONTRACT_EXECUTABLE=/absolute/path/to/uv \
