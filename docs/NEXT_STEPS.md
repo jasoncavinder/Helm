@@ -10,15 +10,18 @@ The final supplied VM GUI recheck now passes on same-source signed UI/service/CL
 `45552e95`, including the search-publication race correction and SQLite flush
 change. Preserve the 371-test VM Swift pass and the integrated read-only smoke
 record in `docs/validation/v0.20-adapter-gui-checklist.md`; do not ask the owner to
-repeat completed checks absent a relevant change. Prepare the bounded campaign
-review handoff for #557 followed by #558, requiring current-head green CI and
-independent review before owner merge. This is not all-platform certification:
+repeat completed checks absent a relevant change. The owner reviewed and merged
+#557; #558 now includes that `dev` merge and the accepted Yarn review correction.
+Complete current-head CI and review of its search-test synchronization follow-up
+before owner merge. The delayed-observer regression is red-before/green-after;
+six search tests pass 20 consecutive VM runs and 43 adjacent tests pass. This is
+not all-platform certification:
 account/OS/no-candidate limits, genuinely CLT-free runtime evidence, pnpm 11+
 mutation support (#559), and #560 review/integration remain explicit. Do not close
 #500/#526 or waive release gates based only on the supplied VM's passing checks.
 
-The disposable-VM campaign continues without merging its fix PRs until the owner
-reviews the completed batch. Preserve #557's CLI persistence correction and the
+Keep #558 unmerged until its remaining review/CI gates pass. Preserve the merged
+#557 CLI persistence correction and the
 #556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
 the bounded offline CLI lifecycle, reinstall and repeated loopback authenticated
 cancellation checks; retain their exact scope while finishing the remaining gates.
@@ -92,7 +95,7 @@ v0.20.x core workflow implementation and v0.19.1 stable monitoring
 ```
 
 Focus:
-- continue the disposable-VM adapter campaign in `docs/validation/v0.20-adapter-vm-family-results.md`: uv endpoint lifecycles and the documented manager-family fixes pass their bounded scenarios; keep all campaign PRs unmerged until the owner reviews the completed batch. Preserve passing durable cross-process task reservations, controlled Homebrew formula/cask upgrades, the full search sweep and the completed bounded owner GUI checklist. Investigate the preserved QA database corruption and disposition genuinely CLT-free/platform evidence, pnpm 12 compatibility (#559) and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
+- continue the disposable-VM adapter campaign in `docs/validation/v0.20-adapter-vm-family-results.md`: uv endpoint lifecycles and the documented manager-family fixes pass their bounded scenarios; #557 is merged and #558 awaits current-head CI and final owner review/merge. Preserve passing durable cross-process task reservations, controlled Homebrew formula/cask upgrades, the full search sweep and the completed bounded owner GUI checklist. Investigate the preserved QA database corruption and disposition genuinely CLT-free/platform evidence, pnpm 12 compatibility (#559) and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
 - retain the exact-pinned uv PEP 440 matcher and its prerelease/epoch/postrelease, zero-padding, and Requires-Python regressions when integrating candidate discovery; dependency upgrades require explicit review, and matching candidates still need source-aware resolution
 - complete final synchronized-head CI and owner merge for the v0.20 Dashboard Add manager PR #547, preserving `docs/validation/v0.20-add-manager-dashboard.md`: source `3876f7c0` passed owner navigation/cancellation, scroll/filter handoff, Cargo/Homebrew choices, toolbar, appearance, keyboard/VoiceOver, and offline-safety checks; the corrected installation-panel language recheck passed on signed source `0548920c`, which also passed independent code review without findings. The `dev` synchronization adds only the merged website security lockfile update, not app changes. Do not reopen accepted presentation checks absent a runtime change. Keep actual installation/failure/cancellation/recovery evidence in an isolated environment and the all-manager certification pass (#463/#500); do not install managers on the owner's Mac as an automated test
 - preserve the 2026-09-21 owner-confirmed live Sparkle Plan/confirmation evidence on source `edb4270b`: Arc and iTerm2 were interactive-only, the review reported 101 selected versus 99 automatic updates, and cancellation did not execute the reviewed plan. Keep the exact provenance and setup-incident limits in the readiness record; this supersedes the targeted Sparkle-presentation gate mentioned below, not vendor-installation or participant validation. Complete protected arm64/macOS 13.0-target CI on the readiness PR, retaining the distinction between deployment-target compatibility and actual Ventura runtime coverage; then proceed to the remaining moderated and production-route decisions without reopening completed owner matrices

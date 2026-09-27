@@ -15,6 +15,16 @@ after a successful sole-tool removal. Both supported uv endpoints pass the bound
 CLI lifecycle, including reinstall after cleanup. Missing stores outside that
 specific mutation still fail closed. No release gate is closed.
 
+The owner merged #557 into `dev`; #558 is synchronized with that merge. Its
+independent-review Yarn correction is retained. A separate Rust CI failure was
+reproduced as a search-test observer missing the short Running state. The test
+now holds execution behind an explicit start/release handshake and awaits the
+persistence receipt, including delayed observation and late cancelled-response
+coverage. All six search tests pass 20 consecutive VM runs, with 43 adjacent
+cancellation/orchestration tests passing. This is test-harness stabilization, not
+a production cancellation-policy change; current-head CI and #558 review/merge
+remain separate gates.
+
 The unmerged manager-family certification corrections and bounded live results
 are tracked in `docs/validation/v0.20-adapter-vm-family-results.md`. They cover
 current command/output contracts, global scope, pipx identity, selected Python
