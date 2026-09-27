@@ -11,8 +11,10 @@ accepted owner checks without a relevant change.
    [shared acknowledgment foundation](validation/v0.20-first-run-acknowledgment.md).
    Use the [non-executing local observer](validation/v0.20-first-run-local-observation.md)
    for initial evidence, not ordinary detection/status APIs that can schedule
-   catalogs or repair preferences. Gate ordinary startup/polling/updaters before
-   intro selection; candidate files are not current readiness or action approval.
+   catalogs or repair preferences. The [two-step startup boundary](validation/v0.20-first-run-startup-gate.md)
+   is implemented; select its guarded policy when integrating real entry instead
+   of the current legacy-compatibility handshake. Keep polling/updaters behind
+   activation; candidate files are not current readiness or action approval.
    Wire the real v0.20 value flow and supported safe verified improvement while
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted

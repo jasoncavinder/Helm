@@ -47,6 +47,30 @@ struct AppUpdateSchedulePolicy {
     }
 }
 
+enum AppUpdateCheckKind: Int {
+    case userInitiated = 0
+    case background = 1
+    case information = 2
+}
+
+struct AppUpdateExecutionGate {
+    var networkAvailable = false
+    var runtimeAvailable = false
+    private(set) var pendingCheckKind: AppUpdateCheckKind?
+
+    var allowsChecks: Bool { networkAvailable && runtimeAvailable }
+
+    mutating func deferCheck(_ kind: AppUpdateCheckKind) {
+        if pendingCheckKind != .userInitiated { pendingCheckKind = kind }
+    }
+
+    mutating func takeReadyCheck() -> AppUpdateCheckKind? {
+        guard allowsChecks else { return nil }
+        defer { pendingCheckKind = nil }
+        return pendingCheckKind
+    }
+}
+
 extension HelmDistributionChannel {
     var updateAuthority: HelmUpdateAuthority {
         switch self {

@@ -1,5 +1,36 @@
 import Foundation
 
+struct ServiceStartupSnapshot: Decodable {
+    struct Experience: Decodable {
+        let schemaVersion: Int
+        let experienceId: String
+        let acknowledged: Bool
+    }
+
+    let schemaVersion: Int
+    let experience: Experience
+    let onboardingCompleted: Bool
+    let acceptedLicenseTermsVersion: String?
+    let requiresFirstRunAcknowledgment: Bool
+    let safeMode: Bool
+
+    static func decode(_ json: String?, requiringAcknowledgment: Bool) -> Self? {
+        guard let data = json?.data(using: .utf8) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let snapshot = try? decoder.decode(Self.self, from: data),
+              snapshot.schemaVersion == 1,
+              snapshot.experience.schemaVersion == 1,
+              snapshot.experience.experienceId == "wayfinder-v0.20",
+              snapshot.requiresFirstRunAcknowledgment == requiringAcknowledgment else { return nil }
+        return snapshot
+    }
+
+    var permitsRuntimeActivation: Bool {
+        !requiresFirstRunAcknowledgment || experience.acknowledged
+    }
+}
+
 enum DeferredOfflineRefreshDisposition: Equatable {
     case none
     case waitForCurrentRefresh
