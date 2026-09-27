@@ -28,8 +28,13 @@ slint-viewer/rustix dependency compilation (229/326). The
 unusable Cargo proxy without clearing cached packages/updates, distinguishes DNS
 and endpoint failures from global offline state, and preserves useful compiler
 excerpts. Failure diagnostic records are included in the CLI persistence receipt.
-Isolated real-toolchain and DNS failure/recovery checks pass; signed GUI review
-and #564's dependency-resolution policy/reproduction remain open. The
+Isolated real-toolchain and DNS failure/recovery checks pass. The separate
+[Cargo reproduction](validation/v0.20-cargo-dependency-reproduction.md) now
+reproduces the rustix 1.1.5 compiler error and verifies a successful native
+slint-viewer 1.18.1 build using its published rustix 1.1.4 dependency set.
+Helm's general Cargo execution policy is unchanged; exact source/version/feature
+binding, lockfile handling and observed-result verification still need work.
+Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.
 

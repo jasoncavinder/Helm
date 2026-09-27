@@ -22,9 +22,12 @@ accepted owner checks without a relevant change.
    toolchain readiness, DNS failure and dependency compilation. The
    [diagnostic/cache-preservation correction](validation/v0.20-rust-task-diagnostics.md)
    passes isolated CLI and automated VM checks, including failure-record
-   persistence before CLI exit; retain signed GUI review and the unverified
-   #564 dependency-resolution policy as open work. Do not modify the owner's
-   Rust installation to clear historical failures.
+   persistence before CLI exit. The [Cargo comparison](validation/v0.20-cargo-dependency-reproduction.md)
+   reproduces the unlocked compiler failure and verifies the native locked
+   build, but not a Helm upgrade-policy fix. Implement reviewed source/version/
+   feature binding, explicit absent/stale-lock handling and observed-result
+   verification; retain signed GUI review. Do not modify the owner's Rust
+   installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,
    insertion-placeholder reordering), exact certification/issue dispositions,
    participant and cross-workflow accessibility gates from the checklist.
