@@ -153,6 +153,22 @@ char *helm_list_manager_status(void);
 char *helm_doctor_scan(void);
 
 /**
+ * Return the current product experience's versioned acknowledgment JSON.
+ * Null means unavailable/error, never an invitation to start first-run work.
+ */
+char *helm_get_first_run_experience_state(void);
+
+/**
+ * Acknowledge exactly the experience the caller presented, not a build version.
+ * This does not complete CLI onboarding, accept terms, or authorize any actions.
+ *
+ * # Safety
+ * `experience_id` must be null or a valid NUL-terminated string. Null, non-UTF-8,
+ * and unsupported IDs fail without changing persistent state.
+ */
+bool helm_acknowledge_first_run_experience(const char *experience_id);
+
+/**
  * Return whether shared onboarding has been completed.
  */
 bool helm_get_cli_onboarding_completed(void);

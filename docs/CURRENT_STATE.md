@@ -130,6 +130,13 @@ crash-recovery or all-adapter cancellation certification claim.
 
 ## Version
 
+The v0.20 upgrade-introduction acknowledgment foundation now has shared Rust
+persistence and FFI/XPC endpoints, separate from legacy onboarding and legal
+acceptance. Its versioned experience ID survives RC/stable/patch reopenings
+without changing existing data or granting operational consent. The app entry
+path does not consume it yet; production setup activation remains open under
+#561. See [implementation and bounded VM evidence](validation/v0.20-first-run-acknowledgment.md).
+
 Current documentation baseline: **0.19.1 is the latest public stable release on `main`** and **0.19.0-rc.7 remains the published opt-in prerelease**; `v0.18.0` remains withdrawn because of a critical SQLite migration defect.
 
 Implementation baseline: **published stable `0.19.1`**, retaining the `0.19.0` Original Wayfinder, update-planning, manager-compatibility, stable/RC routing, offline-resilience, localization, window, status-item, and semantic-status foundation. The maintenance release adds only the retained Homebrew-keg correction from PR `#496`; independent-review release-integrity safeguards change release validation without expanding shipped behavior. Stable GitHub/latest, the default appcast, and stable CLI metadata resolve to `v0.19.1`, while RC7 remains available on the isolated beta/RC channel. The Environment Brief remains development-gated pending a separately reviewed production-route decision; its Issue `#388` accessibility gate is closed. True direct third-party Sparkle updating remains deferred to `0.20.x`, and native privileged execution remains on askpass until its separate activation gates pass.

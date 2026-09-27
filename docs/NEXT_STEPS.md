@@ -88,6 +88,14 @@ It is intentionally tactical.
 
 ## Current Phase
 
+The shared v0.20 experience acknowledgment is now implemented independently of
+legacy onboarding; retain its persistence and error-boundary regressions while
+building the real production setup lifecycle. Follow
+[the acknowledgment integration limits](validation/v0.20-first-run-acknowledgment.md)
+for #561: the Debug research route must not become the shipping implementation,
+and signed upgrade-path QA remains pending. This foundation does not close the
+first-run release gate.
+
 Helm is in:
 
 ```

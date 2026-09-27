@@ -1,6 +1,8 @@
 # First-Run Experience Contracts
 
-Status: normative v0.18 planning contract; no runtime implementation
+Status: normative contract, extended for v0.20 upgrade entry; production setup
+activation remains pending. Debug-only research previews are not a shipping
+setup implementation.
 
 This document defines architecture, semantics, and boundaries for Helm's Project WOW first-run setup experience across GUI, CLI, and TUI presentation surfaces.
 
@@ -8,6 +10,9 @@ Machine contracts: `docs/contracts/first-run/`
 Native macOS presentation: `docs/app-design/NATIVE_MACOS_PROTOTYPES.md`
 State presentation matrix: `docs/app-design/NATIVE_MACOS_STATE_MATRIX.md`
 Research checkpoint: `docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md`
+
+The shared versioned acknowledgment API is implemented separately from production
+entry activation. See [the implementation boundary and validation record](../validation/v0.20-first-run-acknowledgment.md).
 
 ## 1. Discovery Stages and Consent Boundary
 

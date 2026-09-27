@@ -1,5 +1,6 @@
 pub mod detection_store;
 pub mod doctor_persistence;
+pub mod first_run_store;
 pub mod repair_knowledge;
 
 use crate::models::{
@@ -8,6 +9,7 @@ use crate::models::{
 };
 
 pub use detection_store::{DetectionStore, ManagerPreference, PackageManagerPreference};
+pub use first_run_store::{FirstRunExperience, FirstRunExperienceState, FirstRunStore};
 
 pub type PersistenceResult<T> = Result<T, CoreError>;
 
