@@ -4,7 +4,7 @@
 
 Use [v0.20 release readiness](validation/v0.20-release-readiness.md) as the current
 ordered checklist, superseding older per-PR pending instructions below. PRs
-#557/#558 are reviewed and merged with passing head checks. Do not repeat their
+#557/#558 and #568/#569 are reviewed and merged with passing head checks. Do not repeat their
 accepted owner checks without a relevant change.
 
 1. Complete upgrade-first-run production entry (#561), using the implemented
@@ -26,9 +26,14 @@ accepted owner checks without a relevant change.
    passes isolated CLI and automated VM checks, including failure-record
    persistence before CLI exit. The [Cargo comparison](validation/v0.20-cargo-dependency-reproduction.md)
    reproduces the unlocked compiler failure and verifies the native locked
-   build, but not a Helm upgrade-policy fix. Implement reviewed source/version/
-   feature binding, explicit absent/stale-lock handling and observed-result
-   verification; retain signed GUI review. Do not modify the owner's Rust
+   build, but not a Helm dependency-policy fix. The
+   [mutation-verification slice](validation/v0.20-cargo-mutation-verification.md)
+   now pins explicit/task-start candidates and verifies observed installed versions;
+   its real CLI lifecycle passes. Preserve verified upgrade/no-op persistence even
+   without cached outdated data, and keep a newer cached candidate visible after
+   an explicit intermediate upgrade. Finish reviewed Plan/source/scope/receipt-feature
+   binding, explicit absent/stale-lock handling and full receipt reconciliation;
+   retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,
    insertion-placeholder reordering), exact certification/issue dispositions,

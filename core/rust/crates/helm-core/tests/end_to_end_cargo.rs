@@ -26,12 +26,16 @@ fn installed_fixture_with_bat_version(version: &str) -> String {
 
 struct CargoFakeExecutor {
     bat_upgraded: AtomicBool,
+    rargs_installed: AtomicBool,
+    ripgrep_removed: AtomicBool,
 }
 
 impl CargoFakeExecutor {
     fn new() -> Self {
         Self {
             bat_upgraded: AtomicBool::new(false),
+            rargs_installed: AtomicBool::new(false),
+            ripgrep_removed: AtomicBool::new(false),
         }
     }
 }
@@ -67,11 +71,22 @@ impl ProcessExecutor for CargoFakeExecutor {
             match args.as_slice() {
                 [arg] if arg == "--version" => VERSION_FIXTURE.as_bytes().to_vec(),
                 [arg0, arg1] if arg0 == "install" && arg1 == "--list" => {
-                    if self.bat_upgraded.load(Ordering::SeqCst) {
-                        installed_fixture_with_bat_version("0.25.0").into_bytes()
+                    let mut installed = if self.bat_upgraded.load(Ordering::SeqCst) {
+                        installed_fixture_with_bat_version("0.25.0")
                     } else {
-                        INSTALLED_FIXTURE.as_bytes().to_vec()
+                        INSTALLED_FIXTURE.to_string()
+                    };
+                    if self.rargs_installed.load(Ordering::SeqCst) {
+                        installed.push_str("\nrargs v0.3.0:\n    rargs\n");
                     }
+                    if self.ripgrep_removed.load(Ordering::SeqCst) {
+                        installed = installed
+                            .lines()
+                            .filter(|line| !line.starts_with("ripgrep v") && line.trim() != "rg")
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                    }
+                    installed.into_bytes()
                 }
                 [arg0, arg1, arg2, arg3, arg4, query]
                     if arg0 == "search"
@@ -97,10 +112,20 @@ impl ProcessExecutor for CargoFakeExecutor {
                         _ => Vec::new(),
                     }
                 }
-                [arg0, crate_name] if arg0 == "install" && crate_name == "rargs" => Vec::new(),
-                [arg0, crate_name] if arg0 == "uninstall" && crate_name == "ripgrep" => Vec::new(),
-                [arg0, arg1, crate_name]
-                    if arg0 == "install" && arg1 == "--force" && crate_name == "bat" =>
+                [arg0, crate_name] if arg0 == "install" && crate_name == "rargs" => {
+                    self.rargs_installed.store(true, Ordering::SeqCst);
+                    Vec::new()
+                }
+                [arg0, crate_name] if arg0 == "uninstall" && crate_name == "ripgrep" => {
+                    self.ripgrep_removed.store(true, Ordering::SeqCst);
+                    Vec::new()
+                }
+                [arg0, arg1, crate_name, flag, version]
+                    if arg0 == "install"
+                        && arg1 == "--force"
+                        && crate_name == "bat"
+                        && flag == "--version"
+                        && version == "0.25.0" =>
                 {
                     self.bat_upgraded.store(true, Ordering::SeqCst);
                     Vec::new()

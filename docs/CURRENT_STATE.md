@@ -5,7 +5,7 @@ This document describes the current implementation status of Helm.
 It reflects reality, not intention.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
-PRs #557 and #558 are merged; #558's final head passed all reported CI checks.
+PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
 The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
@@ -36,8 +36,17 @@ Isolated real-toolchain and DNS failure/recovery checks pass. The separate
 [Cargo reproduction](validation/v0.20-cargo-dependency-reproduction.md) now
 reproduces the rustix 1.1.5 compiler error and verifies a successful native
 slint-viewer 1.18.1 build using its published rustix 1.1.4 dependency set.
-Helm's general Cargo execution policy is unchanged; exact source/version/feature
-binding, lockfile handling and observed-result verification still need work.
+The [Cargo mutation-verification boundary](validation/v0.20-cargo-mutation-verification.md)
+now pins an explicit or task-start-resolved candidate and requires observed local
+inventory after install/upgrade/removal, rather than substituting an expected
+version or relying on a fresh registry query. Its VM contracts and real `sd`
+CLI lifecycle pass. Verified targeted upgrades also reconcile durable inventory
+without a cached outdated row, including already-current no-ops; unrelated
+package identities are preserved. An explicit intermediate version retains any
+newer cached candidate with the verified installed baseline. General dependency
+resolution is unchanged: reviewed Plan
+binding, exact source/scope/receipt-feature preservation and lockfile handling
+still need work before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.

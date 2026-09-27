@@ -944,6 +944,120 @@ fn apply_upgrade_result_promotes_package_to_installed_snapshot() {
 }
 
 #[test]
+fn verified_cargo_upgrade_reconciles_only_its_cached_package_identity() {
+    for cache_present in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let store = SqliteStore::new(root.path().join("verified-cargo.db"));
+        store.migrate_to_latest().unwrap();
+        let target = InstalledPackage {
+            package: PackageRef {
+                manager: ManagerId::Cargo,
+                name: "bat".into(),
+            },
+            package_identifier: None,
+            installed_version: Some("0.24.0".into()),
+            pinned: true,
+            runtime_state: helm_core::models::PackageRuntimeState {
+                is_active: true,
+                is_default: true,
+                has_override: true,
+            },
+        };
+        let mut other_identity = target.clone();
+        other_identity.package_identifier = Some("other-scope".into());
+        let mut other_manager = target.clone();
+        other_manager.package.manager = ManagerId::HomebrewFormula;
+        let mut other_package = target.clone();
+        other_package.package.name = "zellij".into();
+        let unrelated = vec![other_identity, other_manager, other_package];
+        store.upsert_installed(&unrelated).unwrap();
+        if cache_present {
+            store
+                .upsert_installed(std::slice::from_ref(&target))
+                .unwrap();
+        }
+        // A verified no-op may observe a different version than the stale cache.
+        store
+            .apply_upgrade_result(&target.package, None, Some("0.25.0"), Some("0.25.0"))
+            .unwrap();
+        let installed = store.list_installed().unwrap();
+        for entry in &unrelated {
+            assert!(installed.contains(entry));
+        }
+        let mut observed = target;
+        observed.installed_version = Some("0.25.0".into());
+        if !cache_present {
+            observed.pinned = false;
+            observed.runtime_state = Default::default();
+        }
+        assert!(installed.contains(&observed));
+        assert_eq!(installed.len(), unrelated.len() + 1);
+        assert!(store.list_outdated().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn verified_cargo_upgrade_clears_only_reached_candidates() {
+    for (candidate, observed, retain) in [
+        ("0.26.0", "0.25.0", true),
+        ("0.25.0", "0.25.0", false),
+        ("0.24.0", "0.25.0", false),
+        ("0.25.0", "0.25.0-rc.1", true),
+        ("0.25.0-rc.1", "0.25.0", false),
+        ("0.25.0+z", "0.25.0+a", false),
+        ("unknown", "0.25.0", true),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let store = SqliteStore::new(root.path().join("verified-cargo-candidate.db"));
+        store.migrate_to_latest().unwrap();
+        let mut target = OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::Cargo,
+                name: "bat".into(),
+            },
+            package_identifier: Some("target-scope".into()),
+            installed_version: Some("0.23.0".into()),
+            candidate_version: candidate.into(),
+            pinned: true,
+            restart_required: true,
+            runtime_state: helm_core::models::PackageRuntimeState {
+                is_active: true,
+                is_default: true,
+                has_override: true,
+            },
+        };
+        let mut other_identity = target.clone();
+        other_identity.package_identifier = None;
+        let mut other_manager = target.clone();
+        other_manager.package.manager = ManagerId::HomebrewFormula;
+        let mut other_package = target.clone();
+        other_package.package.name = "zellij".into();
+        let unrelated = vec![other_identity, other_manager, other_package];
+        store.upsert_outdated(&unrelated).unwrap();
+        store
+            .upsert_outdated(std::slice::from_ref(&target))
+            .unwrap();
+        store
+            .apply_upgrade_result(
+                &target.package,
+                target.package_identifier.as_deref(),
+                Some("0.23.0"),
+                Some(observed),
+            )
+            .unwrap();
+        let outdated = store.list_outdated().unwrap();
+        for entry in &unrelated {
+            assert!(outdated.contains(entry));
+        }
+        assert_eq!(outdated.len(), unrelated.len() + usize::from(retain));
+        if retain {
+            target.installed_version = Some(observed.into());
+            assert!(outdated.contains(&target));
+        }
+    }
+}
+
+#[test]
 fn apply_upgrade_result_replaces_only_matching_installed_version() {
     let path = test_db_path("apply-upgrade-result-multi-version");
     let store = SqliteStore::new(&path);
