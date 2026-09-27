@@ -55,9 +55,12 @@ installed fixture, and task 32 installed the reviewed 1.0.0 marker with Homebrew
 at user UID 502 and only its privileged child at UID 0. Unrelated cask versions
 are unchanged. The owner also passed fixture removal through Helm; independent
 checks confirm its marker/Caskroom are absent and native cask inventory matches
-the baseline. Sparkle handoff is staged but remains open: a separate signed QA
+the baseline. Sparkle vendor-update verification remains open: a separate signed QA
 scope detects Rectangle 0.90 with a 2.0.1 candidate and no automatic execution
-steps. The vendor app's signature and team identity are verified. A genuinely CLT-free
+steps. The owner confirmed that Open App to Update opens Rectangle without setup
+or permission prompts. Its native version remains 0.90 and Helm still lists the
+candidate, so opening the app has not been mistaken for installation. The vendor
+app's signature and team identity are verified. A genuinely CLT-free
 OS is not certified by the simulation.
 The isolated QA database reported corruption after a forced host restart and was
 preserved before rebuilding the test cache. Its cause remains unresolved; this

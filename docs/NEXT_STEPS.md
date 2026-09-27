@@ -32,8 +32,10 @@ owner check. Fixture cleanup through Helm now passes, with marker/Caskroom absen
 and the original native cask inventory independently verified. The responsive
 Library Install-button layout also passes its signed-VM owner check on UI source
 `443a714e`. Continue the staged Sparkle handoff in `gui-sparkle-443a714e`: select
-Rectangle 0.90 -> 2.0.1, open the vendor app from Plan, and only then complete its
-own update and refresh Helm to verify reconciliation. Do not launch an embedded
+Rectangle 0.90 -> 2.0.1. The owner confirmed that the Plan action opens Rectangle
+without setup/permission prompts; its native version remains 0.90 and Helm still
+lists the candidate. Complete its own update and refresh Helm to verify
+reconciliation. Do not launch an embedded
 updater executable or mark opening the app as a completed installation. Keep pnpm
 diagnostics VoiceOver and genuinely CLT-free OS coverage explicit.
 Preserve and investigate the disposable QA database corruption observed after
