@@ -112,20 +112,24 @@ struct ControlCenterToolbarSearchField: NSViewRepresentable {
 
         lazy var cancelSearch: () -> Void = { [weak self] in
             guard let self else { return }
-            if !text.wrappedValue.isEmpty {
-                text.wrappedValue = ""
-            }
+            publishExplicitValue("")
             onCancel()
         }
 
         @objc func submitSearch(_ sender: NSSearchField) {
-            if text.wrappedValue != sender.stringValue {
-                text.wrappedValue = sender.stringValue
-            }
+            publishExplicitValue(sender.stringValue)
             if sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 onCancel()
             } else if onSubmit() {
                 sender.window?.makeFirstResponder(nil)
+            }
+        }
+
+        private func publishExplicitValue(_ value: String) {
+            // An already queued delegate update must not undo Cancel or Return.
+            updateGate.discardPendingControlValue()
+            if text.wrappedValue != value {
+                text.wrappedValue = value
             }
         }
 
@@ -474,6 +478,11 @@ final class ControlCenterSearchTextUpdateGate {
 
     func displayedValue(modelValue: String) -> String {
         pendingControlValue ?? modelValue
+    }
+
+    func discardPendingControlValue() {
+        // Keep the scheduled drain so typing after an explicit action still coalesces.
+        pendingControlValue = nil
     }
 
     func takePendingControlValue() -> String? {

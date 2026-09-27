@@ -88,6 +88,12 @@ result action is required to move to Library and transfer focus. Native search
 bridge regression coverage is included; the owner passed the signed-VM
 Dashboard/Library pause-resume, explicit acceptance, Command-F and Escape checks
 on UI source `b3a50416` with the unchanged certified cask backend.
+The later CI cancellation failure exposed queued delegate text restoring a
+cleared or explicitly submitted query. Explicit search actions now discard that
+pending value before updating the binding. Deterministic coordinator regressions
+reproduce the old Cancel/clear/Return race, and all 371 Swift tests pass inside
+the disposable VM with the correction. The host was used only to compile the
+test bundle; CI and refreshed signed-app integration remain separate gates.
 
 Library columns now share width compression when the Inspector opens, preserving
 the trailing Install control and restoring preferred column widths when space

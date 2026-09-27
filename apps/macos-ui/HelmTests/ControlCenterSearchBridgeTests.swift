@@ -62,6 +62,96 @@ final class NativeToolbarSearchInteractionTests: XCTestCase {
     }
 }
 
+final class NativeToolbarSearchCoordinatorTests: XCTestCase {
+    func testCancelSupersedesQueuedTypingBeforeDelegateDelivery() {
+        var query = ""
+        var cancelCount = 0
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { XCTFail("Cancel must not accept a result"); return false },
+            onCancel: { cancelCount += 1 }
+        )
+        let field = NSSearchField()
+        field.stringValue = "authorization"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        XCTAssertTrue(coordinator.updateGate.hasScheduledControlPublish)
+
+        coordinator.cancelSearch()
+        XCTAssertEqual(coordinator.updateGate.displayedValue(modelValue: query), "")
+        drainMainQueue()
+
+        XCTAssertEqual(query, "")
+        XCTAssertEqual(cancelCount, 1)
+    }
+
+    func testNativeClearActionSupersedesQueuedTyping() {
+        var query = ""
+        var cancelCount = 0
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { XCTFail("Clear must not accept a result"); return false },
+            onCancel: { cancelCount += 1 }
+        )
+        let field = NSSearchField()
+        field.stringValue = "authorization"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        field.stringValue = ""
+        coordinator.submitSearch(field)
+        drainMainQueue()
+
+        XCTAssertEqual(query, "")
+        XCTAssertEqual(cancelCount, 1)
+    }
+
+    func testSubmitSupersedesQueuedTypingWithLatestFieldValue() {
+        var query = ""
+        var acceptedQueries: [String] = []
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { acceptedQueries.append(query); return false },
+            onCancel: { XCTFail("Submit must not cancel") }
+        )
+        let field = NSSearchField()
+        field.stringValue = "auth"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        field.stringValue = "authorization"
+        coordinator.submitSearch(field)
+        drainMainQueue()
+
+        XCTAssertEqual(query, "authorization")
+        XCTAssertEqual(acceptedQueries, ["authorization"])
+    }
+
+    func testTypingAfterCancelBeforeDeliveryStillPublishes() {
+        var query = ""
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { XCTFail("Typing must not accept a result"); return false },
+            onCancel: {}
+        )
+        let field = NSSearchField()
+        field.stringValue = "authorization"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        coordinator.cancelSearch()
+        field.stringValue = "new query"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        drainMainQueue()
+
+        XCTAssertEqual(query, "new query")
+        XCTAssertFalse(coordinator.updateGate.hasScheduledControlPublish)
+    }
+
+    private func drainMainQueue() {
+        let delivered = expectation(description: "Queued delegate publication delivered")
+        DispatchQueue.main.async { delivered.fulfill() }
+        wait(for: [delivered], timeout: 2)
+    }
+}
+
 private final class NativeSearchFixture {
     var query = ""
     var acceptsResult = true
