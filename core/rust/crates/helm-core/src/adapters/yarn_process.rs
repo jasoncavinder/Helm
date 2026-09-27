@@ -300,6 +300,7 @@ fn global_package_names(directory: &Path) -> AdapterResult<BTreeSet<String>> {
         Ok(bytes) => bytes,
         Err(error)
             if error.kind() == std::io::ErrorKind::NotFound
+                && global_directory_is_valid_or_absent(directory)
                 && ["package.json", "yarn.lock", "node_modules"]
                     .iter()
                     .all(|entry| {
@@ -338,6 +339,22 @@ fn global_package_names(directory: &Path) -> AdapterResult<BTreeSet<String>> {
         }
     }
     Ok(names)
+}
+
+fn global_directory_is_valid_or_absent(directory: &Path) -> bool {
+    // Missing children also report NotFound beneath a dangling directory symlink.
+    // Only accept a fresh scope when its nearest existing ancestor resolves to a
+    // directory; do not turn broken or inaccessible storage into an empty snapshot.
+    for path in directory.ancestors() {
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => {
+                return std::fs::canonicalize(path).is_ok_and(|resolved| resolved.is_dir());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return false,
+        }
+    }
+    false
 }
 
 fn filter_global_tree(output: &str, names: &BTreeSet<String>) -> AdapterResult<String> {
@@ -408,6 +425,50 @@ mod tests {
         assert!(filter_global_tree(r#"{"type":"error","data":"bad lockfile"}"#, &names).is_err());
         std::fs::write(directory.path().join("package.json"), "null").unwrap();
         assert!(global_package_names(directory.path()).is_err());
+    }
+
+    #[test]
+    fn never_created_global_scope_is_empty() {
+        let directory = tempfile::tempdir().unwrap();
+        assert!(
+            global_package_names(&directory.path().join("missing/global"))
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_global_scope_is_not_empty() {
+        let directory = tempfile::tempdir().unwrap();
+        let global = directory.path().join("global");
+        std::os::unix::fs::symlink(directory.path().join("missing"), &global).unwrap();
+        assert!(global_package_names(&global).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_global_scope_ancestor_is_not_empty() {
+        let directory = tempfile::tempdir().unwrap();
+        let parent = directory.path().join("parent");
+        std::os::unix::fs::symlink(directory.path().join("missing"), &parent).unwrap();
+        assert!(global_package_names(&parent.join("global")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn valid_global_scope_symlink_can_be_empty() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let global = directory.path().join("global");
+        std::os::unix::fs::symlink(target, &global).unwrap();
+        assert!(global_package_names(&global).unwrap().is_empty());
+        assert!(
+            global_package_names(&global.join("missing"))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

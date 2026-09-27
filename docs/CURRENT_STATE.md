@@ -18,7 +18,10 @@ specific mutation still fail closed. No release gate is closed.
 The unmerged manager-family certification corrections and bounded live results
 are tracked in `docs/validation/v0.20-adapter-vm-family-results.md`. They cover
 current command/output contracts, global scope, pipx identity, selected Python
-venvs and CLI exact-version uninstall. Durable task reservations now pass
+venvs and CLI exact-version uninstall. Yarn's fresh-store shortcut rejects
+dangling global-directory or ancestor symlinks instead of clearing cached
+inventory/update snapshots; legitimate never-created stores remain empty.
+Durable task reservations now pass
 cross-process and migration-compatibility checks. Homebrew cask formats and
 authorization delegation, tap-qualified formula identities, RubyGems search,
 and Docker/nix-darwin detection have bounded live evidence. Operation-specific

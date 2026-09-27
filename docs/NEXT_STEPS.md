@@ -29,6 +29,8 @@ See `docs/validation/v0.20-adapter-vm-certification.md`.
 Continue the current manager-family matrix in
 `docs/validation/v0.20-adapter-vm-family-results.md`, including cross-process task
 reservation, current pnpm compatibility and explicit account/OS evidence gaps.
+Retain Yarn's broken-global-path regressions: failed directory resolution must
+not replace cached inventory or updates with an empty fresh-store result.
 Retain the coordinator atomic-publication regression and corrected uv cancellation
 reruns: staging files must never be executable requests. pnpm 12.6.0's native
 no-op remains open in #559; do not bypass verification or source/build policies.
