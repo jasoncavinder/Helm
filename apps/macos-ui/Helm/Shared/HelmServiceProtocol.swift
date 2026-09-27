@@ -31,6 +31,7 @@ import Foundation
     func listManagerStatus(withReply reply: @escaping (String?) -> Void)
     func doctorScan(withReply reply: @escaping (String?) -> Void)
     func getFirstRunExperienceState(withReply reply: @escaping (String?) -> Void)
+    func observeFirstRunEnvironment(withReply reply: @escaping (String?) -> Void)
     func acknowledgeFirstRunExperience(experienceId: String, withReply reply: @escaping (Bool) -> Void)
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void)
     func setSharedOnboardingCompleted(completed: Bool, withReply reply: @escaping (Bool) -> Void)

@@ -153,6 +153,13 @@ char *helm_list_manager_status(void);
 char *helm_doctor_scan(void);
 
 /**
+ * Return non-executing local file evidence and explicitly cached detections.
+ * Unlike normal detection/status polling, this never repairs preferences or
+ * schedules adapter/catalog work. Null is an error, not an empty environment.
+ */
+char *helm_observe_first_run_environment(void);
+
+/**
  * Return the current product experience's versioned acknowledgment JSON.
  * Null means unavailable/error, never an invitation to start first-run work.
  */

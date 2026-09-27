@@ -29,6 +29,14 @@ After any required legal acceptance, Helm may perform bounded local observations
 
 Helm does not inspect shell history, credentials, secrets, arbitrary home-directory content, or unrelated projects. It does not probe administrator credentials or trigger an authorization request during discovery.
 
+Implemented initial observation is narrower than the full intended scope above:
+the [non-executing local observer](../validation/v0.20-first-run-local-observation.md)
+returns candidate-file evidence separately from cached detections and stored
+preferences. It does not prove installation/readiness, run adapters, reconcile
+preferences, or refresh catalogs. Ordinary detection/status APIs have additional
+effects and must not substitute for this boundary. Production startup/consent
+gating and further verified discovery remain pending.
+
 ### 1.2 Network disclosure
 
 - Remote status, catalogs, downloads, and enrichment require an explicit disclosed action such as `Check Now`.
