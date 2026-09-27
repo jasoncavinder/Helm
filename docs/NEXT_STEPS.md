@@ -29,8 +29,10 @@ accepted owner checks without a relevant change.
    build, but not a Helm dependency-policy fix. The
    [mutation-verification slice](validation/v0.20-cargo-mutation-verification.md)
    now pins explicit/task-start candidates and verifies observed installed versions;
-   its real CLI lifecycle passes. Finish reviewed Plan/source/scope/receipt-feature
-   binding, explicit absent/stale-lock handling and full receipt reconciliation;
+   its real CLI lifecycle passes. The [candidate plan binding](validation/v0.20-cargo-plan-binding.md)
+   now preserves GUI-reviewed and CLI workflow versions and rejects stale
+   downgrades. Finish source/scope/receipt-feature binding, explicit
+   absent/stale-lock handling and full receipt reconciliation;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,

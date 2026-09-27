@@ -40,8 +40,12 @@ The [Cargo mutation-verification boundary](validation/v0.20-cargo-mutation-verif
 now pins an explicit or task-start-resolved candidate and requires observed local
 inventory after install/upgrade/removal, rather than substituting an expected
 version or relying on a fresh registry query. Its VM contracts and real `sd`
-CLI lifecycle pass. General dependency resolution is unchanged: reviewed Plan
-binding, exact source/scope/receipt-feature preservation and lockfile handling
+CLI lifecycle pass. The [plan-binding follow-up](validation/v0.20-cargo-plan-binding.md)
+carries cached candidates through reviewed GUI workflows, legacy bulk upgrades
+and foreground/background CLI plans, and honors explicit direct FFI versions.
+Changed reviewed candidates require review again; newer installed versions cannot
+be downgraded by an old target. General dependency resolution is unchanged:
+exact source/scope/receipt-feature preservation and lockfile handling
 still need work before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
