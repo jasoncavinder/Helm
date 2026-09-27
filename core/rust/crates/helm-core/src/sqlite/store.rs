@@ -2372,11 +2372,14 @@ fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
             .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     }
     let connection = Connection::open(database_path)?;
+    // Use macOS's stronger flush at WAL sync boundaries without syncing every commit.
+    // Forced-stop tests reproduced corruption without this macOS flush request.
     connection.execute_batch(
         "
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
+PRAGMA fullfsync = ON;
 PRAGMA busy_timeout = 5000;
 ",
     )?;
@@ -4227,6 +4230,36 @@ mod tests {
     use crate::persistence::TaskStore;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn connections_reapply_wal_durability_policy() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("helm.db");
+        for _ in 0..2 {
+            let connection = super::open_connection(&path).unwrap();
+            assert_eq!(
+                connection
+                    .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+                    .unwrap(),
+                "wal"
+            );
+            assert_eq!(
+                connection
+                    .query_row("PRAGMA synchronous", [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                connection
+                    .query_row("PRAGMA fullfsync", [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+            connection
+                .execute_batch("PRAGMA synchronous = OFF; PRAGMA fullfsync = OFF;")
+                .unwrap();
+        }
+    }
 
     fn temp_store(test_name: &str) -> SqliteStore {
         let nanos = SystemTime::now()

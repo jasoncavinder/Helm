@@ -69,3 +69,70 @@ fn cli_shim_install_recovers_affected_v0180_database() {
         .unwrap();
     assert_eq!(migration_17_name, migration(17).unwrap().name);
 }
+
+#[test]
+fn cli_rejects_truncated_database_without_replacing_evidence() {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root =
+        std::env::temp_dir().join(format!("helm-cli-truncated-{}-{nanos}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    let path = root.join("helm.db");
+    SqliteStore::new(&path).migrate_to_latest().unwrap();
+    let original = fs::read(&path).unwrap();
+    let page_size = u64::from(u16::from_be_bytes([original[16], original[17]]));
+    let page_size = if page_size == 1 { 65_536 } else { page_size };
+    let declared_pages = u32::from_be_bytes(original[28..32].try_into().unwrap());
+    assert_eq!(original.len() as u64, u64::from(declared_pages) * page_size);
+    assert!(declared_pages > 4);
+    // Damage only this newly created fixture, matching the observed size mismatch.
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_len(original.len() as u64 - 4 * page_size)
+        .unwrap();
+    let damaged = fs::read(&path).unwrap();
+    let home = root.join("home");
+    fs::create_dir(&home).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_helm"))
+        .env_clear()
+        .env("HOME", &home)
+        .env("HELM_DB_PATH", &path)
+        .env("HELM_ACCEPT_LICENSE", "1")
+        .env("HELM_ACCEPT_DEFAULTS", "1")
+        .env("PATH", "/usr/bin:/bin")
+        .args(["--json", "packages", "list"])
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "corrupt database must fail closed"
+    );
+    let diagnostics = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        diagnostics.contains("database disk image is malformed"),
+        "{diagnostics}"
+    );
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        damaged,
+        "do not reset or repair silently"
+    );
+    assert!(
+        !home
+            .join("Library/Application Support/Helm/helm.db")
+            .exists()
+    );
+    assert!(
+        !home
+            .join("Library/Application Support/Helm-Development/helm.db")
+            .exists()
+    );
+}

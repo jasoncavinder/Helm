@@ -12,8 +12,16 @@ cargo test \
   --manifest-path core/rust/Cargo.toml \
   -p helm-core \
   --test sqlite_migrations_contract \
+  --test sqlite_process_recovery \
   -- \
   --test-threads=1
+
+echo "[sqlite-compat] checking connection durability policy"
+cargo test \
+  --manifest-path core/rust/Cargo.toml \
+  -p helm-core \
+  --lib sqlite::store::tests::connections_reapply_wal_durability_policy \
+  -- --exact
 
 echo "[sqlite-compat] running real CLI recovery boundary"
 cargo test \

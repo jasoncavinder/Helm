@@ -45,6 +45,14 @@ Preserve and investigate the disposable QA database corruption observed after
 the forced host restart under #560; cache reconstruction is not a product
 durability fix. The original and a hash-verified local copy are retained; do not
 remove the VM evidence or silently waive this unresolved risk for release.
+Review the narrow WAL/NORMAL plus macOS full-flush correction and its automated
+regressions. Two isolated forced stops reproduce the old-policy failure; the
+isolated candidate preserves integrity/data and accepts new writes. The exact
+four-interruption record and limitations are in
+`docs/validation/v0.20-qa-database-restart-triage.md`. Keep #560 open through
+independent review and integrated CI/canary validation rather than claiming a
+universal power-loss guarantee. No further forced VM interruptions are authorized
+by the completed four-test approval.
 Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
 applicable cells rather than treating detection-only features as missing work.
 Preserve the corrected pnpm 10 fresh-store lifecycle, final read sweep, controlled

@@ -70,8 +70,16 @@ A genuinely CLT-free OS is not certified by the simulation.
 The isolated QA database reported corruption after a forced host restart and was
 preserved before rebuilding the test cache. Its cause remains unresolved; this
 is not a crash-recovery pass. Read-only inspection of the hash-verified preserved
-file finds 882 physical pages versus 886 declared in its header; #560 tracks
-investigation without attributing the cause to Helm or the VM prematurely.
+file finds 882 physical pages versus 886 declared in its header. Follow-up
+isolated VM hard stops reproduce corruption twice with the prior connection
+policy. A narrow shared-core `fullfsync=ON` correction, retaining WAL/NORMAL,
+passes an isolated forced-stop test with baseline data and subsequent writes
+verified. Process-crash and fail-closed CLI regressions accompany the correction.
+The [restart investigation](validation/v0.20-qa-database-restart-triage.md) records
+the four approved interruptions, exact artifacts, comparison limits and raw
+evidence preservation. #560 stays open through independent review/integration;
+the original incident's precise cause and broader platform coverage are not
+declared solved. No automatic repair or release waiver was added.
 CLI evidence does not close interactive gates.
 
 Dashboard search no longer treats the native field's idle action as accepting a
