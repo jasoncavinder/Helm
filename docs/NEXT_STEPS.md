@@ -7,9 +7,12 @@ ordered checklist, superseding older per-PR pending instructions below. PRs
 #557/#558 are reviewed and merged with passing head checks. Do not repeat their
 accepted owner checks without a relevant change.
 
-1. Complete the newly requested upgrade-first-run production entry and versioned
-   acknowledgment (#561); preserve settings/data/consent and keep synthetic
-   research flows out of the shipping path.
+1. Complete upgrade-first-run production entry (#561), using the implemented
+   [shared acknowledgment foundation](validation/v0.20-first-run-acknowledgment.md).
+   Wire the real v0.20 value flow and supported safe verified improvement while
+   preserving settings/data/consent; keep synthetic research flows out of the
+   shipping path. Signed upgrade-path QA remains pending; broader persisted
+   setup parity remains v0.21 scope.
 2. Resolve the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
    The [read-only investigation](validation/v0.19.1-rust-task-triage.md) separates
    toolchain readiness, DNS failure and dependency compilation; none is proven

@@ -11,6 +11,9 @@ Native macOS presentation: `docs/app-design/NATIVE_MACOS_PROTOTYPES.md`
 State presentation matrix: `docs/app-design/NATIVE_MACOS_STATE_MATRIX.md`
 Research checkpoint: `docs/app-design/NATIVE_MACOS_RESEARCH_VALIDATION.md`
 
+The shared versioned acknowledgment API is implemented separately from production
+entry activation. See [the implementation boundary and validation record](../validation/v0.20-first-run-acknowledgment.md).
+
 ## 1. Discovery Stages and Consent Boundary
 
 ### 1.1 Local observation (automatic, no mutation)

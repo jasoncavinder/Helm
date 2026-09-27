@@ -327,6 +327,27 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func getFirstRunExperienceState(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_get_first_run_experience_state() else {
+            logger.warning("helm_get_first_run_experience_state returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
+    func acknowledgeFirstRunExperience(experienceId: String, withReply reply: @escaping (Bool) -> Void) {
+        // A Swift string may contain NUL; do not acknowledge a truncated identifier.
+        guard !experienceId.utf8.contains(0) else {
+            reply(false)
+            return
+        }
+        let result = experienceId.withCString { helm_acknowledge_first_run_experience($0) }
+        logger.info("helm_acknowledge_first_run_experience result: \(result)")
+        reply(result)
+    }
+
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void) {
         let completed = helm_get_cli_onboarding_completed()
         guard let cString = helm_get_cli_accepted_license_terms_version() else {

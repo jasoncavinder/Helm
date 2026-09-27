@@ -53,6 +53,8 @@
 //! | `helm_set_safe_mode` | Settings |
 //! | `helm_get_homebrew_keg_auto_cleanup` | Settings |
 //! | `helm_set_homebrew_keg_auto_cleanup` | Settings |
+//! | `helm_get_first_run_experience_state` | First-run experience |
+//! | `helm_acknowledge_first_run_experience` | First-run experience |
 //! | `helm_list_package_keg_policies` | Keg policies |
 //! | `helm_set_package_keg_policy` | Keg policies |
 //! | `helm_list_package_manager_preferences` | Package manager preferences |
@@ -180,8 +182,8 @@ use helm_core::persistence::doctor_persistence::{
     DoctorStore, RepairHistoryRecord, begin_local_doctor_scan, complete_local_doctor_scan,
 };
 use helm_core::persistence::{
-    DetectionStore, ManagerPreference, MigrationStore, PackageStore, PinStore, SearchCacheStore,
-    TaskStore,
+    DetectionStore, FirstRunExperience, FirstRunStore, ManagerPreference, MigrationStore,
+    PackageStore, PinStore, SearchCacheStore, TaskStore,
 };
 use helm_core::sqlite::SqliteStore;
 use helm_core::uninstall_preview::{
@@ -7137,6 +7139,63 @@ pub extern "C" fn helm_doctor_scan() -> *mut c_char {
     match CString::new(json) {
         Ok(c) => c.into_raw(),
         Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Return the current product experience's versioned acknowledgment JSON.
+/// Null means unavailable/error, never an invitation to start first-run work.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_get_first_run_experience_state() -> *mut c_char {
+    clear_last_error_key();
+    let guard = lock_or_recover(&STATE, "state");
+    let Some(state) = guard.as_ref() else {
+        return return_error_ptr(SERVICE_ERROR_INTERNAL);
+    };
+    let experience_state = match state
+        .store
+        .first_run_experience_state(FirstRunExperience::CURRENT)
+    {
+        Ok(state) => state,
+        Err(error) => return return_error_ptr(core_error_service_key(&error)),
+    };
+    let json = match serde_json::to_string(&experience_state) {
+        Ok(json) => json,
+        Err(_) => return return_error_ptr(SERVICE_ERROR_INTERNAL),
+    };
+    match CString::new(json) {
+        Ok(json) => json.into_raw(),
+        Err(_) => return_error_ptr(SERVICE_ERROR_INTERNAL),
+    }
+}
+
+/// Acknowledge exactly the experience the caller presented, not a build version.
+/// This does not complete CLI onboarding, accept terms, or authorize any actions.
+///
+/// # Safety
+/// `experience_id` must be null or a valid NUL-terminated string. Null, non-UTF-8,
+/// and unsupported IDs fail without changing persistent state.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_acknowledge_first_run_experience(
+    experience_id: *const c_char,
+) -> bool {
+    clear_last_error_key();
+    if experience_id.is_null() {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let experience = unsafe { CStr::from_ptr(experience_id) }
+        .to_str()
+        .ok()
+        .and_then(FirstRunExperience::from_id);
+    let Some(experience) = experience else {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    };
+    let guard = lock_or_recover(&STATE, "state");
+    let Some(state) = guard.as_ref() else {
+        return return_error_bool(SERVICE_ERROR_INTERNAL);
+    };
+    match state.store.acknowledge_first_run_experience(experience) {
+        Ok(()) => true,
+        Err(error) => return_error_bool(core_error_service_key(&error)),
     }
 }
 
@@ -15572,6 +15631,146 @@ mod tests {
                 .unwrap(),
             "app.repair.test.impact"
         );
+    }
+
+    #[test]
+    fn ffi_first_run_acknowledgment_contract() {
+        const MODE_ENV: &str = "HELM_TEST_FIRST_RUN_FFI_MODE";
+        const DATABASE_ENV: &str = "HELM_TEST_FIRST_RUN_FFI_DB";
+
+        fn take_error() -> String {
+            let pointer = super::helm_take_last_error_key();
+            assert!(!pointer.is_null());
+            let result = unsafe { CStr::from_ptr(pointer) }
+                .to_str()
+                .unwrap()
+                .to_owned();
+            unsafe { super::helm_free_string(pointer) };
+            result
+        }
+
+        fn read_state() -> serde_json::Value {
+            let pointer = super::helm_get_first_run_experience_state();
+            assert!(!pointer.is_null());
+            let result =
+                serde_json::from_str(unsafe { CStr::from_ptr(pointer) }.to_str().unwrap()).unwrap();
+            unsafe { super::helm_free_string(pointer) };
+            assert!(super::helm_take_last_error_key().is_null());
+            result
+        }
+
+        if let Ok(mode) = std::env::var(MODE_ENV) {
+            let id = CString::new("wayfinder-v0.20").unwrap();
+            assert!(super::helm_get_first_run_experience_state().is_null());
+            assert_eq!(take_error(), super::SERVICE_ERROR_INTERNAL);
+            assert!(!unsafe { super::helm_acknowledge_first_run_experience(id.as_ptr()) });
+            assert_eq!(take_error(), super::SERVICE_ERROR_INTERNAL);
+            let database = CString::new(std::env::var(DATABASE_ENV).unwrap()).unwrap();
+            assert!(unsafe { super::helm_init(database.as_ptr()) });
+
+            for bytes in [
+                b"\0".as_slice(),
+                b"wayfinder-v0.21\0",
+                b"v0.20.0-rc.1\0",
+                b"\xff\0",
+            ] {
+                assert!(!unsafe {
+                    super::helm_acknowledge_first_run_experience(bytes.as_ptr().cast())
+                });
+                assert_eq!(take_error(), super::SERVICE_ERROR_INVALID_INPUT);
+            }
+            assert!(!unsafe { super::helm_acknowledge_first_run_experience(std::ptr::null()) });
+            assert_eq!(take_error(), super::SERVICE_ERROR_INVALID_INPUT);
+
+            if mode == "malformed" {
+                assert!(super::helm_get_first_run_experience_state().is_null());
+                assert_eq!(take_error(), super::SERVICE_ERROR_STORAGE_FAILURE);
+                assert!(!unsafe { super::helm_acknowledge_first_run_experience(id.as_ptr()) });
+                assert_eq!(take_error(), super::SERVICE_ERROR_STORAGE_FAILURE);
+                return;
+            }
+
+            assert_eq!(
+                read_state(),
+                serde_json::json!({
+                    "schema_version": 1,
+                    "experience_id": "wayfinder-v0.20",
+                    "acknowledged": mode == "acknowledged"
+                })
+            );
+            if mode == "acknowledge" || mode == "acknowledged" {
+                assert!(unsafe { super::helm_acknowledge_first_run_experience(id.as_ptr()) });
+                assert!(super::helm_take_last_error_key().is_null());
+                assert_eq!(read_state()["acknowledged"], true);
+            }
+            if mode == "write-failure" {
+                assert!(!unsafe { super::helm_acknowledge_first_run_experience(id.as_ptr()) });
+                assert_eq!(take_error(), super::SERVICE_ERROR_STORAGE_FAILURE);
+                assert_eq!(read_state()["acknowledged"], false);
+            }
+            assert!(super::helm_get_cli_onboarding_completed());
+            return;
+        }
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("helm-first-run-ffi-{nanos}.db"));
+        let store = SqliteStore::new(&path);
+        store.migrate_to_latest().unwrap();
+        store.set_cli_onboarding_completed(true).unwrap();
+
+        let run = |mode| {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::ffi_first_run_acknowledgment_contract",
+                    "--nocapture",
+                ])
+                .env(MODE_ENV, mode)
+                .env(DATABASE_ENV, &path)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "FFI {mode} failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run("pending");
+        run("pending");
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "\
+            CREATE TRIGGER reject_ack BEFORE INSERT ON app_settings
+            WHEN NEW.key = 'first_run.experience.wayfinder-v0.20.acknowledged'
+            BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;
+        ",
+            )
+            .unwrap();
+        run("write-failure");
+        connection.execute_batch("DROP TRIGGER reject_ack").unwrap();
+        run("acknowledge");
+        run("acknowledged");
+        run("acknowledged");
+        connection
+            .execute(
+                "UPDATE app_settings SET value = 'unknown-format' WHERE key = ?1",
+                ["first_run.experience.wayfinder-v0.20.acknowledged"],
+            )
+            .unwrap();
+        run("malformed");
+        let value: String = connection
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                ["first_run.experience.wayfinder-v0.20.acknowledged"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, "unknown-format");
     }
 
     #[test]

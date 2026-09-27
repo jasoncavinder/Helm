@@ -12,8 +12,11 @@ gates remain open as listed in that checklist.
 
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
-Production activation and versioned acknowledgment are not implemented by this
-documentation update; the research route stays development-gated. Read-only
+The shared Rust/FFI/XPC versioned acknowledgment foundation is implemented and
+passes bounded VM persistence/error-boundary regressions; see
+[the implementation record](validation/v0.20-first-run-acknowledgment.md).
+Production activation and signed upgrade-path QA remain pending; the research
+route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected
 rustup Cargo component (84), DNS resolution during rustup check (124), and
 slint-viewer/rustix dependency compilation (229/326). None is proven fixed by

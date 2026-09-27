@@ -19,8 +19,9 @@ use crate::persistence::repair_knowledge::{
     KnowledgeEntry, KnowledgeEnvelope, KnowledgeSelector, sha256_hex,
 };
 use crate::persistence::{
-    DetectionStore, ManagerPreference, MigrationStore, PackageManagerPreference, PackageStore,
-    PersistenceResult, PinStore, SearchCacheStore, TaskStore,
+    DetectionStore, FirstRunExperience, FirstRunExperienceState, FirstRunStore, ManagerPreference,
+    MigrationStore, PackageManagerPreference, PackageStore, PersistenceResult, PinStore,
+    SearchCacheStore, TaskStore,
 };
 use crate::security_advisory::{AdvisoryCacheRecord, AdvisoryCacheStore};
 use crate::sqlite::migrations::{
@@ -94,6 +95,63 @@ impl SqliteStore {
             &envelope,
             KnowledgeTrustLevel::Bundled,
         )
+    }
+}
+
+fn read_first_run_acknowledgment(
+    connection: &Connection,
+    experience: FirstRunExperience,
+) -> rusqlite::Result<bool> {
+    let value = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [experience.acknowledgment_key()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    match value.as_deref() {
+        None => Ok(false),
+        Some("1") => Ok(true),
+        Some(_) => Err(rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid first-run experience acknowledgment",
+            )),
+        )),
+    }
+}
+
+impl FirstRunStore for SqliteStore {
+    fn first_run_experience_state(
+        &self,
+        experience: FirstRunExperience,
+    ) -> PersistenceResult<FirstRunExperienceState> {
+        self.with_connection("first_run_experience_state", |connection| {
+            ensure_schema_ready(connection)?;
+            let acknowledged = read_first_run_acknowledgment(connection, experience)?;
+            Ok(FirstRunExperienceState::new(experience, acknowledged))
+        })
+    }
+
+    fn acknowledge_first_run_experience(
+        &self,
+        experience: FirstRunExperience,
+    ) -> PersistenceResult<()> {
+        self.with_connection("acknowledge_first_run_experience", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            // Validate before writing; never repair an unknown value by overwriting it.
+            if !read_first_run_acknowledgment(&transaction, experience)? {
+                transaction.execute(
+                    "INSERT INTO app_settings (key, value) VALUES (?1, '1')",
+                    [experience.acknowledgment_key()],
+                )?;
+            }
+            transaction.commit()
+        })
     }
 }
 
