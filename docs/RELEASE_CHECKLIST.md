@@ -2,6 +2,32 @@
 
 This checklist is required before creating a release tag on `main`.
 
+## v0.20.0-rc.1 (Preparation Open, Not Published)
+
+Current authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
+Historical checked boxes below do not satisfy a new candidate's gates.
+
+- [x] Merge reviewed #557/#558 adapter, persistence, prerequisite, durability and
+  bounded UI corrections with passing PR CI; preserve exact-source VM evidence.
+- [ ] Finish the production first-run path and show it once to pre-v0.20
+  upgraders as well as fresh installs (#561), preserving preferences/data/consent
+  and avoiding replay after acknowledgment on RC-to-stable/patch/relaunch.
+- [ ] Resolve or explicitly disposition the investigated Cargo/rustup follow-ups
+  (#562-#564); preserve the distinction between external failures and Helm's
+  diagnostic/execution-policy responsibilities.
+- [ ] Complete remaining planned direct third-party Sparkle and Environment
+  insertion-placeholder work, or obtain an explicit scope change before release.
+- [ ] Complete the readiness record's certification/platform/CLT-free, issue
+  disposition, moderated-participant and cross-workflow accessibility gates.
+- [ ] Freeze scope and prepare matching version markers, release notes and
+  upgrade-path evidence for the candidate; no release version bump is claimed yet.
+- [ ] Pass final integrated VM/CI quality, migration, locale and release-contract
+  gates, then protected-main rehearsal/preflight/canary/auth gates under
+  `docs/operations/RELEASE_FLOW.md` with the required dispatch approvals.
+- [ ] Obtain explicit approval immediately before tag/publication mutations.
+- [ ] Publish and verify RC artifacts plus beta/RC metadata only, preserving
+  stable v0.19.1 and GitHub latest; verify signed upgrade/first-run behavior.
+
 ## Third-Party License Compliance (All Releases)
 
 - [x] Re-audit dependency licenses and update `docs/legal/THIRD_PARTY_LICENSES.md` when versions or dependency sets change.

@@ -1,8 +1,8 @@
 # Project WOW — First-Run Value Initiative
 
-Status: approved internal direction; v0.18 contract/prototype artifact closure complete; runtime implementation deferred
+Status: approved internal direction; v0.18 contracts complete and v0.20 research previews validated; production first-run activation pending
 Scope: Internal first-run design initiative with features allocated across existing product plans
-Last updated: 2026-08-04
+Last updated: 2026-09-27
 
 ## 1. Objective
 
@@ -66,6 +66,14 @@ Feature allocation follows these rules:
 
 ### 4.1 Launch and legal gate
 
+- The v0.20 overhaul introduces the new experience once for pre-v0.20 upgraders
+  as well as fresh installs. Legacy onboarding completion must not suppress it.
+  Preserve preferences and prior consent; use a versioned acknowledgment so
+  later RC/stable/patch launches do not replay it. The
+  [upgrade-entry contract](../architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md#12-v020-upgrade-entry-and-acknowledgment)
+  and [#561](https://github.com/jasoncavinder/Helm/issues/561) gate production
+  activation, safe continuation and signed upgrade-path QA. This is not a reset
+  of the old walkthrough or approval to ship the synthetic research flow.
 - Render the real Helm shell immediately; do not delay on a timed splash.
 - Load cached state when available.
 - If the distribution channel requires license acceptance, present a single concise gate with a bundled offline-readable copy.

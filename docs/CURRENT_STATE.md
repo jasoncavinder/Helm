@@ -4,6 +4,22 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
+PRs #557 and #558 are merged; #558's final head passed all reported CI checks.
+The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
+publication. Runtime implementation, certification dispositions and participant
+gates remain open as listed in that checklist.
+
+The owner requires the new first-run experience once for pre-v0.20 upgraders as
+well as fresh installs, preserving preferences, data and consent (#561).
+Production activation and versioned acknowledgment are not implemented by this
+documentation update; the research route stays development-gated. Read-only
+production task investigation identified three cause groups: unavailable selected
+rustup Cargo component (84), DNS resolution during rustup check (124), and
+slint-viewer/rustix dependency compilation (229/326). None is proven fixed by
+current dev; targeted follow-ups #562-#564 are recorded in the
+[triage report](validation/v0.19.1-rust-task-triage.md). Production was not modified.
+
 The v0.20 disposable-VM adapter certification campaign has started. The initial
 29-manager detection/policy baseline is recorded in
 `docs/validation/v0.20-adapter-vm-certification.md`, not claimed as full lifecycle
@@ -15,17 +31,17 @@ after a successful sole-tool removal. Both supported uv endpoints pass the bound
 CLI lifecycle, including reinstall after cleanup. Missing stores outside that
 specific mutation still fail closed. No release gate is closed.
 
-The owner merged #557 into `dev`; #558 is synchronized with that merge. Its
+The owner merged #557 and #558 into `dev`. #558's
 independent-review Yarn correction is retained. A separate Rust CI failure was
 reproduced as a search-test observer missing the short Running state. The test
 now holds execution behind an explicit start/release handshake and awaits the
 persistence receipt, including delayed observation and late cancelled-response
 coverage. All six search tests pass 20 consecutive VM runs, with 43 adjacent
 cancellation/orchestration tests passing. This is test-harness stabilization, not
-a production cancellation-policy change; current-head CI and #558 review/merge
-remain separate gates.
+a production cancellation-policy change. Its head CI and independent review are
+complete; final integrated release-candidate validation is still required.
 
-The unmerged manager-family certification corrections and bounded live results
+The merged manager-family certification corrections and bounded live results
 are tracked in `docs/validation/v0.20-adapter-vm-family-results.md`. They cover
 current command/output contracts, global scope, pipx identity, selected Python
 venvs and CLI exact-version uninstall. Yarn's fresh-store shortcut rejects
@@ -38,7 +54,8 @@ and Docker/nix-darwin detection have bounded live evidence. Operation-specific
 developer-tools preflight is implemented; simulated missing-tool CLI and localized
 GUI prerequisite checks pass, but truly CLT-free runtime QA remains open. App Store/Setapp
 account-dependent checks are blocked by owner decision. pnpm 12 compatibility
-(#559), remaining capability/environment gates and the campaign review remain open.
+(#559) and remaining capability/environment dispositions remain open; the campaign
+implementation PR is reviewed and merged.
 
 The per-capability disposition for all 29 adapters is recorded in
 `docs/validation/v0.20-adapter-cli-capability-matrix.md`. The final shared-scope
@@ -90,7 +107,8 @@ passes an isolated forced-stop test with baseline data and subsequent writes
 verified. Process-crash and fail-closed CLI regressions accompany the correction.
 The [restart investigation](validation/v0.20-qa-database-restart-triage.md) records
 the four approved interruptions, exact artifacts, comparison limits and raw
-evidence preservation. #560 stays open through independent review/integration;
+evidence preservation. #560 stays open for integrated candidate/canary validation
+after completed independent review and PR CI;
 the original incident's precise cause and broader platform coverage are not
 declared solved. No automatic repair or release waiver was added.
 CLI evidence does not close interactive gates.
@@ -109,8 +127,8 @@ the disposable VM with the correction. The host was used only to compile the
 test bundle. The refreshed same-source signed app/service/CLI on `45552e95` also
 passes isolated-database inventory, refresh, Plan preview and integrity checks.
 The owner passed its pause/resume, delayed-clear and Return/Command-F recheck.
-Exact artifact hashes are in the GUI checklist. Current-head CI, independent
-review and the explicit account/platform limitations remain separate gates.
+Exact artifact hashes are in the GUI checklist. PR #558's CI and independent
+review are complete; the explicit account/platform limitations remain open.
 
 Library columns now share width compression when the Inspector opens, preserving
 the trailing Install control and restoring preferred column widths when space

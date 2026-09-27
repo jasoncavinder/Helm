@@ -720,6 +720,13 @@ Exit Criteria:
 
 ## 0.20.x — Core Workflow & Information Architecture Redesign (rc)
 
+Current release-closeout authority:
+[v0.20 release readiness](validation/v0.20-release-readiness.md). PRs #557/#558
+are merged with passing checks; bounded adapter evidence is not a blanket
+certification pass. The pre-RC checklist includes the newly requested one-time
+upgrade introduction (#561), production Cargo/rustup follow-ups (#562-#564),
+and the remaining functional, participant and platform gates below.
+
 - PR #534 source `2c8726a0` implements the Environment Brief responsive-header accessibility correction and passes responsive/all-locale regressions plus the 338-test arm64 UI gate. Its 2026-08-25 owner artifact lacks a retained exact source revision, tracked-clean tree, or source-blob equivalence mapping, so those observations remain bounded unattributed historical evidence rather than closure evidence.
 - PR #535 code source `410abbf9` composes the separate Course Indicator's label-before-percentage announcement with an explicit Helm-selected locale and passes the 339-test arm64 UI gate. Its retained follow-up owner artifact was assembled from objects compiled before `4b465342` was committed, so matching hashes and plausibly equivalent inputs remain bounded pre-commit historical evidence.
 - On 2026-08-26, one isolated arm64 Debug artifact built from tracked-clean merged `dev` source `86f4ef23db5081cfce6c595f7d088e1f323a1023` and tree `0597de3a7817347eb5ce3fd7b6dabc570c88141c` passed 339 Xcode tests with 0 failures and the complete ordinary-wide/Debug-forced-vertical owner matrix. The executable SHA-256 was `3dd0cf112f0c2703974d2d3dded7bf44e08c5b491e5cd6634f2b00e14696a83f`; `Helm.debug.dylib` was `7b210e581e9491475c04d723c4acd9b7411be13be26bfa0c92a2b992c496c6d8`. VoiceOver exposed the title in Headings with matching focus geometry and the separate `Software sources, 50%` element; Full Keyboard Access traversed symmetrically in both directions; and both layouts were unclipped. This closes Issue #388 and the combined Task 7 accessibility item. It is owner QA, not participant validation, and does not approve the separate production first-run route switch.
@@ -739,6 +746,12 @@ Goal:
 - Task 7 implementation projects the canonical brief/session/plan/action/receipt chain through the shipping first-run host behind paired Debug-only gates. The local sequence enforces brief -> reviewed plan -> verified progress -> Action Receipt, copies only aggregate strict-summary fields, presents localized unavailable truth for invalid paired-preview data, and neither persists onboarding completion nor starts live work. Focused arm64 contract and locale-parity evidence plus the bounded owner canonical-flow, summary-redaction, and relaunch checks pass on app source `bfbea8c6`; exact-source owner evidence on `e87d30d3` closes direct Brief, Plan, and Receipt dismissal, Light/Dark, scoped VoiceOver stage focus/order/roles, detailed recommendation/progress/receipt/action-state semantics, copy-success announcement, live localization, representative +40% expansion, and selected missing-corpus unavailability. The tracked-clean `86f4ef23` matrix closes the remaining Environment Brief heading-rotor, focus-geometry, and bidirectional Full Keyboard Access gate tracked in Issue #388. The moderated participant checkpoint, whole-workflow cross-cutting accessibility pass, and separate production first-run route decision remain open.
 - Task 1's automated evidence at this checkpoint is bounded to provider/projection/policy/request-state unit coverage and a successful full app-target build. Production overview/navigation wiring and SwiftUI keyboard/VoiceOver focus transfer have attributable current-host owner evidence on `3de57a81` rather than automated production-integration coverage.
 - Continue Project WOW through personalized plan preview and one supported safe, verified improvement.
+- Present the new first-run value experience once on upgrade from pre-v0.20,
+  including previously onboarded users, without resetting their preferences,
+  data or consent. Use a versioned acknowledgment rather than replaying on every
+  release. Production activation and signed upgrade-path validation are tracked
+  in [#561](https://github.com/jasoncavinder/Helm/issues/561) and the
+  [first-run contract](architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md#12-v020-upgrade-entry-and-acknowledgment).
 - Deliver true direct updating for eligible third-party Sparkle apps through a dedicated, uniquely identified, Developer ID-signed and notarized external-updater boundary (or an equivalently reviewed architecture) that preserves Helm's app sandbox, accepts only structured validated requests, and fails safely to Open App when compatibility cannot be established.
 - Add `uv` as a manager for globally installed Python tools, with the bounded scope and pre-RC certification requirements below.
 
@@ -749,6 +762,9 @@ Exit Criteria:
 - Each release-critical domain covers loading, success, empty, partial, failure, offline, blocked, cancellation, and recovery states.
 - Dashboard remains responsive and preserves selection/context while tasks and snapshot updates arrive.
 - Presentation changes do not move business or orchestration logic out of service/core boundaries.
+- Fresh-install and pre-v0.20 upgrade first-run paths pass on the signed candidate;
+  acknowledged RC-to-stable/patch/relaunch paths do not replay the introduction,
+  and existing preferences, data and consent survive unchanged.
 - Signed installed-candidate QA proves download, installation, relaunch, version verification, cancellation/failure recovery, and unsupported-app fallback across representative third-party Sparkle apps and framework versions without weakening Helm's sandbox or claiming completion before the target version is observed.
 
 ### uv Global-Tool Manager

@@ -1,5 +1,26 @@
 # Next Steps
 
+## Immediate v0.20 Closeout
+
+Use [v0.20 release readiness](validation/v0.20-release-readiness.md) as the current
+ordered checklist, superseding older per-PR pending instructions below. PRs
+#557/#558 are reviewed and merged with passing head checks. Do not repeat their
+accepted owner checks without a relevant change.
+
+1. Complete the newly requested upgrade-first-run production entry and versioned
+   acknowledgment (#561); preserve settings/data/consent and keep synthetic
+   research flows out of the shipping path.
+2. Resolve the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
+   The [read-only investigation](validation/v0.19.1-rust-task-triage.md) separates
+   toolchain readiness, DNS failure and dependency compilation; none is proven
+   fixed by current dev. Do not modify the owner's Rust installation to clear
+   historical failures.
+3. Finish remaining planned runtime work (direct third-party Sparkle updating,
+   insertion-placeholder reordering), exact certification/issue dispositions,
+   participant and cross-workflow accessibility gates from the checklist.
+4. Only then freeze and prepare v0.20.0-rc.1 through the protected release flow,
+   final integrated VM/CI gates and explicit release-mutation approval.
+
 All future local development and QA testing belongs in the designated VM, with
 automated CI remaining on isolated runners. Preserve the owner's host production
 Helm without closing or interrupting it. Build preparation and static checks may
@@ -11,17 +32,17 @@ The final supplied VM GUI recheck now passes on same-source signed UI/service/CL
 change. Preserve the 371-test VM Swift pass and the integrated read-only smoke
 record in `docs/validation/v0.20-adapter-gui-checklist.md`; do not ask the owner to
 repeat completed checks absent a relevant change. The owner reviewed and merged
-#557; #558 now includes that `dev` merge and the accepted Yarn review correction.
-Complete current-head CI and review of its search-test synchronization follow-up
-before owner merge. The delayed-observer regression is red-before/green-after;
+#557/#558, including the accepted Yarn correction and search-test synchronization
+follow-up; their head CI passed. The delayed-observer regression is
+red-before/green-after;
 six search tests pass 20 consecutive VM runs and 43 adjacent tests pass. This is
 not all-platform certification:
 account/OS/no-candidate limits, genuinely CLT-free runtime evidence, pnpm 11+
-mutation support (#559), and #560 review/integration remain explicit. Do not close
-#500/#526 or waive release gates based only on the supplied VM's passing checks.
+mutation support (#559), and #560 candidate/canary validation remain explicit.
+Do not close #500/#526 or waive release gates based only on the supplied VM's
+passing checks.
 
-Keep #558 unmerged until its remaining review/CI gates pass. Preserve the merged
-#557 CLI persistence correction and the
+Preserve the merged #557/#558 corrections, including CLI persistence and the
 #556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
 the bounded offline CLI lifecycle, reinstall and repeated loopback authenticated
 cancellation checks; retain their exact scope while finishing the remaining gates.
@@ -67,13 +88,13 @@ Preserve and investigate the disposable QA database corruption observed after
 the forced host restart under #560; cache reconstruction is not a product
 durability fix. The original and a hash-verified local copy are retained; do not
 remove the VM evidence or silently waive this unresolved risk for release.
-Review the narrow WAL/NORMAL plus macOS full-flush correction and its automated
-regressions. Two isolated forced stops reproduce the old-policy failure; the
-isolated candidate preserves integrity/data and accepts new writes. The exact
+Preserve the reviewed and merged WAL/NORMAL plus macOS full-flush correction and
+its automated regressions. Two isolated forced stops reproduce the old-policy
+failure; the isolated candidate preserves integrity/data and accepts new writes. The exact
 four-interruption record and limitations are in
 `docs/validation/v0.20-qa-database-restart-triage.md`. Keep #560 open through
-independent review and integrated CI/canary validation rather than claiming a
-universal power-loss guarantee. No further forced VM interruptions are authorized
+integrated candidate/canary validation (independent review and PR CI passed)
+rather than claiming a universal power-loss guarantee. No further forced VM interruptions are authorized
 by the completed four-test approval.
 Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
 applicable cells rather than treating detection-only features as missing work.
@@ -95,7 +116,7 @@ v0.20.x core workflow implementation and v0.19.1 stable monitoring
 ```
 
 Focus:
-- continue the disposable-VM adapter campaign in `docs/validation/v0.20-adapter-vm-family-results.md`: uv endpoint lifecycles and the documented manager-family fixes pass their bounded scenarios; #557 is merged and #558 awaits current-head CI and final owner review/merge. Preserve passing durable cross-process task reservations, controlled Homebrew formula/cask upgrades, the full search sweep and the completed bounded owner GUI checklist. Investigate the preserved QA database corruption and disposition genuinely CLT-free/platform evidence, pnpm 12 compatibility (#559) and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
+- close out the disposable-VM adapter campaign using `docs/validation/v0.20-release-readiness.md` and `docs/validation/v0.20-adapter-vm-family-results.md`: #557/#558 are reviewed and merged, with passing bounded uv/manager-family scenarios and CI. Preserve accepted CLI/GUI evidence while completing genuinely CLT-free/platform dispositions, pnpm 11+ compatibility (#559), database candidate/canary validation (#560), and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
 - retain the exact-pinned uv PEP 440 matcher and its prerelease/epoch/postrelease, zero-padding, and Requires-Python regressions when integrating candidate discovery; dependency upgrades require explicit review, and matching candidates still need source-aware resolution
 - complete final synchronized-head CI and owner merge for the v0.20 Dashboard Add manager PR #547, preserving `docs/validation/v0.20-add-manager-dashboard.md`: source `3876f7c0` passed owner navigation/cancellation, scroll/filter handoff, Cargo/Homebrew choices, toolbar, appearance, keyboard/VoiceOver, and offline-safety checks; the corrected installation-panel language recheck passed on signed source `0548920c`, which also passed independent code review without findings. The `dev` synchronization adds only the merged website security lockfile update, not app changes. Do not reopen accepted presentation checks absent a runtime change. Keep actual installation/failure/cancellation/recovery evidence in an isolated environment and the all-manager certification pass (#463/#500); do not install managers on the owner's Mac as an automated test
 - preserve the 2026-09-21 owner-confirmed live Sparkle Plan/confirmation evidence on source `edb4270b`: Arc and iTerm2 were interactive-only, the review reported 101 selected versus 99 automatic updates, and cancellation did not execute the reviewed plan. Keep the exact provenance and setup-incident limits in the readiness record; this supersedes the targeted Sparkle-presentation gate mentioned below, not vendor-installation or participant validation. Complete protected arm64/macOS 13.0-target CI on the readiness PR, retaining the distinction between deployment-target compatibility and actual Ventura runtime coverage; then proceed to the remaining moderated and production-route decisions without reopening completed owner matrices
