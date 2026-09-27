@@ -62,7 +62,9 @@ is not a crash-recovery pass. CLI evidence does not close interactive gates.
 Dashboard search no longer treats the native field's idle action as accepting a
 result. Delegate-driven live filtering remains active; Return or an explicit
 result action is required to move to Library and transfer focus. Native search
-bridge regression coverage is included; signed-VM owner revalidation is pending.
+bridge regression coverage is included; the owner passed the signed-VM
+Dashboard/Library pause-resume, explicit acceptance, Command-F and Escape checks
+on UI source `b3a50416` with the unchanged certified cask backend.
 
 A repeated live uv cancellation check exposed duplicate CLI coordinator
 submission from processing temporary request files before atomic publication.
