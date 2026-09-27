@@ -1448,8 +1448,7 @@ private extension AppDelegate {
         }
 
         guard let window = controlCenterWindowController?.window else { return }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        HelmDashboardWindowPresentationPolicy.present(window)
         core.setInteractiveSurfaceVisibility(popoverVisible: false, controlCenterVisible: true)
     }
 

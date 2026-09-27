@@ -11,6 +11,31 @@ enum HelmWindowChromePolicy {
     static let titleVisibility: NSWindow.TitleVisibility = .hidden
 }
 
+enum HelmDashboardWindowPresentationPolicy {
+    static func collectionBehavior(
+        preserving existing: NSWindow.CollectionBehavior,
+        isFullScreen: Bool
+    ) -> NSWindow.CollectionBehavior {
+        // An already full-screen Dashboard owns its Space; do not move that Space.
+        guard !isFullScreen else { return existing }
+        return existing.subtracting(.canJoinAllSpaces).union(.moveToActiveSpace)
+    }
+
+    static func present(
+        _ window: NSWindow,
+        orderFront: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) },
+        activate: () -> Void = { NSApp.activate(ignoringOtherApps: true) }
+    ) {
+        // Apply before either ordering or activation can return to a retained old Space.
+        window.collectionBehavior = collectionBehavior(
+            preserving: window.collectionBehavior,
+            isFullScreen: window.styleMask.contains(.fullScreen)
+        )
+        orderFront(window)
+        activate()
+    }
+}
+
 enum HelmPrimaryWindowTitlePolicy {
     static func apply(
         dashboardTitle: String,
