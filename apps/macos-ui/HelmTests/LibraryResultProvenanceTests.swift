@@ -2,6 +2,84 @@ import Foundation
 import XCTest
 
 final class LibraryResultProvenanceTests: XCTestCase {
+    func testRetryUsesFailedTaskBindingAfterPreviewRefresh() {
+        for manager in ["cargo", "uv"] {
+            let versionKey = manager == "cargo" ? "cargo_candidate_version" : "uv_candidate_version"
+            var submittedArguments = [versionKey: "1.0.0"]
+            var refreshedArguments = [versionKey: "2.0.0"]
+            if manager == "uv" {
+                submittedArguments["uv_package_identifier"] = "uv-tool:old-store:tool"
+                refreshedArguments["uv_package_identifier"] = "uv-tool:new-store:tool"
+            }
+            let refreshed = UpgradePreviewPlanner.PlanStep(
+                id: "\(manager):tool", orderIndex: 0, managerId: manager,
+                authority: "language", action: "upgrade", packageName: "tool",
+                reasonLabelKey: "service.task.label.upgrade.package",
+                reasonLabelArgs: refreshedArguments, status: "queued"
+            )
+            let failed = UpgradePlanTaskProjection(
+                stepId: refreshed.id, taskId: 1, status: "failed", managerId: manager,
+                labelKey: refreshed.reasonLabelKey, labelArgs: submittedArguments
+            )
+            let retry = ReviewedUpgradeRequestProjection.resolveRetry(
+                stepId: refreshed.id, managerId: refreshed.managerId, task: failed
+            )
+            XCTAssertEqual(retry?.version, "1.0.0")
+            XCTAssertEqual(retry?.targetName, submittedArguments["uv_package_identifier"])
+            XCTAssertNotEqual(retry?.version, refreshed.reasonLabelArgs[versionKey])
+            XCTAssertNil(ReviewedUpgradeRequestProjection.resolveRetry(
+                stepId: refreshed.id, managerId: manager, task: nil
+            ))
+            let legacy = UpgradePlanTaskProjection(
+                stepId: refreshed.id, taskId: 2, status: "failed", managerId: manager,
+                labelKey: refreshed.reasonLabelKey, labelArgs: nil
+            )
+            XCTAssertNil(ReviewedUpgradeRequestProjection.resolveRetry(
+                stepId: refreshed.id, managerId: manager, task: legacy
+            ))
+            XCTAssertNil(ReviewedUpgradeRequestProjection.resolveRetry(
+                stepId: "\(manager):another-tool", managerId: manager, task: failed
+            ))
+            XCTAssertNil(ReviewedUpgradeRequestProjection.resolveRetry(
+                stepId: refreshed.id, managerId: manager == "cargo" ? "uv" : "cargo", task: failed
+            ))
+        }
+    }
+
+    func testCargoUpgradeUsesCandidateWithoutChangingRemovalVersion() {
+        let package = PackageItem(id: "cargo:sd", name: "sd", version: "0.7.6",
+                                  latestVersion: "1.0.0", managerId: "cargo", manager: "Cargo")
+        XCTAssertEqual(package.upgradeMutationVersion, "1.0.0")
+        XCTAssertNil(package.mutationVersion)
+    }
+
+    func testReviewedUpgradeRetryRetainsCargoAndUvBindings() {
+        XCTAssertEqual(
+            ReviewedUpgradeRequestProjection.resolve(
+                managerId: "cargo", arguments: ["cargo_candidate_version": "1.0.0"]
+            ),
+            ReviewedUpgradeRequestProjection(targetName: nil, version: "1.0.0")
+        )
+        XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(managerId: "cargo", arguments: [:]))
+        XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(
+            managerId: "cargo", arguments: ["cargo_candidate_version": " "]
+        ))
+        XCTAssertEqual(
+            ReviewedUpgradeRequestProjection.resolve(
+                managerId: "uv",
+                arguments: ["uv_candidate_version": "2.0", "uv_package_identifier": "uv-tool:store:ruff"]
+            ),
+            ReviewedUpgradeRequestProjection(targetName: "uv-tool:store:ruff", version: "2.0")
+        )
+        XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(
+            managerId: "uv", arguments: ["uv_candidate_version": "2.0"]
+        ))
+        XCTAssertEqual(
+            ReviewedUpgradeRequestProjection.resolve(managerId: "npm", arguments: [:]),
+            ReviewedUpgradeRequestProjection(targetName: nil, version: nil)
+        )
+    }
+
     func testUvMutationPreservesStoreIdentityAndUpgradeCandidateWithoutChangingRemovalVersion() {
         let package = PackageItem(id: "uv:ruff", name: "ruff",
                                   packageIdentifier: "uv-tool:store:ruff", version: "1.0",

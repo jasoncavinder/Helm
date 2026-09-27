@@ -6,6 +6,8 @@ It reflects reality, not intention.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
+PRs #570/#571 are also reviewed and merged; their Cargo persistence and
+authority-concurrency regressions are retained in the plan-binding follow-up.
 The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
@@ -43,9 +45,19 @@ version or relying on a fresh registry query. Its VM contracts and real `sd`
 CLI lifecycle pass. Verified targeted upgrades also reconcile durable inventory
 without a cached outdated row, including already-current no-ops; unrelated
 package identities are preserved. An explicit intermediate version retains any
-newer cached candidate with the verified installed baseline. General dependency
-resolution is unchanged: reviewed Plan
-binding, exact source/scope/receipt-feature preservation and lockfile handling
+newer cached candidate with the verified installed baseline.
+The [plan-binding follow-up](validation/v0.20-cargo-plan-binding.md)
+carries cached candidates through reviewed GUI workflows, legacy bulk upgrades
+and foreground/background CLI plans, and honors explicit direct FFI versions.
+Individual GUI Cargo upgrades and failed-step retries also retain candidate
+versions; uv retries preserve their existing scope/version binding. Missing
+reviewed retry metadata fails closed. Retry bindings come from the failed task's
+submitted metadata, not a refreshed preview; unavailable older/service-restart
+metadata requires a new review. Unsigned UI/test compilation and 64
+focused/adjacent Swift tests in the VM pass, without claiming signed GUI QA.
+Changed reviewed candidates require review again; newer installed versions cannot
+be downgraded by an old target. General dependency resolution is unchanged:
+exact source/scope/receipt-feature preservation and lockfile handling
 still need work before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;

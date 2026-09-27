@@ -459,6 +459,19 @@ extension HelmCore {
     }
 
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {
+        let submittedTask = upgradePlanTaskProjectionByStepId[step.id]
+        guard let target = ReviewedUpgradeRequestProjection.resolveRetry(
+            stepId: step.id, managerId: step.managerId, task: submittedTask
+        ) else {
+            recordLastError(
+                source: "core.actions",
+                action: "retryUpgradePlanStep.missing_reviewed_target",
+                managerId: step.managerId,
+                taskType: "upgrade"
+            )
+            completion?(false)
+            return
+        }
         guard let service = service() else {
             logger.error("retryUpgradePlanStep(\(step.id)) failed: service unavailable")
             recordLastError(
@@ -481,8 +494,8 @@ extension HelmCore {
             service.upgradePackage(
                 managerId: step.managerId,
                 packageName: step.packageName,
-                packageTargetName: nil,
-                version: nil
+                packageTargetName: target.targetName,
+                version: target.version
             ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
             DispatchQueue.main.async {
@@ -506,7 +519,8 @@ extension HelmCore {
                     taskId: UInt64(taskId),
                     status: "queued",
                     managerId: step.managerId,
-                    labelKey: step.reasonLabelKey
+                    labelKey: step.reasonLabelKey,
+                    labelArgs: submittedTask?.labelArgs
                 )
                 self.rebuildUpgradePlanFailureGroups()
                 completion?(true)

@@ -682,6 +682,7 @@ Phase 2:
 - Current delivered slice:
   - command-scoped help across top-level and nested command namespaces (`helm <command> help`, `helm <command> <subcommand> help`, and `helm help <command> [subcommand]`)
   - `updates preview` and `updates run --yes` command surface for cached-snapshot plan/run flows (`--include-pinned`, `--allow-os-updates`, `--manager <id>`)
+  - Cargo plan steps expose an additive `candidateVersion` field in preview JSON (and `-> <version>` in text); foreground/detached workflows retain the candidate selected from their own starting snapshot. Separate preview/run commands do not persist review consent. A newer native installed version rejects an older Cargo upgrade target; `packages upgrade` remains unversioned.
   - `packages install|uninstall|upgrade|pin|unpin` with explicit manager targeting (`--manager` or `name@manager`)
   - `packages keg-policy list|get|set|reset` for per-package Homebrew keg-policy overrides
   - `packages show` ambiguity-safe manager resolution behavior

@@ -124,7 +124,7 @@ struct PackageItem: Identifiable {
     }
 
     var upgradeMutationVersion: String? {
-        if managerId.lowercased() == "uv" {
+        if ["uv", "cargo"].contains(managerId.lowercased()) {
             return PackageIdentity.normalizedKnownVersion(latestVersion)
         }
         return mutationVersion

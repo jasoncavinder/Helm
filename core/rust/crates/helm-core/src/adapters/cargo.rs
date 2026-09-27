@@ -243,13 +243,26 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     targets
                 };
                 // Validate every bulk target before starting any package mutation.
-                for (name, _, version) in &targets {
+                for (name, before, version) in &targets {
                     crate::adapters::validate_package_identifier(
                         ManagerId::Cargo,
                         ManagerAction::Upgrade,
                         name,
                     )?;
                     exact_cargo_version(version, ManagerAction::Upgrade)?;
+                    let installed_version = semver::Version::parse(before)
+                        .map_err(|_| parse_error("invalid installed Cargo version"))?;
+                    let candidate_version = semver::Version::parse(version)
+                        .map_err(|_| parse_error("invalid candidate Cargo version"))?;
+                    if candidate_version.cmp_precedence(&installed_version).is_lt() {
+                        return Err(cargo_mutation_error(
+                            ManagerAction::Upgrade,
+                            CoreErrorKind::InvalidInput,
+                            format!(
+                                "Cargo package '{name}' is already newer than target {version}; refresh and review again"
+                            ),
+                        ));
+                    }
                 }
                 let mut observed_after = None;
                 for (name, before, version) in &targets {

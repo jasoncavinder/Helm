@@ -6,6 +6,8 @@ Use [v0.20 release readiness](validation/v0.20-release-readiness.md) as the curr
 ordered checklist, superseding older per-PR pending instructions below. PRs
 #557/#558 and #568/#569 are reviewed and merged with passing head checks. Do not repeat their
 accepted owner checks without a relevant change.
+PRs #570/#571 are also reviewed and merged. The candidate plan-binding follow-up
+retains their verified-result persistence and bounded authority-overlap coverage.
 
 1. Complete upgrade-first-run production entry (#561), using the implemented
    [shared acknowledgment foundation](validation/v0.20-first-run-acknowledgment.md).
@@ -31,8 +33,12 @@ accepted owner checks without a relevant change.
    now pins explicit/task-start candidates and verifies observed installed versions;
    its real CLI lifecycle passes. Preserve verified upgrade/no-op persistence even
    without cached outdated data, and keep a newer cached candidate visible after
-   an explicit intermediate upgrade. Finish reviewed Plan/source/scope/receipt-feature
-   binding, explicit absent/stale-lock handling and full receipt reconciliation;
+   an explicit intermediate upgrade. The [candidate plan binding](validation/v0.20-cargo-plan-binding.md)
+   now preserves GUI-reviewed and CLI workflow versions and rejects stale
+   downgrades. Preserve failed-task candidate/scope bindings across preview
+   refreshes; require a new review when original retry metadata is unavailable.
+   Finish source/scope/receipt-feature binding, explicit
+   absent/stale-lock handling and full receipt reconciliation;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,

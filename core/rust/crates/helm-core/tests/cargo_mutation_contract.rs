@@ -146,6 +146,30 @@ fn explicit_and_resolved_upgrades_bind_one_candidate_and_report_observed_version
 }
 
 #[test]
+fn stale_candidates_cannot_downgrade_newer_installed_versions() {
+    for (installed, candidate) in [
+        ("0.25.0", "0.24.0"),
+        ("0.25.0", "0.25.0-rc.1"),
+        ("0.25.0-rc.2", "0.25.0-rc.1"),
+    ] {
+        let before = format!("bat v{installed}:\n    bat\n");
+        let after = format!("bat v{candidate}:\n    bat\n");
+        for explicit in [true, false] {
+            let mut source = Source::new(&[&before, &before, &after]);
+            source.outdated = format!(
+                r#"[{{"name":"bat","installed_version":"{installed}","candidate_version":"{candidate}"}}]"#
+            );
+            let error = CargoAdapter::new(source.clone())
+                .execute(upgrade(explicit.then_some(candidate)))
+                .unwrap_err();
+            assert_eq!(error.kind, CoreErrorKind::InvalidInput);
+            assert!(error.message.contains("newer"));
+            assert!(source.mutations.lock().unwrap().is_empty());
+        }
+    }
+}
+
+#[test]
 fn missing_wrong_ambiguous_malformed_and_source_annotated_results_fail_verification() {
     for observed in [
         "",

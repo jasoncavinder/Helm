@@ -3657,7 +3657,7 @@ struct UpgradeAllTargets {
     npm: Vec<String>,
     pnpm: Vec<String>,
     yarn: Vec<String>,
-    cargo: Vec<String>,
+    cargo: Vec<(String, String)>,
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
@@ -3754,6 +3754,34 @@ fn upgrade_task_label_for(
         upgrade_reason_label_for(manager, package_name, cleanup_old_kegs);
     label_args.push(("plan_step_id", upgrade_plan_step_id(manager, package_name)));
     (label_key, label_args)
+}
+
+// Retry metadata must describe the submitted request, not a later preview.
+fn upgrade_request_binding_args(request: &AdapterRequest) -> Vec<(&'static str, String)> {
+    let AdapterRequest::Upgrade(request) = request else {
+        return Vec::new();
+    };
+    let Some(package) = &request.package else {
+        return Vec::new();
+    };
+    let mut args = Vec::new();
+    match package.manager {
+        ManagerId::Cargo => {
+            if let Some(version) = &request.version {
+                args.push(("cargo_candidate_version", version.clone()));
+            }
+        }
+        ManagerId::Uv => {
+            if let Some(version) = &request.version {
+                args.push(("uv_candidate_version", version.clone()));
+            }
+            if let Some(target) = &request.target_name {
+                args.push(("uv_package_identifier", target.clone()));
+            }
+        }
+        _ => {}
+    }
+    args
 }
 
 fn push_upgrade_plan_step(
@@ -3875,7 +3903,10 @@ fn collect_upgrade_all_targets(
             }
             ManagerId::Cargo => {
                 if seen_cargo.insert(package.package.name.clone()) {
-                    targets.cargo.push(package.package.name.clone());
+                    targets.cargo.push((
+                        package.package.name.clone(),
+                        package.candidate_version.clone(),
+                    ));
                 }
             }
             ManagerId::CargoBinstall => {
@@ -7809,13 +7840,14 @@ pub extern "C" fn helm_preview_upgrade_plan(
     }
 
     if state.runtime.is_manager_enabled(ManagerId::Cargo) {
-        for package_name in targets.cargo {
-            push_upgrade_plan_step(
+        for (package_name, version) in targets.cargo {
+            push_upgrade_plan_step_with_extra_reason_args(
                 &mut steps,
                 ManagerId::Cargo,
                 package_name,
                 false,
                 &mut order_index,
+                vec![("cargo_candidate_version", version)],
             );
         }
     }
@@ -8111,6 +8143,15 @@ fn upgrade_workflow_request(
             Some(step.reason_label_args.get("uv_package_identifier")?.clone()),
             Some(step.reason_label_args.get("uv_candidate_version")?.clone()),
         )
+    } else if manager == ManagerId::Cargo {
+        (
+            None,
+            Some(
+                step.reason_label_args
+                    .get("cargo_candidate_version")?
+                    .clone(),
+            ),
+        )
     } else {
         (None, None)
     };
@@ -8141,10 +8182,12 @@ async fn submit_upgrade_workflow_step(
     control: &UpgradeWorkflowControl,
 ) -> Option<(helm_core::models::TaskId, TaskPersistenceHandle)> {
     let (manager, request, cleanup_old_kegs) = upgrade_workflow_request(step)?;
+    let binding_args = upgrade_request_binding_args(&request);
     match runtime.submit_with_persistence(manager, request).await {
         Ok((task_id, persistence)) => {
-            let (label_key, label_args) =
+            let (label_key, mut label_args) =
                 upgrade_task_label_for(manager, &step.package_name, cleanup_old_kegs);
+            label_args.extend(binding_args);
             set_task_label(task_id, label_key, &label_args);
             if !control.admit_task(task_id) {
                 let _ = runtime.cancel(task_id, CancellationMode::Immediate).await;
@@ -8680,19 +8723,21 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
         }
 
         if runtime.is_manager_enabled(ManagerId::Cargo) {
-            for package_name in targets.cargo {
+            for (package_name, version) in targets.cargo {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: ManagerId::Cargo,
                         name: package_name.clone(),
                     }),
                     target_name: None,
-                    version: None,
+                    version: Some(version),
                 });
+                let binding_args = upgrade_request_binding_args(&request);
                 match runtime.submit(ManagerId::Cargo, request).await {
                     Ok(task_id) => {
-                        let (label_key, label_args) =
+                        let (label_key, mut label_args) =
                             upgrade_task_label_for(ManagerId::Cargo, &package_name, false);
+                        label_args.extend(binding_args);
                         set_task_label(task_id, label_key, &label_args);
                     }
                     Err(error) => {
@@ -9099,7 +9144,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
                     name: package_name.clone(),
                 }),
                 target_name: package_target_name.clone(),
-                version: None,
+                version: version.clone(),
             }),
             Some("service.task.label.upgrade.package"),
             vec![
@@ -9295,6 +9340,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
         _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
     };
     let mut label_args = label_args;
+    label_args.extend(upgrade_request_binding_args(&request));
     if label_key.is_some() {
         label_args.push((
             "plan_step_id",
@@ -13688,6 +13734,7 @@ mod tests {
             outdated_pkg(ManagerId::Rustup, "stable-x86_64-apple-darwin", false),
             outdated_pkg(ManagerId::SoftwareUpdate, "macos", false),
             outdated_pkg(ManagerId::Uv, "ruff", false),
+            outdated_pkg(ManagerId::Cargo, "sd", false),
         ];
         let targets = collect_upgrade_all_targets(&outdated, true);
         assert_eq!(targets.asdf, vec!["python".to_string()]);
@@ -13700,6 +13747,34 @@ mod tests {
         );
         assert!(targets.softwareupdate_outdated);
         assert_eq!(targets.uv, vec!["ruff".to_string()]);
+        assert_eq!(targets.cargo, vec![("sd".into(), "1.1.0".into())]);
+    }
+
+    #[test]
+    fn cargo_plan_preserves_reviewed_version_and_rejects_drift() {
+        let mut steps = Vec::new();
+        let mut order = 0;
+        super::push_upgrade_plan_step_with_extra_reason_args(
+            &mut steps,
+            ManagerId::Cargo,
+            "sd".into(),
+            false,
+            &mut order,
+            vec![("cargo_candidate_version", "1.0.0".into())],
+        );
+        let (_, request, _) = super::upgrade_workflow_request(&steps[0]).unwrap();
+        let AdapterRequest::Upgrade(request) = request else {
+            panic!("upgrade")
+        };
+        assert_eq!(request.version.as_deref(), Some("1.0.0"));
+        assert_eq!(request.target_name, None);
+        let mut changed = steps.clone();
+        changed[0]
+            .reason_label_args
+            .insert("cargo_candidate_version".into(), "1.1.0".into());
+        assert!(super::retain_reviewed_upgrade_workflow_steps(&mut changed, &steps).is_err());
+        steps[0].reason_label_args.remove("cargo_candidate_version");
+        assert!(super::upgrade_workflow_request(&steps[0]).is_none());
     }
 
     #[test]
@@ -13723,6 +13798,13 @@ mod tests {
         };
         assert_eq!(request.version.as_deref(), Some("2.0"));
         assert_eq!(request.target_name.as_deref(), Some("uv-tool:scope:ruff"));
+        assert_eq!(
+            super::upgrade_request_binding_args(&AdapterRequest::Upgrade(request)),
+            vec![
+                ("uv_candidate_version", "2.0".into()),
+                ("uv_package_identifier", "uv-tool:scope:ruff".into()),
+            ]
+        );
         let mut changed = steps.clone();
         changed[0]
             .reason_label_args
@@ -13730,6 +13812,206 @@ mod tests {
         assert!(super::retain_reviewed_upgrade_workflow_steps(&mut changed, &steps).is_err());
         steps[0].reason_label_args.remove("uv_package_identifier");
         assert!(super::upgrade_workflow_request(&steps[0]).is_none());
+    }
+
+    #[test]
+    fn cargo_ffi_preview_and_submission_preserve_candidate_version() {
+        const CHILD_ENV: &str = "HELM_TEST_CARGO_PLAN_BINDING_CHILD";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::cargo_ffi_preview_and_submission_preserve_candidate_version",
+                    "--nocapture",
+                ])
+                .env(CHILD_ENV, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "cargo FFI child failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        struct VersionRecorder(Arc<Mutex<Vec<helm_core::adapters::UpgradeRequest>>>);
+        impl ManagerAdapter for VersionRecorder {
+            fn descriptor(&self) -> &ManagerDescriptor {
+                helm_core::registry::manager(ManagerId::Cargo).unwrap()
+            }
+            fn action_safety(&self, action: ManagerAction) -> ActionSafety {
+                action.safety()
+            }
+            fn execute(
+                &self,
+                request: AdapterRequest,
+            ) -> helm_core::adapters::AdapterResult<AdapterResponse> {
+                let AdapterRequest::Upgrade(request) = request else {
+                    panic!("upgrade request expected");
+                };
+                self.0.lock().unwrap().push(request.clone());
+                if request.version.as_deref() == Some("1.1.0") {
+                    return Err(helm_core::models::CoreError {
+                        manager: Some(ManagerId::Cargo),
+                        task: None,
+                        action: Some(ManagerAction::Upgrade),
+                        kind: helm_core::models::CoreErrorKind::ProcessFailure,
+                        message: "injected upgrade failure for retry".into(),
+                    });
+                }
+                Ok(AdapterResponse::Mutation(MutationResult {
+                    package: request.package.unwrap(),
+                    package_identifier: None,
+                    action: ManagerAction::Upgrade,
+                    before_version: Some("1.0.0".into()),
+                    after_version: request.version,
+                }))
+            }
+        }
+
+        let store = Arc::new(temp_sqlite_store("cargo-plan-binding"));
+        store.migrate_to_latest().unwrap();
+        let mut outdated = outdated_pkg(ManagerId::Cargo, "sd", false);
+        store.upsert_outdated(&[outdated.clone()]).unwrap();
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        let runtime = Arc::new(
+            AdapterRuntime::new(vec![
+                Arc::new(VersionRecorder(recorded.clone())) as Arc<dyn ManagerAdapter>
+            ])
+            .unwrap(),
+        );
+        let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
+        *super::lock_or_recover(&super::STATE, "state") = Some(super::HelmState {
+            store: store.clone(),
+            runtime: runtime.clone(),
+            rt_handle: tokio_runtime.handle().clone(),
+            _tokio_rt: tokio_runtime,
+        });
+        let preview = || {
+            super::preview_upgrade_workflow_steps(false, false, ALL_MANAGERS_UPGRADE_SCOPE, "")
+                .unwrap()
+        };
+        let reviewed = preview();
+        assert_eq!(reviewed.len(), 1);
+        assert_eq!(
+            reviewed[0]
+                .reason_label_args
+                .get("cargo_candidate_version")
+                .unwrap(),
+            "1.1.0"
+        );
+        // The reviewed snapshot must survive JSON round-tripping across Swift/XPC.
+        let reviewed: Vec<FfiUpgradePlanStep> =
+            serde_json::from_str(&serde_json::to_string(&reviewed).unwrap()).unwrap();
+        outdated.candidate_version = "1.2.0".into();
+        store.upsert_outdated(&[outdated]).unwrap();
+        assert!(retain_reviewed_upgrade_workflow_steps(&mut preview(), &reviewed).is_err());
+
+        let workflow_task = {
+            let guard = super::lock_or_recover(&super::STATE, "state");
+            guard
+                .as_ref()
+                .unwrap()
+                ._tokio_rt
+                .block_on(super::submit_upgrade_workflow_step(
+                    &runtime,
+                    &reviewed[0],
+                    &UpgradeWorkflowControl::new(),
+                ))
+                .unwrap()
+                .0
+        };
+        let wait_for = |count| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while (recorded.lock().unwrap().len() < count
+                || super::lock_or_recover(&super::TASK_LABELS, "task_labels").len() < count)
+                && Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(recorded.lock().unwrap().len(), count);
+            assert_eq!(
+                super::lock_or_recover(&super::TASK_LABELS, "task_labels").len(),
+                count
+            );
+        };
+        wait_for(1);
+        {
+            let guard = super::lock_or_recover(&super::STATE, "state");
+            let terminal = guard
+                .as_ref()
+                .unwrap()
+                ._tokio_rt
+                .block_on(runtime.wait_for_terminal(workflow_task, Some(Duration::from_secs(5))))
+                .unwrap();
+            assert!(matches!(
+                terminal.terminal_state,
+                Some(helm_core::orchestration::AdapterTaskTerminalState::Failed(
+                    _
+                ))
+            ));
+        }
+        // A later preview already has 1.2.0. Retry must use the original task's
+        // submitted binding, never that refreshed preview's reason arguments.
+        assert_eq!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .get(&workflow_task.0)
+                .unwrap()
+                .args
+                .get("cargo_candidate_version")
+                .map(String::as_str),
+            Some("1.1.0")
+        );
+        assert!(super::legacy_upgrade_all(false, false));
+        wait_for(2);
+        let manager = CString::new("cargo").unwrap();
+        let name = CString::new("sd").unwrap();
+        let version = CString::new("1.3.0").unwrap();
+        let direct_task = unsafe {
+            super::helm_upgrade_package(
+                manager.as_ptr(),
+                name.as_ptr(),
+                std::ptr::null(),
+                version.as_ptr(),
+            )
+        };
+        assert!(direct_task > 0);
+        wait_for(3);
+        assert_eq!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .get(&(direct_task as u64))
+                .unwrap()
+                .args
+                .get("cargo_candidate_version")
+                .map(String::as_str),
+            Some("1.3.0")
+        );
+        assert!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .values()
+                .any(|label| label
+                    .args
+                    .get("cargo_candidate_version")
+                    .map(String::as_str)
+                    == Some("1.2.0"))
+        );
+        let versions = recorded
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request.version.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            versions,
+            vec![
+                Some("1.1.0".into()),
+                Some("1.2.0".into()),
+                Some("1.3.0".into())
+            ]
+        );
+        super::lock_or_recover(&super::STATE, "state").take();
     }
 
     #[test]

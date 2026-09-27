@@ -509,6 +509,7 @@ struct UpgradeExecutionStep {
     pinned: bool,
     restart_required: bool,
     uv_target: Option<(String, String)>,
+    cargo_version: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -523,6 +524,8 @@ struct CliUpgradePlanStep {
     pinned: bool,
     restart_required: bool,
     cleanup_old_kegs: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidate_version: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -3467,8 +3470,17 @@ fn cmd_updates_preview(
             ""
         };
         println!(
-            "  [{}] {}:{}{}{}{}",
-            step.order_index, step.manager_id, step.package_name, pinned, restart, cleanup
+            "  [{}] {}:{}{}{}{}{}",
+            step.order_index,
+            step.manager_id,
+            step.package_name,
+            step.candidate_version
+                .as_ref()
+                .map(|version| format!(" -> {version}"))
+                .unwrap_or_default(),
+            pinned,
+            restart,
+            cleanup
         );
     }
     Ok(())
@@ -3564,14 +3576,7 @@ fn cmd_updates_run(
 
     let mut results: Vec<CliUpgradeRunStepResult> = Vec::with_capacity(steps.len());
     for step in &steps {
-        let request = AdapterRequest::Upgrade(UpgradeRequest {
-            package: Some(PackageRef {
-                manager: step.manager,
-                name: upgrade_request_name(step),
-            }),
-            target_name: step.uv_target.as_ref().map(|(target, _)| target.clone()),
-            version: step.uv_target.as_ref().map(|(_, version)| version.clone()),
-        });
+        let request = upgrade_execution_request(step);
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
         match response {
             Ok((task_id, _)) => results.push(CliUpgradeRunStepResult {
@@ -9386,14 +9391,7 @@ fn run_coordinator_workflow(
                 manager_filter,
             )?;
             let failures = count_upgrade_step_failures(&steps, |step| {
-                let request = AdapterRequest::Upgrade(UpgradeRequest {
-                    package: Some(PackageRef {
-                        manager: step.manager,
-                        name: upgrade_request_name(step),
-                    }),
-                    target_name: step.uv_target.as_ref().map(|(target, _)| target.clone()),
-                    version: step.uv_target.as_ref().map(|(_, version)| version.clone()),
-                });
+                let request = upgrade_execution_request(step);
                 tokio_runtime
                     .block_on(submit_request_wait(&runtime, step.manager, request))
                     .map(|_| ())
@@ -14823,6 +14821,21 @@ where
     failures
 }
 
+fn upgrade_execution_request(step: &UpgradeExecutionStep) -> AdapterRequest {
+    AdapterRequest::Upgrade(UpgradeRequest {
+        package: Some(PackageRef {
+            manager: step.manager,
+            name: upgrade_request_name(step),
+        }),
+        target_name: step.uv_target.as_ref().map(|(target, _)| target.clone()),
+        version: if step.manager == ManagerId::Cargo {
+            step.cargo_version.clone()
+        } else {
+            step.uv_target.as_ref().map(|(_, version)| version.clone())
+        },
+    })
+}
+
 fn serialize_upgrade_plan_steps(steps: &[UpgradeExecutionStep]) -> Vec<CliUpgradePlanStep> {
     steps
         .iter()
@@ -14837,6 +14850,7 @@ fn serialize_upgrade_plan_steps(steps: &[UpgradeExecutionStep]) -> Vec<CliUpgrad
             pinned: step.pinned,
             restart_required: step.restart_required,
             cleanup_old_kegs: step.cleanup_old_kegs,
+            candidate_version: step.cargo_version.clone(),
         })
         .collect()
 }
@@ -14904,6 +14918,8 @@ fn collect_upgrade_execution_steps(
                 cleanup_old_kegs,
                 pinned: package.pinned || pinned_keys.contains(&package_key),
                 restart_required: package.restart_required,
+                cargo_version: (manager == ManagerId::Cargo)
+                    .then(|| package.candidate_version.clone()),
                 uv_target: if manager == ManagerId::Uv {
                     Some((
                         package.package_identifier.clone().unwrap_or_default(),
@@ -16817,6 +16833,7 @@ mod tests {
                 manager: ManagerId::Npm,
                 package_name: "first".to_string(),
                 uv_target: None,
+                cargo_version: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16825,6 +16842,7 @@ mod tests {
                 manager: ManagerId::Pnpm,
                 package_name: "second".to_string(),
                 uv_target: None,
+                cargo_version: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16833,6 +16851,7 @@ mod tests {
                 manager: ManagerId::Yarn,
                 package_name: "third".to_string(),
                 uv_target: None,
+                cargo_version: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16864,6 +16883,7 @@ mod tests {
     fn upgrade_request_name_encodes_homebrew_cleanup_targets() {
         let homebrew_step = UpgradeExecutionStep {
             uv_target: None,
+            cargo_version: None,
             manager: ManagerId::HomebrewFormula,
             package_name: "wget".to_string(),
             cleanup_old_kegs: true,
@@ -16872,6 +16892,7 @@ mod tests {
         };
         let npm_step = UpgradeExecutionStep {
             uv_target: None,
+            cargo_version: None,
             manager: ManagerId::Npm,
             package_name: "eslint".to_string(),
             cleanup_old_kegs: true,
@@ -16908,6 +16929,110 @@ mod tests {
             false,
             "failed to connect to coordinator at '/tmp/helm': coordinator not ready"
         ));
+    }
+
+    #[test]
+    fn cargo_update_plan_freezes_snapshot_version_for_execution() {
+        use helm_core::adapters::{AdapterRequest, CargoAdapter, ProcessCargoSource};
+        use helm_core::execution::TokioProcessExecutor;
+        use helm_core::models::{OutdatedPackage, PackageRef};
+        use helm_core::orchestration::adapter_runtime::AdapterRuntime;
+        use helm_core::persistence::PackageStore;
+
+        let store = SqliteStore::new(temp_db_path("cargo-plan-binding"));
+        store.migrate_to_latest().unwrap();
+        store.set_manager_enabled(ManagerId::Cargo, true).unwrap();
+        let mut outdated = OutdatedPackage {
+            package: PackageRef {
+                manager: ManagerId::Cargo,
+                name: "sd".into(),
+            },
+            package_identifier: None,
+            installed_version: Some("0.7.6".into()),
+            candidate_version: "1.0.0".into(),
+            pinned: false,
+            restart_required: false,
+            runtime_state: Default::default(),
+        };
+        store.upsert_outdated(&[outdated.clone()]).unwrap();
+        // Construction only: this regression must not invoke the native package manager.
+        let runtime = AdapterRuntime::new(vec![
+            Arc::new(CargoAdapter::new(ProcessCargoSource::new(Arc::new(
+                TokioProcessExecutor,
+            )))) as Arc<dyn super::ManagerAdapter>,
+        ])
+        .unwrap();
+        let collect = || {
+            super::collect_upgrade_execution_steps(
+                &store,
+                &runtime,
+                false,
+                false,
+                Some(ManagerId::Cargo),
+            )
+            .unwrap()
+        };
+        let steps = collect();
+        assert_eq!(steps.len(), 1);
+        let preview = serde_json::to_value(super::serialize_upgrade_plan_steps(&steps)).unwrap();
+        assert_eq!(preview[0]["candidateVersion"], "1.0.0");
+        outdated.candidate_version = "1.1.0".into();
+        store.upsert_outdated(&[outdated.clone()]).unwrap();
+        let AdapterRequest::Upgrade(request) = super::upgrade_execution_request(&steps[0]) else {
+            panic!("upgrade expected");
+        };
+        assert_eq!(request.version.as_deref(), Some("1.0.0"));
+        assert_eq!(request.package.unwrap().name, "sd");
+        assert_eq!(request.target_name, None);
+        assert_eq!(collect()[0].cargo_version.as_deref(), Some("1.1.0"));
+        outdated.pinned = true;
+        store.upsert_outdated(&[outdated]).unwrap();
+        assert!(collect().is_empty());
+        assert_eq!(
+            super::collect_upgrade_execution_steps(
+                &store,
+                &runtime,
+                true,
+                false,
+                Some(ManagerId::Cargo)
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+        store.set_manager_enabled(ManagerId::Cargo, false).unwrap();
+        assert!(collect().is_empty());
+    }
+
+    #[test]
+    fn shared_upgrade_request_preserves_uv_target_and_homebrew_cleanup() {
+        use helm_core::adapters::AdapterRequest;
+        let mut step = UpgradeExecutionStep {
+            manager: ManagerId::Uv,
+            package_name: "ruff".into(),
+            cleanup_old_kegs: false,
+            pinned: false,
+            restart_required: false,
+            uv_target: Some(("uv-tool:scope:ruff".into(), "2.0".into())),
+            cargo_version: None,
+        };
+        let AdapterRequest::Upgrade(request) = super::upgrade_execution_request(&step) else {
+            panic!("upgrade expected");
+        };
+        assert_eq!(request.version.as_deref(), Some("2.0"));
+        assert_eq!(request.target_name.as_deref(), Some("uv-tool:scope:ruff"));
+        step.manager = ManagerId::HomebrewFormula;
+        step.package_name = "wget".into();
+        step.uv_target = None;
+        step.cleanup_old_kegs = true;
+        let AdapterRequest::Upgrade(request) = super::upgrade_execution_request(&step) else {
+            panic!("upgrade expected");
+        };
+        assert_eq!(request.package.unwrap().name, "wget@@helm.cleanup");
+        assert_eq!(request.version, None);
+        assert_eq!(request.target_name, None);
+        let preview = serde_json::to_value(super::serialize_upgrade_plan_steps(&[step])).unwrap();
+        assert!(preview[0].get("candidateVersion").is_none());
     }
 
     #[test]

@@ -1056,7 +1056,8 @@ extension HelmCore {
                 taskId: task.id,
                 status: task.status.lowercased(),
                 managerId: task.manager,
-                labelKey: task.labelKey
+                labelKey: task.labelKey,
+                labelArgs: task.labelArgs
             )
         }
 
