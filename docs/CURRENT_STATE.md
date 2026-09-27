@@ -6,6 +6,8 @@ It reflects reality, not intention.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
+PRs #570/#571 are also reviewed and merged; their Cargo persistence and
+authority-concurrency regressions are retained in the plan-binding follow-up.
 The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
@@ -40,7 +42,11 @@ The [Cargo mutation-verification boundary](validation/v0.20-cargo-mutation-verif
 now pins an explicit or task-start-resolved candidate and requires observed local
 inventory after install/upgrade/removal, rather than substituting an expected
 version or relying on a fresh registry query. Its VM contracts and real `sd`
-CLI lifecycle pass. The [plan-binding follow-up](validation/v0.20-cargo-plan-binding.md)
+CLI lifecycle pass. Verified targeted upgrades also reconcile durable inventory
+without a cached outdated row, including already-current no-ops; unrelated
+package identities are preserved. An explicit intermediate version retains any
+newer cached candidate with the verified installed baseline.
+The [plan-binding follow-up](validation/v0.20-cargo-plan-binding.md)
 carries cached candidates through reviewed GUI workflows, legacy bulk upgrades
 and foreground/background CLI plans, and honors explicit direct FFI versions.
 Individual GUI Cargo upgrades and failed-step retries also retain candidate

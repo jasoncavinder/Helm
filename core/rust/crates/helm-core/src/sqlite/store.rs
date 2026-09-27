@@ -737,7 +737,7 @@ WHERE manager_id = ?1
             let transaction = connection.transaction()?;
             let package_identifier_token = package_identifier.unwrap_or_default();
 
-            let outdated_entry: Option<(Option<String>, String, i64, i64, i64, i64)> = transaction
+            let mut outdated_entry: Option<(Option<String>, String, i64, i64, i64, i64)> = transaction
                 .query_row(
                     "
 SELECT installed_version, candidate_version, pinned, is_active, is_default, has_override
@@ -763,6 +763,34 @@ WHERE manager_id = ?1
                     },
                 )
                 .optional()?;
+
+            // Cargo verifies one installed version locally, including explicit
+            // upgrades and no-ops that never needed an outdated-cache entry.
+            let verified_cargo = package.manager == ManagerId::Cargo
+                && after_version.is_some()
+                && package.name != "__all__";
+            if verified_cargo && outdated_entry.is_none()
+                && let Some(observed_version) = after_version
+            {
+                let (pinned, is_active, is_default, has_override) = transaction.query_row(
+                    "
+SELECT COALESCE(MAX(pinned), 0), COALESCE(MAX(is_active), 0),
+       COALESCE(MAX(is_default), 0), COALESCE(MAX(has_override), 0)
+FROM installed_package_versions
+WHERE manager_id = ?1 AND package_name = ?2 AND package_identifier = ?3
+",
+                    params![package.manager.as_str(), package.name.as_str(), package_identifier_token],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )?;
+                outdated_entry = Some((
+                    before_version.map(str::to_owned),
+                    observed_version.to_string(),
+                    pinned,
+                    is_active,
+                    is_default,
+                    has_override,
+                ));
+            }
 
             let mut clear_outdated = package.manager != ManagerId::Asdf;
             if let Some((
@@ -804,7 +832,52 @@ ON CONFLICT(manager_id, package_name, package_identifier, installed_version) DO 
                 let prior_version_token = to_installed_version_token(
                     before_version.or(installed_version.as_deref()),
                 );
-                if prior_version_token != promoted_version_token {
+                if verified_cargo {
+                    // An explicitly requested version may still precede the
+                    // cached registry candidate. Keep that update visible with
+                    // the verified baseline, ignoring SemVer build metadata.
+                    clear_outdated = match (
+                        semver::Version::parse(promoted_version),
+                        semver::Version::parse(&candidate_version),
+                    ) {
+                        (Ok(observed), Ok(candidate)) => {
+                            !observed.cmp_precedence(&candidate).is_lt()
+                        }
+                        _ => promoted_version == candidate_version,
+                    };
+                    if !clear_outdated {
+                        transaction.execute(
+                            "
+UPDATE outdated_packages
+SET installed_version = ?4, updated_at_unix = strftime('%s', 'now')
+WHERE manager_id = ?1 AND package_name = ?2 AND package_identifier = ?3
+",
+                            params![
+                                package.manager.as_str(),
+                                package.name.as_str(),
+                                package_identifier_token,
+                                promoted_version,
+                            ],
+                        )?;
+                    }
+                    // The native single-version observation also reconciles a
+                    // stale cache after an already-current no-op.
+                    transaction.execute(
+                        "
+DELETE FROM installed_package_versions
+WHERE manager_id = ?1
+  AND package_name = ?2
+  AND package_identifier = ?3
+  AND installed_version != ?4
+",
+                        params![
+                            package.manager.as_str(),
+                            package.name.as_str(),
+                            package_identifier_token,
+                            promoted_version_token.as_str(),
+                        ],
+                    )?;
+                } else if prior_version_token != promoted_version_token {
                     transaction.execute(
                         "
 DELETE FROM installed_package_versions
