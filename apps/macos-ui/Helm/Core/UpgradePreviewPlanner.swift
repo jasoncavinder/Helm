@@ -1,5 +1,29 @@
 import Foundation
 
+struct ReviewedUpgradeRequestProjection: Equatable {
+    let targetName: String?
+    let version: String?
+
+    static func resolve(managerId: String, arguments: [String: String]) -> Self? {
+        func value(_ key: String) -> String? {
+            guard let value = arguments[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else { return nil }
+            return value
+        }
+        switch managerId.lowercased() {
+        case "cargo":
+            guard let version = value("cargo_candidate_version") else { return nil }
+            return Self(targetName: nil, version: version)
+        case "uv":
+            guard let version = value("uv_candidate_version"),
+                  let target = value("uv_package_identifier") else { return nil }
+            return Self(targetName: target, version: version)
+        default:
+            return Self(targetName: nil, version: nil)
+        }
+    }
+}
+
 enum ExternalSparkleUpdatePolicy {
     enum PrimaryAction: Equatable {
         case openApplication

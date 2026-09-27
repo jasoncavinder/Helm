@@ -43,6 +43,10 @@ version or relying on a fresh registry query. Its VM contracts and real `sd`
 CLI lifecycle pass. The [plan-binding follow-up](validation/v0.20-cargo-plan-binding.md)
 carries cached candidates through reviewed GUI workflows, legacy bulk upgrades
 and foreground/background CLI plans, and honors explicit direct FFI versions.
+Individual GUI Cargo upgrades and failed-step retries also retain candidate
+versions; uv retries preserve their existing scope/version binding. Missing
+reviewed retry metadata fails closed. Unsigned UI/test compilation and 63
+focused/adjacent Swift tests in the VM pass, without claiming signed GUI QA.
 Changed reviewed candidates require review again; newer installed versions cannot
 be downgraded by an old target. General dependency resolution is unchanged:
 exact source/scope/receipt-feature preservation and lockfile handling

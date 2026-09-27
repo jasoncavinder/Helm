@@ -2,6 +2,40 @@ import Foundation
 import XCTest
 
 final class LibraryResultProvenanceTests: XCTestCase {
+    func testCargoUpgradeUsesCandidateWithoutChangingRemovalVersion() {
+        let package = PackageItem(id: "cargo:sd", name: "sd", version: "0.7.6",
+                                  latestVersion: "1.0.0", managerId: "cargo", manager: "Cargo")
+        XCTAssertEqual(package.upgradeMutationVersion, "1.0.0")
+        XCTAssertNil(package.mutationVersion)
+    }
+
+    func testReviewedUpgradeRetryRetainsCargoAndUvBindings() {
+        XCTAssertEqual(
+            ReviewedUpgradeRequestProjection.resolve(
+                managerId: "cargo", arguments: ["cargo_candidate_version": "1.0.0"]
+            ),
+            ReviewedUpgradeRequestProjection(targetName: nil, version: "1.0.0")
+        )
+        XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(managerId: "cargo", arguments: [:]))
+        XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(
+            managerId: "cargo", arguments: ["cargo_candidate_version": " "]
+        ))
+        XCTAssertEqual(
+            ReviewedUpgradeRequestProjection.resolve(
+                managerId: "uv",
+                arguments: ["uv_candidate_version": "2.0", "uv_package_identifier": "uv-tool:store:ruff"]
+            ),
+            ReviewedUpgradeRequestProjection(targetName: "uv-tool:store:ruff", version: "2.0")
+        )
+        XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(
+            managerId: "uv", arguments: ["uv_candidate_version": "2.0"]
+        ))
+        XCTAssertEqual(
+            ReviewedUpgradeRequestProjection.resolve(managerId: "npm", arguments: [:]),
+            ReviewedUpgradeRequestProjection(targetName: nil, version: nil)
+        )
+    }
+
     func testUvMutationPreservesStoreIdentityAndUpgradeCandidateWithoutChangingRemovalVersion() {
         let package = PackageItem(id: "uv:ruff", name: "ruff",
                                   packageIdentifier: "uv-tool:store:ruff", version: "1.0",
