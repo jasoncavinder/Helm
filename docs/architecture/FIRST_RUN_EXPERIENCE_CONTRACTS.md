@@ -1,6 +1,8 @@
 # First-Run Experience Contracts
 
-Status: normative v0.18 planning contract; no runtime implementation
+Status: normative contract, extended for v0.20 upgrade entry; production setup
+activation remains pending. Debug-only research previews are not a shipping
+setup implementation.
 
 This document defines architecture, semantics, and boundaries for Helm's Project WOW first-run setup experience across GUI, CLI, and TUI presentation surfaces.
 
@@ -143,3 +145,38 @@ Only step 3 can produce `verified`. An exit code, submitted task, or saved prefe
 - The macOS shell and Project WOW prototypes use the approved Health/Updates/Packages/Activity/Sources IA, standard Settings separation, native list/table/inspector behavior, and complete appearance/input budgets.
 - The owner-run moderated study remains required. No participant result is claimed by repository artifact completion.
 - v0.19 may begin foundation work from these contracts; v0.20 workflow sign-off and v0.22 UI lock require the study thresholds and accessibility protocols to pass.
+
+## 12. v0.20 Upgrade Entry and Acknowledgment
+
+Owner-approved requirement: the new first-run value experience also appears on
+upgrade from pre-v0.20, even when the user completed legacy onboarding. This is
+the Environment Brief/Project WOW flow, not the obsolete feature walkthrough.
+Track production implementation and signed upgrade-path QA in
+[#561](https://github.com/jasoncavinder/Helm/issues/561).
+
+- Use a persisted, versioned experience identifier independent of the legacy
+  onboarding Boolean. A missing previous-app-version value must not exclude a
+  legacy profile from the new experience.
+- Fresh installs and pre-v0.20 profiles without this experience's acknowledgment
+  enter the reviewed production route. Merely having run a research preview is
+  not completion and must not create a production acknowledgment.
+- Completing the experience or explicitly choosing Use Helm Now acknowledges
+  that experience. Relaunches, later RCs, RC-to-stable and patch updates do not
+  replay an already acknowledged experience.
+- Window closure or process interruption before acknowledgment offers safe
+  continuation. Persisted in-flight work is reconciled; mutation never resumes
+  automatically. Acknowledgment is separate from action success or verification.
+- Preserve existing language, manager enablement, pins, update preferences and
+  channel, accepted terms, data, receipts and task history. Do not reset legacy
+  preferences or require legal reacceptance unless the actual terms changed.
+- Showing the introduction grants no new network, installation, shell-edit,
+  privilege or automatic-update consent. Read-only discovery stays bounded;
+  every proposed mutation retains plan review, current-state revalidation and
+  explicit consent. Existing CLI onboarding compatibility is unchanged.
+- Validate fresh install, v0.19.1 upgrade, absent legacy version metadata,
+  acknowledged RC-to-stable/patch/relaunch, interruption, offline/partial state,
+  accessibility/localization and preference preservation in isolated VM profiles.
+
+This contract does not turn on the current Debug route. Shipping activation
+requires the real production session/plan/verification path, never synthetic
+progress or receipts, and separate implementation review and candidate QA.
