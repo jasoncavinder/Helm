@@ -15,6 +15,7 @@ use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, SearchQu
 pub struct ProcessCargoSource {
     executor: Arc<dyn ProcessExecutor>,
     installation_root: Option<std::path::PathBuf>,
+    cargo_home: Option<std::path::PathBuf>,
 }
 
 impl ProcessCargoSource {
@@ -22,6 +23,7 @@ impl ProcessCargoSource {
         Self {
             executor,
             installation_root: None,
+            cargo_home: None,
         }
     }
 
@@ -33,10 +35,27 @@ impl ProcessCargoSource {
         Self {
             executor,
             installation_root: Some(root),
+            cargo_home: None,
         }
     }
 
-    fn cargo_home() -> std::path::PathBuf {
+    /// Bind both metadata/cache and installation scopes without changing process-global state.
+    pub fn with_installation_scope(
+        executor: Arc<dyn ProcessExecutor>,
+        root: std::path::PathBuf,
+        cargo_home: std::path::PathBuf,
+    ) -> Self {
+        Self {
+            executor,
+            installation_root: Some(root),
+            cargo_home: Some(cargo_home),
+        }
+    }
+
+    fn cargo_home(&self) -> std::path::PathBuf {
+        if let Some(home) = &self.cargo_home {
+            return home.clone();
+        }
         std::env::var_os("CARGO_HOME")
             .filter(|value| !value.is_empty())
             .map(std::path::PathBuf::from)
@@ -49,16 +68,19 @@ impl ProcessCargoSource {
             })
     }
 
-    fn cargo_bin_dir() -> String {
-        Self::cargo_home().join("bin").to_string_lossy().to_string()
+    fn cargo_bin_dir(&self) -> String {
+        self.cargo_home().join("bin").to_string_lossy().to_string()
     }
 
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
-        let cargo_bin = Self::cargo_bin_dir();
+        let cargo_bin = self.cargo_bin_dir();
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("{cargo_bin}:/opt/homebrew/bin:/usr/local/bin:{path}");
 
         request.command = request.command.env("PATH", new_path);
+        if let Some(home) = &self.cargo_home {
+            request.command = request.command.env("CARGO_HOME", home.to_string_lossy());
+        }
 
         if request.command.program.to_str() == Some("cargo")
             && let Some(exe) = which_executable(
@@ -84,7 +106,7 @@ impl ProcessCargoSource {
 
 impl CargoSource for ProcessCargoSource {
     fn detect(&self) -> AdapterResult<CargoDetectOutput> {
-        let cargo_bin = Self::cargo_bin_dir();
+        let cargo_bin = self.cargo_bin_dir();
 
         let executable_path = which_executable(
             self.executor.as_ref(),
@@ -151,9 +173,11 @@ impl CargoSource for ProcessCargoSource {
     }
 
     fn upgrade(&self, name: &str, version: &str) -> AdapterResult<String> {
+        use super::cargo_published_lock::{PublishedCargoLock, info_working_directory};
         use super::cargo_receipt::{CargoUpgradeReceipt, install_root, receipt_error};
-        if std::env::var_os("CARGO_HOME")
-            .is_some_and(|home| !std::path::Path::new(&home).is_absolute())
+        if self.cargo_home.is_none()
+            && std::env::var_os("CARGO_HOME")
+                .is_some_and(|home| !std::path::Path::new(&home).is_absolute())
         {
             return Err(receipt_error(
                 "Cargo home must be absolute for a verified upgrade",
@@ -173,12 +197,52 @@ impl CargoSource for ProcessCargoSource {
             .installation_root
             .clone()
             .or_else(|| std::env::var_os("CARGO_INSTALL_ROOT").map(std::path::PathBuf::from));
-        let root = install_root(&Self::cargo_home(), explicit)?;
+        let home = self.cargo_home();
+        if !home.is_absolute() || home.to_str().is_none() {
+            return Err(receipt_error("Cargo home must be absolute UTF-8"));
+        }
+        let root = install_root(&home, explicit)?;
         let receipt = CargoUpgradeReceipt::load(root, name)?;
         let mut request = self.configure_request(cargo_upgrade_request(None, name, version));
         request.command = receipt.apply(request.command);
+        request.command = request.command.env("CARGO_HOME", home.to_string_lossy());
+        if let Some(rustup) = super::cargo_published_lock::rustup_proxy(&request.command.program) {
+            // A Rustup proxy chooses by cwd. Bind the caller's selection before
+            // running metadata outside its project so both stages use one toolchain.
+            let mut selected = request.clone();
+            selected.command.program = rustup;
+            selected.command.args = vec!["show".into(), "active-toolchain".into()];
+            selected.timeout = Some(std::time::Duration::from_secs(10));
+            selected.private_output_limit = Some(16 * 1024);
+            let output = run_and_collect_stdout(self.executor.as_ref(), selected)?;
+            let toolchain = super::cargo_published_lock::active_toolchain(&output)?;
+            request.command = request.command.env("RUSTUP_TOOLCHAIN", toolchain);
+        }
+        let mut info = request.clone();
+        info.command.args = vec![
+            "info".into(),
+            "--registry".into(),
+            "crates-io".into(),
+            "--color".into(),
+            "never".into(),
+            format!("{name}@{version}"),
+        ];
+        info.command.working_dir = Some(info_working_directory()?);
+        info.timeout = Some(std::time::Duration::from_secs(120));
+        info.private_output_limit = Some(256 * 1024);
         receipt.revalidate()?;
+        run_and_collect_stdout(self.executor.as_ref(), info)?;
+        let published = PublishedCargoLock::load(self.executor.as_ref(), &home, name, version)?;
+        // Source/config and install receipt can change while the candidate downloads.
+        install_root(&home, Some(receipt.root().to_path_buf()))?;
+        receipt.revalidate()?;
+        published.revalidate()?;
         let output = run_and_collect_stdout(self.executor.as_ref(), request)?;
+        published.revalidate().map_err(|mut error| {
+            error.kind = CoreErrorKind::ProcessFailure;
+            error.message = "[cargo_published_lock_unavailable] Cargo completed, but its published metadata changed during execution; the installation may have changed and requires verification".into();
+            error
+        })?;
         receipt.verify(version)?;
         Ok(output)
     }

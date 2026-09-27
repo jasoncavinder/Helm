@@ -39,8 +39,10 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    refreshes; require a new review when original retry metadata is unavailable.
    Preserve the [execution-time native receipt guard](validation/v0.20-cargo-receipt-preservation.md)
    for crates.io upgrades and its fail-closed unsupported-source handling.
-   Finish review-time executable/root/source binding, install/reinstall policy,
-   explicit absent/stale-lock handling and remaining receipt reconciliation;
+   Preserve the [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
+   and its missing/stale-root/cache-drift rejections without unlocked fallback.
+   Finish review-time executable/root/source binding, general install/reinstall
+   policy and remaining failure/cancellation/reconciliation evidence;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,

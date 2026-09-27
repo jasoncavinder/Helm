@@ -19,6 +19,8 @@ use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 const VERSION_FIXTURE: &str = include_str!("fixtures/cargo/version.txt");
 const INSTALLED_FIXTURE: &str = include_str!("fixtures/cargo/install_list.txt");
 const SEARCH_FIXTURE: &str = include_str!("fixtures/cargo/search.txt");
+const PUBLISHED_MANIFEST: &str = "[package]\nname = 'bat'\nversion = '0.25.0'\n";
+const PUBLISHED_LOCK: &str = "version = 4\n[[package]]\nname = 'bat'\nversion = '0.25.0'\n";
 
 fn installed_fixture_with_bat_version(version: &str) -> String {
     INSTALLED_FIXTURE.replace("bat v0.24.0:", &format!("bat v{version}:"))
@@ -72,8 +74,27 @@ impl ProcessExecutor for CargoFakeExecutor {
 
         let stdout: Vec<u8> = if program.ends_with("which") {
             b"/Users/test/.cargo/bin/cargo".to_vec()
+        } else if program == "/usr/bin/tar" {
+            assert_eq!(request.private_output_limit, Some(4 * 1024 * 1024));
+            match args.last().map(String::as_str) {
+                Some("bat-0.25.0/Cargo.toml") => PUBLISHED_MANIFEST.as_bytes().to_vec(),
+                Some("bat-0.25.0/Cargo.lock") => PUBLISHED_LOCK.as_bytes().to_vec(),
+                _ => panic!("unexpected archive read: {args:?}"),
+            }
         } else if program == "cargo" || program.ends_with("/cargo") {
             match args.as_slice() {
+                [command, registry, source, color, never, spec]
+                    if command == "info"
+                        && registry == "--registry"
+                        && source == "crates-io"
+                        && color == "--color"
+                        && never == "never"
+                        && spec == "bat@0.25.0" =>
+                {
+                    assert_eq!(request.command.working_dir, Some(PathBuf::from("/")));
+                    assert!(request.private_output_limit.is_some());
+                    Vec::new()
+                }
                 [arg] if arg == "--version" => VERSION_FIXTURE.as_bytes().to_vec(),
                 [arg0, arg1] if arg0 == "install" && arg1 == "--list" => {
                     let mut installed = if self.bat_upgraded.load(Ordering::SeqCst) {
@@ -137,6 +158,7 @@ impl ProcessExecutor for CargoFakeExecutor {
                     let receipt = std::fs::read_to_string(&path).unwrap();
                     std::fs::write(path, receipt.replace("0.24.0", "0.25.0")).unwrap();
                     assert!(args.windows(2).any(|pair| pair == ["--bin", "bat"]));
+                    assert!(args.iter().any(|arg| arg == "--locked"));
                     assert!(
                         args.windows(2)
                             .any(|pair| pair == ["--registry", "crates-io"])
@@ -163,7 +185,19 @@ impl ProcessExecutor for CargoFakeExecutor {
 }
 
 fn build_runtime(executor: Arc<dyn ProcessExecutor>, root: PathBuf) -> AdapterRuntime {
-    let source = ProcessCargoSource::with_installation_root(executor, root);
+    let home = root.join("cargo-home");
+    let source_path = home.join("registry/src/index.crates.io-1949cf8c6b5b557f/bat-0.25.0");
+    let archive_path = home.join("registry/cache/index.crates.io-1949cf8c6b5b557f");
+    std::fs::create_dir_all(&source_path).unwrap();
+    std::fs::create_dir_all(&archive_path).unwrap();
+    std::fs::write(source_path.join("Cargo.toml"), PUBLISHED_MANIFEST).unwrap();
+    std::fs::write(source_path.join("Cargo.lock"), PUBLISHED_LOCK).unwrap();
+    std::fs::write(
+        archive_path.join("bat-0.25.0.crate"),
+        b"fake executor archive",
+    )
+    .unwrap();
+    let source = ProcessCargoSource::with_installation_scope(executor, root, home);
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(CargoAdapter::new(source));
     AdapterRuntime::new([adapter]).expect("runtime creation should succeed")
 }
@@ -293,16 +327,24 @@ async fn unusable_cargo_proxy_retains_inventory_and_recovers_without_toolchain_c
 #[tokio::test]
 async fn cargo_detect_list_search_and_mutate_through_orchestration() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::create_dir(root.path().join("bin")).unwrap();
-    std::fs::write(root.path().join("bin/bat"), "fixture").unwrap();
-    std::fs::write(root.path().join(".crates2.json"), serde_json::json!({"installs": {
+    seed_installed_bat(root.path());
+    let runtime = build_runtime(Arc::new(CargoFakeExecutor::new()), root.path().into());
+
+    assert_cargo_lifecycle(runtime).await;
+}
+
+fn seed_installed_bat(root: &std::path::Path) {
+    std::fs::create_dir(root.join("bin")).unwrap();
+    std::fs::write(root.join("bin/bat"), "fixture").unwrap();
+    std::fs::write(root.join(".crates2.json"), serde_json::json!({"installs": {
         "bat 0.24.0 (registry+https://github.com/rust-lang/crates.io-index)": {
             "version_req": "=0.24.0", "bins":["bat"], "features":[], "all_features":false,
             "no_default_features":false, "profile":"release", "target":"aarch64-apple-darwin", "rustc":"rustc 1.98.1"
         }
     }}).to_string()).unwrap();
-    let runtime = build_runtime(Arc::new(CargoFakeExecutor::new()), root.path().into());
+}
 
+async fn assert_cargo_lifecycle(runtime: AdapterRuntime) {
     let detect_task = runtime
         .submit(ManagerId::Cargo, AdapterRequest::Detect(DetectRequest))
         .await
@@ -466,4 +508,314 @@ async fn cargo_detect_list_search_and_mutate_through_orchestration() {
         }
         other => panic!("expected upgrade mutation, got {other:?}"),
     }
+}
+
+struct InvalidPublishedExecutor {
+    inner: CargoFakeExecutor,
+    home: PathBuf,
+    fault: &'static str,
+}
+
+impl ProcessExecutor for InvalidPublishedExecutor {
+    fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+        let source = self
+            .home
+            .join("registry/src/index.crates.io-1949cf8c6b5b557f/bat-0.25.0");
+        if request
+            .command
+            .args
+            .first()
+            .is_some_and(|arg| arg == "info")
+        {
+            match self.fault {
+                "post-install-drift" => {}
+                "missing-lock" => std::fs::remove_file(source.join("Cargo.lock")).unwrap(),
+                "stale-root" => std::fs::write(
+                    source.join("Cargo.lock"),
+                    PUBLISHED_LOCK.replace("0.25.0", "0.24.0"),
+                )
+                .unwrap(),
+                "modified-manifest" => std::fs::write(
+                    source.join("Cargo.toml"),
+                    PUBLISHED_MANIFEST.replace("0.25.0", "0.25.1"),
+                )
+                .unwrap(),
+                "unknown-cache" => std::fs::create_dir_all(
+                    self.home.join("registry/src/unknown-layout/bat-0.25.0"),
+                )
+                .unwrap(),
+                "ambiguous-cache" => std::fs::create_dir_all(
+                    self.home
+                        .join("registry/src/github.com-1ecc6299db9ec823/bat-0.25.0"),
+                )
+                .unwrap(),
+                "linked-lock" => {
+                    std::fs::rename(source.join("Cargo.lock"), source.join("elsewhere.lock"))
+                        .unwrap();
+                    #[cfg(unix)]
+                    std::os::unix::fs::symlink(
+                        source.join("elsewhere.lock"),
+                        source.join("Cargo.lock"),
+                    )
+                    .unwrap();
+                }
+                "download-failed" | "download-cancelled" => {
+                    return Err(helm_core::models::CoreError {
+                        manager: Some(ManagerId::Cargo),
+                        task: None,
+                        action: Some(helm_core::models::ManagerAction::Upgrade),
+                        kind: if self.fault == "download-cancelled" {
+                            helm_core::models::CoreErrorKind::Cancelled
+                        } else {
+                            helm_core::models::CoreErrorKind::ProcessFailure
+                        },
+                        message: "candidate metadata unavailable".into(),
+                    });
+                }
+                "source-config-changed" => std::fs::write(
+                    self.home.join("config.toml"),
+                    "[source.crates-io]\nreplace-with = 'private'\n",
+                )
+                .unwrap(),
+                _ => panic!("unknown fault"),
+            }
+        }
+        if self.fault == "stale-root"
+            && request.command.program == std::path::Path::new("/usr/bin/tar")
+            && request
+                .command
+                .args
+                .last()
+                .is_some_and(|arg| arg.ends_with("Cargo.lock"))
+        {
+            let now = SystemTime::now();
+            return Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout: PUBLISHED_LOCK.replace("0.25.0", "0.24.0").into_bytes(),
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }));
+        }
+        let installed = self.fault == "post-install-drift"
+            && request
+                .command
+                .args
+                .starts_with(&["install".into(), "--force".into()]);
+        let result = self.inner.spawn(request);
+        if installed {
+            std::fs::write(
+                source.join("Cargo.lock"),
+                PUBLISHED_LOCK.replace("0.25.0", "0.25.1"),
+            )
+            .unwrap();
+        }
+        result
+    }
+}
+
+#[tokio::test]
+async fn invalid_published_graph_never_starts_upgrade_or_replaces_existing_binaries() {
+    for fault in [
+        "missing-lock",
+        "stale-root",
+        "modified-manifest",
+        "unknown-cache",
+        "ambiguous-cache",
+        "linked-lock",
+        "download-failed",
+        "download-cancelled",
+        "source-config-changed",
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        seed_installed_bat(root.path());
+        let before = std::fs::read(root.path().join(".crates2.json")).unwrap();
+        let executor = Arc::new(InvalidPublishedExecutor {
+            inner: CargoFakeExecutor::new(),
+            home: root.path().join("cargo-home"),
+            fault,
+        });
+        let runtime = build_runtime(executor.clone(), root.path().into());
+        let task = runtime
+            .submit(
+                ManagerId::Cargo,
+                AdapterRequest::Upgrade(UpgradeRequest {
+                    package: Some(PackageRef {
+                        manager: ManagerId::Cargo,
+                        name: "bat".into(),
+                    }),
+                    target_name: None,
+                    version: Some("0.25.0".into()),
+                }),
+            )
+            .await
+            .unwrap();
+        let snapshot = runtime
+            .wait_for_terminal(task, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        assert!(
+            !matches!(
+                snapshot.terminal_state,
+                Some(AdapterTaskTerminalState::Succeeded(_))
+            ),
+            "{fault}: {snapshot:?}"
+        );
+        assert!(
+            !executor.inner.bat_upgraded.load(Ordering::SeqCst),
+            "{fault}"
+        );
+        assert_eq!(
+            std::fs::read(root.path().join(".crates2.json")).unwrap(),
+            before,
+            "{fault}"
+        );
+        assert_eq!(
+            std::fs::read(root.path().join("bin/bat")).unwrap(),
+            b"fixture",
+            "{fault}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn post_install_cache_drift_reports_unverified_mutation_not_preflight_rejection() {
+    let root = tempfile::tempdir().unwrap();
+    seed_installed_bat(root.path());
+    let executor = Arc::new(InvalidPublishedExecutor {
+        inner: CargoFakeExecutor::new(),
+        home: root.path().join("cargo-home"),
+        fault: "post-install-drift",
+    });
+    let runtime = build_runtime(executor.clone(), root.path().into());
+    let task = runtime
+        .submit(
+            ManagerId::Cargo,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Cargo,
+                    name: "bat".into(),
+                }),
+                target_name: None,
+                version: Some("0.25.0".into()),
+            }),
+        )
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    let Some(AdapterTaskTerminalState::Failed(error)) = snapshot.terminal_state else {
+        panic!("changed metadata must not publish a verified mutation");
+    };
+    assert_eq!(error.kind, helm_core::models::CoreErrorKind::ProcessFailure);
+    assert!(error.message.contains("installation may have changed"));
+    assert!(executor.inner.bat_upgraded.load(Ordering::SeqCst));
+}
+
+struct RustupBoundExecutor {
+    inner: CargoFakeExecutor,
+    proxy: PathBuf,
+    bound_info: AtomicBool,
+    bound_install: AtomicBool,
+}
+
+impl ProcessExecutor for RustupBoundExecutor {
+    fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+        let program = request.command.program.to_string_lossy();
+        if program.ends_with("which") || program.ends_with("rustup") {
+            let now = SystemTime::now();
+            let stdout = if program.ends_with("which") {
+                self.proxy.to_string_lossy().into_owned()
+            } else {
+                assert_eq!(request.command.args, ["show", "active-toolchain"]);
+                assert_eq!(request.command.working_dir, None);
+                "stable-aarch64-apple-darwin (directory override for '/project')".into()
+            };
+            return Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout: stdout.into_bytes(),
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }));
+        }
+        if program.ends_with("cargo") {
+            let info = request
+                .command
+                .args
+                .first()
+                .is_some_and(|arg| arg == "info");
+            let install = request
+                .command
+                .args
+                .starts_with(&["install".into(), "--force".into()]);
+            if info || install {
+                assert_eq!(
+                    request
+                        .command
+                        .env
+                        .get("RUSTUP_TOOLCHAIN")
+                        .map(String::as_str),
+                    Some("stable-aarch64-apple-darwin")
+                );
+                if info {
+                    self.bound_info.store(true, Ordering::SeqCst);
+                }
+                if install {
+                    self.bound_install.store(true, Ordering::SeqCst);
+                }
+            }
+        }
+        self.inner.spawn(request)
+    }
+}
+
+#[tokio::test]
+async fn rustup_project_selection_survives_metadata_working_directory_change() {
+    let root = tempfile::tempdir().unwrap();
+    seed_installed_bat(root.path());
+    let proxies = root.path().join("proxies");
+    std::fs::create_dir(&proxies).unwrap();
+    std::fs::write(proxies.join("rustup"), b"rustup proxy").unwrap();
+    std::fs::hard_link(proxies.join("rustup"), proxies.join("cargo")).unwrap();
+    let executor = Arc::new(RustupBoundExecutor {
+        inner: CargoFakeExecutor::new(),
+        proxy: proxies.join("cargo"),
+        bound_info: AtomicBool::new(false),
+        bound_install: AtomicBool::new(false),
+    });
+    let runtime = build_runtime(executor.clone(), root.path().into());
+    let task = runtime
+        .submit(
+            ManagerId::Cargo,
+            AdapterRequest::Upgrade(UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Cargo,
+                    name: "bat".into(),
+                }),
+                target_name: None,
+                version: Some("0.25.0".into()),
+            }),
+        )
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            snapshot.terminal_state,
+            Some(AdapterTaskTerminalState::Succeeded(_))
+        ),
+        "{snapshot:?}"
+    );
+    assert!(executor.bound_info.load(Ordering::SeqCst));
+    assert!(executor.bound_install.load(Ordering::SeqCst));
 }

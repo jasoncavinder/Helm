@@ -56,13 +56,19 @@ submitted metadata, not a refreshed preview; unavailable older/service-restart
 metadata requires a new review. Unsigned UI/test compilation and 64
 focused/adjacent Swift tests in the VM pass, without claiming signed GUI QA.
 Changed reviewed candidates require review again; newer installed versions cannot
-be downgraded by an old target. General dependency resolution is unchanged:
-the [native receipt guard](validation/v0.20-cargo-receipt-preservation.md) now
+be downgraded by an old target. The
+[native receipt guard](validation/v0.20-cargo-receipt-preservation.md) now
 preserves crates.io source, explicit install root, binaries, features, profile
 and target when an upgrade actually executes. Unsupported/ambiguous receipts
 fail closed; observed postconditions include unrelated receipt preservation.
-Review-time executable/root/source binding, install/reinstall policy and explicit
-lockfile handling still need work before #564 closes.
+The [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
+now validates exact packaged manifest/lock identities, rejects missing, stale-root,
+unsupported or changed cache metadata, and upgrades with `--locked` without an
+unlocked fallback. Native Helm CLI `sd` 0.7.6 to 1.0.0 and `slint-viewer` 1.18.0
+to 1.18.1 upgrades and VM regression checks pass. Cargo still owns
+dependency resolution; this is not a general resolver or supply-chain verifier.
+Review-time executable/root/source binding, general install/reinstall policy and
+the remaining evidence still need work before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.
