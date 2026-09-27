@@ -93,7 +93,11 @@ cleared or explicitly submitted query. Explicit search actions now discard that
 pending value before updating the binding. Deterministic coordinator regressions
 reproduce the old Cancel/clear/Return race, and all 371 Swift tests pass inside
 the disposable VM with the correction. The host was used only to compile the
-test bundle; CI and refreshed signed-app integration remain separate gates.
+test bundle. The refreshed same-source signed app/service/CLI on `45552e95` also
+passes isolated-database inventory, refresh, Plan preview and integrity checks.
+The owner passed its pause/resume, delayed-clear and Return/Command-F recheck.
+Exact artifact hashes are in the GUI checklist. Current-head CI, independent
+review and the explicit account/platform limitations remain separate gates.
 
 Library columns now share width compression when the Inspector opens, preserving
 the trailing Install control and restoring preferred column widths when space

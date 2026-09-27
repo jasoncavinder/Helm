@@ -6,6 +6,17 @@ Helm without closing or interrupting it. Build preparation and static checks may
 remain on the host, but execute GUI/CLI/service checks and test suites in the VM
 or CI unless the owner explicitly authorizes a host exception. See `AGENTS.md`.
 
+The final supplied VM GUI recheck now passes on same-source signed UI/service/CLI
+`45552e95`, including the search-publication race correction and SQLite flush
+change. Preserve the 371-test VM Swift pass and the integrated read-only smoke
+record in `docs/validation/v0.20-adapter-gui-checklist.md`; do not ask the owner to
+repeat completed checks absent a relevant change. Prepare the bounded campaign
+review handoff for #557 followed by #558, requiring current-head green CI and
+independent review before owner merge. This is not all-platform certification:
+account/OS/no-candidate limits, genuinely CLT-free runtime evidence, pnpm 11+
+mutation support (#559), and #560 review/integration remain explicit. Do not close
+#500/#526 or waive release gates based only on the supplied VM's passing checks.
+
 The disposable-VM campaign continues without merging its fix PRs until the owner
 reviews the completed batch. Preserve #557's CLI persistence correction and the
 #556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
