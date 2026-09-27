@@ -262,13 +262,20 @@ final class LibraryTableViewTests: XCTestCase {
             scrollView.fitDocumentWidthToViewport()
 
             let trailingExtent = tableView.rect(ofColumn: tableView.numberOfColumns - 1).maxX
+            XCTAssertEqual(
+                tableView.minimumContentWidth,
+                472 + LibraryTableLayoutPolicy.layoutOverhead(in: tableView),
+                accuracy: 0.5
+            )
             XCTAssertGreaterThanOrEqual(tableView.frame.width, trailingExtent, "width: \(width)")
-            if width <= 552 {
+            if width < tableView.minimumContentWidth {
                 XCTAssertGreaterThan(
                     tableView.frame.width,
                     scrollView.contentView.bounds.width,
                     "width: \(width)"
                 )
+            } else {
+                XCTAssertLessThanOrEqual(trailingExtent, scrollView.contentView.bounds.width + 0.5)
             }
 
             scrollView.setFrameSize(NSSize(width: width + 1, height: 120))
@@ -281,28 +288,77 @@ final class LibraryTableViewTests: XCTestCase {
                 resizedTrailingExtent,
                 "resized width: \(width)"
             )
-            if width <= 552 {
+            if width + 1 < tableView.minimumContentWidth {
                 XCTAssertGreaterThan(
                     tableView.frame.width,
                     scrollView.contentView.bounds.width,
                     "resized width: \(width)"
                 )
+            } else {
+                XCTAssertLessThanOrEqual(resizedTrailingExtent, scrollView.contentView.bounds.width + 0.5)
             }
         }
+    }
 
-        let tableView = makeNativeTable(width: 500)
-        let scrollView = LibraryTableScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 120))
+    func testInspectorWidthChangesRestorePreferredColumnSizes() {
+        let tableView = makeNativeTable(width: 900)
+        let scrollView = LibraryTableScrollView(frame: NSRect(x: 0, y: 0, width: 900, height: 120))
         scrollView.hasHorizontalScroller = true
         scrollView.documentView = tableView
         scrollView.fitDocumentWidthToViewport()
-        let previousRequiredWidth = tableView.requiredContentWidth
         tableView.tableColumns[1].width += 80
         scrollView.fitDocumentWidthToViewport()
-        XCTAssertGreaterThan(tableView.requiredContentWidth, previousRequiredWidth)
-        XCTAssertGreaterThanOrEqual(
-            tableView.frame.width,
-            tableView.rect(ofColumn: tableView.numberOfColumns - 1).maxX
-        )
+        let preferredWidths = tableView.tableColumns.dropFirst().map(\.width)
+
+        for width in [528, 800, 520, 900] as [CGFloat] {
+            scrollView.setFrameSize(NSSize(width: width, height: 120))
+            scrollView.tile()
+            XCTAssertLessThanOrEqual(tableView.requiredContentWidth, scrollView.contentView.bounds.width + 0.5)
+            for column in tableView.tableColumns {
+                XCTAssertGreaterThanOrEqual(column.width, column.minWidth)
+            }
+            if width >= 800 {
+                XCTAssertEqual(tableView.tableColumns.dropFirst().map(\.width), preferredWidths)
+            }
+        }
+    }
+
+    func testAvailableInstallButtonRemainsInsideInspectorNarrowedViewport() throws {
+        for status in ["Available", "Zur Installation verfugbar"] {
+            let row = makeRow(
+                id: "example", representedPackageIDs: ["homebrew_cask:example"],
+                status: status, action: makeAction(identity: .install)
+            )
+            let parent = makeTable(rows: [row], selectedRowID: nil)
+            let coordinator = parent.makeCoordinator()
+            let tableView = LibraryNativeTableView(frame: NSRect(x: 0, y: 0, width: 800, height: 120))
+            LibraryTableLayoutPolicy.configure(in: tableView)
+            tableView.columnAutoresizingStyle = .noColumnAutoresizing
+            tableView.intercellSpacing = NSSize(width: 8, height: 2)
+            tableView.dataSource = coordinator
+            tableView.delegate = coordinator
+            coordinator.installColumns(in: tableView)
+            coordinator.attach(tableView)
+            coordinator.update(parent: parent)
+            let scrollView = LibraryTableScrollView(frame: tableView.frame)
+            scrollView.documentView = tableView
+
+            for width in [528, 800, 520, 552] as [CGFloat] {
+                scrollView.setFrameSize(NSSize(width: width, height: 120))
+                scrollView.tile()
+                scrollView.layoutSubtreeIfNeeded()
+                let cell = try XCTUnwrap(tableView.view(atColumn: 3, row: 0, makeIfNecessary: true))
+                cell.layoutSubtreeIfNeeded()
+                let stack = try XCTUnwrap(cell.subviews.first as? NSStackView)
+                let button = try XCTUnwrap(stack.arrangedSubviews.compactMap { $0 as? NSButton }.first)
+                let buttonRect = button.convert(button.bounds, to: scrollView.contentView)
+                XCTAssertFalse(button.isHidden)
+                XCTAssertGreaterThanOrEqual(button.frame.width, 28)
+                XCTAssertGreaterThanOrEqual(buttonRect.minX, scrollView.contentView.bounds.minX)
+                XCTAssertLessThanOrEqual(buttonRect.maxX, scrollView.contentView.bounds.maxX - 4)
+                XCTAssertEqual(cell.accessibilityLabel(), status)
+            }
+        }
     }
 
     func testAutoFittedPackageColumnDoesNotAdvertiseUserResize() throws {
@@ -546,6 +602,7 @@ final class LibraryTableViewTests: XCTestCase {
     private func makeNativeTable(width: CGFloat) -> LibraryNativeTableView {
         let tableView = LibraryNativeTableView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
         LibraryTableLayoutPolicy.configure(in: tableView)
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
         tableView.intercellSpacing = NSSize(width: 8, height: 2)
         let dimensions: [(width: CGFloat, minimum: CGFloat)] = [
             (330, 180),
@@ -613,6 +670,7 @@ final class LibraryTableViewTests: XCTestCase {
         latestVersion: String? = nil,
         isPinned: Bool = false,
         isRestartRequired: Bool = false,
+        status: String = "Installed",
         action: LibraryTableAction? = nil
     ) -> LibraryTableRow {
         LibraryTableRow(
@@ -625,7 +683,7 @@ final class LibraryTableViewTests: XCTestCase {
             manager: selectedManagerID,
             currentVersion: "1.0.0",
             latestVersion: latestVersion,
-            status: "Installed",
+            status: status,
             statusSymbolName: "checkmark.circle.fill",
             statusTone: .healthy,
             isPinned: isPinned,

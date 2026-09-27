@@ -53,7 +53,9 @@ passes owner diagnostic/localization/VoiceOver checks, with no package installed
 and reads still usable. Cask cancellation and approval now pass: task 16 left no
 installed fixture, and task 32 installed the reviewed 1.0.0 marker with Homebrew
 at user UID 502 and only its privileged child at UID 0. Unrelated cask versions
-are unchanged. Cask cleanup and Sparkle handoff remain open. A genuinely CLT-free
+are unchanged. The owner also passed fixture removal through Helm; independent
+checks confirm its marker/Caskroom are absent and native cask inventory matches
+the baseline. Sparkle handoff remains open. A genuinely CLT-free
 OS is not certified by the simulation.
 The isolated QA database reported corruption after a forced host restart and was
 preserved before rebuilding the test cache. Its cause remains unresolved; this
@@ -65,6 +67,12 @@ result action is required to move to Library and transfer focus. Native search
 bridge regression coverage is included; the owner passed the signed-VM
 Dashboard/Library pause-resume, explicit acceptance, Command-F and Escape checks
 on UI source `b3a50416` with the unchanged certified cask backend.
+
+Library columns now share width compression when the Inspector opens, preserving
+the trailing Install control and restoring preferred column widths when space
+returns. Horizontal scrolling remains available below the combined column minima.
+Native geometry and resize regressions pass in the 367-test macOS suite; the
+signed-VM visual recheck remains pending.
 
 A repeated live uv cancellation check exposed duplicate CLI coordinator
 submission from processing temporary request files before atomic publication.

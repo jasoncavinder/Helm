@@ -28,7 +28,10 @@ versions retained. The Cargo/CLT simulation also passes its owner diagnostic,
 localization and VoiceOver checks with no installation. Cask cancellation and
 approval now pass with the expected privilege boundary and unchanged unrelated
 cask versions. The corrected pause/resume search focus now passes its signed-VM
-owner check. Finish fixture cleanup through Helm, then continue Sparkle handoff. Keep pnpm
+owner check. Fixture cleanup through Helm now passes, with marker/Caskroom absence
+and the original native cask inventory independently verified. Recheck the Library
+Install button with the Inspector open on the responsive-column QA build, then
+continue Sparkle handoff. Keep pnpm
 diagnostics VoiceOver and genuinely CLT-free OS coverage explicit.
 Preserve and investigate the disposable QA database corruption observed after
 the forced host restart; cache reconstruction is not a product durability fix.
