@@ -16,6 +16,17 @@ This document records the invariants for Helm CLI coordinator transport behavior
 - CLI `--detach` and cancellation paths continue to use external coordinator file-IPC transport for cross-process lifecycle control.
 - Timeout errors must not trigger blind launch-on-demand resets.
 
+## Completion Boundary
+
+- Synchronous CLI task submission and refresh/upgrade workflow helpers wait for
+  both adapter terminal state and the existing ordered response-persistence
+  receipt before returning. A short-lived CLI must not exit with its final
+  detection, inventory, update, or mutation response still queued for persistence.
+- `--detach` still returns after acceptance; it does not wait for that receipt.
+- The receipt means the persistence turn finished, not that every database write
+  succeeded. Existing persistence-error logging and supplemental diagnostic-log
+  behavior are unchanged; this is not a new transactional-success guarantee.
+
 ## State and Ownership Safety
 
 - Coordinator state, request, and response directories are private (`0700` on Unix).
@@ -32,5 +43,6 @@ This document records the invariants for Helm CLI coordinator transport behavior
 ## Test References
 
 - CLI coordinator transport tests: `core/rust/crates/helm-cli/src/main.rs` (`coordinator_*` tests).
+- CLI completion tests: `core/rust/crates/helm-cli/src/persistence_completion_tests.rs`.
 - CLI transport helper tests: `core/rust/crates/helm-cli/src/coordinator_transport.rs`.
 - FFI coordinator mode/permission tests: `core/rust/crates/helm-ffi/src/lib.rs`.

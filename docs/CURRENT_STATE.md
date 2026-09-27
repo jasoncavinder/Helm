@@ -4,6 +4,14 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The v0.20 disposable-VM adapter certification campaign has started. The initial
+29-manager detection/policy baseline is recorded in
+`docs/validation/v0.20-adapter-vm-certification.md`, not claimed as full lifecycle
+certification. It exposed a CLI process-exit/persistence race corrected by awaiting
+the existing ordered persistence receipt in synchronous commands. Real uv 0.12.18
+CLI lifecycle checks now proceed through constrained upgrade, install and recovery;
+last-tool uninstall reconciliation remains blocked by #556. No release gate is closed.
+
 ---
 
 ## Version

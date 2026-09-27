@@ -5,6 +5,11 @@ certification remains open under #526 and #500. This follows the historical
 [eligibility slice](uv-tool-eligibility.md), rather than retroactively changing
 its read-only evidence.
 
+The [initial disposable-VM campaign](v0.20-adapter-vm-certification.md) exposed a
+CLI persistence-completion race and a separate last-tool uninstall reconciliation
+defect (#556). The latter remains a certification blocker even though the earlier
+fixture tests and intermediate lifecycle operations passed.
+
 ## Implemented Scope
 
 - GUI/FFI and CLI register the same `UvToolAdapter`. Environment exposes the
