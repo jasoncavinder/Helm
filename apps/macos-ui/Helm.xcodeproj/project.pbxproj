@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C56800000000000000000001 /* HelmCore+Startup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C56800000000000000000011 /* HelmCore+Startup.swift */; };
 		A46300000000000000000001 /* ManagerInstallationCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46300000000000000000011 /* ManagerInstallationCatalog.swift */; };
 		A46300000000000000000002 /* ManagerInstallationCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46300000000000000000011 /* ManagerInstallationCatalog.swift */; };
 		A46300000000000000000003 /* DashboardManagerInstallationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A46300000000000000000012 /* DashboardManagerInstallationView.swift */; };
@@ -223,6 +224,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C56800000000000000000011 /* HelmCore+Startup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HelmCore+Startup.swift"; sourceTree = "<group>"; };
 		A46300000000000000000011 /* ManagerInstallationCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerInstallationCatalog.swift; sourceTree = "<group>"; };
 		A46300000000000000000012 /* DashboardManagerInstallationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardManagerInstallationView.swift; sourceTree = "<group>"; };
 		A46300000000000000000013 /* ManagerInstallationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerInstallationCatalogTests.swift; sourceTree = "<group>"; };
@@ -439,6 +441,7 @@
 				N42200000000000000000011 /* AppNotificationPolicy.swift */,
 				C41900000000000000000011 /* StatusItemActivationPolicy.swift */,
 				C42400000000000000000011 /* ServiceConnectionRetryPolicy.swift */,
+				C56800000000000000000011 /* HelmCore+Startup.swift */,
 				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
 				A41200000000000000000002 /* AppUpdateCoordinator.swift */,
 				P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */,
@@ -900,6 +903,7 @@
 				N42200000000000000000001 /* AppNotificationPolicy.swift in Sources */,
 				C41900000000000000000001 /* StatusItemActivationPolicy.swift in Sources */,
 				C42400000000000000000001 /* ServiceConnectionRetryPolicy.swift in Sources */,
+				C56800000000000000000001 /* HelmCore+Startup.swift in Sources */,
 				A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */,
 				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
 				R513000000000000000000001 /* LibraryResultProvenance.swift in Sources */,

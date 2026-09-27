@@ -16,12 +16,6 @@ struct AppUpdateAvailability: Equatable {
     let isMajorUpgrade: Bool
 }
 
-private enum AppUpdateCheckKind: Int {
-    case userInitiated = 0
-    case background = 1
-    case information = 2
-}
-
 enum AppUpdateUnavailableReason: String {
     case channelNotSupported = "channel_not_supported"
     case sparkleDisabled = "sparkle_disabled"
@@ -229,8 +223,7 @@ final class AppUpdateCoordinator: ObservableObject {
 
     private let driver: AppUpdateDriver
     private var automaticCheckTimer: Timer?
-    private var networkAvailable = false
-    private var pendingCheckKind: AppUpdateCheckKind?
+    private var executionGate = AppUpdateExecutionGate()
 
     private init() {
         let configuration = AppUpdateConfiguration.from()
@@ -321,9 +314,9 @@ final class AppUpdateCoordinator: ObservableObject {
             updateLogger.info("Ignoring manual update check request because a check is already in progress.")
             return
         }
-        guard networkAvailable else {
-            pendingCheckKind = .userInitiated
-            updateLogger.info("Deferring manual Helm update check until connectivity returns.")
+        guard executionGate.allowsChecks else {
+            executionGate.deferCheck(.userInitiated)
+            updateLogger.info("Deferring manual Helm update check until startup and connectivity are ready.")
             return
         }
 
@@ -335,11 +328,9 @@ final class AppUpdateCoordinator: ObservableObject {
     func refreshUpdateAvailability() {
         guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else { return }
         guard canCheckForUpdates, !isCheckingForUpdates, driver.canCheckForUpdates else { return }
-        guard networkAvailable else {
-            if pendingCheckKind != .userInitiated {
-                pendingCheckKind = .information
-            }
-            updateLogger.info("Deferring information-only Helm update check until connectivity returns.")
+        guard executionGate.allowsChecks else {
+            executionGate.deferCheck(.information)
+            updateLogger.info("Deferring information-only Helm update check until startup and connectivity are ready.")
             return
         }
         updateLogger.info("Information-only Helm update check requested.")
@@ -390,17 +381,25 @@ final class AppUpdateCoordinator: ObservableObject {
     }
 
     func setNetworkAvailable(_ available: Bool) {
-        guard networkAvailable != available else { return }
-        networkAvailable = available
-        if !available {
+        guard executionGate.networkAvailable != available else { return }
+        executionGate.networkAvailable = available
+        resumeChecksIfAllowed()
+    }
+
+    func setRuntimeAvailable(_ available: Bool) {
+        guard executionGate.runtimeAvailable != available else { return }
+        executionGate.runtimeAvailable = available
+        resumeChecksIfAllowed()
+    }
+
+    private func resumeChecksIfAllowed() {
+        if !executionGate.allowsChecks {
             automaticCheckTimer?.invalidate()
             automaticCheckTimer = nil
             return
         }
 
-        let pending = pendingCheckKind
-        pendingCheckKind = nil
-        switch pending {
+        switch executionGate.takeReadyCheck() {
         case .userInitiated:
             checkForUpdates()
         case .background, .information:
@@ -427,7 +426,7 @@ final class AppUpdateCoordinator: ObservableObject {
         automaticCheckTimer?.invalidate()
         automaticCheckTimer = nil
         guard !ResearchFixtureSafetyPolicy.blocksLiveOperations() else { return }
-        guard networkAvailable, let delay = AppUpdateSchedulePolicy.nextCheckDelay(
+        guard executionGate.allowsChecks, let delay = AppUpdateSchedulePolicy.nextCheckDelay(
             canCheckForUpdates: canCheckForUpdates,
             autoCheckEnabled: autoCheckEnabled,
             lastCheckDate: lastCheckDate,

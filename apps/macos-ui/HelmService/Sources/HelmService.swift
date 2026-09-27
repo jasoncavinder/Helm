@@ -37,14 +37,14 @@ class HelmService: NSObject, HelmServiceProtocol {
 
     private let cliShimCommandRunner = HelmCliShimCommandRunner()
     private var initializationErrorKey: String?
+    private let databaseURL: URL
+    private let startupLock = NSLock()
+    private var runtimeStarted = false
 
     override init() {
-        super.init()
-
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let environmentPath = ProcessInfo.processInfo.environment["HELM_DB_PATH"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let databaseURL: URL
         if let environmentPath, !environmentPath.isEmpty {
             databaseURL = URL(fileURLWithPath: environmentPath)
         } else {
@@ -57,24 +57,54 @@ class HelmService: NSObject, HelmServiceProtocol {
                 .appendingPathComponent(databaseDirectory, isDirectory: true)
                 .appendingPathComponent("helm.db", isDirectory: false)
         }
-        let dbPath = databaseURL.path
+        super.init()
+    }
 
-        logger.info("HelmService init — DB path: \(dbPath)")
-
-        try? FileManager.default.createDirectory(
-            at: databaseURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        let result = dbPath.withCString { cPath in
-            helm_init(cPath)
+    func prepareStartup(requireFirstRunAcknowledgment: Bool, withReply reply: @escaping (String?) -> Void) {
+        startupLock.lock()
+        defer { startupLock.unlock() }
+        do {
+            try FileManager.default.createDirectory(
+                at: databaseURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        } catch {
+            initializationErrorKey = "service.error.storage_failure"
+            reply(nil)
+            return
         }
-        logger.info("helm_init result: \(result)")
-        if !result, let cString = helm_take_last_error_key() {
+        guard let snapshot = databaseURL.path.withCString({
+            helm_prepare_startup($0, requireFirstRunAcknowledgment)
+        }) else {
+            captureInitializationError()
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(snapshot) }
+        initializationErrorKey = nil
+        reply(String(cString: snapshot))
+    }
+
+    func startRuntime(withReply reply: @escaping (Bool) -> Void) {
+        startupLock.lock()
+        defer { startupLock.unlock() }
+        let started = helm_start_runtime()
+        if started {
+            runtimeStarted = true
+            initializationErrorKey = nil
+        } else {
+            captureInitializationError()
+        }
+        reply(started)
+    }
+
+    private func captureInitializationError() {
+        initializationErrorKey = "service.error.internal"
+        if let cString = helm_take_last_error_key() {
             defer { helm_free_string(cString) }
             initializationErrorKey = String(cString: cString)
-            logger.error("helm_init failed: \(self.initializationErrorKey ?? "unknown")")
         }
+        logger.error("Service startup failed: \(self.initializationErrorKey ?? "unknown")")
     }
 
     func listInstalledPackages(withReply reply: @escaping (String?) -> Void) {
@@ -430,6 +460,13 @@ class HelmService: NSObject, HelmServiceProtocol {
     }
 
     func installHelmCliShim(withReply reply: @escaping (String?) -> Void) {
+        startupLock.lock()
+        let allowed = runtimeStarted
+        startupLock.unlock()
+        guard allowed else {
+            reply(nil)
+            return
+        }
         guard let appBundle = helmAppBundle() else {
             logger.error("installHelmCliShim could not resolve the containing Helm app bundle")
             reply(encodeHelmCliShimInstallResponse(
@@ -1025,6 +1062,8 @@ class HelmService: NSObject, HelmServiceProtocol {
     }
 
     func takeLastErrorKey(withReply reply: @escaping (String?) -> Void) {
+        startupLock.lock()
+        defer { startupLock.unlock() }
         if let initializationErrorKey {
             reply(initializationErrorKey)
             return
