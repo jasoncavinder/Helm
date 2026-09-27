@@ -17,11 +17,14 @@ accepted owner checks without a relevant change.
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted
    setup parity remains v0.21 scope.
-2. Resolve the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
+2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
    The [read-only investigation](validation/v0.19.1-rust-task-triage.md) separates
-   toolchain readiness, DNS failure and dependency compilation; none is proven
-   fixed by current dev. Do not modify the owner's Rust installation to clear
-   historical failures.
+   toolchain readiness, DNS failure and dependency compilation. The
+   [diagnostic/cache-preservation correction](validation/v0.20-rust-task-diagnostics.md)
+   passes isolated CLI and automated VM checks, including failure-record
+   persistence before CLI exit; retain signed GUI review and the unverified
+   #564 dependency-resolution policy as open work. Do not modify the owner's
+   Rust installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,
    insertion-placeholder reordering), exact certification/issue dispositions,
    participant and cross-workflow accessibility gates from the checklist.

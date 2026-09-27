@@ -3,7 +3,7 @@ import Foundation
 enum TaskSafetyGuidance {
     static func localizationKey(taskLogMessages: [String]) -> String? {
         for message in taskLogMessages {
-            for code in ["unsupported_capability", "invalid_input"] {
+            for code in ["unsupported_capability", "invalid_input", "process_failure"] {
                 let prefix = "task failed [\(code)]: "
                 if message.hasPrefix(prefix),
                    let key = localizationKey(errorCode: code, errorMessage: String(message.dropFirst(prefix.count))) {
@@ -16,6 +16,11 @@ enum TaskSafetyGuidance {
 
     static func localizationKey(errorCode: String?, errorMessage: String?) -> String? {
         guard let errorMessage else { return nil }
+        if errorCode == "process_failure" {
+            for marker in ["cargo_toolchain_unavailable", "dns_resolution_failed", "endpoint_unreachable", "cargo_build_failed"] {
+                if errorMessage.hasPrefix("[\(marker)] ") { return "service.error.\(marker)" }
+            }
+        }
         if errorCode == "unsupported_capability",
            errorMessage.hasPrefix("[pnpm_global_mutation_unsupported] ") {
             return "service.error.pnpm_global_mutation_unsupported"

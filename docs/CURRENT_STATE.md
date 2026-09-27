@@ -23,9 +23,15 @@ Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected
 rustup Cargo component (84), DNS resolution during rustup check (124), and
-slint-viewer/rustix dependency compilation (229/326). None is proven fixed by
-current dev; targeted follow-ups #562-#564 are recorded in the
-[triage report](validation/v0.19.1-rust-task-triage.md). Production was not modified.
+slint-viewer/rustix dependency compilation (229/326). The
+[diagnostics follow-up](validation/v0.20-rust-task-diagnostics.md) now rejects an
+unusable Cargo proxy without clearing cached packages/updates, distinguishes DNS
+and endpoint failures from global offline state, and preserves useful compiler
+excerpts. Failure diagnostic records are included in the CLI persistence receipt.
+Isolated real-toolchain and DNS failure/recovery checks pass; signed GUI review
+and #564's dependency-resolution policy/reproduction remain open. The
+[original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
+production was not modified and no toolchain repair is performed automatically.
 
 The v0.20 disposable-VM adapter certification campaign has started. The initial
 29-manager detection/policy baseline is recorded in

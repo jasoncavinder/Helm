@@ -62,12 +62,16 @@ pub(crate) fn run_and_collect_stdout_accepting_exit_codes(
         }
         ProcessExitStatus::ExitCode(code) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            let diagnostic = super::failure_diagnostics::classify_process_failure(manager, &stderr);
+            let context = diagnostic
+                .map(|diagnostic| format!("[{}] {}\n", diagnostic.marker(), diagnostic.guidance()))
+                .unwrap_or_default();
             Err(CoreError {
                 manager: Some(manager),
                 task: Some(task_type),
                 action: Some(action),
                 kind: CoreErrorKind::ProcessFailure,
-                message: format!("process exited with code {code}: {stderr}"),
+                message: format!("{context}process exited with code {code}: {stderr}"),
             })
         }
         ProcessExitStatus::Terminated => Err(CoreError {
@@ -190,6 +194,35 @@ mod tests {
         assert_eq!(error.manager, Some(ManagerId::Npm));
         assert_eq!(error.task, Some(TaskType::Refresh));
         assert_eq!(error.action, Some(ManagerAction::ListInstalled));
+    }
+
+    #[test]
+    fn process_diagnostic_preserves_raw_failure_and_expected_exit_semantics() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = runtime.enter();
+        let now = SystemTime::now();
+        let stderr = "getaddrinfo ENOTFOUND registry.npmjs.org";
+        let executor = StaticExecutor {
+            output: ProcessOutput {
+                status: ProcessExitStatus::ExitCode(1),
+                stdout: b"partial output".to_vec(),
+                stderr: stderr.as_bytes().to_vec(),
+                started_at: now,
+                finished_at: now,
+            },
+        };
+        let error = run_and_collect_stdout(&executor, make_request()).unwrap_err();
+        assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+        assert!(error.message.starts_with("[dns_resolution_failed] "));
+        assert!(error.message.ends_with(stderr));
+        assert!(error.message.contains("process exited with code 1"));
+        assert_eq!(
+            run_and_collect_stdout_accepting_exit_codes(&executor, make_request(), &[1]).unwrap(),
+            "partial output"
+        );
     }
 
     #[test]

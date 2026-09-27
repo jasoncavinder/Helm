@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::{Duration, SystemTime};
 
 use helm_core::adapters::cargo::CargoAdapter;
@@ -127,6 +127,128 @@ fn build_runtime(executor: Arc<dyn ProcessExecutor>) -> AdapterRuntime {
     let source = ProcessCargoSource::new(executor);
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(CargoAdapter::new(source));
     AdapterRuntime::new([adapter]).expect("runtime creation should succeed")
+}
+
+struct UnavailableCargoExecutor {
+    failure: AtomicU8,
+}
+
+impl ProcessExecutor for UnavailableCargoExecutor {
+    fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+        let program = request.command.program.to_string_lossy();
+        assert!(
+            program.ends_with("which")
+                || (program.ends_with("cargo")
+                    && (request.command.args == ["--version"]
+                        || request.command.args == ["install", "--list"]
+                        || request
+                            .command
+                            .args
+                            .first()
+                            .is_some_and(|arg| arg == "search"))),
+            "read-only recovery must not invoke repair or another installer: {:?}",
+            request.command
+        );
+        let failure = self.failure.load(Ordering::SeqCst);
+        if program.ends_with("cargo") && request.command.args == ["--version"] && failure != 0 {
+            let now = SystemTime::now();
+            let stderr = match failure {
+                1 => {
+                    "the 'cargo' binary, normally provided by the 'cargo' component, is not applicable to the 'stable-aarch64-apple-darwin' toolchain"
+                }
+                2 => "",
+                3 => "ordinary command failure",
+                _ => {
+                    "error: 'cargo' is not installed for the toolchain 'stable-aarch64-apple-darwin'"
+                }
+            };
+            return Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(if failure == 2 { 0 } else { 1 }),
+                    stdout: Vec::new(),
+                    stderr: stderr.as_bytes().to_vec(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }));
+        }
+        CargoFakeExecutor::new().spawn(request)
+    }
+}
+
+#[tokio::test]
+async fn unusable_cargo_proxy_retains_inventory_and_recovers_without_toolchain_changes() {
+    use helm_core::adapters::RefreshRequest;
+    use helm_core::persistence::PackageStore;
+    use helm_core::sqlite::SqliteStore;
+    let root = tempfile::tempdir().unwrap();
+    let store = Arc::new(SqliteStore::new(root.path().join("helm.db")));
+    store.migrate_to_latest().unwrap();
+    let executor = Arc::new(UnavailableCargoExecutor {
+        failure: AtomicU8::new(0),
+    });
+    let adapter: Arc<dyn ManagerAdapter> =
+        Arc::new(CargoAdapter::new(ProcessCargoSource::new(executor.clone())));
+    let runtime = AdapterRuntime::with_all_stores(
+        [adapter],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+    let mut before = None;
+    let mut outdated_before = None;
+    for failure in [0, 1, 2, 3, 4, 0] {
+        executor.failure.store(failure, Ordering::SeqCst);
+        let (task, persistence) = runtime
+            .submit_with_persistence(ManagerId::Cargo, AdapterRequest::Refresh(RefreshRequest))
+            .await
+            .unwrap();
+        let snapshot = runtime
+            .wait_for_terminal(task, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), persistence.wait_for_completion())
+            .await
+            .unwrap();
+        if failure != 0 {
+            let Some(AdapterTaskTerminalState::Failed(error)) = snapshot.terminal_state else {
+                panic!("unusable Cargo must fail rather than publishing an empty snapshot");
+            };
+            if failure == 1 || failure == 4 {
+                assert!(error.message.starts_with("[cargo_toolchain_unavailable]"));
+                assert!(error.message.contains("stable-aarch64-apple-darwin"));
+            } else if failure == 2 {
+                assert_eq!(error.kind, helm_core::models::CoreErrorKind::ParseFailure);
+            } else {
+                assert!(error.message.contains("ordinary command failure"));
+                assert!(!error.message.contains("[cargo_toolchain_unavailable]"));
+            }
+        } else {
+            assert!(matches!(
+                snapshot.terminal_state,
+                Some(AdapterTaskTerminalState::Succeeded(
+                    AdapterResponse::SnapshotSync {
+                        installed: Some(_),
+                        ..
+                    }
+                ))
+            ));
+        }
+        let installed = store.list_installed().unwrap();
+        assert_eq!(installed.len(), 3);
+        if let Some(before) = before.as_ref() {
+            assert_eq!(before, &installed);
+        }
+        before = Some(installed);
+        let outdated = store.list_outdated().unwrap();
+        assert!(!outdated.is_empty());
+        if let Some(before) = outdated_before.as_ref() {
+            assert_eq!(before, &outdated);
+        }
+        outdated_before = Some(outdated);
+    }
 }
 
 #[tokio::test]
