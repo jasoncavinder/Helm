@@ -1,4 +1,148 @@
-import Foundation
+import AppKit
+import SwiftUI
+
+final class ControlCenterNativeSearchField: NSSearchField, ControlCenterSearchFocusTarget {
+    private var focusRequestPending = false
+    private var focusCompletion: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    func requestSearchFocus(completion: @escaping () -> Void) {
+        focusRequestPending = true
+        focusCompletion = completion
+        fulfillFocusRequestIfPossible()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        fulfillFocusRequestIfPossible()
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        guard !stringValue.isEmpty else { return }
+        stringValue = ""
+        onCancel?()
+    }
+
+    private func fulfillFocusRequestIfPossible() {
+        guard focusRequestPending, window != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window?.makeFirstResponder(self) == true else { return }
+            self.focusRequestPending = false
+            let completion = self.focusCompletion
+            self.focusCompletion = nil
+            completion?()
+        }
+    }
+}
+
+struct ControlCenterToolbarSearchField: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let focusRouter: ControlCenterSearchFocusRouter
+    let onSubmit: () -> Bool
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            text: $text,
+            focusRouter: focusRouter,
+            onSubmit: onSubmit,
+            onCancel: onCancel
+        )
+    }
+
+    func makeNSView(context: Context) -> ControlCenterNativeSearchField {
+        let searchField = ControlCenterNativeSearchField()
+        // Live query updates use the delegate; only explicit acceptance sends an action.
+        searchField.sendsWholeSearchString = true
+        searchField.delegate = context.coordinator
+        searchField.target = context.coordinator
+        searchField.action = #selector(Coordinator.submitSearch(_:))
+        searchField.onCancel = context.coordinator.cancelSearch
+        searchField.placeholderString = placeholder
+        searchField.setAccessibilityLabel(placeholder)
+        focusRouter.attach(searchField)
+        return searchField
+    }
+
+    func updateNSView(_ searchField: ControlCenterNativeSearchField, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.onSubmit = onSubmit
+        context.coordinator.onCancel = onCancel
+        searchField.onCancel = context.coordinator.cancelSearch
+        searchField.placeholderString = placeholder
+        searchField.setAccessibilityLabel(placeholder)
+
+        let displayedText = context.coordinator.updateGate.displayedValue(modelValue: text)
+        if searchField.stringValue != displayedText {
+            context.coordinator.updateGate.applyModelValue {
+                searchField.stringValue = displayedText
+            }
+        }
+    }
+
+    static func dismantleNSView(
+        _ searchField: ControlCenterNativeSearchField,
+        coordinator: Coordinator
+    ) {
+        searchField.delegate = nil
+        searchField.target = nil
+        searchField.onCancel = nil
+        coordinator.focusRouter?.detach(searchField)
+    }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var text: Binding<String>
+        let updateGate = ControlCenterSearchTextUpdateGate()
+        weak var focusRouter: ControlCenterSearchFocusRouter?
+        var onSubmit: () -> Bool
+        var onCancel: () -> Void
+
+        init(
+            text: Binding<String>,
+            focusRouter: ControlCenterSearchFocusRouter,
+            onSubmit: @escaping () -> Bool,
+            onCancel: @escaping () -> Void
+        ) {
+            self.text = text
+            self.focusRouter = focusRouter
+            self.onSubmit = onSubmit
+            self.onCancel = onCancel
+        }
+
+        lazy var cancelSearch: () -> Void = { [weak self] in
+            guard let self else { return }
+            if !text.wrappedValue.isEmpty {
+                text.wrappedValue = ""
+            }
+            onCancel()
+        }
+
+        @objc func submitSearch(_ sender: NSSearchField) {
+            if text.wrappedValue != sender.stringValue {
+                text.wrappedValue = sender.stringValue
+            }
+            if sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                onCancel()
+            } else if onSubmit() {
+                sender.window?.makeFirstResponder(nil)
+            }
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let searchField = notification.object as? NSSearchField else { return }
+            guard updateGate.stageControlValue(
+                searchField.stringValue,
+                modelValue: text.wrappedValue
+            ) else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let value = updateGate.takePendingControlValue() else { return }
+                guard text.wrappedValue != value else { return }
+                text.wrappedValue = value
+            }
+        }
+    }
+}
 
 struct GlobalSearchNavigationDecision {
     let deepLink: WayfinderDeepLink

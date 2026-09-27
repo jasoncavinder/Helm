@@ -25,8 +25,10 @@ GUI pass. Do not launch an unsigned test app or ask the owner to repeat every
 passing CLI scenario. Account sign-in remains deferred.
 The owner's four pnpm GUI safety/localization checks now pass with both original
 versions retained. The Cargo/CLT simulation also passes its owner diagnostic,
-localization and VoiceOver checks with no installation. Continue with staged cask
-authorization cancellation, then approval/cleanup and Sparkle handoff. Keep pnpm
+localization and VoiceOver checks with no installation. Cask cancellation and
+approval now pass with the expected privilege boundary and unchanged unrelated
+cask versions. Finish fixture cleanup through Helm, recheck the corrected
+pause/resume search focus in a signed build, then continue Sparkle handoff. Keep pnpm
 diagnostics VoiceOver and genuinely CLT-free OS coverage explicit.
 Preserve and investigate the disposable QA database corruption observed after
 the forced host restart; cache reconstruction is not a product durability fix.

@@ -50,11 +50,19 @@ is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.
 now records the owner's pnpm GUI safety/localization pass and unchanged native
 package versions on signed source `6aaaedf3`. The CLT prerequisite simulation also
 passes owner diagnostic/localization/VoiceOver checks, with no package installed
-and reads still usable. Cask authorization is staged; it and Sparkle handoff remain
-open. A genuinely CLT-free OS is not certified by the simulation.
+and reads still usable. Cask cancellation and approval now pass: task 16 left no
+installed fixture, and task 32 installed the reviewed 1.0.0 marker with Homebrew
+at user UID 502 and only its privileged child at UID 0. Unrelated cask versions
+are unchanged. Cask cleanup and Sparkle handoff remain open. A genuinely CLT-free
+OS is not certified by the simulation.
 The isolated QA database reported corruption after a forced host restart and was
 preserved before rebuilding the test cache. Its cause remains unresolved; this
 is not a crash-recovery pass. CLI evidence does not close interactive gates.
+
+Dashboard search no longer treats the native field's idle action as accepting a
+result. Delegate-driven live filtering remains active; Return or an explicit
+result action is required to move to Library and transfer focus. Native search
+bridge regression coverage is included; signed-VM owner revalidation is pending.
 
 A repeated live uv cancellation check exposed duplicate CLI coordinator
 submission from processing temporary request files before atomic publication.
