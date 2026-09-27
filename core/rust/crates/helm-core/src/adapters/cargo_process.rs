@@ -3,8 +3,7 @@ use std::sync::Arc;
 use crate::adapters::cargo::{
     CargoDetectOutput, CargoSource, cargo_detect_request, cargo_install_request,
     cargo_list_installed_request, cargo_search_request, cargo_search_single_request,
-    cargo_uninstall_request, cargo_upgrade_request, parse_cargo_outdated,
-    parse_cargo_search_version,
+    cargo_uninstall_request, cargo_upgrade_request, parse_cargo_search_version,
 };
 use crate::adapters::cargo_outdated::synthesize_outdated_payload;
 use crate::adapters::detect_utils::which_executable;
@@ -128,20 +127,8 @@ impl CargoSource for ProcessCargoSource {
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
-    fn upgrade(&self, name: Option<&str>) -> AdapterResult<String> {
-        if let Some(name) = name {
-            let request = self.configure_request(cargo_upgrade_request(None, name));
-            return run_and_collect_stdout(self.executor.as_ref(), request);
-        }
-
-        let outdated_raw = self.list_outdated()?;
-        let outdated = parse_cargo_outdated(&outdated_raw)?;
-        for package in outdated {
-            let request =
-                self.configure_request(cargo_upgrade_request(None, &package.package.name));
-            let _ = run_and_collect_stdout(self.executor.as_ref(), request)?;
-        }
-
-        Ok(String::new())
+    fn upgrade(&self, name: &str, version: &str) -> AdapterResult<String> {
+        let request = self.configure_request(cargo_upgrade_request(None, name, version));
+        run_and_collect_stdout(self.executor.as_ref(), request)
     }
 }

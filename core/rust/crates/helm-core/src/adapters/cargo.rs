@@ -49,7 +49,7 @@ pub trait CargoSource: Send + Sync {
     fn search(&self, query: &str) -> AdapterResult<String>;
     fn install(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
     fn uninstall(&self, name: &str) -> AdapterResult<String>;
-    fn upgrade(&self, name: Option<&str>) -> AdapterResult<String>;
+    fn upgrade(&self, name: &str, version: &str) -> AdapterResult<String>;
 }
 
 pub struct CargoAdapter<S: CargoSource> {
@@ -123,23 +123,28 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     ManagerAction::Install,
                     install_request.package.name.as_str(),
                 )?;
+                let expected = install_request
+                    .version
+                    .as_deref()
+                    .map(|version| exact_cargo_version(version, ManagerAction::Install))
+                    .transpose()?;
                 let before_version =
                     resolve_installed_cargo_version(&self.source, &install_request.package.name)?;
-                let _ = self.source.install(
+                let _ = self
+                    .source
+                    .install(&install_request.package.name, expected)?;
+                let after_version = verify_cargo_installed(
+                    &self.source,
                     &install_request.package.name,
-                    install_request.version.as_deref(),
+                    expected,
+                    ManagerAction::Install,
                 )?;
-                let after_version = install_request.version.clone().or_else(|| {
-                    resolve_installed_cargo_version(&self.source, &install_request.package.name)
-                        .ok()
-                        .flatten()
-                });
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: install_request.package,
                     package_identifier: None,
                     action: ManagerAction::Install,
                     before_version,
-                    after_version,
+                    after_version: Some(after_version),
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -151,6 +156,18 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                 let before_version =
                     require_installed_cargo_version(&self.source, &uninstall_request.package.name)?;
                 let _ = self.source.uninstall(&uninstall_request.package.name)?;
+                if resolve_installed_cargo_version(&self.source, &uninstall_request.package.name)?
+                    .is_some()
+                {
+                    return Err(cargo_mutation_error(
+                        ManagerAction::Uninstall,
+                        CoreErrorKind::ProcessFailure,
+                        format!(
+                            "cargo uninstall reported success but '{}' remains installed",
+                            uninstall_request.package.name
+                        ),
+                    ));
+                }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package: uninstall_request.package,
                     package_identifier: None,
@@ -175,23 +192,97 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     )?;
                     Some(package.name.as_str())
                 };
-                let targeted_outdated = target_name
-                    .map(|name| find_cargo_outdated_entry(&self.source, name))
-                    .transpose()?
-                    .flatten();
-                let _ = self.source.upgrade(target_name)?;
-                if let Some(name) = target_name {
-                    ensure_cargo_no_longer_outdated(&self.source, name)?;
+                if target_name.is_none() && upgrade_request.version.is_some() {
+                    return Err(cargo_mutation_error(
+                        ManagerAction::Upgrade,
+                        CoreErrorKind::InvalidInput,
+                        "a Cargo version requires a single package target".into(),
+                    ));
+                }
+                let explicit_version = upgrade_request
+                    .version
+                    .as_deref()
+                    .map(|version| exact_cargo_version(version, ManagerAction::Upgrade))
+                    .transpose()?;
+                let installed = self.source.list_installed()?;
+                // Freeze candidates once. Postconditions use local inventory, not a second
+                // registry query that may fail or advertise a newer release mid-task.
+                let targets = if let Some(name) = target_name {
+                    let before = installed_cargo_version(&installed, name)?
+                        .ok_or_else(|| cargo_not_installed(name, ManagerAction::Upgrade))?;
+                    let version = if let Some(version) = explicit_version {
+                        version.to_string()
+                    } else {
+                        let matches: Vec<_> = parse_cargo_outdated(&self.source.list_outdated()?)?
+                            .into_iter()
+                            .filter(|entry| entry.package.name == name)
+                            .collect();
+                        if matches.len() > 1 {
+                            return Err(parse_error("ambiguous Cargo upgrade candidates"));
+                        }
+                        matches
+                            .into_iter()
+                            .next()
+                            .map(|entry| entry.candidate_version)
+                            .unwrap_or_else(|| before.clone())
+                    };
+                    vec![(name.to_string(), before, version)]
+                } else {
+                    let outdated = parse_cargo_outdated(&self.source.list_outdated()?)?;
+                    let mut names = std::collections::BTreeSet::new();
+                    let mut targets = Vec::new();
+                    for entry in outdated {
+                        let name = entry.package.name;
+                        if !names.insert(name.clone()) {
+                            return Err(parse_error("ambiguous Cargo upgrade candidates"));
+                        }
+                        let before = installed_cargo_version(&installed, &name)?
+                            .ok_or_else(|| cargo_not_installed(&name, ManagerAction::Upgrade))?;
+                        targets.push((name, before, entry.candidate_version));
+                    }
+                    targets
+                };
+                // Validate every bulk target before starting any package mutation.
+                for (name, _, version) in &targets {
+                    crate::adapters::validate_package_identifier(
+                        ManagerId::Cargo,
+                        ManagerAction::Upgrade,
+                        name,
+                    )?;
+                    exact_cargo_version(version, ManagerAction::Upgrade)?;
+                }
+                let mut observed_after = None;
+                for (name, before, version) in &targets {
+                    let current = resolve_installed_cargo_version(&self.source, name)?;
+                    if current.as_deref() != Some(before) && current.as_deref() != Some(version) {
+                        return Err(cargo_mutation_error(
+                            ManagerAction::Upgrade,
+                            CoreErrorKind::InvalidInput,
+                            format!(
+                                "Cargo inventory for '{name}' changed before execution; refresh and review again"
+                            ),
+                        ));
+                    }
+                    if current.as_deref() != Some(version) {
+                        let _ = self.source.upgrade(name, version)?;
+                    }
+                    observed_after = Some(verify_cargo_installed(
+                        &self.source,
+                        name,
+                        Some(version),
+                        ManagerAction::Upgrade,
+                    )?);
                 }
 
+                let before_version =
+                    target_name.and_then(|_| targets.first().map(|(_, before, _)| before.clone()));
+                let after_version = target_name.and(observed_after);
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
                     package_identifier: None,
                     action: ManagerAction::Upgrade,
-                    before_version: targeted_outdated
-                        .as_ref()
-                        .and_then(|entry| entry.installed_version.clone()),
-                    after_version: targeted_outdated.map(|entry| entry.candidate_version),
+                    before_version,
+                    after_version,
                 }))
             }
             _ => Err(CoreError {
@@ -287,12 +378,22 @@ pub fn cargo_uninstall_request(task_id: Option<TaskId>, crate_name: &str) -> Pro
     )
 }
 
-pub fn cargo_upgrade_request(task_id: Option<TaskId>, crate_name: &str) -> ProcessSpawnRequest {
+pub fn cargo_upgrade_request(
+    task_id: Option<TaskId>,
+    crate_name: &str,
+    version: &str,
+) -> ProcessSpawnRequest {
     cargo_request(
         task_id,
         TaskType::Upgrade,
         ManagerAction::Upgrade,
-        CommandSpec::new(CARGO_COMMAND).args(["install", "--force", crate_name]),
+        CommandSpec::new(CARGO_COMMAND).args([
+            "install",
+            "--force",
+            crate_name,
+            "--version",
+            version,
+        ]),
         MUTATION_TIMEOUT,
     )
 }
@@ -474,27 +575,101 @@ pub(crate) fn parse_cargo_search(
     Ok(results)
 }
 
-fn ensure_cargo_no_longer_outdated<S: CargoSource>(
+fn verify_cargo_installed<S: CargoSource>(
     source: &S,
     package_name: &str,
-) -> AdapterResult<()> {
-    let raw = source.list_outdated()?;
-    let outdated = parse_cargo_outdated(&raw)?;
-    if outdated
-        .iter()
-        .any(|item| item.package.name == package_name)
+    expected: Option<&str>,
+    action: ManagerAction,
+) -> AdapterResult<String> {
+    let observed = resolve_installed_cargo_version(source, package_name)?;
+    if let Some(version) = observed.as_deref()
+        && expected.is_none_or(|expected| version == expected)
     {
-        return Err(CoreError {
-            manager: Some(ManagerId::Cargo),
-            task: Some(TaskType::Upgrade),
-            action: Some(ManagerAction::Upgrade),
-            kind: CoreErrorKind::ProcessFailure,
-            message: format!(
-                "cargo install reported success but '{package_name}' remains outdated"
-            ),
-        });
+        return Ok(version.to_string());
     }
-    Ok(())
+    Err(cargo_mutation_error(
+        action,
+        CoreErrorKind::ProcessFailure,
+        format!(
+            "cargo install reported success but '{package_name}' is unverified (expected {}, observed {}); refresh before retrying",
+            expected.unwrap_or("an installed version"),
+            observed.as_deref().unwrap_or("not installed"),
+        ),
+    ))
+}
+
+fn exact_cargo_version(version: &str, action: ManagerAction) -> AdapterResult<&str> {
+    let version = version.trim();
+    semver::Version::parse(version).map_err(|_| {
+        cargo_mutation_error(
+            action,
+            CoreErrorKind::InvalidInput,
+            "Cargo mutations require an exact version, not a version range or partial version"
+                .into(),
+        )
+    })?;
+    Ok(version)
+}
+
+fn cargo_mutation_error(action: ManagerAction, kind: CoreErrorKind, message: String) -> CoreError {
+    CoreError {
+        manager: Some(ManagerId::Cargo),
+        task: Some(match action {
+            ManagerAction::Install => TaskType::Install,
+            ManagerAction::Uninstall => TaskType::Uninstall,
+            _ => TaskType::Upgrade,
+        }),
+        action: Some(action),
+        kind,
+        message,
+    }
+}
+
+fn installed_cargo_version(raw: &str, package_name: &str) -> AdapterResult<Option<String>> {
+    let mut found = None;
+    let mut header = None;
+    let mut has_binary = false;
+    // Keep the shared display parser unchanged. Mutation evidence must reject
+    // duplicate/malformed headers and source-annotated targets, not pick the first.
+    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+        if line.starts_with(char::is_whitespace) {
+            if header.is_none() {
+                return Err(parse_error("Cargo binary entry has no package header"));
+            }
+            has_binary = true;
+            continue;
+        }
+        if header.is_some() && !has_binary {
+            return Err(parse_error(
+                "Cargo package header has no installed binaries",
+            ));
+        }
+        let (name, version) = line
+            .trim_end()
+            .strip_suffix(':')
+            .and_then(|line| line.split_once(" v"))
+            .ok_or_else(|| parse_error("unrecognized Cargo installed-package header"))?;
+        header = Some(name);
+        has_binary = false;
+        if name != package_name {
+            continue;
+        }
+        if found.is_some() {
+            return Err(parse_error("ambiguous Cargo installed-package entries"));
+        }
+        if semver::Version::parse(version).is_err() {
+            return Err(parse_error(
+                "Cargo package version or source needs manual review before mutation",
+            ));
+        }
+        found = Some(version.to_string());
+    }
+    if header.is_some() && !has_binary {
+        return Err(parse_error(
+            "Cargo package header has no installed binaries",
+        ));
+    }
+    Ok(found)
 }
 
 fn resolve_installed_cargo_version<S: CargoSource>(
@@ -502,35 +677,23 @@ fn resolve_installed_cargo_version<S: CargoSource>(
     package_name: &str,
 ) -> AdapterResult<Option<String>> {
     let raw = source.list_installed()?;
-    let installed = parse_cargo_installed(&raw)?;
-    Ok(installed
-        .into_iter()
-        .find(|item| item.package.name == package_name)
-        .and_then(|item| item.installed_version))
+    installed_cargo_version(&raw, package_name)
 }
 
 fn require_installed_cargo_version<S: CargoSource>(
     source: &S,
     package_name: &str,
 ) -> AdapterResult<String> {
-    resolve_installed_cargo_version(source, package_name)?.ok_or_else(|| CoreError {
-        manager: Some(ManagerId::Cargo),
-        task: Some(TaskType::Uninstall),
-        action: Some(ManagerAction::Uninstall),
-        kind: CoreErrorKind::NotInstalled,
-        message: format!("cargo package '{package_name}' is not installed"),
-    })
+    resolve_installed_cargo_version(source, package_name)?
+        .ok_or_else(|| cargo_not_installed(package_name, ManagerAction::Uninstall))
 }
 
-fn find_cargo_outdated_entry<S: CargoSource>(
-    source: &S,
-    package_name: &str,
-) -> AdapterResult<Option<OutdatedPackage>> {
-    let raw = source.list_outdated()?;
-    let outdated = parse_cargo_outdated(&raw)?;
-    Ok(outdated
-        .into_iter()
-        .find(|item| item.package.name == package_name))
+fn cargo_not_installed(package_name: &str, action: ManagerAction) -> CoreError {
+    cargo_mutation_error(
+        action,
+        CoreErrorKind::NotInstalled,
+        format!("cargo package '{package_name}' is not installed"),
+    )
 }
 
 pub(crate) fn parse_cargo_outdated(output: &str) -> AdapterResult<Vec<OutdatedPackage>> {
@@ -547,7 +710,7 @@ pub(crate) fn parse_cargo_outdated(output: &str) -> AdapterResult<Vec<OutdatedPa
         let installed = entry.installed_version.trim();
         let candidate = entry.candidate_version.trim();
         if name.is_empty() || installed.is_empty() || candidate.is_empty() {
-            continue;
+            return Err(parse_error("incomplete Cargo outdated entry"));
         }
         if installed == candidate {
             continue;
@@ -703,8 +866,11 @@ mod tests {
         );
         assert_eq!(uninstall.command.args, vec!["uninstall", "ripgrep"]);
 
-        let upgrade = cargo_upgrade_request(None, "ripgrep");
-        assert_eq!(upgrade.command.args, vec!["install", "--force", "ripgrep"]);
+        let upgrade = cargo_upgrade_request(None, "ripgrep", "14.1.1");
+        assert_eq!(
+            upgrade.command.args,
+            vec!["install", "--force", "ripgrep", "--version", "14.1.1"]
+        );
     }
 
     #[derive(Clone)]
@@ -757,7 +923,7 @@ mod tests {
             Ok(String::new())
         }
 
-        fn upgrade(&self, _name: Option<&str>) -> AdapterResult<String> {
+        fn upgrade(&self, _name: &str, _version: &str) -> AdapterResult<String> {
             Ok(String::new())
         }
     }
@@ -819,5 +985,42 @@ mod tests {
         let error = parse_cargo_outdated("{bad-json").expect_err("expected parse failure");
         assert_eq!(error.kind, CoreErrorKind::ParseFailure);
         assert_eq!(error.manager, Some(ManagerId::Cargo));
+    }
+
+    #[test]
+    fn install_cannot_substitute_requested_version_for_observed_version() {
+        for name in ["bat", "absent"] {
+            let adapter = CargoAdapter::new(StubCargoSource::success());
+            let result =
+                adapter.execute(AdapterRequest::Install(crate::adapters::InstallRequest {
+                    package: PackageRef {
+                        manager: ManagerId::Cargo,
+                        name: name.into(),
+                    },
+                    target_name: None,
+                    version: Some("0.25.0".into()),
+                }));
+            assert!(
+                result.is_err(),
+                "missing or old inventory is not a successful install: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn upgrade_cannot_use_empty_outdated_result_as_installation_proof() {
+        let mut source = StubCargoSource::success();
+        source.outdated_result = Ok("[]".into());
+        let result = CargoAdapter::new(source).execute(AdapterRequest::Upgrade(
+            crate::adapters::UpgradeRequest {
+                package: Some(PackageRef {
+                    manager: ManagerId::Cargo,
+                    name: "bat".into(),
+                }),
+                target_name: None,
+                version: Some("0.25.0".into()),
+            },
+        ));
+        assert!(result.is_err(), "bat is still 0.24.0: {result:?}");
     }
 }
