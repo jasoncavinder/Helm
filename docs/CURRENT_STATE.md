@@ -22,8 +22,8 @@ venvs and CLI exact-version uninstall. Durable task reservations now pass
 cross-process and migration-compatibility checks. Homebrew cask formats and
 authorization delegation, tap-qualified formula identities, RubyGems search,
 and Docker/nix-darwin detection have bounded live evidence. Operation-specific
-developer-tools preflight is implemented; simulated missing-tool checks pass,
-but truly CLT-free and localized GUI prerequisite QA remain open. App Store/Setapp
+developer-tools preflight is implemented; simulated missing-tool CLI and localized
+GUI prerequisite checks pass, but truly CLT-free runtime QA remains open. App Store/Setapp
 account-dependent checks are blocked by owner decision. pnpm 12 compatibility
 (#559), remaining capability/environment gates and the campaign review remain open.
 
@@ -48,8 +48,10 @@ Task diagnostics now provide translated pnpm-limit and developer-tools guidance
 from the core failure markers, including persisted task logs when process output
 is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.md)
 now records the owner's pnpm GUI safety/localization pass and unchanged native
-package versions on signed source `6aaaedf3`. The CLT prerequisite simulation is
-staged; its owner check, cask authorization and Sparkle handoff remain open.
+package versions on signed source `6aaaedf3`. The CLT prerequisite simulation also
+passes owner diagnostic/localization/VoiceOver checks, with no package installed
+and reads still usable. Cask authorization is staged; it and Sparkle handoff remain
+open. A genuinely CLT-free OS is not certified by the simulation.
 The isolated QA database reported corruption after a forced host restart and was
 preserved before rebuilding the test cache. Its cause remains unresolved; this
 is not a crash-recovery pass. CLI evidence does not close interactive gates.

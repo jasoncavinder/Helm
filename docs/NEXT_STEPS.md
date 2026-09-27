@@ -24,8 +24,10 @@ Use `docs/validation/v0.20-adapter-gui-checklist.md` to stage the small remainin
 GUI pass. Do not launch an unsigned test app or ask the owner to repeat every
 passing CLI scenario. Account sign-in remains deferred.
 The owner's four pnpm GUI safety/localization checks now pass with both original
-versions retained. Continue with the staged Cargo/CLT simulation, then cask
-authorization and Sparkle handoff. Keep diagnostics VoiceOver coverage explicit.
+versions retained. The Cargo/CLT simulation also passes its owner diagnostic,
+localization and VoiceOver checks with no installation. Continue with staged cask
+authorization cancellation, then approval/cleanup and Sparkle handoff. Keep pnpm
+diagnostics VoiceOver and genuinely CLT-free OS coverage explicit.
 Preserve and investigate the disposable QA database corruption observed after
 the forced host restart; cache reconstruction is not a product durability fix.
 Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
