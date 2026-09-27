@@ -31,13 +31,13 @@ cask versions. The corrected pause/resume search focus now passes its signed-VM
 owner check. Fixture cleanup through Helm now passes, with marker/Caskroom absence
 and the original native cask inventory independently verified. The responsive
 Library Install-button layout also passes its signed-VM owner check on UI source
-`443a714e`. Continue the staged Sparkle handoff in `gui-sparkle-443a714e`: select
-Rectangle 0.90 -> 2.0.1. The owner confirmed that the Plan action opens Rectangle
-without setup/permission prompts; its native version remains 0.90 and Helm still
-lists the candidate. Complete its own update and refresh Helm to verify
-reconciliation. Do not launch an embedded
-updater executable or mark opening the app as a completed installation. Keep pnpm
-diagnostics VoiceOver and genuinely CLT-free OS coverage explicit.
+`443a714e`. The Sparkle vendor handoff, owner-completed Rectangle 0.90 -> 2.0.1
+update and refreshed Helm reconciliation also pass, with vendor signature and
+native/cached inventory independently verified. The owner approved Rectangle's
+first-run Accessibility request in the VM; the temporary grant has been reset
+and Rectangle stopped. Do not repeat these passing checks or interpret them as
+direct third-party installation by Helm. Complete the unreported pnpm diagnostics
+VoiceOver check; keep genuinely CLT-free OS and other platform gaps explicit.
 Preserve and investigate the disposable QA database corruption observed after
 the forced host restart; cache reconstruction is not a product durability fix.
 Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
