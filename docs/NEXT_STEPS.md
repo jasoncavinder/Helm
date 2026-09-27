@@ -20,9 +20,10 @@ mutation guard for pnpm 11+ and unknown/prerelease versions. Keep reads availabl
 retain the passing pnpm 10.16.1 lifecycle, and do not interpret the guard as pnpm
 12 lifecycle certification. Review this explicit compatibility boundary with the
 campaign batch; lifting it requires group-aware consent and preservation evidence.
-Use `docs/validation/v0.20-adapter-gui-checklist.md` to stage the small remaining
-GUI pass. Do not launch an unsigned test app or ask the owner to repeat every
-passing CLI scenario. Account sign-in remains deferred.
+Preserve the completed bounded owner GUI checks in
+`docs/validation/v0.20-adapter-gui-checklist.md`. Do not launch an unsigned test app
+or ask the owner to repeat passing scenarios without a relevant code change.
+Account sign-in remains deferred.
 The owner's four pnpm GUI safety/localization checks now pass with both original
 versions retained. The Cargo/CLT simulation also passes its owner diagnostic,
 localization and VoiceOver checks with no installation. Cask cancellation and
@@ -36,10 +37,14 @@ update and refreshed Helm reconciliation also pass, with vendor signature and
 native/cached inventory independently verified. The owner approved Rectangle's
 first-run Accessibility request in the VM; the temporary grant has been reset
 and Rectangle stopped. Do not repeat these passing checks or interpret them as
-direct third-party installation by Helm. Complete the unreported pnpm diagnostics
-VoiceOver check; keep genuinely CLT-free OS and other platform gaps explicit.
+direct third-party installation by Helm. The separately staged pnpm diagnostics
+VoiceOver check now passes, including title/guidance reading, diagnostic-tab
+navigation and Escape dismissal. Keep genuinely CLT-free OS and other platform
+gaps explicit.
 Preserve and investigate the disposable QA database corruption observed after
-the forced host restart; cache reconstruction is not a product durability fix.
+the forced host restart under #560; cache reconstruction is not a product
+durability fix. The original and a hash-verified local copy are retained; do not
+remove the VM evidence or silently waive this unresolved risk for release.
 Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
 applicable cells rather than treating detection-only features as missing work.
 Preserve the corrected pnpm 10 fresh-store lifecycle, final read sweep, controlled
@@ -60,7 +65,7 @@ v0.20.x core workflow implementation and v0.19.1 stable monitoring
 ```
 
 Focus:
-- continue the disposable-VM adapter campaign in `docs/validation/v0.20-adapter-vm-family-results.md`: uv endpoint lifecycles and the documented manager-family fixes pass their bounded scenarios; keep all campaign PRs unmerged until the owner reviews the completed batch. Preserve passing durable cross-process task reservations, controlled Homebrew formula/cask upgrades, cask authorization cancellation and the full search sweep. Finish CLT-free/GUI prerequisite evidence, pnpm 12 compatibility (#559) and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
+- continue the disposable-VM adapter campaign in `docs/validation/v0.20-adapter-vm-family-results.md`: uv endpoint lifecycles and the documented manager-family fixes pass their bounded scenarios; keep all campaign PRs unmerged until the owner reviews the completed batch. Preserve passing durable cross-process task reservations, controlled Homebrew formula/cask upgrades, the full search sweep and the completed bounded owner GUI checklist. Investigate the preserved QA database corruption and disposition genuinely CLT-free/platform evidence, pnpm 12 compatibility (#559) and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
 - retain the exact-pinned uv PEP 440 matcher and its prerelease/epoch/postrelease, zero-padding, and Requires-Python regressions when integrating candidate discovery; dependency upgrades require explicit review, and matching candidates still need source-aware resolution
 - complete final synchronized-head CI and owner merge for the v0.20 Dashboard Add manager PR #547, preserving `docs/validation/v0.20-add-manager-dashboard.md`: source `3876f7c0` passed owner navigation/cancellation, scroll/filter handoff, Cargo/Homebrew choices, toolbar, appearance, keyboard/VoiceOver, and offline-safety checks; the corrected installation-panel language recheck passed on signed source `0548920c`, which also passed independent code review without findings. The `dev` synchronization adds only the merged website security lockfile update, not app changes. Do not reopen accepted presentation checks absent a runtime change. Keep actual installation/failure/cancellation/recovery evidence in an isolated environment and the all-manager certification pass (#463/#500); do not install managers on the owner's Mac as an automated test
 - preserve the 2026-09-21 owner-confirmed live Sparkle Plan/confirmation evidence on source `edb4270b`: Arc and iTerm2 were interactive-only, the review reported 101 selected versus 99 automatic updates, and cancellation did not execute the reviewed plan. Keep the exact provenance and setup-incident limits in the readiness record; this supersedes the targeted Sparkle-presentation gate mentioned below, not vendor-installation or participant validation. Complete protected arm64/macOS 13.0-target CI on the readiness PR, retaining the distinction between deployment-target compatibility and actual Ventura runtime coverage; then proceed to the remaining moderated and production-route decisions without reopening completed owner matrices

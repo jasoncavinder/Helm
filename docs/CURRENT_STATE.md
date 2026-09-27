@@ -63,11 +63,16 @@ Sparkle candidate and unchanged Setapp inventory. Vendor signature/team checks
 pass. Rectangle was then stopped and only its VM-user Accessibility grant reset.
 Earlier no-permission-prompt wording was inaccurate and is superseded by this
 record. This is vendor-authoritative updating, not direct installation by Helm.
-A genuinely CLT-free
-OS is not certified by the simulation.
+The separately staged pnpm diagnostics VoiceOver check also passes: the owner
+confirmed title/guidance reading, tab navigation and Escape dismissal on signed
+UI source `443a714e` with backend source `6aaaedf3`, without another mutation.
+A genuinely CLT-free OS is not certified by the simulation.
 The isolated QA database reported corruption after a forced host restart and was
 preserved before rebuilding the test cache. Its cause remains unresolved; this
-is not a crash-recovery pass. CLI evidence does not close interactive gates.
+is not a crash-recovery pass. Read-only inspection of the hash-verified preserved
+file finds 882 physical pages versus 886 declared in its header; #560 tracks
+investigation without attributing the cause to Helm or the VM prematurely.
+CLI evidence does not close interactive gates.
 
 Dashboard search no longer treats the native field's idle action as accepting a
 result. Delegate-driven live filtering remains active; Return or an explicit
