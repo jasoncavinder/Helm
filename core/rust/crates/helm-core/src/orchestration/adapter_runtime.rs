@@ -1315,10 +1315,6 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
             );
         }
 
-        // Later domain responses may proceed once this task's package/cache/detection writes
-        // have completed. Supplemental task logs do not affect response ordering.
-        persistence_turn.complete();
-
         let failure_diagnostics = build_failure_diagnostic_entries(&snapshot, terminal_error);
         for diagnostic in failure_diagnostics {
             if let Err(error) = persist_append_task_log(
@@ -1349,6 +1345,10 @@ fn spawn_terminal_persistence_watcher(ctx: PersistenceWatcherContext) {
                 );
             }
         }
+
+        // CLI callers may exit as soon as this receipt completes. Preserve failure
+        // diagnostics with the domain writes; only nonessential notes follow it.
+        persistence_turn.complete();
 
         let supplemental_notes = crate::execution::drain_task_log_notes(snapshot.runtime.id);
         for note in supplemental_notes {
@@ -1795,12 +1795,23 @@ fn build_failure_diagnostic_envelope(
     let stderr_excerpt = task_output
         .as_ref()
         .and_then(|record| record.stderr.as_deref())
-        .map(|value| truncate_for_diagnostic(value, FAILURE_DIAGNOSTIC_EXCERPT_MAX_CHARS));
+        .map(|value| {
+            truncate_for_diagnostic(
+                crate::adapters::failure_diagnostics::actionable_failure_text(
+                    snapshot.runtime.manager,
+                    value,
+                ),
+                FAILURE_DIAGNOSTIC_EXCERPT_MAX_CHARS,
+            )
+        });
     let command = task_output
         .as_ref()
         .and_then(|record| record.command.as_deref())
         .map(|value| truncate_for_diagnostic(value, FAILURE_DIAGNOSTIC_COMMAND_MAX_CHARS));
-    let combined_text = match stderr_excerpt.as_deref() {
+    let combined_text = match task_output
+        .as_ref()
+        .and_then(|record| record.stderr.as_deref())
+    {
         Some(stderr) => format!("{}\n{stderr}", terminal_error.message),
         None => terminal_error.message.clone(),
     };
@@ -1820,7 +1831,13 @@ fn build_failure_diagnostic_envelope(
         .iter()
         .map(|probe| probe.to_string())
         .collect::<Vec<_>>();
-    if let Some(command) = command.as_ref() {
+    if let Some(command) = command.as_ref()
+        && crate::adapters::failure_diagnostics::classify_process_failure(
+            snapshot.runtime.manager,
+            &combined_text,
+        )
+        .is_none()
+    {
         recommended_probes.push(format!("run_direct_command: {command}"));
     }
 
@@ -1855,6 +1872,17 @@ fn build_failure_diagnostic_envelope(
 }
 
 fn classify_failure_issue(manager: ManagerId, combined_text: &str) -> FailureIssueClassification {
+    if let Some(issue) =
+        crate::adapters::failure_diagnostics::classify_process_failure(manager, combined_text)
+    {
+        return FailureIssueClassification {
+            key: issue.issue_key(),
+            owner: issue.owner(),
+            confidence: "high",
+            summary: issue.guidance(),
+            recommended_probes: issue.probes(),
+        };
+    }
     let normalized = normalize_failure_text(combined_text);
     if manager == ManagerId::HomebrewFormula {
         if normalized.contains("no available formula with the name \"formula.jws.json\"")
@@ -3052,6 +3080,113 @@ mod tests {
                 error_message: Some(error.message.clone()),
             },
             terminal_state: Some(AdapterTaskTerminalState::Failed(error)),
+        }
+    }
+
+    #[test]
+    fn rust_task_diagnostics_classify_toolchain_dns_and_build_failures() {
+        for (manager, message, expected) in [
+            (
+                ManagerId::Cargo,
+                "the 'cargo' binary, normally provided by the 'cargo' component, is not applicable to the 'stable-aarch64-apple-darwin' toolchain",
+                "cargo.toolchain_unavailable",
+            ),
+            (
+                ManagerId::Cargo,
+                "error: 'cargo' is not installed for the toolchain 'nightly-aarch64-apple-darwin'",
+                "cargo.toolchain_unavailable",
+            ),
+            (
+                ManagerId::Rustup,
+                "client error (Connect): dns error: failed to lookup address information: nodename nor servname provided, or not known",
+                "network.dns_resolution_failed",
+            ),
+            (
+                ManagerId::Npm,
+                "getaddrinfo ENOTFOUND registry.npmjs.org",
+                "network.dns_resolution_failed",
+            ),
+            (
+                ManagerId::Cargo,
+                "error: failed to compile `example`\nCould not resolve host: index.crates.io",
+                "network.dns_resolution_failed",
+            ),
+            (
+                ManagerId::Rustup,
+                "https://static.rust-lang.org: failed to connect: connection refused",
+                "network.endpoint_unreachable",
+            ),
+            (
+                ManagerId::Cargo,
+                "error[E0433]: cannot find `timespec` in `crate`\nerror: could not compile `rustix` (lib) due to 3 previous errors",
+                "cargo.build_failed",
+            ),
+        ] {
+            assert_eq!(classify_failure_issue(manager, message).key, expected);
+        }
+    }
+
+    #[test]
+    fn rust_task_diagnostics_keep_late_compiler_cause_without_suggesting_mutation() {
+        let message = "process exited with code 101".to_string();
+        let snapshot = failed_snapshot(
+            TaskId(10042),
+            ManagerId::Cargo,
+            TaskType::Upgrade,
+            CoreError {
+                manager: Some(ManagerId::Cargo),
+                task: Some(TaskType::Upgrade),
+                action: Some(ManagerAction::Upgrade),
+                kind: CoreErrorKind::ProcessFailure,
+                message: message.clone(),
+            },
+        );
+        let stderr = format!(
+            "{}error[E0433]: cannot find `timespec` in `crate`\nrustix/src/backend/libc/net/sockopt.rs:237:29\nerror: could not compile `rustix` (lib)",
+            "Compiling dependency 1.0\n".repeat(80)
+        );
+        let envelope = build_failure_diagnostic_envelope(
+            &snapshot,
+            &TaskTerminalErrorDetails {
+                code: "process_failure".into(),
+                message,
+            },
+            Some(TaskOutputRecord {
+                command: Some("cargo install --force slint-viewer".into()),
+                stderr: Some(stderr),
+                exit_code: Some(101),
+                ..TaskOutputRecord::default()
+            }),
+        );
+        assert_eq!(envelope.issue_key, "cargo.build_failed");
+        assert!(envelope.stderr_excerpt.unwrap().starts_with("error[E0433]"));
+        assert!(
+            !envelope
+                .recommended_probes
+                .iter()
+                .any(|probe| probe.contains("install --force"))
+        );
+    }
+
+    #[test]
+    fn rust_task_diagnostics_do_not_misclassify_other_errors() {
+        for (manager, message) in [
+            (ManagerId::Cargo, "error: could not find Cargo.toml"),
+            (
+                ManagerId::Cargo,
+                "error: no such subcommand: install-update",
+            ),
+            (
+                ManagerId::Npm,
+                "cargo is not installed for the toolchain 'stable'",
+            ),
+            (ManagerId::Rustup, "failed to parse manifest"),
+            (ManagerId::Cargo, "rustix v1.1.5 downloaded successfully"),
+        ] {
+            assert_eq!(
+                classify_failure_issue(manager, message).key,
+                "unclassified_process_failure"
+            );
         }
     }
 

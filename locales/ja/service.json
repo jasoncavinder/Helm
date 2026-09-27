@@ -1,4 +1,8 @@
 {
+  "service.error.cargo_toolchain_unavailable": "選択された Rust ツールチェーンでは Cargo を利用できません。rustup show active-toolchain と rustup component list --installed で確認してください。コンポーネントやツールチェーンを変更する前に修復内容を確認してください。キャッシュ済みのパッケージ情報は保持され、Helm は別の Cargo に切り替えていません。",
+  "service.error.dns_resolution_failed": "接続先のネットワークアドレスを解決できませんでした。DNS、VPN、プロキシ、配信元の状態を確認してから再試行してください。Mac 全体がオフラインとは限りません。キャッシュ済みのデータは引き続き利用できます。",
+  "service.error.endpoint_unreachable": "接続先に接続できませんでした。配信元、接続、VPN、プロキシを確認してから再試行してください。Mac 全体がオフラインとは限りません。キャッシュ済みのデータは引き続き利用できます。",
+  "service.error.cargo_build_failed": "Cargo はこのパッケージまたは依存関係をコンパイルできませんでした。コンパイラのエラーと、パッケージが対応するツールチェーンや依存関係の要件を確認してください。Helm は異なる依存関係や別のインストーラで再試行していません。",
   "service.error.pnpm_global_mutation_unsupported": "pnpm 11 以降、または認識できないバージョンでは、Helm はグローバルパッケージを安全に変更できません。インストールグループ内の他のパッケージも変更や削除の対象になる場合があります。一覧表示と更新確認は引き続き利用できます。pnpm でグループ全体を直接確認してください。回避策として既存の環境をダウングレードしたり再インストールしたりしないでください。",
   "service.error.developer_tools_required": "この操作には Apple のコマンドラインツールまたは設定済みの Xcode が必要です。ターミナルで xcode-select --install を実行し、Apple のインストーラを完了してから再試行してください。Helm の起動やキャッシュ済みデータの表示には開発者ツールは必要ありません。",
   "service.error.cancelled": "操作はキャンセルされました。",

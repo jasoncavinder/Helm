@@ -9,9 +9,9 @@ use crate::adapters::cargo::{
 use crate::adapters::cargo_outdated::synthesize_outdated_payload;
 use crate::adapters::detect_utils::which_executable;
 use crate::adapters::manager::AdapterResult;
-use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
+use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
-use crate::models::{ManagerId, SearchQuery};
+use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, SearchQuery, TaskType};
 
 pub struct ProcessCargoSource {
     executor: Arc<dyn ProcessExecutor>,
@@ -71,8 +71,22 @@ impl CargoSource for ProcessCargoSource {
             ManagerId::Cargo,
         );
 
-        let request = self.configure_request(cargo_detect_request(None));
-        let version_output = run_and_collect_version_output(self.executor.as_ref(), request);
+        let version_output = if let Some(path) = executable_path.as_ref() {
+            let mut request = self.configure_request(cargo_detect_request(None));
+            request.command.program = path.clone();
+            // An existing but unusable proxy is a failed check, not empty inventory.
+            run_and_collect_stdout(self.executor.as_ref(), request)?
+        } else {
+            String::new()
+        };
+        if executable_path.is_some() && super::cargo::parse_cargo_version(&version_output).is_none()
+        {
+            return Err(CoreError {
+                manager: Some(ManagerId::Cargo), task: Some(TaskType::Detection),
+                action: Some(ManagerAction::Detect), kind: CoreErrorKind::ParseFailure,
+                message: "The selected Cargo executable returned an unrecognized version; cached inventory is retained.".into(),
+            });
+        }
 
         Ok(CargoDetectOutput {
             executable_path,

@@ -117,6 +117,15 @@ struct RecordingTaskStore {
     reservation: Mutex<u64>,
     remaining_create_failures: Mutex<usize>,
     fail_plain_updates: bool,
+    diagnostic_gate: Option<Arc<DiagnosticGate>>,
+}
+
+#[derive(Default)]
+struct DiagnosticGate {
+    entered: AtomicBool,
+    released: Mutex<bool>,
+    condvar: Condvar,
+    messages: Mutex<Vec<String>>,
 }
 
 impl RecordingTaskStore {
@@ -130,6 +139,7 @@ impl RecordingTaskStore {
             reservation: Mutex::new(0),
             remaining_create_failures: Mutex::new(failures),
             fail_plain_updates: false,
+            diagnostic_gate: None,
         }
     }
 
@@ -139,6 +149,7 @@ impl RecordingTaskStore {
             reservation: Mutex::new(0),
             remaining_create_failures: Mutex::new(0),
             fail_plain_updates: true,
+            diagnostic_gate: None,
         }
     }
 
@@ -148,6 +159,25 @@ impl RecordingTaskStore {
 }
 
 impl TaskStore for RecordingTaskStore {
+    fn append_task_log(
+        &self,
+        entry: &helm_core::models::NewTaskLogRecord,
+    ) -> PersistenceResult<()> {
+        if let Some(gate) = &self.diagnostic_gate {
+            if entry.message.starts_with("[diagnostic.v1]") {
+                gate.entered.store(true, Ordering::SeqCst);
+                let released = gate.released.lock().unwrap();
+                let (released, _) = gate
+                    .condvar
+                    .wait_timeout_while(released, Duration::from_secs(5), |released| !*released)
+                    .unwrap();
+                assert!(*released, "diagnostic write must be released by the test");
+            }
+            gate.messages.lock().unwrap().push(entry.message.clone());
+        }
+        Ok(())
+    }
+
     fn reserve_task(&self, template: &TaskRecord) -> PersistenceResult<TaskRecord> {
         let mut next = self.reservation.lock().unwrap();
         let mut task = template.clone();
@@ -1299,6 +1329,148 @@ fn orchestration_timeout_cancels_queued_retry_before_return() {
             assert_eq!(error.kind, CoreErrorKind::Timeout);
             assert_eq!(call_count.load(Ordering::SeqCst), 1);
         });
+}
+
+#[tokio::test]
+async fn persistence_receipt_waits_for_failure_diagnostics() {
+    let gate = Arc::new(DiagnosticGate::default());
+    let store = Arc::new(RecordingTaskStore {
+        diagnostic_gate: Some(gate.clone()),
+        ..Default::default()
+    });
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Rustup,
+        AdapterBehavior::Fails(CoreError {
+            manager: None,
+            task: None,
+            action: None,
+            kind: CoreErrorKind::ProcessFailure,
+            message: "failed to lookup address information".into(),
+        }),
+    ));
+    let runtime = AdapterRuntime::with_task_store([adapter], store).unwrap();
+    let (_, persistence) = runtime
+        .submit_with_persistence(ManagerId::Rustup, AdapterRequest::Refresh(RefreshRequest))
+        .await
+        .unwrap();
+    assert!(wait_until(|| gate.entered.load(Ordering::SeqCst)).await);
+    let mut waiter = tokio::spawn(persistence.wait_for_completion());
+    let completed_before_diagnostic = tokio::time::timeout(Duration::from_millis(50), &mut waiter)
+        .await
+        .is_ok();
+    *gate.released.lock().unwrap() = true;
+    gate.condvar.notify_all();
+    if !completed_before_diagnostic {
+        tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    assert!(
+        !completed_before_diagnostic,
+        "CLI exit receipt must include failure diagnostics"
+    );
+    assert!(
+        gate.messages
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|message| message.starts_with("[diagnostic.v1]")
+                && message.contains("network.dns_resolution_failed"))
+    );
+}
+
+#[tokio::test]
+async fn dns_failures_preserve_bounded_retry_and_offline_semantics() {
+    for network in [None, Some(true), Some(false)] {
+        for transient in [false, true] {
+            let count = Arc::new(AtomicUsize::new(0));
+            let failure = CoreError { manager: None, task: None, action: None,
+                kind: CoreErrorKind::ProcessFailure,
+                message: "[dns_resolution_failed] client error (Connect): dns error: failed to lookup address information".into() };
+            let second = if transient {
+                Ok(AdapterResponse::Refreshed)
+            } else {
+                Err(failure.clone())
+            };
+            let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::new(
+                ManagerId::Rustup,
+                vec![Err(failure), second],
+                count.clone(),
+            ));
+            let runtime = AdapterRuntime::new([adapter]).unwrap();
+            if let Some(available) = network {
+                runtime.set_network_available(available);
+            }
+            let response = runtime
+                .submit_refresh_request_response(
+                    ManagerId::Rustup,
+                    AdapterRequest::Refresh(RefreshRequest),
+                )
+                .await;
+            if network == Some(false) {
+                assert_eq!(
+                    response.unwrap_err().kind,
+                    CoreErrorKind::NetworkUnavailable
+                );
+                assert_eq!(count.load(Ordering::SeqCst), 0);
+            } else {
+                assert_eq!(count.load(Ordering::SeqCst), 2);
+                assert_eq!(response.is_ok(), transient);
+                assert!(
+                    runtime.network_work_allowed(),
+                    "one failed endpoint must not mark the Mac offline"
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn dns_diagnostics_do_not_retry_mutations_or_cancelled_refreshes() {
+    for mutation in [false, true] {
+        let count = Arc::new(AtomicUsize::new(0));
+        let expected_kind = if mutation {
+            CoreErrorKind::ProcessFailure
+        } else {
+            CoreErrorKind::Cancelled
+        };
+        let adapter: Arc<dyn ManagerAdapter> = Arc::new(SequencedAdapter::with_capabilities(
+            ManagerId::Cargo,
+            &[Capability::Refresh, Capability::Install],
+            vec![
+                Err(CoreError {
+                    manager: None,
+                    task: None,
+                    action: None,
+                    kind: expected_kind,
+                    message: "[dns_resolution_failed] failed to lookup address information".into(),
+                }),
+                Ok(AdapterResponse::Refreshed),
+            ],
+            count.clone(),
+        ));
+        let runtime = AdapterRuntime::new([adapter]).unwrap();
+        let request = if mutation {
+            AdapterRequest::Install(InstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Cargo,
+                    name: "example".into(),
+                },
+                target_name: None,
+                version: None,
+            })
+        } else {
+            AdapterRequest::Refresh(RefreshRequest)
+        };
+        let error = runtime
+            .submit_refresh_request_response(ManagerId::Cargo, request)
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, expected_kind);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        assert!(runtime.network_work_allowed());
+    }
 }
 
 #[tokio::test]

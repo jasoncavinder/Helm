@@ -13,6 +13,7 @@ The format is based on Keep a Changelog and follows SemVer-compatible Helm versi
 - Plan retains its native authority-grouped outline, keyboard behavior, and virtualized scrolling while presenting updates as a Wayfinder vertical card list with visible authority headings, leading inclusion controls, trailing status alignment, secondary manager labels, balanced selection treatment, and no spreadsheet-style header or grid.
 
 ### Fixed
+- Unusable Cargo toolchains now fail detection truthfully instead of replacing cached inventory and updates with an empty snapshot. Rust-toolchain, DNS, endpoint and Cargo compiler failures include localized guidance, and CLI exit waits for the detailed failure diagnostic record to be saved.
 - CLI background requests are executed only after atomic publication, preventing duplicate mutations when a coordinator sees a temporary request file while it is being written.
 - A never-created pnpm 10 global store no longer produces a refresh JSON error; empty state requires the exact native missing-manifest diagnostic and verified filesystem absence, without masking damaged stores or creating directories.
 - pnpm 11+ and unrecognized/prerelease versions reject package mutations before execution because their install groups can change or remove unselected packages. Inventory and update discovery remain available; pnpm 10 retains its verified legacy path, including rejection of targeted and bulk update false-success results.

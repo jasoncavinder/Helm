@@ -12,6 +12,7 @@ pub mod colima_process;
 pub(crate) mod detect_utils;
 pub mod docker_desktop;
 pub mod docker_desktop_process;
+pub(crate) mod failure_diagnostics;
 pub mod firmware_updates;
 pub mod firmware_updates_process;
 pub mod homebrew;

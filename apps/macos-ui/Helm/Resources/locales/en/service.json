@@ -1,4 +1,8 @@
 {
+  "service.error.cargo_toolchain_unavailable": "The selected Rust toolchain cannot provide Cargo. Inspect it with rustup show active-toolchain and rustup component list --installed. Review any repair before changing components or toolchains. Cached packages are retained; Helm has not switched Cargo.",
+  "service.error.dns_resolution_failed": "The request could not resolve its destination's network address. Check DNS, VPN, proxy, or source availability, then retry. This does not mean the entire Mac is offline; cached data remains available.",
+  "service.error.endpoint_unreachable": "The request could not connect to its destination. Check the source, connection, VPN, or proxy, then retry. This does not mean the entire Mac is offline; cached data remains available.",
+  "service.error.cargo_build_failed": "Cargo could not compile this package or a dependency. Review the compiler error and the package's supported toolchain and dependency requirements. Helm has not retried with different dependencies or another installer.",
   "service.error.pnpm_global_mutation_unsupported": "Helm cannot safely change global packages with pnpm 11 or newer, or an unrecognized pnpm version. Install groups may change or remove other packages. Inventory and update checks remain available. Review the complete group with pnpm directly; do not downgrade or reinstall the existing scope as a workaround.",
   "service.error.developer_tools_required": "This operation requires Apple Command Line Tools or a configured Xcode installation. Run xcode-select --install in Terminal, finish Apple's installer, then retry. Helm does not require developer tools to launch or view cached data.",
   "service.error.not_installed": "Not installed: {manager}",
