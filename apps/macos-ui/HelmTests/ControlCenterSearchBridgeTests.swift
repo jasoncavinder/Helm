@@ -1,4 +1,202 @@
+import AppKit
+import SwiftUI
 import XCTest
+
+final class NativeToolbarSearchInteractionTests: XCTestCase {
+    func testPauseAndResumeTypingUpdatesQueryWithoutAcceptingResultOrLosingFocus() throws {
+        let fixture = try NativeSearchFixture()
+        defer { fixture.close() }
+        XCTAssertTrue(fixture.field.sendsWholeSearchString)
+
+        fixture.editor.insertText("auth", replacementRange: NSRange(location: 0, length: 0))
+        // Longer than AppKit's incremental-search delay: a pause must not act as Return.
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.2))
+
+        XCTAssertEqual(fixture.query, "auth")
+        XCTAssertEqual(fixture.acceptCount, 0)
+        XCTAssertTrue(fixture.window.firstResponder === fixture.editor)
+        XCTAssertEqual(fixture.editor.selectedRange(), NSRange(location: 4, length: 0))
+
+        fixture.editor.insertText("orization", replacementRange: fixture.editor.selectedRange())
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.2))
+
+        XCTAssertEqual(fixture.query, "authorization")
+        XCTAssertEqual(fixture.acceptCount, 0)
+        XCTAssertTrue(fixture.window.firstResponder === fixture.editor)
+    }
+
+    func testReturnAcceptsResultWithLatestQuery() throws {
+        let fixture = try NativeSearchFixture()
+        defer { fixture.close() }
+        fixture.editor.insertText("authorization", replacementRange: NSRange(location: 0, length: 0))
+        fixture.editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertEqual(fixture.acceptedQuery, "authorization")
+        XCTAssertEqual(fixture.acceptCount, 1)
+    }
+
+    func testReturnWithoutAcceptedResultKeepsFocus() throws {
+        let fixture = try NativeSearchFixture()
+        defer { fixture.close() }
+        fixture.acceptsResult = false
+        fixture.editor.insertText("no-result", replacementRange: NSRange(location: 0, length: 0))
+        fixture.editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertEqual(fixture.acceptCount, 1)
+        XCTAssertTrue(fixture.window.firstResponder === fixture.editor)
+    }
+
+    func testCancelClearsQueryWithoutAcceptingResult() throws {
+        let fixture = try NativeSearchFixture()
+        defer { fixture.close() }
+        fixture.editor.insertText("authorization", replacementRange: NSRange(location: 0, length: 0))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        fixture.field.cancelOperation(nil)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertEqual(fixture.query, "")
+        XCTAssertEqual(fixture.acceptCount, 0)
+        XCTAssertGreaterThan(fixture.cancelCount, 0)
+    }
+}
+
+final class NativeToolbarSearchCoordinatorTests: XCTestCase {
+    func testCancelSupersedesQueuedTypingBeforeDelegateDelivery() {
+        var query = ""
+        var cancelCount = 0
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { XCTFail("Cancel must not accept a result"); return false },
+            onCancel: { cancelCount += 1 }
+        )
+        let field = NSSearchField()
+        field.stringValue = "authorization"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        XCTAssertTrue(coordinator.updateGate.hasScheduledControlPublish)
+
+        coordinator.cancelSearch()
+        XCTAssertEqual(coordinator.updateGate.displayedValue(modelValue: query), "")
+        drainMainQueue()
+
+        XCTAssertEqual(query, "")
+        XCTAssertEqual(cancelCount, 1)
+    }
+
+    func testNativeClearActionSupersedesQueuedTyping() {
+        var query = ""
+        var cancelCount = 0
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { XCTFail("Clear must not accept a result"); return false },
+            onCancel: { cancelCount += 1 }
+        )
+        let field = NSSearchField()
+        field.stringValue = "authorization"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        field.stringValue = ""
+        coordinator.submitSearch(field)
+        drainMainQueue()
+
+        XCTAssertEqual(query, "")
+        XCTAssertEqual(cancelCount, 1)
+    }
+
+    func testSubmitSupersedesQueuedTypingWithLatestFieldValue() {
+        var query = ""
+        var acceptedQueries: [String] = []
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { acceptedQueries.append(query); return false },
+            onCancel: { XCTFail("Submit must not cancel") }
+        )
+        let field = NSSearchField()
+        field.stringValue = "auth"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        field.stringValue = "authorization"
+        coordinator.submitSearch(field)
+        drainMainQueue()
+
+        XCTAssertEqual(query, "authorization")
+        XCTAssertEqual(acceptedQueries, ["authorization"])
+    }
+
+    func testTypingAfterCancelBeforeDeliveryStillPublishes() {
+        var query = ""
+        let coordinator = ControlCenterToolbarSearchField.Coordinator(
+            text: Binding(get: { query }, set: { query = $0 }),
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: { XCTFail("Typing must not accept a result"); return false },
+            onCancel: {}
+        )
+        let field = NSSearchField()
+        field.stringValue = "authorization"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        coordinator.cancelSearch()
+        field.stringValue = "new query"
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        drainMainQueue()
+
+        XCTAssertEqual(query, "new query")
+        XCTAssertFalse(coordinator.updateGate.hasScheduledControlPublish)
+    }
+
+    private func drainMainQueue() {
+        let delivered = expectation(description: "Queued delegate publication delivered")
+        DispatchQueue.main.async { delivered.fulfill() }
+        wait(for: [delivered], timeout: 2)
+    }
+}
+
+private final class NativeSearchFixture {
+    var query = ""
+    var acceptsResult = true
+    var acceptedQuery: String?
+    var acceptCount = 0
+    var cancelCount = 0
+    let window: NSWindow
+    private(set) var field: NSSearchField!
+    private(set) var editor: NSTextView!
+
+    init() throws {
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 80),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        let host = NSHostingView(rootView: ControlCenterToolbarSearchField(
+            text: Binding(get: { self.query }, set: { self.query = $0 }),
+            placeholder: "Search",
+            focusRouter: ControlCenterSearchFocusRouter(),
+            onSubmit: {
+                self.acceptCount += 1
+                self.acceptedQuery = self.query
+                return self.acceptsResult
+            },
+            onCancel: { self.cancelCount += 1 }
+        ).frame(width: 320))
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        field = try XCTUnwrap(findSearchField(in: host))
+        XCTAssertTrue(window.makeFirstResponder(field))
+        editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+    }
+
+    func close() {
+        window.close()
+        window.contentView = nil
+    }
+
+    private func findSearchField(in view: NSView) -> NSSearchField? {
+        if let field = view as? NSSearchField { return field }
+        return view.subviews.lazy.compactMap { self.findSearchField(in: $0) }.first
+    }
+}
 
 final class GlobalSearchNavigationPolicyTests: XCTestCase {
     func testAcceptedResultTargetsTheSelectedLibraryEntity() throws {

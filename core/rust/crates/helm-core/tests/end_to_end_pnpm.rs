@@ -107,11 +107,18 @@ impl ProcessExecutor for PnpmFakeExecutor {
                 {
                     (ProcessExitStatus::ExitCode(0), Vec::new())
                 }
-                [arg0, arg1, name] if arg0 == "update" && arg1 == "-g" && name == "typescript" => {
+                [arg0, arg1, latest, name]
+                    if arg0 == "update"
+                        && arg1 == "-g"
+                        && latest == "--latest"
+                        && name == "typescript" =>
+                {
                     self.typescript_upgraded.store(true, Ordering::SeqCst);
                     (ProcessExitStatus::ExitCode(0), Vec::new())
                 }
-                [arg0, arg1] if arg0 == "update" && arg1 == "-g" => {
+                [arg0, arg1, latest]
+                    if arg0 == "update" && arg1 == "-g" && latest == "--latest" =>
+                {
                     self.typescript_upgraded.store(true, Ordering::SeqCst);
                     (ProcessExitStatus::ExitCode(0), Vec::new())
                 }

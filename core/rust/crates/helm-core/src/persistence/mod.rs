@@ -87,6 +87,10 @@ pub trait SearchCacheStore: Send + Sync {
 }
 
 pub trait TaskStore: Send + Sync {
+    /// Atomically assign a durable, never-reused ID and persist the queued record.
+    /// The template ID is ignored. Failure must leave no reservation committed.
+    fn reserve_task(&self, template: &TaskRecord) -> PersistenceResult<TaskRecord>;
+
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()>;
 
     fn update_task(&self, task: &TaskRecord) -> PersistenceResult<()>;

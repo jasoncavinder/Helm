@@ -68,7 +68,12 @@ impl<S: NixDarwinSource> ManagerAdapter for NixDarwinAdapter<S> {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
                 let version = parse_nix_darwin_version(&output.version_output);
-                let installed = version.is_some();
+                let installed = output.executable_path.is_some()
+                    && (version.is_some()
+                        || output
+                            .version_output
+                            .trim_start()
+                            .starts_with("darwin-rebuild [--help]"));
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
                     executable_path: output.executable_path,
@@ -98,7 +103,8 @@ pub fn nix_darwin_detect_request(task_id: Option<TaskId>) -> ProcessSpawnRequest
         task_id,
         TaskType::Detection,
         ManagerAction::Detect,
-        CommandSpec::new(DARWIN_REBUILD_COMMAND).arg("--version"),
+        // darwin-rebuild has no --version flag, even on an activated system.
+        CommandSpec::new(DARWIN_REBUILD_COMMAND).arg("--help"),
         DETECT_TIMEOUT,
     )
 }
@@ -434,7 +440,7 @@ mod tests {
         assert_eq!(detect.manager, ManagerId::NixDarwin);
         assert_eq!(detect.task_type, TaskType::Detection);
         assert_eq!(detect.action, ManagerAction::Detect);
-        assert_eq!(detect.command.args, vec!["--version"]);
+        assert_eq!(detect.command.args, vec!["--help"]);
     }
 
     #[test]
@@ -471,6 +477,41 @@ mod tests {
         };
         assert_eq!(installed, Some(Vec::new()));
         assert_eq!(outdated, Some(Vec::new()));
+    }
+
+    #[test]
+    fn current_rebuild_help_detects_tool_without_inventing_a_system_version() {
+        for (path, output, expected) in [
+            (
+                Some(PathBuf::from("/nix/profile/bin/darwin-rebuild")),
+                "darwin-rebuild [--help] {edit | switch | activate | build | check | changelog}",
+                true,
+            ),
+            (
+                Some(PathBuf::from("/nix/profile/bin/darwin-rebuild")),
+                "darwin-rebuild: unknown option '--version'",
+                false,
+            ),
+            (None, "darwin-rebuild [--help]", false),
+        ] {
+            let source = FixtureSource {
+                detect_result: Ok(NixDarwinDetectOutput {
+                    executable_path: path,
+                    version_output: output.into(),
+                }),
+                list_installed_result: Ok(String::new()),
+                list_outdated_result: Ok(String::new()),
+                search_result: Ok(String::new()),
+            };
+            let AdapterResponse::Detection(info) = NixDarwinAdapter::new(source)
+                .execute(AdapterRequest::Detect(DetectRequest))
+                .unwrap()
+            else {
+                panic!("expected detection")
+            };
+            assert_eq!(info.installed, expected);
+            assert_eq!(info.version, None);
+        }
     }
 
     struct FixtureSource {

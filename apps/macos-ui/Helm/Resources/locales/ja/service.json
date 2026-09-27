@@ -1,4 +1,6 @@
 {
+  "service.error.pnpm_global_mutation_unsupported": "pnpm 11 以降、または認識できないバージョンでは、Helm はグローバルパッケージを安全に変更できません。インストールグループ内の他のパッケージも変更や削除の対象になる場合があります。一覧表示と更新確認は引き続き利用できます。pnpm でグループ全体を直接確認してください。回避策として既存の環境をダウングレードしたり再インストールしたりしないでください。",
+  "service.error.developer_tools_required": "この操作には Apple のコマンドラインツールまたは設定済みの Xcode が必要です。ターミナルで xcode-select --install を実行し、Apple のインストーラを完了してから再試行してください。Helm の起動やキャッシュ済みデータの表示には開発者ツールは必要ありません。",
   "service.error.cancelled": "操作はキャンセルされました。",
   "service.error.internal": "サービス内部エラー。",
   "service.error.invalid_input": "無効な入力です。",

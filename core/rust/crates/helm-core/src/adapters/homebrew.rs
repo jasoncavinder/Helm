@@ -151,16 +151,17 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 {
                     return Err(error);
                 }
-                let after_version = resolve_homebrew_formula_version(
-                    &self.source,
-                    install_request.package.name.as_str(),
-                )?;
+                let after =
+                    resolve_homebrew_formula(&self.source, install_request.package.name.as_str())?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: install_request.package,
+                    package: after
+                        .as_ref()
+                        .map(|item| item.package.clone())
+                        .unwrap_or(install_request.package),
                     package_identifier: None,
                     action: ManagerAction::Install,
                     before_version,
-                    after_version,
+                    after_version: after.and_then(|item| item.installed_version),
                 }))
             }
             AdapterRequest::Uninstall(uninstall_request) => {
@@ -176,8 +177,12 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     .as_ref()
                     .map(|spec| spec.formula_name.as_str())
                     .unwrap_or_else(|| uninstall_request.package.name.as_str());
-                let before_version = resolve_homebrew_formula_version(&self.source, formula_name)?;
-                let uninstall_output = self.source.uninstall_formula(formula_name);
+                let before = resolve_homebrew_formula(&self.source, formula_name)?;
+                let canonical_name = before
+                    .as_ref()
+                    .map(|item| item.package.name.as_str())
+                    .unwrap_or(formula_name);
+                let uninstall_output = self.source.uninstall_formula(canonical_name);
                 if let Err(error) = uninstall_output.as_ref()
                     && !is_homebrew_already_absent_uninstall_error(error)
                 {
@@ -222,10 +227,17 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     }
                 }
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: uninstall_request.package,
+                    package: if parsed_uninstall.is_some() {
+                        uninstall_request.package
+                    } else {
+                        before
+                            .as_ref()
+                            .map(|item| item.package.clone())
+                            .unwrap_or(uninstall_request.package)
+                    },
                     package_identifier: None,
                     action: ManagerAction::Uninstall,
-                    before_version,
+                    before_version: before.and_then(|item| item.installed_version),
                     after_version: None,
                 }))
             }
@@ -245,6 +257,10 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                 } else {
                     None
                 };
+                let target_name = targeted_outdated
+                    .as_ref()
+                    .map(|item| item.package.name.as_str())
+                    .unwrap_or(target_name);
                 let _ = self.source.upgrade_formula(Some(target_name))?;
                 if target_name != "__all__" && target_name != "__self__" {
                     ensure_formula_no_longer_outdated(&self.source, target_name)?;
@@ -272,9 +288,12 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     pin_request.version.as_deref(),
                     ManagerAction::Pin,
                 )?;
-                let _ = self.source.pin_formula(&pin_request.package.name)?;
+                let package = resolve_homebrew_formula(&self.source, &pin_request.package.name)?
+                    .map(|item| item.package)
+                    .unwrap_or(pin_request.package);
+                let _ = self.source.pin_formula(&package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: pin_request.package,
+                    package,
                     package_identifier: None,
                     action: ManagerAction::Pin,
                     before_version: None,
@@ -287,9 +306,12 @@ impl<S: HomebrewSource> ManagerAdapter for HomebrewAdapter<S> {
                     ManagerAction::Unpin,
                     unpin_request.package.name.as_str(),
                 )?;
-                let _ = self.source.unpin_formula(&unpin_request.package.name)?;
+                let package = resolve_homebrew_formula(&self.source, &unpin_request.package.name)?
+                    .map(|item| item.package)
+                    .unwrap_or(unpin_request.package);
+                let _ = self.source.unpin_formula(&package.name)?;
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
-                    package: unpin_request.package,
+                    package,
                     package_identifier: None,
                     action: ManagerAction::Unpin,
                     before_version: None,
@@ -523,11 +545,44 @@ fn resolve_homebrew_formula_version<S: HomebrewSource>(
     source: &S,
     formula_name: &str,
 ) -> AdapterResult<Option<String>> {
+    Ok(resolve_homebrew_formula(source, formula_name)?.and_then(|item| item.installed_version))
+}
+
+fn resolve_homebrew_formula<S: HomebrewSource>(
+    source: &S,
+    name: &str,
+) -> AdapterResult<Option<InstalledPackage>> {
     let installed = parse_installed_formulae(&source.list_installed_formulae()?)?;
-    Ok(installed
+    unique_formula_match(installed, name, |item| &item.package.name)
+}
+
+fn unique_formula_match<T>(
+    mut entries: Vec<T>,
+    target: &str,
+    name: impl Fn(&T) -> &str,
+) -> AdapterResult<Option<T>> {
+    if let Some(index) = entries.iter().position(|item| name(item) == target) {
+        return Ok(Some(entries.remove(index)));
+    }
+    if target.contains('/') {
+        return Ok(None);
+    }
+    let mut matches = entries
         .into_iter()
-        .find(|item| item.package.name == formula_name)
-        .and_then(|item| item.installed_version))
+        .filter(|item| name(item).rsplit('/').next() == Some(target));
+    let matched = matches.next();
+    if matches.next().is_some() {
+        return Err(CoreError {
+            manager: Some(ManagerId::HomebrewFormula),
+            task: None,
+            action: None,
+            kind: CoreErrorKind::InvalidInput,
+            message: format!(
+                "Homebrew formula '{target}' is ambiguous; use its full tap-qualified name"
+            ),
+        });
+    }
+    Ok(matched)
 }
 
 fn find_outdated_homebrew_formula<S: HomebrewSource>(
@@ -535,9 +590,7 @@ fn find_outdated_homebrew_formula<S: HomebrewSource>(
     formula_name: &str,
 ) -> AdapterResult<Option<OutdatedPackage>> {
     let outdated = parse_outdated_formulae(&source.list_outdated_formulae()?)?;
-    Ok(outdated
-        .into_iter()
-        .find(|item| item.package.name == formula_name))
+    unique_formula_match(outdated, formula_name, |item| &item.package.name)
 }
 
 pub fn homebrew_pin_request(task_id: Option<TaskId>, name: &str) -> ProcessSpawnRequest {
@@ -677,7 +730,9 @@ fn parse_installed_formulae(output: &str) -> AdapterResult<Vec<InstalledPackage>
 
     let mut parsed = Vec::new();
     for formula in payload.formulae {
-        let Some(name) = normalize_optional_text(Some(formula.name)) else {
+        let Some(name) = normalize_optional_text(formula.full_name)
+            .or_else(|| normalize_optional_text(Some(formula.name)))
+        else {
             continue;
         };
 
@@ -866,6 +921,8 @@ struct HomebrewFormulaInstalledEnvelope {
 #[derive(Debug, Deserialize)]
 struct HomebrewFormulaInstalledEntry {
     name: String,
+    #[serde(default)]
+    full_name: Option<String>,
     #[serde(default)]
     linked_keg: Option<String>,
     #[serde(default)]
@@ -1145,6 +1202,34 @@ mod tests {
             version_output: String::new(),
         });
         assert!(!detection.installed);
+    }
+
+    #[test]
+    fn third_party_inventory_and_outdated_share_the_full_formula_identity() {
+        let installed = parse_installed_formulae(r#"{"formulae":[{"name":"probe","full_name":"owner/tap/probe","installed":[{"version":"1.0"}]}]}"#).unwrap();
+        let outdated = parse_outdated_formulae(r#"{"formulae":[{"name":"owner/tap/probe","installed_versions":["1.0"],"current_version":"1.1","pinned":false}]}"#).unwrap();
+        assert_eq!(installed[0].package, outdated[0].package);
+        let matched = super::unique_formula_match(installed, "probe", |item| &item.package.name)
+            .unwrap()
+            .unwrap();
+        assert_eq!(matched.package.name, "owner/tap/probe");
+    }
+
+    #[test]
+    fn formula_alias_resolution_never_crosses_qualified_or_ambiguous_taps() {
+        let entries = vec!["one/tap/probe".to_string(), "two/tap/probe".to_string()];
+        assert!(super::unique_formula_match(entries.clone(), "probe", String::as_str).is_err());
+        assert!(
+            super::unique_formula_match(entries.clone(), "other/tap/probe", String::as_str)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            super::unique_formula_match(entries, "two/tap/probe", String::as_str)
+                .unwrap()
+                .as_deref(),
+            Some("two/tap/probe")
+        );
     }
 
     #[test]

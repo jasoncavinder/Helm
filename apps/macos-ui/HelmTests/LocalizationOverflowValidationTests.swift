@@ -2,6 +2,46 @@ import XCTest
 import AppKit
 
 final class LocalizationOverflowValidationTests: XCTestCase {
+    func testTaskSafetyGuidanceRequiresMatchingCodeAndMarker() {
+        for (code, marker) in [
+            ("unsupported_capability", "pnpm_global_mutation_unsupported"),
+            ("invalid_input", "developer_tools_required"),
+        ] {
+            XCTAssertEqual(
+                TaskSafetyGuidance.localizationKey(errorCode: code, errorMessage: "[\(marker)] detail"),
+                "service.error.\(marker)"
+            )
+            XCTAssertNil(TaskSafetyGuidance.localizationKey(errorCode: "process_failure", errorMessage: "[\(marker)] detail"))
+            XCTAssertNil(TaskSafetyGuidance.localizationKey(errorCode: code, errorMessage: "unrelated [\(marker)] detail"))
+            XCTAssertNil(TaskSafetyGuidance.localizationKey(errorCode: code, errorMessage: nil))
+            XCTAssertEqual(
+                TaskSafetyGuidance.localizationKey(taskLogMessages: ["task failed [\(code)]: [\(marker)] detail"]),
+                "service.error.\(marker)"
+            )
+            XCTAssertNil(TaskSafetyGuidance.localizationKey(taskLogMessages: ["task completed [\(code)]: [\(marker)] detail"]))
+        }
+    }
+
+    func testTaskSafetyGuidanceIsTranslatedAndMirrored() throws {
+        let keys = ["service.error.pnpm_global_mutation_unsupported", "service.error.developer_tools_required"]
+        func strings(_ base: String, _ locale: String) throws -> [String: String] {
+            let data = try Data(contentsOf: repoRootURL.appendingPathComponent("\(base)/\(locale)/service.json"))
+            return try JSONDecoder().decode([String: String].self, from: data)
+        }
+        let english = try strings("locales", "en")
+        for locale in ["en"] + locales {
+            let catalog = try strings("locales", locale)
+            let bundled = try strings("apps/macos-ui/Helm/Resources/locales", locale)
+            for key in keys {
+                let value = try XCTUnwrap(catalog[key])
+                XCTAssertFalse(value.isEmpty)
+                XCTAssertEqual(value, bundled[key])
+                if locale != "en" { XCTAssertNotEqual(value, english[key]) }
+            }
+            XCTAssertTrue(try XCTUnwrap(catalog[keys[1]]).contains("xcode-select --install"))
+        }
+    }
+
     private let locales = ["es", "fr", "de", "pt-BR", "ja", "hu"]
     private let panelWidth: CGFloat = 360
 

@@ -212,14 +212,35 @@ enum LibraryTableLayoutPolicy {
             + layoutOverhead(in: tableView)
     }
 
-    static func fitLeadingColumn(in tableView: NSTableView, to viewportWidth: CGFloat) {
-        guard viewportWidth > 0, let leadingColumn = tableView.tableColumns.first else { return }
-        let fixedWidth = tableView.tableColumns.dropFirst().reduce(CGFloat.zero) { $0 + $1.width }
+    static func fitColumns(
+        in tableView: NSTableView,
+        to viewportWidth: CGFloat,
+        preferredWidths: [NSUserInterfaceItemIdentifier: CGFloat]
+    ) {
+        guard viewportWidth.isFinite, viewportWidth > 0,
+              let leadingColumn = tableView.tableColumns.first else { return }
+        let secondaryColumns = tableView.tableColumns.dropFirst()
+        let widths = secondaryColumns.map { column in
+            min(column.maxWidth, max(column.minWidth, preferredWidths[column.identifier] ?? column.width))
+        }
+        let overhead = layoutOverhead(in: tableView)
+        let compressionCapacity = zip(secondaryColumns, widths).reduce(CGFloat.zero) {
+            $0 + $1.1 - $1.0.minWidth
+        }
+        let deficit = max(0, leadingColumn.minWidth + widths.reduce(0, +) + overhead - viewportWidth)
+        let compression = compressionCapacity > 0 ? min(1, deficit / compressionCapacity) : 0
+        for (column, preferredWidth) in zip(secondaryColumns, widths) {
+            let width = max(column.minWidth, floor(preferredWidth - (preferredWidth - column.minWidth) * compression))
+            if abs(column.width - width) > 0.01 {
+                column.width = width
+            }
+        }
+        let secondaryWidth = secondaryColumns.reduce(CGFloat.zero) { $0 + $1.width }
         let leadingWidth = max(
             leadingColumn.minWidth,
-            viewportWidth - fixedWidth - layoutOverhead(in: tableView)
+            floor(viewportWidth - secondaryWidth - overhead)
         )
-        guard abs(leadingColumn.width - leadingWidth) > 0.5 else { return }
+        guard abs(leadingColumn.width - leadingWidth) > 0.01 else { return }
         leadingColumn.width = leadingWidth
     }
 }
@@ -969,7 +990,7 @@ final class LibraryTableScrollView: NSScrollView {
     func fitDocumentWidthToViewport() {
         guard let tableView = documentView as? LibraryNativeTableView else { return }
         let viewportWidth = contentView.bounds.width
-        tableView.fitLeadingColumn(to: viewportWidth)
+        tableView.fitColumns(to: viewportWidth)
         let width = max(viewportWidth, tableView.requiredContentWidth)
         guard width > 0, abs(tableView.frame.width - width) > 0.5 else {
             return
@@ -981,11 +1002,12 @@ final class LibraryTableScrollView: NSScrollView {
 final class LibraryNativeTableView: NSTableView {
     var contextMenuProvider: ((Int) -> NSMenu?)?
     var didMoveToWindow: (() -> Void)?
+    private var preferredColumnWidths: [NSUserInterfaceItemIdentifier: CGFloat] = [:]
+    private var fittedColumnWidths: [NSUserInterfaceItemIdentifier: CGFloat] = [:]
+    private var isFittingColumns = false
 
     var minimumContentWidth: CGFloat {
-        guard let leadingColumn = tableColumns.first else { return 0 }
-        let fixedWidth = tableColumns.dropFirst().reduce(CGFloat.zero) { $0 + $1.width }
-        return leadingColumn.minWidth + fixedWidth
+        tableColumns.reduce(CGFloat.zero) { $0 + $1.minWidth }
             + LibraryTableLayoutPolicy.layoutOverhead(in: self)
     }
 
@@ -1000,7 +1022,7 @@ final class LibraryNativeTableView: NSTableView {
 
     override func layout() {
         let viewportWidth = enclosingScrollView?.contentView.bounds.width ?? bounds.width
-        fitLeadingColumn(to: viewportWidth)
+        fitColumns(to: viewportWidth)
         super.layout()
     }
 
@@ -1014,7 +1036,20 @@ final class LibraryNativeTableView: NSTableView {
         return contextMenuProvider?(rowIndex)
     }
 
-    func fitLeadingColumn(to viewportWidth: CGFloat) {
-        LibraryTableLayoutPolicy.fitLeadingColumn(in: self, to: viewportWidth)
+    func fitColumns(to viewportWidth: CGFloat) {
+        guard !isFittingColumns, viewportWidth.isFinite, viewportWidth > 0 else { return }
+        isFittingColumns = true
+        defer { isFittingColumns = false }
+        for column in tableColumns.dropFirst() {
+            // Preserve user resizing, without treating temporary Inspector compression as a preference.
+            if preferredColumnWidths[column.identifier] == nil
+                || abs(column.width - (fittedColumnWidths[column.identifier] ?? column.width)) > 0.5 {
+                preferredColumnWidths[column.identifier] = column.width
+            }
+        }
+        LibraryTableLayoutPolicy.fitColumns(in: self, to: viewportWidth, preferredWidths: preferredColumnWidths)
+        for column in tableColumns.dropFirst() {
+            fittedColumnWidths[column.identifier] = column.width
+        }
     }
 }

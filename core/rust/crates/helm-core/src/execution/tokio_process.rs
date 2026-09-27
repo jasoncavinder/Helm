@@ -19,6 +19,8 @@ pub struct TokioProcessExecutor;
 
 impl ProcessExecutor for TokioProcessExecutor {
     fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+        #[cfg(target_os = "macos")]
+        let request = super::developer_tools::prepare(request)?;
         let prepared = prepare_command_for_spawn(&request, None)?;
         let task_id = request.task_id;
         let manager = request.manager;
@@ -152,9 +154,37 @@ fn prepare_command_for_spawn_with_privileged_executor(
     privileged_executor_override: Option<&Path>,
 ) -> ExecutionResult<PreparedSpawnCommand> {
     if !request.requires_elevation {
+        let mut command = request.command.clone();
+        // Casks may contain privileged installers. Homebrew remains unprivileged
+        // and chooses which subprocess needs sudo; it enables -A when this is set.
+        if request.manager == ManagerId::HomebrewCask
+            && matches!(
+                request.action,
+                ManagerAction::Install | ManagerAction::Upgrade | ManagerAction::Uninstall
+            )
+            && command
+                .program
+                .file_name()
+                .is_some_and(|name| name == "brew")
+        {
+            let askpass = resolve_sudo_askpass_path(
+                request.manager,
+                request.task_type,
+                request.action,
+                askpass_override,
+            )?;
+            command.env.insert(
+                "SUDO_ASKPASS".into(),
+                askpass.to_string_lossy().into_owned(),
+            );
+            command.env.insert(
+                "HELM_SUDO_PROMPT".into(),
+                "Homebrew needs administrator authentication for this cask operation.".into(),
+            );
+        }
         return Ok(PreparedSpawnCommand {
-            command: request.command.clone(),
-            command_display: format_command_for_display(&request.command),
+            command_display: format_command_for_display(&command),
+            command,
         });
     }
 
@@ -1693,6 +1723,47 @@ mod tests {
         );
 
         let _ = fs::remove_file(askpass_path);
+    }
+
+    #[test]
+    fn cask_mutations_delegate_authentication_without_running_brew_as_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let helper = directory.path().join("askpass");
+        fs::write(&helper, "#!/bin/sh\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        for action in [
+            ManagerAction::Install,
+            ManagerAction::Upgrade,
+            ManagerAction::Uninstall,
+        ] {
+            let request = ProcessSpawnRequest::new(
+                ManagerId::HomebrewCask,
+                TaskType::Install,
+                action,
+                CommandSpec::new("/opt/homebrew/bin/brew").args(["install", "--cask", "test-cask"]),
+            );
+            let prepared = prepare_command_for_spawn(&request, Some(&helper)).unwrap();
+            assert_eq!(prepared.command.program, request.command.program);
+            assert_eq!(prepared.command.args, request.command.args);
+            assert_eq!(
+                prepared.command.env["SUDO_ASKPASS"],
+                helper.to_string_lossy()
+            );
+            assert!(!prepared.command_display.starts_with("/usr/bin/sudo"));
+        }
+        let request = ProcessSpawnRequest::new(
+            ManagerId::HomebrewCask,
+            TaskType::Refresh,
+            ManagerAction::ListInstalled,
+            CommandSpec::new("brew").arg("list"),
+        );
+        let prepared =
+            prepare_command_for_spawn(&request, Some(Path::new("relative-helper"))).unwrap();
+        assert!(!prepared.command.env.contains_key("SUDO_ASKPASS"));
     }
 
     #[test]

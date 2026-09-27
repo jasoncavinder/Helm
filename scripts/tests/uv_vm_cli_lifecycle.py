@@ -154,6 +154,12 @@ def main():
         cli("empty-refresh", "refresh", "--manager", "uv", success=(root / "tools").exists())
         assert not cli("empty-inventory", "packages", "list")["packages"]
         assert not cli("empty-updates", "updates", "list", "--manager", "uv")["updates"]
+        cli("reinstall-after-store-removal", "packages", "install", smoke, "--manager", "uv", "--version", "1.1")
+        packages = cli("reinstall-persisted", "packages", "list")["packages"]
+        assert len(packages) == 1 and packages[0]["installed_version"] == "1.1"
+        cli("reinstalled-refresh", "refresh", "--manager", "uv")
+        cli("remove-reinstalled-last-tool", "packages", "uninstall", smoke, "--manager", "uv", "--yes")
+        assert not cli("final-empty-inventory", "packages", "list")["packages"]
         tasks = cli("terminal-tasks", "tasks", "list")["tasks"]
         assert tasks and all(t["status"] in {"completed", "failed", "cancelled"} for t in tasks)
         report["status"] = "passed"

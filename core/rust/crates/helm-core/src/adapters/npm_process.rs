@@ -22,6 +22,13 @@ impl ProcessNpmSource {
         Self { executor }
     }
 
+    fn global_root_is_absent(&self) -> AdapterResult<bool> {
+        let mut request = npm_list_installed_request(None);
+        request.command.args = vec!["root".into(), "--global".into(), "--silent".into()];
+        let root = run_and_collect_stdout(self.executor.as_ref(), self.configure_request(request))?;
+        Ok(absent_global_root(root.trim()))
+    }
+
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
         // XPC services have a constrained PATH; include common npm binary locations.
         let path = std::env::var("PATH").unwrap_or_default();
@@ -154,11 +161,19 @@ impl NpmSource for ProcessNpmSource {
     }
 
     fn list_installed_global(&self) -> AdapterResult<String> {
+        // npm ls fails with ENOENT before the first global install in a custom
+        // prefix. Inspect the manager-selected root without creating it.
+        if self.global_root_is_absent()? {
+            return Ok(r#"{"dependencies":{}}"#.into());
+        }
         let request = self.configure_request(npm_list_installed_request(None));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn list_outdated_global(&self) -> AdapterResult<String> {
+        if self.global_root_is_absent()? {
+            return Ok("{}".into());
+        }
         // npm uses exit code 1 to indicate outdated packages were found.
         let request = self.configure_request(npm_list_outdated_request(None));
         self.run_and_collect_stdout_accepting(request, &[1], false)
@@ -190,11 +205,46 @@ impl NpmSource for ProcessNpmSource {
     }
 }
 
+fn absent_global_root(root: &str) -> bool {
+    let root = std::path::Path::new(root);
+    if !root.is_absolute() || root.to_string_lossy().chars().any(char::is_control) {
+        return false;
+    }
+    for (index, path) in root.ancestors().enumerate() {
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => return index > 0 && std::fs::canonicalize(path).is_ok(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use crate::models::{CoreErrorKind, ManagerAction, ManagerId, TaskType};
 
     use super::interpret_allowed_exit_output;
+
+    #[test]
+    fn missing_new_global_root_is_empty_but_existing_or_dangling_roots_are_not() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("fresh/lib/node_modules");
+        assert!(super::absent_global_root(root.to_str().unwrap()));
+        assert!(!super::absent_global_root(
+            directory.path().to_str().unwrap()
+        ));
+        assert!(!super::absent_global_root("relative/path"));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(
+                directory.path().join("missing"),
+                directory.path().join("fresh"),
+            )
+            .unwrap();
+            assert!(!super::absent_global_root(root.to_str().unwrap()));
+        }
+    }
 
     #[test]
     fn allowed_exit_accepts_empty_search_output_without_stderr() {

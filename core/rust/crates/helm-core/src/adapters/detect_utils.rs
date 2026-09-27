@@ -11,7 +11,10 @@ pub(crate) fn which_executable(
     extra_paths: &[&str],
     manager: ManagerId,
 ) -> Option<PathBuf> {
-    which_executable_via_which(executor, binary_name, extra_paths, manager)
+    // Detection must describe the executable that subsequent actions will use.
+    // Otherwise persistence can replace an explicit environment with PATH's default.
+    crate::execution::selected_manager_command_path(manager, binary_name)
+        .or_else(|| which_executable_via_which(executor, binary_name, extra_paths, manager))
         .or_else(|| discover_executable_path(binary_name, extra_paths, manager))
 }
 

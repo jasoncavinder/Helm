@@ -1010,6 +1010,38 @@ LIMIT ?3
 }
 
 impl TaskStore for SqliteStore {
+    fn reserve_task(&self, template: &TaskRecord) -> PersistenceResult<TaskRecord> {
+        self.with_connection("reserve_task", |connection| {
+            ensure_schema_ready(connection)?;
+            let transaction =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let last: i64 = transaction.query_row(
+                "SELECT last_task_id FROM task_id_sequence WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )?;
+            let id = last
+                .checked_add(1)
+                .ok_or_else(|| storage_error_sqlite("task id sequence exhausted"))?;
+            let mut record = template.clone();
+            record.id = TaskId(i64_to_u64(id)?);
+            record.status = TaskStatus::Queued;
+            transaction.execute(
+                "INSERT INTO task_records (task_id, manager_id, task_type, status, created_at_unix)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    id,
+                    record.manager.as_str(),
+                    task_type_to_str(record.task_type),
+                    task_status_to_str(record.status),
+                    to_unix_seconds(record.created_at)?
+                ],
+            )?;
+            transaction.commit()?;
+            Ok(record)
+        })
+    }
+
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
         self.with_connection("create_task", |connection| {
             ensure_schema_ready(connection)?;
@@ -1142,14 +1174,15 @@ LIMIT ?1
     fn next_task_id(&self) -> PersistenceResult<u64> {
         self.with_connection("next_task_id", |connection| {
             ensure_schema_ready(connection)?;
-            let max_id: Option<i64> =
-                connection.query_row("SELECT MAX(task_id) FROM task_records", [], |row| {
-                    row.get(0)
-                })?;
-            match max_id {
-                Some(id) => Ok(i64_to_u64(id)?.saturating_add(1)),
-                None => Ok(0),
-            }
+            let last: i64 = connection.query_row(
+                "SELECT last_task_id FROM task_id_sequence WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )?;
+            i64_to_u64(
+                last.checked_add(1)
+                    .ok_or_else(|| storage_error_sqlite("task id sequence exhausted"))?,
+            )
         })
     }
 
@@ -2339,11 +2372,14 @@ fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
             .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     }
     let connection = Connection::open(database_path)?;
+    // Use macOS's stronger flush at WAL sync boundaries without syncing every commit.
+    // Forced-stop tests reproduced corruption without this macOS flush request.
     connection.execute_batch(
         "
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
+PRAGMA fullfsync = ON;
 PRAGMA busy_timeout = 5000;
 ",
     )?;
@@ -4194,6 +4230,36 @@ mod tests {
     use crate::persistence::TaskStore;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn connections_reapply_wal_durability_policy() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("helm.db");
+        for _ in 0..2 {
+            let connection = super::open_connection(&path).unwrap();
+            assert_eq!(
+                connection
+                    .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+                    .unwrap(),
+                "wal"
+            );
+            assert_eq!(
+                connection
+                    .query_row("PRAGMA synchronous", [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                connection
+                    .query_row("PRAGMA fullfsync", [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+            connection
+                .execute_batch("PRAGMA synchronous = OFF; PRAGMA fullfsync = OFF;")
+                .unwrap();
+        }
+    }
 
     fn temp_store(test_name: &str) -> SqliteStore {
         let nanos = SystemTime::now()

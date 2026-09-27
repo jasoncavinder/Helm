@@ -26,6 +26,13 @@ transaction.
 
 ## Runtime Ledger
 
+Migration 21 adds a durable task-ID high-water mark, seeded from existing task
+records. Queued tasks are reserved in one immediate transaction before adapter
+execution. Record insertion advances the mark, and history deletion/pruning does
+not reset it. This prevents independent CLI/service runtimes from colliding or
+reusing IDs still referenced by another runtime. It does not itself establish
+cross-process manager execution leases.
+
 Migration 20 adds `definition_checksum` to `helm_schema_migrations`. Existing
 ledgers are backfilled transactionally. New records persist the immutable
 definition checksum when they are inserted.
@@ -81,6 +88,14 @@ has intentionally created a backup and explicitly supplied that path.
 
 ## Required Compatibility Gate
 
+Store connections use WAL with `synchronous=NORMAL` and `fullfsync=ON`. The latter
+requests macOS's stronger flush at existing synchronization boundaries without
+adding a sync to every commit. Recent transactions can still roll back after
+system/power loss; this policy is not a guarantee that every acknowledged write
+survives. The [VM restart investigation](../validation/v0.20-qa-database-restart-triage.md)
+records the bounded evidence and remaining platform limits. Corruption must fail
+closed, not trigger silent reset or deletion of recovery sidecars.
+
 Run:
 
 ```bash
@@ -97,6 +112,9 @@ The gate validates the immutable manifest and exercises:
 - migration and reconciliation rollback
 - reset and reinitialization
 - real CLI initialization
+- per-connection WAL/NORMAL/fullfsync policy on initial and subsequent opens
+- committed and spilled-uncommitted WAL recovery after child-process termination
+- real CLI rejection of a truncated isolated database without replacement/fallback
 - isolated-process FFI initialization and Refresh acceptance
 
 The gate runs in normal CI, the macOS release canary, and direct GUI and CLI

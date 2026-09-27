@@ -113,7 +113,7 @@ impl InMemoryAsyncTaskQueue {
         submission: TaskSubmission,
         operation: TaskOperation,
     ) -> OrchestrationResult<TaskId> {
-        self.spawn_with_cancellation_policy(submission, operation, false)
+        self.spawn_with_cancellation_policy(submission, operation, false, None)
             .await
     }
 
@@ -121,8 +121,9 @@ impl InMemoryAsyncTaskQueue {
         &self,
         submission: TaskSubmission,
         operation: TaskOperation,
+        reserved_id: Option<TaskId>,
     ) -> OrchestrationResult<TaskId> {
-        self.spawn_with_cancellation_policy(submission, operation, true)
+        self.spawn_with_cancellation_policy(submission, operation, true, reserved_id)
             .await
     }
 
@@ -131,6 +132,7 @@ impl InMemoryAsyncTaskQueue {
         submission: TaskSubmission,
         operation: TaskOperation,
         preserve_execution_lease_on_cancel: bool,
+        reserved_id: Option<TaskId>,
     ) -> OrchestrationResult<TaskId> {
         let (
             task_id,
@@ -141,8 +143,17 @@ impl InMemoryAsyncTaskQueue {
             completion_notify,
         ) = {
             let mut state = self.inner.lock().await;
-            let task_id = TaskId(state.next_task_id);
-            state.next_task_id = state.next_task_id.saturating_add(1);
+            let task_id = reserved_id.unwrap_or(TaskId(state.next_task_id));
+            if state.tasks.contains_key(&task_id) {
+                return Err(CoreError {
+                    manager: Some(submission.manager),
+                    task: Some(submission.task_type),
+                    action: None,
+                    kind: CoreErrorKind::Internal,
+                    message: "task id already belongs to this execution queue".into(),
+                });
+            }
+            state.next_task_id = state.next_task_id.max(task_id.0.saturating_add(1));
 
             state.tasks.insert(
                 task_id,

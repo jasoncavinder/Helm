@@ -114,6 +114,7 @@ impl TestAdapter {
 #[derive(Default)]
 struct RecordingTaskStore {
     records: Mutex<HashMap<TaskId, TaskRecord>>,
+    reservation: Mutex<u64>,
     remaining_create_failures: Mutex<usize>,
     fail_plain_updates: bool,
 }
@@ -126,6 +127,7 @@ impl RecordingTaskStore {
     fn with_create_failures(failures: usize) -> Self {
         Self {
             records: Mutex::new(HashMap::new()),
+            reservation: Mutex::new(0),
             remaining_create_failures: Mutex::new(failures),
             fail_plain_updates: false,
         }
@@ -134,6 +136,7 @@ impl RecordingTaskStore {
     fn fail_plain_updates() -> Self {
         Self {
             records: Mutex::new(HashMap::new()),
+            reservation: Mutex::new(0),
             remaining_create_failures: Mutex::new(0),
             fail_plain_updates: true,
         }
@@ -145,6 +148,14 @@ impl RecordingTaskStore {
 }
 
 impl TaskStore for RecordingTaskStore {
+    fn reserve_task(&self, template: &TaskRecord) -> PersistenceResult<TaskRecord> {
+        let mut next = self.reservation.lock().unwrap();
+        let mut task = template.clone();
+        task.id = TaskId(*next);
+        self.create_task(&task)?;
+        *next += 1;
+        Ok(task)
+    }
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
         {
             let mut remaining = self
@@ -829,9 +840,13 @@ async fn submit_with_task_store_persists_queued_then_terminal_status() {
 
 #[tokio::test]
 async fn submit_returns_error_when_initial_task_persistence_fails() {
+    let calls = Arc::new(AtomicUsize::new(0));
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
         ManagerId::Npm,
-        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+        AdapterBehavior::BlocksFirstCall {
+            call_count: calls.clone(),
+            release_first: Arc::new(AtomicBool::new(true)),
+        },
     ));
     let task_store = Arc::new(RecordingTaskStore::failing_create());
     let runtime = AdapterRuntime::with_task_store([adapter], task_store).unwrap();
@@ -845,6 +860,42 @@ async fn submit_returns_error_when_initial_task_persistence_fails() {
     assert_eq!(error.manager, Some(ManagerId::Npm));
     assert_eq!(error.task, Some(TaskType::Refresh));
     assert_eq!(error.action, Some(ManagerAction::Refresh));
+    tokio::task::yield_now().await;
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "failed reservation must never execute the adapter"
+    );
+}
+
+#[tokio::test]
+async fn separate_runtimes_reserve_unique_durable_tasks_before_execution() {
+    let path = test_db_path("concurrent-runtime-reservation");
+    let store = Arc::new(SqliteStore::new(&path));
+    store.migrate_to_latest().unwrap();
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::new(
+        ManagerId::Npm,
+        AdapterBehavior::Succeeds(AdapterResponse::Refreshed),
+    ));
+    let first = AdapterRuntime::with_task_store([adapter.clone()], store.clone()).unwrap();
+    let second =
+        AdapterRuntime::with_task_store([adapter], Arc::new(SqliteStore::new(&path))).unwrap();
+    let (left, right) = tokio::join!(
+        first.submit_with_persistence(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest)),
+        second.submit_with_persistence(ManagerId::Npm, AdapterRequest::Refresh(RefreshRequest)),
+    );
+    let (left_id, left_receipt) = left.unwrap();
+    let (right_id, right_receipt) = right.unwrap();
+    assert_ne!(left_id, right_id);
+    left_receipt.wait_for_completion().await;
+    right_receipt.wait_for_completion().await;
+    let tasks = store.list_recent_tasks(10).unwrap();
+    assert_eq!(tasks.len(), 2);
+    assert!(
+        tasks
+            .iter()
+            .all(|task| task.status == TaskStatus::Completed)
+    );
 }
 
 #[tokio::test]

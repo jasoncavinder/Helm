@@ -1353,9 +1353,9 @@ fn manager_executable_candidates(id: ManagerId) -> &'static [&'static str] {
         ManagerId::Cargo => &["cargo"],
         ManagerId::CargoBinstall => &["cargo-binstall"],
         ManagerId::MacPorts => &["port", "/opt/local/bin/port"],
-        ManagerId::NixDarwin => &["darwin-rebuild", "nix"],
+        ManagerId::NixDarwin => &["darwin-rebuild"],
         ManagerId::Mas => &["mas"],
-        ManagerId::DockerDesktop => &["docker"],
+        ManagerId::DockerDesktop => &["/Applications/Docker.app/Contents/Resources/bin/docker"],
         ManagerId::Podman => &["podman"],
         ManagerId::Colima => &["colima"],
         ManagerId::XcodeCommandLineTools => &[

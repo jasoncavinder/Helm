@@ -595,6 +595,16 @@ private struct TaskDiagnosticsSheetView: View {
                 .foregroundColor(.secondary)
                 .lineLimit(2)
 
+            if let guidanceKey = TaskSafetyGuidance.localizationKey(
+                errorCode: output?.errorCode, errorMessage: output?.errorMessage
+            )
+                ?? TaskSafetyGuidance.localizationKey(taskLogMessages: logs.map(\.message)) {
+                Text(guidanceKey.localized)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+
             TabView {
                 TaskOutputTextView(
                     text: diagnosticsText,

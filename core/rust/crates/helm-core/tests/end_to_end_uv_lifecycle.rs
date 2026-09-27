@@ -205,6 +205,22 @@ async fn exercise_adapter(executable: PathBuf, root: PathBuf) {
                 version: Some("1.1.0".into()),
             }))
             .unwrap();
+        let response = adapter
+            .execute(AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Uv,
+                    name: "helm-uv-pinned".into(),
+                },
+                target_name: None,
+                version: Some("1.0".into()),
+            }))
+            .unwrap();
+        let AdapterResponse::Mutation(result) = response else {
+            panic!("verified last removal")
+        };
+        assert_eq!(result.after_version, None);
+        assert!(!root.join("tools").exists());
+        assert!(!root.join("bin/helm-uv-pinned").exists());
     })
     .await
     .unwrap();

@@ -75,7 +75,7 @@ impl ProcessExecutor for CargoBinstallFakeExecutor {
             }
         } else if program == "cargo-binstall" || program.ends_with("/cargo-binstall") {
             match args.as_slice() {
-                [arg] if arg == "--version" => VERSION_FIXTURE.as_bytes().to_vec(),
+                [arg] if arg == "-V" => VERSION_FIXTURE.as_bytes().to_vec(),
                 [crate_name] if crate_name == "bat" => Vec::new(),
                 [arg0, crate_name] if arg0 == "--force" && crate_name == "bat" => {
                     self.bat_upgraded.store(true, Ordering::SeqCst);

@@ -37,6 +37,22 @@ Core source of truth:
 
 ## Enforcement Points
 
+Manager-wide eligibility does not guarantee every operation is supported by the
+selected executable version. The pnpm adapter checks the selected version before
+package install, upgrade (targeted or bulk), and removal. Stable numeric versions
+1 through 10 retain the legacy mutation path; bounded live certification is for
+10.16.1 only. Version 11+, prereleases and unrecognized versions fail with
+`unsupported_capability` and the `pnpm_global_mutation_unsupported` diagnostic
+marker before mutation. Their native install groups can affect packages beyond
+the individually reviewed item. Detection, inventory, search, update discovery
+and Helm virtual pins remain available; this does not auto-disable the manager
+or hide updates. Task diagnostics translate the guidance using
+`service.error.pnpm_global_mutation_unsupported`. See the
+[capability matrix](../validation/v0.20-adapter-cli-capability-matrix.md) and
+[#559](https://github.com/jasoncavinder/Helm/issues/559). Group-aware planning and
+version-specific capability presentation remain follow-up work; a visible update
+is not a claim that this version can execute it automatically.
+
 Uv global-tool policy: the registered GUI/CLI adapter does not grant uv executable
 lifecycle authority. Its install-instance classifier retains conservative
 Homebrew/mise/asdf layout hints and read-only executable strategies, even with

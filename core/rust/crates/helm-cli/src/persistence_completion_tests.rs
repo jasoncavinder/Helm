@@ -48,6 +48,9 @@ struct GatedTaskStore {
 }
 
 impl TaskStore for GatedTaskStore {
+    fn reserve_task(&self, template: &TaskRecord) -> PersistenceResult<TaskRecord> {
+        self.store.reserve_task(template)
+    }
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()> {
         self.store.create_task(task)
     }

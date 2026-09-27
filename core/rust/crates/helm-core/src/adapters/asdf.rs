@@ -923,9 +923,9 @@ fn parse_asdf_version(output: &str) -> Option<String> {
 
     let token = line.split_whitespace().find(|piece| {
         piece
-            .chars()
-            .next()
-            .is_some_and(|ch| ch == 'v' || ch.is_ascii_digit())
+            .strip_prefix('v')
+            .unwrap_or(piece)
+            .starts_with(|ch: char| ch.is_ascii_digit())
     })?;
     let normalized = token.strip_prefix('v').unwrap_or(token);
     if normalized.is_empty() || !normalized.starts_with(|ch: char| ch.is_ascii_digit()) {
@@ -1347,6 +1347,11 @@ mod tests {
     fn parses_asdf_version_from_fixture() {
         let parsed = parse_asdf_version(VERSION_FIXTURE);
         assert_eq!(parsed.as_deref(), Some("0.16.0"));
+        assert_eq!(
+            parse_asdf_version("asdf version 0.20.2 (revision unknown)").as_deref(),
+            Some("0.20.2")
+        );
+        assert_eq!(parse_asdf_version("version unavailable"), None);
     }
 
     #[test]

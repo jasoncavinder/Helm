@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::{
@@ -9,11 +9,12 @@ use helm_core::adapters::{
 use helm_core::models::{
     ActionSafety, CachedSearchResult, Capability, InstalledPackage, ManagerAction,
     ManagerAuthority, ManagerCategory, ManagerDescriptor, ManagerId, PackageCandidate, PackageRef,
-    SearchQuery, TaskId, TaskStatus,
+    SearchQuery, TaskStatus,
 };
 use helm_core::orchestration::{AdapterRuntime, CancellationMode};
 use helm_core::persistence::SearchCacheStore;
 use helm_core::sqlite::SqliteStore;
+use tokio::sync::Notify;
 
 const TEST_CAPABILITIES: &[Capability] = &[
     Capability::Search,
@@ -24,6 +25,12 @@ const TEST_CAPABILITIES: &[Capability] = &[
 struct SearchAndRefreshAdapter {
     descriptor: ManagerDescriptor,
     search_delay: Duration,
+    search_gate: Option<SearchGate>,
+}
+
+struct SearchGate {
+    started: Arc<Notify>,
+    release: Mutex<mpsc::Receiver<()>>,
 }
 
 impl SearchAndRefreshAdapter {
@@ -37,7 +44,19 @@ impl SearchAndRefreshAdapter {
                 capabilities: TEST_CAPABILITIES,
             },
             search_delay,
+            search_gate: None,
         }
+    }
+
+    fn controlled(manager: ManagerId) -> (Self, Arc<Notify>, mpsc::Sender<()>) {
+        let started = Arc::new(Notify::new());
+        let (release, receiver) = mpsc::channel();
+        let mut adapter = Self::new(manager, Duration::ZERO);
+        adapter.search_gate = Some(SearchGate {
+            started: started.clone(),
+            release: Mutex::new(receiver),
+        });
+        (adapter, started, release)
     }
 
     fn search_results(query: &str) -> Vec<CachedSearchResult> {
@@ -103,6 +122,14 @@ impl ManagerAdapter for SearchAndRefreshAdapter {
     fn execute(&self, request: AdapterRequest) -> AdapterResult<AdapterResponse> {
         match request {
             AdapterRequest::Search(SearchRequest { query }) => {
+                if let Some(gate) = &self.search_gate {
+                    gate.started.notify_one();
+                    gate.release
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(Duration::from_secs(10))
+                        .expect("test must release the search");
+                }
                 std::thread::sleep(self.search_delay);
                 Ok(AdapterResponse::SearchResults(Self::search_results(
                     &query.text,
@@ -134,17 +161,10 @@ fn test_db_path(test_name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("helm-{test_name}-{nanos}.sqlite3"))
 }
 
-async fn wait_for_running(runtime: &AdapterRuntime, task_id: TaskId) {
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            if matches!(runtime.status(task_id).await, Ok(TaskStatus::Running)) {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .expect("task should reach running state");
+async fn wait_for_search_start(started: &Notify) {
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("search adapter should start");
 }
 
 async fn wait_for_local_results<F>(
@@ -247,15 +267,24 @@ async fn cache_enrichment_across_multiple_queries() {
 
 #[tokio::test]
 async fn grace_period_allows_near_complete_search_to_persist() {
-    let path = test_db_path("e2e-grace-persist");
+    assert_grace_period_persists_search(Duration::ZERO).await;
+}
+
+#[tokio::test]
+async fn grace_period_persists_search_after_delayed_observation() {
+    assert_grace_period_persists_search(Duration::from_millis(350)).await;
+}
+
+async fn assert_grace_period_persists_search(observation_delay: Duration) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("search.sqlite3");
     let store = Arc::new(SqliteStore::new(&path));
     store.migrate_to_latest().unwrap();
 
-    // Adapter takes 200ms, cancel with 500ms grace → should complete and persist
-    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SearchAndRefreshAdapter::new(
-        ManagerId::HomebrewFormula,
-        Duration::from_millis(200),
-    ));
+    // Hold the search open even if submit's queued-log write or its caller is slow.
+    let (adapter, started, release) =
+        SearchAndRefreshAdapter::controlled(ManagerId::HomebrewFormula);
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(adapter);
     let runtime = AdapterRuntime::with_all_stores(
         [adapter],
         store.clone(),
@@ -272,22 +301,30 @@ async fn grace_period_allows_near_complete_search_to_persist() {
         },
     });
 
-    let task_id = runtime
-        .submit(ManagerId::HomebrewFormula, request)
+    let (task_id, persistence) = runtime
+        .submit_with_persistence(ManagerId::HomebrewFormula, request)
         .await
         .unwrap();
 
-    wait_for_running(&runtime, task_id).await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    runtime
-        .cancel(
-            task_id,
-            CancellationMode::Graceful {
-                grace_period: Duration::from_millis(500),
-            },
-        )
-        .await
-        .unwrap();
+    wait_for_search_start(&started).await;
+    tokio::time::sleep(observation_delay).await;
+    assert_eq!(runtime.status(task_id).await.unwrap(), TaskStatus::Running);
+    let cancel = tokio::task::unconstrained(runtime.cancel(
+        task_id,
+        CancellationMode::Graceful {
+            grace_period: Duration::from_millis(500),
+        },
+    ));
+    tokio::pin!(cancel);
+    // On this current-thread runtime the queue lock is uncontended. Poll through
+    // cancellation registration before releasing the adapter, not after it finishes.
+    tokio::select! {
+        biased;
+        result = &mut cancel => panic!("graceful cancellation did not wait for the search: {result:?}"),
+        _ = std::future::ready(()) => {}
+    }
+    release.send(()).unwrap();
+    cancel.await.unwrap();
 
     let snapshot = runtime
         .wait_for_terminal(task_id, Some(Duration::from_secs(2)))
@@ -295,18 +332,11 @@ async fn grace_period_allows_near_complete_search_to_persist() {
         .unwrap();
     assert_eq!(snapshot.runtime.status, TaskStatus::Completed);
 
-    // Verify results were persisted
-    let mut results = Vec::new();
-    for _ in 0..30 {
-        results = store.query_local("wget", 50).unwrap();
-        if results.len() >= 2 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    tokio::time::timeout(Duration::from_secs(5), persistence.wait_for_completion())
+        .await
+        .expect("completed search should be persisted");
+    let results = store.query_local("wget", 50).unwrap();
     assert_eq!(results.len(), 2, "grace period should allow persistence");
-
-    let _ = std::fs::remove_file(path);
 }
 
 #[tokio::test]
@@ -315,11 +345,8 @@ async fn long_running_search_aborted_after_grace_period() {
     let store = Arc::new(SqliteStore::new(&path));
     store.migrate_to_latest().unwrap();
 
-    // Adapter takes 5s, cancel with 100ms grace → should be aborted
-    let adapter: Arc<dyn ManagerAdapter> = Arc::new(SearchAndRefreshAdapter::new(
-        ManagerId::Npm,
-        Duration::from_secs(5),
-    ));
+    let (adapter, started, release) = SearchAndRefreshAdapter::controlled(ManagerId::Npm);
+    let adapter: Arc<dyn ManagerAdapter> = Arc::new(adapter);
     let runtime = AdapterRuntime::with_all_stores(
         [adapter],
         store.clone(),
@@ -336,10 +363,13 @@ async fn long_running_search_aborted_after_grace_period() {
         },
     });
 
-    let task_id = runtime.submit(ManagerId::Npm, request).await.unwrap();
+    let (task_id, persistence) = runtime
+        .submit_with_persistence(ManagerId::Npm, request)
+        .await
+        .unwrap();
 
-    wait_for_running(&runtime, task_id).await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    wait_for_search_start(&started).await;
+    assert_eq!(runtime.status(task_id).await.unwrap(), TaskStatus::Running);
     runtime
         .cancel(
             task_id,
@@ -349,6 +379,9 @@ async fn long_running_search_aborted_after_grace_period() {
         )
         .await
         .unwrap();
+    // The grace period has elapsed while the adapter is still blocked. Its late
+    // successful response must not become a completed task or populate the cache.
+    release.send(()).unwrap();
 
     let snapshot = runtime
         .wait_for_terminal(task_id, Some(Duration::from_secs(2)))
@@ -356,8 +389,9 @@ async fn long_running_search_aborted_after_grace_period() {
         .unwrap();
     assert_eq!(snapshot.runtime.status, TaskStatus::Cancelled);
 
-    // No results should be persisted (task was cancelled before completion)
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::timeout(Duration::from_secs(5), persistence.wait_for_completion())
+        .await
+        .expect("cancelled search should finish persistence");
     let results = store.query_local("wget", 50).unwrap();
     assert!(results.is_empty(), "cancelled search should not persist");
 

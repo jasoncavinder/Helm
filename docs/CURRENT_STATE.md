@@ -10,7 +10,121 @@ The v0.20 disposable-VM adapter certification campaign has started. The initial
 certification. It exposed a CLI process-exit/persistence race corrected by awaiting
 the existing ordered persistence receipt in synchronous commands. Real uv 0.12.18
 CLI lifecycle checks now proceed through constrained upgrade, install and recovery;
-last-tool uninstall reconciliation remains blocked by #556. No release gate is closed.
+last-tool uninstall reconciliation (#556) now accepts verified empty-store cleanup
+after a successful sole-tool removal. Both supported uv endpoints pass the bounded
+CLI lifecycle, including reinstall after cleanup. Missing stores outside that
+specific mutation still fail closed. No release gate is closed.
+
+The owner merged #557 into `dev`; #558 is synchronized with that merge. Its
+independent-review Yarn correction is retained. A separate Rust CI failure was
+reproduced as a search-test observer missing the short Running state. The test
+now holds execution behind an explicit start/release handshake and awaits the
+persistence receipt, including delayed observation and late cancelled-response
+coverage. All six search tests pass 20 consecutive VM runs, with 43 adjacent
+cancellation/orchestration tests passing. This is test-harness stabilization, not
+a production cancellation-policy change; current-head CI and #558 review/merge
+remain separate gates.
+
+The unmerged manager-family certification corrections and bounded live results
+are tracked in `docs/validation/v0.20-adapter-vm-family-results.md`. They cover
+current command/output contracts, global scope, pipx identity, selected Python
+venvs and CLI exact-version uninstall. Yarn's fresh-store shortcut rejects
+dangling global-directory or ancestor symlinks instead of clearing cached
+inventory/update snapshots; legitimate never-created stores remain empty.
+Durable task reservations now pass
+cross-process and migration-compatibility checks. Homebrew cask formats and
+authorization delegation, tap-qualified formula identities, RubyGems search,
+and Docker/nix-darwin detection have bounded live evidence. Operation-specific
+developer-tools preflight is implemented; simulated missing-tool CLI and localized
+GUI prerequisite checks pass, but truly CLT-free runtime QA remains open. App Store/Setapp
+account-dependent checks are blocked by owner decision. pnpm 12 compatibility
+(#559), remaining capability/environment gates and the campaign review remain open.
+
+The per-capability disposition for all 29 adapters is recorded in
+`docs/validation/v0.20-adapter-cli-capability-matrix.md`. The final shared-scope
+read sweep passes after correcting pnpm 10's never-created-store diagnostic;
+uv retains its separately validated store/endpoint evidence. Controlled MacPorts
+version-changing upgrade, authoritative mise/npm/pip Plan order and public mas
+search pass. This does not turn account-blocked or empty-candidate scenarios into
+full lifecycle certification, and detection-only managers gain no new capability.
+
+Further pnpm 12.6.0 reduction reproduced whole-group removal when a single member
+was selected. pnpm documents this as its v11+ global installation model, which
+Helm's per-package consent does not cover. The shared adapter now rejects install,
+upgrade and uninstall on pnpm 11+, prereleases and unrecognized versions before
+mutation, while keeping detection/inventory/update discovery available. Legacy
+stable versions below 11 retain their existing path; bounded lifecycle evidence is
+for 10.16.1, not every older release. Both targeted and bulk legacy updates reject
+false success. #559 remains open for group-aware support and the native 12.6.0
+update no-op. No automatic downgrade, reinstall or policy bypass was introduced.
+Task diagnostics now provide translated pnpm-limit and developer-tools guidance
+from the core failure markers, including persisted task logs when process output
+is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.md)
+now records the owner's pnpm GUI safety/localization pass and unchanged native
+package versions on signed source `6aaaedf3`. The CLT prerequisite simulation also
+passes owner diagnostic/localization/VoiceOver checks, with no package installed
+and reads still usable. Cask cancellation and approval now pass: task 16 left no
+installed fixture, and task 32 installed the reviewed 1.0.0 marker with Homebrew
+at user UID 502 and only its privileged child at UID 0. Unrelated cask versions
+are unchanged. The owner also passed fixture removal through Helm; independent
+checks confirm its marker/Caskroom are absent and native cask inventory matches
+the baseline. The bounded Sparkle handoff/vendor-update/refresh check now passes:
+Open App to Update opened Rectangle, whose first-run Accessibility prompt the
+owner explicitly approved in the disposable VM. After updating through Rectangle,
+native metadata and Helm both report 2.0.1 (native build 108), with no remaining
+Sparkle candidate and unchanged Setapp inventory. Vendor signature/team checks
+pass. Rectangle was then stopped and only its VM-user Accessibility grant reset.
+Earlier no-permission-prompt wording was inaccurate and is superseded by this
+record. This is vendor-authoritative updating, not direct installation by Helm.
+The separately staged pnpm diagnostics VoiceOver check also passes: the owner
+confirmed title/guidance reading, tab navigation and Escape dismissal on signed
+UI source `443a714e` with backend source `6aaaedf3`, without another mutation.
+A genuinely CLT-free OS is not certified by the simulation.
+The isolated QA database reported corruption after a forced host restart and was
+preserved before rebuilding the test cache. Its cause remains unresolved; this
+is not a crash-recovery pass. Read-only inspection of the hash-verified preserved
+file finds 882 physical pages versus 886 declared in its header. Follow-up
+isolated VM hard stops reproduce corruption twice with the prior connection
+policy. A narrow shared-core `fullfsync=ON` correction, retaining WAL/NORMAL,
+passes an isolated forced-stop test with baseline data and subsequent writes
+verified. Process-crash and fail-closed CLI regressions accompany the correction.
+The [restart investigation](validation/v0.20-qa-database-restart-triage.md) records
+the four approved interruptions, exact artifacts, comparison limits and raw
+evidence preservation. #560 stays open through independent review/integration;
+the original incident's precise cause and broader platform coverage are not
+declared solved. No automatic repair or release waiver was added.
+CLI evidence does not close interactive gates.
+
+Dashboard search no longer treats the native field's idle action as accepting a
+result. Delegate-driven live filtering remains active; Return or an explicit
+result action is required to move to Library and transfer focus. Native search
+bridge regression coverage is included; the owner passed the signed-VM
+Dashboard/Library pause-resume, explicit acceptance, Command-F and Escape checks
+on UI source `b3a50416` with the unchanged certified cask backend.
+The later CI cancellation failure exposed queued delegate text restoring a
+cleared or explicitly submitted query. Explicit search actions now discard that
+pending value before updating the binding. Deterministic coordinator regressions
+reproduce the old Cancel/clear/Return race, and all 371 Swift tests pass inside
+the disposable VM with the correction. The host was used only to compile the
+test bundle. The refreshed same-source signed app/service/CLI on `45552e95` also
+passes isolated-database inventory, refresh, Plan preview and integrity checks.
+The owner passed its pause/resume, delayed-clear and Return/Command-F recheck.
+Exact artifact hashes are in the GUI checklist. Current-head CI, independent
+review and the explicit account/platform limitations remain separate gates.
+
+Library columns now share width compression when the Inspector opens, preserving
+the trailing Install control and restoring preferred column widths when space
+returns. Horizontal scrolling remains available below the combined column minima.
+Native geometry and resize regressions pass in the 367-test macOS suite. The
+owner also passed the signed-VM visual recheck on UI source `443a714e`, with the
+unchanged certified backend and no additional package installation.
+
+A repeated live uv cancellation check exposed duplicate CLI coordinator
+submission from processing temporary request files before atomic publication.
+Only final regular `.json` requests are now accepted. The real-process regression
+and two live cancellation runs on each supported uv endpoint pass; failure and
+corrected artifact hashes remain in the campaign ledger. This is not a general
+crash-recovery or all-adapter cancellation certification claim.
 
 ---
 

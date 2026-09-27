@@ -23,12 +23,14 @@ const SEARCH_FIXTURE: &str = include_str!("fixtures/npm/search_array.json");
 
 struct NpmFakeExecutor {
     typescript_upgraded: AtomicBool,
+    missing_root: Option<PathBuf>,
 }
 
 impl NpmFakeExecutor {
     fn new() -> Self {
         Self {
             typescript_upgraded: AtomicBool::new(false),
+            missing_root: None,
         }
     }
 }
@@ -65,6 +67,16 @@ impl ProcessExecutor for NpmFakeExecutor {
             )
         } else if program == "npm" || program.ends_with("/npm") {
             match args.as_slice() {
+                [a, b, c] if a == "root" && b == "--global" && c == "--silent" => (
+                    ProcessExitStatus::ExitCode(0),
+                    self.missing_root
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().as_bytes().to_vec())
+                        .unwrap_or_default(),
+                ),
+                [a, ..] if self.missing_root.is_some() && (a == "ls" || a == "outdated") => {
+                    panic!("a verified absent scope must not invoke npm inventory/outdated")
+                }
                 [arg] if arg == "--version" => (
                     ProcessExitStatus::ExitCode(0),
                     VERSION_FIXTURE.as_bytes().to_vec(),
@@ -136,6 +148,37 @@ fn build_runtime(executor: Arc<dyn ProcessExecutor>) -> AdapterRuntime {
     let source = ProcessNpmSource::new(executor);
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(NpmAdapter::new(source));
     AdapterRuntime::new([adapter]).expect("runtime creation should succeed")
+}
+
+#[tokio::test]
+async fn npm_refresh_accepts_a_never_created_global_prefix() {
+    let directory = tempfile::tempdir().unwrap();
+    let executor = NpmFakeExecutor {
+        typescript_upgraded: AtomicBool::new(false),
+        missing_root: Some(directory.path().join("new-prefix/lib/node_modules")),
+    };
+    let runtime = build_runtime(Arc::new(executor));
+    let task = runtime
+        .submit(
+            ManagerId::Npm,
+            AdapterRequest::Refresh(helm_core::adapters::RefreshRequest),
+        )
+        .await
+        .unwrap();
+    let snapshot = runtime
+        .wait_for_terminal(task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    match snapshot.terminal_state {
+        Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::SnapshotSync {
+            installed,
+            outdated,
+        })) => {
+            assert_eq!(installed, Some(Vec::new()));
+            assert_eq!(outdated, Some(Vec::new()));
+        }
+        other => panic!("unexpected refresh result: {other:?}"),
+    }
 }
 
 #[tokio::test]

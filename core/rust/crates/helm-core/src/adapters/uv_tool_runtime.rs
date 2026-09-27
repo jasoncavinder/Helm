@@ -13,7 +13,9 @@ use super::manager::*;
 use super::uv_tool::{UvToolObservation, normalize_name};
 use super::uv_tool_manifest::{UvToolManifest, resolved_version, validate_options};
 use super::uv_tool_process::{ProcessUvToolSource, UvToolContext, run_uv_request};
-use super::uv_tool_scope::{UvExecutableSelection, UvScopeDiscovery, UvToolDiscovery};
+use super::uv_tool_scope::{
+    UvExecutableSelection, UvScopeDiscovery, UvStoreRemovalGuard, UvToolDiscovery, path_is_absent,
+};
 use crate::execution::{
     CommandSpec, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
 };
@@ -81,6 +83,16 @@ impl UvToolAdapter {
         action: ManagerAction,
         command: CommandSpec,
     ) -> AdapterResult<ProcessOutput> {
+        self.run_with_removal_guard(context, action, command, None)
+    }
+
+    fn run_with_removal_guard(
+        &self,
+        context: &UvToolContext,
+        action: ManagerAction,
+        command: CommandSpec,
+        removal: Option<&UvStoreRemovalGuard>,
+    ) -> AdapterResult<ProcessOutput> {
         context.validate_binding()?;
         let mut command = command
             .args(["--color", "never", "--no-progress", "--directory", "/"])
@@ -123,7 +135,6 @@ impl UvToolAdapter {
                 .idle_timeout(Duration::from_secs(60));
         request.private_output_limit = Some(4 * 1024 * 1024);
         let output = run_uv_request(self.executor.as_ref(), request)?;
-        context.validate_binding()?;
         if output.status != ProcessExitStatus::ExitCode(0) {
             return Err(error(
                 action,
@@ -137,6 +148,11 @@ impl UvToolAdapter {
                 CoreErrorKind::ParseFailure,
                 "uv output exceeded its capture limit",
             ));
+        }
+        if let Some(removal) = removal.filter(|_| path_is_absent(context.tool_dir())) {
+            removal.validate_removed()?;
+        } else {
+            context.validate_binding()?;
         }
         Ok(output)
     }
@@ -420,20 +436,26 @@ impl UvToolAdapter {
         let config_path = scratch.path().join("uv.toml");
         write_private_file(&config_path, &effective_configuration(&toml::Table::new())?)?;
         command = command.args(["--config-file", utf8(&config_path)?]);
-        self.run(context, action, command)?;
-        let after = self
-            .source(context)
-            .list_installed()
-            .map_err(|_| verification_failed(action))?;
+        let removal = if action == ManagerAction::Uninstall && before.len() == 1 {
+            context.removal_guard()?
+        } else {
+            None
+        };
+        self.run_with_removal_guard(context, action, command, removal.as_ref())?;
+        let after = if let Some(removal) = removal.filter(|_| path_is_absent(context.tool_dir())) {
+            removal.validate_removed()?;
+            Vec::new()
+        } else {
+            self.source(context)
+                .list_installed()
+                .map_err(|_| verification_failed(action))?
+        };
         let observed = after.iter().find(|tool| tool.name == package.name);
         if action == ManagerAction::Uninstall {
             if observed.is_some()
-                || evidence.as_ref().is_some_and(|e| {
-                    e.manifest
-                        .entrypoints
-                        .iter()
-                        .any(|p| fs::symlink_metadata(p).is_ok())
-                })
+                || evidence
+                    .as_ref()
+                    .is_some_and(|e| e.manifest.entrypoints.iter().any(|p| !path_is_absent(p)))
             {
                 return Err(verification_failed(action));
             }

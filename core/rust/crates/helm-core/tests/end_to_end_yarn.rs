@@ -17,18 +17,26 @@ use helm_core::models::{ManagerId, PackageRef, SearchQuery};
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 
 const VERSION_FIXTURE: &str = include_str!("fixtures/yarn/version.txt");
-const INSTALLED_FIXTURE: &str = include_str!("fixtures/yarn/list_global.json");
-const OUTDATED_FIXTURE: &str = include_str!("fixtures/yarn/outdated_global.json");
-const SEARCH_FIXTURE: &str = include_str!("fixtures/yarn/search_array.json");
+const INSTALLED_FIXTURE: &str = r#"{"type":"tree","data":{"trees":[{"name":"npm@10.9.2"},{"name":"vercel@41.0.0"},{"name":"typescript@5.7.2"},{"name":"unrelated-transitive@1.0.0"}]}}"#;
+const OUTDATED_FIXTURE: &str = r#"{"type":"table","data":{"head":["Package","Current","Wanted","Latest"],"body":[["typescript","5.6.3","5.7.2","5.7.2"],["vercel","40.0.0","41.0.0","41.0.0"]]}}"#;
+const SEARCH_FIXTURE: &str = r#"{"type":"inspect","data":"5.7.2"}"#;
 
 struct YarnFakeExecutor {
     typescript_upgraded: AtomicBool,
+    global_directory: tempfile::TempDir,
 }
 
 impl YarnFakeExecutor {
     fn new() -> Self {
+        let global_directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            global_directory.path().join("package.json"),
+            r#"{"dependencies":{"npm":"*","vercel":"*","typescript":"*"}}"#,
+        )
+        .unwrap();
         Self {
             typescript_upgraded: AtomicBool::new(false),
+            global_directory,
         }
     }
 }
@@ -69,27 +77,44 @@ impl ProcessExecutor for YarnFakeExecutor {
                     ProcessExitStatus::ExitCode(0),
                     VERSION_FIXTURE.as_bytes().to_vec(),
                 ),
-                [arg0, arg1, arg2, arg3]
-                    if arg0 == "global"
-                        && arg1 == "list"
-                        && arg2 == "--depth=0"
-                        && arg3 == "--json" =>
+                [arg0, arg1, arg2] if arg0 == "global" && arg1 == "dir" && arg2 == "--silent" => (
+                    ProcessExitStatus::ExitCode(0),
+                    self.global_directory
+                        .path()
+                        .to_string_lossy()
+                        .as_bytes()
+                        .to_vec(),
+                ),
+                [arg0, arg1, arg2, arg3, directory]
+                    if arg0 == "list"
+                        && arg1 == "--depth=0"
+                        && arg2 == "--json"
+                        && arg3 == "--cwd"
+                        && std::path::Path::new(directory) == self.global_directory.path() =>
                 {
                     (
                         ProcessExitStatus::ExitCode(0),
                         INSTALLED_FIXTURE.as_bytes().to_vec(),
                     )
                 }
-                [arg0, arg1] if arg0 == "outdated" && arg1 == "--json" => {
+                [arg0, arg1, arg2, directory]
+                    if arg0 == "outdated"
+                        && arg1 == "--json"
+                        && arg2 == "--cwd"
+                        && std::path::Path::new(directory) == self.global_directory.path() =>
+                {
                     let stdout = if self.typescript_upgraded.load(Ordering::SeqCst) {
-                        b"{}".to_vec()
+                        br#"{"type":"table","data":{"head":["Package","Current","Wanted","Latest"],"body":[]}}"#.to_vec()
                     } else {
                         OUTDATED_FIXTURE.as_bytes().to_vec()
                     };
                     (ProcessExitStatus::ExitCode(1), stdout)
                 }
-                [arg0, query, arg2]
-                    if arg0 == "search" && query == "typescript" && arg2 == "--json" =>
+                [arg0, query, arg2, arg3]
+                    if arg0 == "info"
+                        && query == "typescript"
+                        && arg2 == "version"
+                        && arg3 == "--json" =>
                 {
                     (
                         ProcessExitStatus::ExitCode(0),
@@ -106,8 +131,11 @@ impl ProcessExecutor for YarnFakeExecutor {
                 {
                     (ProcessExitStatus::ExitCode(0), Vec::new())
                 }
-                [arg0, arg1, name]
-                    if arg0 == "global" && arg1 == "upgrade" && name == "typescript" =>
+                [arg0, arg1, name, arg3]
+                    if arg0 == "global"
+                        && arg1 == "upgrade"
+                        && name == "typescript"
+                        && arg3 == "--latest" =>
                 {
                     self.typescript_upgraded.store(true, Ordering::SeqCst);
                     (ProcessExitStatus::ExitCode(0), Vec::new())
@@ -227,7 +255,7 @@ async fn yarn_detect_list_search_and_mutate_through_orchestration() {
         .unwrap();
     match search_snapshot.terminal_state {
         Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::SearchResults(results))) => {
-            assert_eq!(results.len(), 2);
+            assert_eq!(results.len(), 1);
             assert_eq!(results[0].result.package.name, "typescript");
         }
         other => panic!("expected SearchResults response, got {other:?}"),

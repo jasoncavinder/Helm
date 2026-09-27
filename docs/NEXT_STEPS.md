@@ -1,5 +1,85 @@
 # Next Steps
 
+All future local development and QA testing belongs in the designated VM, with
+automated CI remaining on isolated runners. Preserve the owner's host production
+Helm without closing or interrupting it. Build preparation and static checks may
+remain on the host, but execute GUI/CLI/service checks and test suites in the VM
+or CI unless the owner explicitly authorizes a host exception. See `AGENTS.md`.
+
+The final supplied VM GUI recheck now passes on same-source signed UI/service/CLI
+`45552e95`, including the search-publication race correction and SQLite flush
+change. Preserve the 371-test VM Swift pass and the integrated read-only smoke
+record in `docs/validation/v0.20-adapter-gui-checklist.md`; do not ask the owner to
+repeat completed checks absent a relevant change. The owner reviewed and merged
+#557; #558 now includes that `dev` merge and the accepted Yarn review correction.
+Complete current-head CI and review of its search-test synchronization follow-up
+before owner merge. The delayed-observer regression is red-before/green-after;
+six search tests pass 20 consecutive VM runs and 43 adjacent tests pass. This is
+not all-platform certification:
+account/OS/no-candidate limits, genuinely CLT-free runtime evidence, pnpm 11+
+mutation support (#559), and #560 review/integration remain explicit. Do not close
+#500/#526 or waive release gates based only on the supplied VM's passing checks.
+
+Keep #558 unmerged until its remaining review/CI gates pass. Preserve the merged
+#557 CLI persistence correction and the
+#556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
+the bounded offline CLI lifecycle, reinstall and repeated loopback authenticated
+cancellation checks; retain their exact scope while finishing the remaining gates.
+Preserve the operation-specific Command Line Tools preflight and complete its
+CLT-free/GUI evidence, not an implicit requirement to launch Helm. The owner
+directed that account-dependent App Store/Setapp checks be recorded as blocked.
+See `docs/validation/v0.20-adapter-vm-certification.md`.
+Continue the current manager-family matrix in
+`docs/validation/v0.20-adapter-vm-family-results.md`, including cross-process task
+reservation, current pnpm compatibility and explicit account/OS evidence gaps.
+Retain Yarn's broken-global-path regressions: failed directory resolution must
+not replace cached inventory or updates with an empty fresh-store result.
+Retain the coordinator atomic-publication regression and corrected uv cancellation
+reruns: staging files must never be executable requests. pnpm 12.6.0's native
+no-op remains open in #559; do not bypass verification or source/build policies.
+The additional native grouped-removal reproduction now requires a shared-core
+mutation guard for pnpm 11+ and unknown/prerelease versions. Keep reads available,
+retain the passing pnpm 10.16.1 lifecycle, and do not interpret the guard as pnpm
+12 lifecycle certification. Review this explicit compatibility boundary with the
+campaign batch; lifting it requires group-aware consent and preservation evidence.
+Preserve the completed bounded owner GUI checks in
+`docs/validation/v0.20-adapter-gui-checklist.md`. Do not launch an unsigned test app
+or ask the owner to repeat passing scenarios without a relevant code change.
+Account sign-in remains deferred.
+The owner's four pnpm GUI safety/localization checks now pass with both original
+versions retained. The Cargo/CLT simulation also passes its owner diagnostic,
+localization and VoiceOver checks with no installation. Cask cancellation and
+approval now pass with the expected privilege boundary and unchanged unrelated
+cask versions. The corrected pause/resume search focus now passes its signed-VM
+owner check. Fixture cleanup through Helm now passes, with marker/Caskroom absence
+and the original native cask inventory independently verified. The responsive
+Library Install-button layout also passes its signed-VM owner check on UI source
+`443a714e`. The Sparkle vendor handoff, owner-completed Rectangle 0.90 -> 2.0.1
+update and refreshed Helm reconciliation also pass, with vendor signature and
+native/cached inventory independently verified. The owner approved Rectangle's
+first-run Accessibility request in the VM; the temporary grant has been reset
+and Rectangle stopped. Do not repeat these passing checks or interpret them as
+direct third-party installation by Helm. The separately staged pnpm diagnostics
+VoiceOver check now passes, including title/guidance reading, diagnostic-tab
+navigation and Escape dismissal. Keep genuinely CLT-free OS and other platform
+gaps explicit.
+Preserve and investigate the disposable QA database corruption observed after
+the forced host restart under #560; cache reconstruction is not a product
+durability fix. The original and a hash-verified local copy are retained; do not
+remove the VM evidence or silently waive this unresolved risk for release.
+Review the narrow WAL/NORMAL plus macOS full-flush correction and its automated
+regressions. Two isolated forced stops reproduce the old-policy failure; the
+isolated candidate preserves integrity/data and accepts new writes. The exact
+four-interruption record and limitations are in
+`docs/validation/v0.20-qa-database-restart-triage.md`. Keep #560 open through
+independent review and integrated CI/canary validation rather than claiming a
+universal power-loss guarantee. No further forced VM interruptions are authorized
+by the completed four-test approval.
+Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
+applicable cells rather than treating detection-only features as missing work.
+Preserve the corrected pnpm 10 fresh-store lifecycle, final read sweep, controlled
+MacPorts guarded Plan upgrade and authoritative mise/npm/pip Plan evidence.
+
 This document defines the immediate priorities for Helm development.
 
 It is intentionally tactical.
@@ -15,7 +95,7 @@ v0.20.x core workflow implementation and v0.19.1 stable monitoring
 ```
 
 Focus:
-- continue the disposable-VM adapter campaign in `docs/validation/v0.20-adapter-vm-certification.md`: review the synchronous CLI persistence correction, fix uv final-tool uninstall reconciliation (#556) without weakening missing-store/scope safety, and rerun the lifecycle before expanding to the other manager families. The 29-manager absence/detection/policy baseline is not all-adapter certification; #500/#526 remain open, with signed GUI, supported-OS, cancellation, authenticated-source, account-dependent and guarded-system evidence still outstanding.
+- continue the disposable-VM adapter campaign in `docs/validation/v0.20-adapter-vm-family-results.md`: uv endpoint lifecycles and the documented manager-family fixes pass their bounded scenarios; #557 is merged and #558 awaits current-head CI and final owner review/merge. Preserve passing durable cross-process task reservations, controlled Homebrew formula/cask upgrades, the full search sweep and the completed bounded owner GUI checklist. Investigate the preserved QA database corruption and disposition genuinely CLT-free/platform evidence, pnpm 12 compatibility (#559) and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
 - retain the exact-pinned uv PEP 440 matcher and its prerelease/epoch/postrelease, zero-padding, and Requires-Python regressions when integrating candidate discovery; dependency upgrades require explicit review, and matching candidates still need source-aware resolution
 - complete final synchronized-head CI and owner merge for the v0.20 Dashboard Add manager PR #547, preserving `docs/validation/v0.20-add-manager-dashboard.md`: source `3876f7c0` passed owner navigation/cancellation, scroll/filter handoff, Cargo/Homebrew choices, toolbar, appearance, keyboard/VoiceOver, and offline-safety checks; the corrected installation-panel language recheck passed on signed source `0548920c`, which also passed independent code review without findings. The `dev` synchronization adds only the merged website security lockfile update, not app changes. Do not reopen accepted presentation checks absent a runtime change. Keep actual installation/failure/cancellation/recovery evidence in an isolated environment and the all-manager certification pass (#463/#500); do not install managers on the owner's Mac as an automated test
 - preserve the 2026-09-21 owner-confirmed live Sparkle Plan/confirmation evidence on source `edb4270b`: Arc and iTerm2 were interactive-only, the review reported 101 selected versus 99 automatic updates, and cancellation did not execute the reviewed plan. Keep the exact provenance and setup-incident limits in the readiness record; this supersedes the targeted Sparkle-presentation gate mentioned below, not vendor-installation or participant validation. Complete protected arm64/macOS 13.0-target CI on the readiness PR, retaining the distinction between deployment-target compatibility and actual Ventura runtime coverage; then proceed to the remaining moderated and production-route decisions without reopening completed owner matrices
@@ -26,7 +106,7 @@ Focus:
 - preserve the completed `v0.19.1` stable publication record: tag source `0319641b29b26c89d7c8a7e224e2091306e95fd2`, canary/auth runs `32136717070` and `32138158953`, signed/notarized GUI and direct CLI workflows `32138347077` and `32138347136`, publication PRs `#504` and `#505`, and green workflow-specific/release/appcast/CLI verification on converged `main` revision `ec9def28c3ef965574e6fb9afe93c0ec499901cc`
 - preserve stable/RC coexistence: stable GitHub/latest, default appcast, and `cli/latest.json` resolve to `v0.19.1`, while the published RC7 prerelease, beta appcast item, and `latest-rc.json` remain isolated on `v0.19.0-rc.7`
 - monitor the stable installation and update path for release-critical regressions; reserve `0.19.x` for necessary maintenance and route planned workflow redesign into `0.20.x`
-- review and certify the integrated v0.20 `uv` global-tool runtime described in `docs/validation/uv-global-tools-lifecycle.md`: GUI/CLI registration, local inventory/search, constrained source-aware resolution, reviewed per-tool operations, and actual-result reconciliation are implemented. Preserve the explicit 0.12.9-0.12.18 version boundary, unsupported-receipt fail-closed behavior, pinned/store-bound candidate checks, PEP 440-equivalent mutation verification with observed-version persistence, private output, and read-only uv executable lifecycle. The owner will provide SSH access to a disposable Parallels macOS VM for every supported adapter's certification, including uv (#500/#526); local offline-wheel tests do not close that gate. Do not install or alter managers on the owner's Mac for certification.
+- review and certify the integrated v0.20 `uv` global-tool runtime described in `docs/validation/uv-global-tools-lifecycle.md`: GUI/CLI registration, local inventory/search, constrained source-aware resolution, reviewed per-tool operations, and actual-result reconciliation are implemented. Preserve the explicit 0.12.9-0.12.18 version boundary, unsupported-receipt fail-closed behavior, pinned/store-bound candidate checks, PEP 440-equivalent mutation verification with observed-version persistence, private output, and read-only uv executable lifecycle. The owner-provided disposable Parallels macOS VM is in use for every supported adapter's certification, including uv (#500/#526); bounded offline, synthetic-auth and cancellation scenarios do not close all environment/GUI gates. Do not install or alter managers on the owner's Mac for certification.
 - preserve the narrowly scoped retained-Homebrew-keg correction published in `v0.19.1`: same-prefix historical kegs do not create false multi-install attention, distinct Homebrew prefixes remain visible, and inactive install entries cannot initiate manager-wide update or uninstall operations
 - continue the existing `0.20.x` Core Workflow & Information Architecture Redesign from the unified Wayfinder popover into the owner-moderated research checkpoint, continuous plan-to-recovery workflow, and separately reviewed direct third-party Sparkle updater boundary
 - preserve the Dashboard Manager Health card layout contract: one-line and two-line manager names share a reserved two-line title region so adaptive grid rows remain visually consistent without forcing all names onto one truncated line

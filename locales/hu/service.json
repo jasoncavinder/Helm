@@ -1,4 +1,6 @@
 {
+  "service.error.pnpm_global_mutation_unsupported": "A Helm nem tudja biztonságosan módosítani a globális csomagokat pnpm 11 vagy újabb, illetve ismeretlen verzió esetén. A telepítési csoportok más csomagokat is módosíthatnak vagy eltávolíthatnak. A leltár és a frissítések keresése továbbra is elérhető. Ellenőrizze a teljes csoportot közvetlenül a pnpm használatával; ne kerülje meg a korlátozást a meglévő környezet visszaminősítésével vagy újratelepítésével.",
+  "service.error.developer_tools_required": "Ehhez Apple parancssori eszközök vagy beállított Xcode szükséges. Futtassa az xcode-select --install parancsot a Terminálban, fejezze be a telepítést, majd próbálja újra. A Helm indításához és a tárolt adatok megtekintéséhez nem kellenek fejlesztőeszközök.",
   "service.error.not_installed": "Nincs telepítve: {manager}",
   "service.error.homebrew_required": "Ehhez a művelethez Homebrew szükséges.",
   "service.error.unsupported_capability": "A(z) {manager} kezelő nem támogatja ezt a műveletet.",
