@@ -46,7 +46,7 @@ private struct HelmApplicationCommands: Commands {
                 appDelegate.focusSearchFromApplicationMenu()
             }
             .keyboardShortcut("f", modifiers: .command)
-            .disabled(!core.hasCompletedOnboarding)
+            .disabled(!core.hasCompletedGUIEntry)
         }
 
         CommandGroup(after: .toolbar) {
@@ -60,7 +60,7 @@ private struct HelmApplicationCommands: Commands {
                 appDelegate.toggleSidebarFromApplicationMenu()
             }
             .keyboardShortcut("s", modifiers: [.command, .control])
-            .disabled(!core.hasCompletedOnboarding)
+            .disabled(!core.hasCompletedGUIEntry)
 
             Button(
                 context.isInspectorVisible
@@ -71,7 +71,7 @@ private struct HelmApplicationCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: [.command, .control])
             .disabled(
-                !core.hasCompletedOnboarding
+                !core.hasCompletedGUIEntry
                     || !(context.selectedSection ?? .overview).supportsInspector
             )
 
@@ -81,13 +81,13 @@ private struct HelmApplicationCommands: Commands {
                 Button(section.title) {
                     appDelegate.selectSectionFromApplicationMenu(section)
                 }
-                .disabled(!core.hasCompletedOnboarding)
+                .disabled(!core.hasCompletedGUIEntry)
             }
 
             Button(ControlCenterSection.managers.title) {
                 appDelegate.selectSectionFromApplicationMenu(.managers)
             }
-            .disabled(!core.hasCompletedOnboarding)
+            .disabled(!core.hasCompletedGUIEntry)
 
             Divider()
 
@@ -95,7 +95,7 @@ private struct HelmApplicationCommands: Commands {
                 appDelegate.refreshFromApplicationMenu()
             }
             .keyboardShortcut("r", modifiers: .command)
-            .disabled(!core.hasCompletedOnboarding || core.isRefreshing)
+            .disabled(!core.hasCompletedGUIEntry || core.isRefreshing)
         }
     }
 }

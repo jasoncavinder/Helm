@@ -388,6 +388,11 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func acceptFirstRunLicenseTerms(version: String, withReply reply: @escaping (Bool) -> Void) {
+        guard !version.utf8.contains(0) else { reply(false); return }
+        reply(version.withCString { helm_accept_first_run_license_terms($0) })
+    }
+
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void) {
         let completed = helm_get_cli_onboarding_completed()
         guard let cString = helm_get_cli_accepted_license_terms_version() else {

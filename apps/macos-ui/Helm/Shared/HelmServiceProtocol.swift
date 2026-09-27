@@ -35,6 +35,7 @@ import Foundation
     func getFirstRunExperienceState(withReply reply: @escaping (String?) -> Void)
     func observeFirstRunEnvironment(withReply reply: @escaping (String?) -> Void)
     func acknowledgeFirstRunExperience(experienceId: String, withReply reply: @escaping (Bool) -> Void)
+    func acceptFirstRunLicenseTerms(version: String, withReply reply: @escaping (Bool) -> Void)
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void)
     func setSharedOnboardingCompleted(completed: Bool, withReply reply: @escaping (Bool) -> Void)
     func setSharedAcceptedLicenseTermsVersion(version: String?, withReply reply: @escaping (Bool) -> Void)
