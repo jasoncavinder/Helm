@@ -16,6 +16,10 @@ enum TaskSafetyGuidance {
 
     static func localizationKey(errorCode: String?, errorMessage: String?) -> String? {
         guard let errorMessage else { return nil }
+        if ["unsupported_capability", "process_failure"].contains(errorCode ?? ""),
+           errorMessage.hasPrefix("[cargo_receipt_unsupported] ") {
+            return "service.error.cargo_receipt_unsupported"
+        }
         if errorCode == "process_failure" {
             for marker in ["cargo_toolchain_unavailable", "dns_resolution_failed", "endpoint_unreachable", "cargo_build_failed"] {
                 if errorMessage.hasPrefix("[\(marker)] ") { return "service.error.\(marker)" }

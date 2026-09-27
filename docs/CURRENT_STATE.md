@@ -6,8 +6,8 @@ It reflects reality, not intention.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
-PRs #570/#571 are also reviewed and merged; their Cargo persistence and
-authority-concurrency regressions are retained in the plan-binding follow-up.
+PRs #570/#571/#572 are also reviewed and merged; their Cargo persistence,
+candidate/retry binding and authority-concurrency regressions are retained.
 The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
@@ -57,8 +57,12 @@ metadata requires a new review. Unsigned UI/test compilation and 64
 focused/adjacent Swift tests in the VM pass, without claiming signed GUI QA.
 Changed reviewed candidates require review again; newer installed versions cannot
 be downgraded by an old target. General dependency resolution is unchanged:
-exact source/scope/receipt-feature preservation and lockfile handling
-still need work before #564 closes.
+the [native receipt guard](validation/v0.20-cargo-receipt-preservation.md) now
+preserves crates.io source, explicit install root, binaries, features, profile
+and target when an upgrade actually executes. Unsupported/ambiguous receipts
+fail closed; observed postconditions include unrelated receipt preservation.
+Review-time executable/root/source binding, install/reinstall policy and explicit
+lockfile handling still need work before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.
