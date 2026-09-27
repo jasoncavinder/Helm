@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Reordenar gestor",
+  "app.managers.reorder.move_up": "Subir",
+  "app.managers.reorder.move_down": "Bajar",
+  "app.managers.reorder.hint": "Arrastra para cambiar la prioridad en este grupo.",
+  "app.managers.reorder.place_here": "Colocar {{manager}} aquí",
   "app.managers.add.title": "Añadir gestor",
   "app.managers.add.card_detail": "Elige una fuente. Revisa antes de instalar.",
   "app.managers.add.intro": "Añade una fuente de software compatible. Al elegirla se abre la revisión de instalación en Entorno; aún no se instala nada.",

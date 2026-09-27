@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Manager neu ordnen",
+  "app.managers.reorder.move_up": "Nach oben",
+  "app.managers.reorder.move_down": "Nach unten",
+  "app.managers.reorder.hint": "Ziehen, um die Priorität in dieser Gruppe zu ändern.",
+  "app.managers.reorder.place_here": "{{manager}} hier platzieren",
   "app.managers.add.title": "Manager hinzufügen",
   "app.managers.add.card_detail": "Quelle wählen. Installation vorher prüfen.",
   "app.managers.add.intro": "Füge eine unterstützte Softwarequelle hinzu. Die Auswahl öffnet die Installationsprüfung in Umgebung; es wird noch nichts installiert.",

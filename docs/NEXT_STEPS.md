@@ -41,8 +41,8 @@ retains their verified-result persistence and bounded authority-overlap coverage
    absent/stale-lock handling and full receipt reconciliation;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
-3. Finish remaining planned runtime work (direct third-party Sparkle updating,
-   insertion-placeholder reordering), exact certification/issue dispositions,
+3. Finish remaining planned runtime work (direct third-party Sparkle updating),
+   signed QA of the [implemented insertion-placeholder reordering](validation/v0.20-environment-insertion-reordering.md), exact certification/issue dispositions,
    participant and cross-workflow accessibility gates from the checklist.
 4. Only then freeze and prepare v0.20.0-rc.1 through the protected release flow,
    final integrated VM/CI gates and explicit release-mutation approval.

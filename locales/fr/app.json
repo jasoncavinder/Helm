@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Réorganiser le gestionnaire",
+  "app.managers.reorder.move_up": "Monter",
+  "app.managers.reorder.move_down": "Descendre",
+  "app.managers.reorder.hint": "Faites glisser pour changer la priorité dans ce groupe.",
+  "app.managers.reorder.place_here": "Placer {{manager}} ici",
   "app.managers.add.title": "Ajouter un gestionnaire",
   "app.managers.add.card_detail": "Choisissez une source. Vérifiez avant d’installer.",
   "app.managers.add.intro": "Ajoutez une source logicielle prise en charge. Sa sélection ouvre la vérification d’installation dans Environnement ; rien n’est encore installé.",

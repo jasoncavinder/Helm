@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Kezelő átrendezése",
+  "app.managers.reorder.move_up": "Mozgatás fel",
+  "app.managers.reorder.move_down": "Mozgatás le",
+  "app.managers.reorder.hint": "Húzással módosítható a csoporton belüli prioritás.",
+  "app.managers.reorder.place_here": "{{manager}} elhelyezése ide",
   "app.managers.add.title": "Kezelő hozzáadása",
   "app.managers.add.card_detail": "Válasszon forrást. Telepítés előtt ellenőrizze.",
   "app.managers.add.intro": "Adjon hozzá támogatott szoftverforrást. A választás megnyitja a telepítés áttekintését a Környezetben; még semmi sem települ.",

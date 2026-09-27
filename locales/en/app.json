@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Reorder manager",
+  "app.managers.reorder.move_up": "Move up",
+  "app.managers.reorder.move_down": "Move down",
+  "app.managers.reorder.hint": "Drag to change priority within this group.",
+  "app.managers.reorder.place_here": "Place {{manager}} here",
   "app.managers.add.title": "Add manager",
   "app.managers.add.card_detail": "Choose a source. Review before installing.",
   "app.managers.add.intro": "Add a supported software source. Choosing one opens its installation review in Environment; nothing is installed yet.",
