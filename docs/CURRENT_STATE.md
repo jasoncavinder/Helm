@@ -18,7 +18,11 @@ passes bounded VM persistence/error-boundary regressions; see
 The [read-only local observation endpoint](validation/v0.20-first-run-local-observation.md)
 now separates candidate-file evidence from cached detections without launching
 managers, scheduling catalogs, or reconciling preferences. It is not yet consumed
-by first-run UI; startup/ticker gating and the safe verified action remain open.
+by first-run UI. The [startup boundary](validation/v0.20-first-run-startup-gate.md)
+now separates storage preparation from runtime activation, enforces an optional
+saved-acknowledgment gate, and defers UI polling/updater checks until activation.
+The app currently requests legacy compatibility; real entry/consent wiring and
+the safe verified action remain open.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected

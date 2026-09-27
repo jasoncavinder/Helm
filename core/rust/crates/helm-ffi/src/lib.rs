@@ -202,6 +202,11 @@ struct HelmState {
     _tokio_rt: tokio::runtime::Runtime,
 }
 
+struct PreparedStartup {
+    store: Arc<SqliteStore>,
+    require_first_run_acknowledgment: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 struct TaskLabel {
     key: String,
@@ -285,6 +290,9 @@ impl UpgradeWorkflowControl {
 }
 
 lazy_static! {
+    // Serialize preparation/activation, including concurrent XPC connections.
+    static ref STARTUP_LOCK: Mutex<()> = Mutex::new(());
+    static ref PREPARED_STARTUP: Mutex<Option<PreparedStartup>> = Mutex::new(None);
     static ref STATE: Mutex<Option<HelmState>> = Mutex::new(None);
     static ref TASK_LABELS: Mutex<std::collections::HashMap<u64, TaskLabel>> =
         Mutex::new(std::collections::HashMap::new());
@@ -5655,6 +5663,99 @@ fn adapter_response_to_coordinator_payload(
     }
 }
 
+/// Open Helm-owned storage without adapters, task recovery, or background checks.
+/// Returns the saved entry state as JSON; null is an error, not a fresh install.
+/// The database and acknowledgment requirement cannot change within this process.
+///
+/// # Safety
+/// `db_path` must be null or a NUL-terminated UTF-8 absolute path.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_prepare_startup(
+    db_path: *const c_char,
+    require_first_run_acknowledgment: bool,
+) -> *mut c_char {
+    clear_last_error_key();
+    if db_path.is_null() {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let Ok(path) = (unsafe { CStr::from_ptr(db_path) }).to_str() else {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    };
+    if !std::path::Path::new(path).is_absolute() {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let _startup = lock_or_recover(&STARTUP_LOCK, "startup");
+    let mut prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+    let store = if let Some(existing) = prepared.as_ref() {
+        if existing.store.database_path() != std::path::Path::new(path)
+            || existing.require_first_run_acknowledgment != require_first_run_acknowledgment
+        {
+            return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+        }
+        existing.store.clone()
+    } else {
+        // A bootstrap gate cannot be retrofitted after unrestricted initialization.
+        if lock_or_recover(&STATE, "state").is_some() {
+            return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+        }
+        let store = Arc::new(SqliteStore::new(path));
+        if let Err(error) = store.migrate_to_latest() {
+            return return_error_ptr(core_error_service_key(&error));
+        }
+        store
+    };
+    let snapshot = (|| -> Result<_, helm_core::models::CoreError> {
+        Ok(serde_json::json!({
+            "schema_version": 1,
+            "experience": store.first_run_experience_state(FirstRunExperience::CURRENT)?,
+            "onboarding_completed": store.cli_onboarding_completed()?,
+            "accepted_license_terms_version": store.cli_accepted_license_terms_version()?,
+            "requires_first_run_acknowledgment": require_first_run_acknowledgment,
+            "safe_mode": store.safe_mode()?,
+        }))
+    })();
+    let snapshot = match snapshot {
+        Ok(snapshot) => snapshot,
+        Err(error) => return return_error_ptr(core_error_service_key(&error)),
+    };
+    let Ok(json) = CString::new(snapshot.to_string()) else {
+        return return_error_ptr(SERVICE_ERROR_INTERNAL);
+    };
+    *prepared = Some(PreparedStartup {
+        store,
+        require_first_run_acknowledgment,
+    });
+    json.into_raw()
+}
+
+/// Explicitly activate a prepared runtime. Missing/failed acknowledgment keeps
+/// normal APIs unavailable. Repeated successful activation is idempotent.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_start_runtime() -> bool {
+    clear_last_error_key();
+    let path = {
+        let prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+        let Some(prepared) = prepared.as_ref() else {
+            return return_error_bool(SERVICE_ERROR_INTERNAL);
+        };
+        prepared.store.database_path().to_path_buf()
+    };
+    let Some(path) = path.to_str().and_then(|path| CString::new(path).ok()) else {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    };
+    unsafe { helm_init(path.as_ptr()) }
+}
+
+/// Only the bounded first-run APIs may use storage before runtime activation.
+fn first_run_store() -> Option<Arc<SqliteStore>> {
+    if let Some(state) = lock_or_recover(&STATE, "state").as_ref() {
+        return Some(state.store.clone());
+    }
+    lock_or_recover(&PREPARED_STARTUP, "prepared_startup")
+        .as_ref()
+        .map(|prepared| prepared.store.clone())
+}
+
 /// Initialize the Helm core engine with the given SQLite database path.
 ///
 /// # Safety
@@ -5667,16 +5768,38 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     }
 
-    // If already initialized, return true
-    if lock_or_recover(&STATE, "state").is_some() {
-        return true;
-    }
-
     let c_str = unsafe { CStr::from_ptr(db_path) };
     let path_str = match c_str.to_str() {
         Ok(s) => s,
         Err(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
     };
+
+    let _startup = lock_or_recover(&STARTUP_LOCK, "startup");
+    {
+        let prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+        if let Some(prepared) = prepared.as_ref() {
+            if prepared.store.database_path() != std::path::Path::new(path_str) {
+                return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+            }
+            if prepared.require_first_run_acknowledgment {
+                match prepared
+                    .store
+                    .first_run_experience_state(FirstRunExperience::CURRENT)
+                {
+                    Ok(state) if state.acknowledged => {}
+                    Ok(_) => return return_error_bool(SERVICE_ERROR_INVALID_INPUT),
+                    Err(error) => return return_error_bool(core_error_service_key(&error)),
+                }
+            }
+        }
+    }
+    if let Some(state) = lock_or_recover(&STATE, "state").as_ref() {
+        return if state.store.database_path() == std::path::Path::new(path_str) {
+            true
+        } else {
+            return_error_bool(SERVICE_ERROR_INVALID_INPUT)
+        };
+    }
 
     // Initialize logging
     let _ = tracing_subscriber::fmt::try_init();
@@ -7149,12 +7272,8 @@ pub extern "C" fn helm_doctor_scan() -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_observe_first_run_environment() -> *mut c_char {
     clear_last_error_key();
-    let store = {
-        let guard = lock_or_recover(&STATE, "state");
-        let Some(state) = guard.as_ref() else {
-            return return_error_ptr(SERVICE_ERROR_INTERNAL);
-        };
-        state.store.clone()
+    let Some(store) = first_run_store() else {
+        return return_error_ptr(SERVICE_ERROR_INTERNAL);
     };
     let observation = match helm_core::first_run::observe_first_run_environment(
         store.as_ref(),
@@ -7178,14 +7297,10 @@ pub extern "C" fn helm_observe_first_run_environment() -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_get_first_run_experience_state() -> *mut c_char {
     clear_last_error_key();
-    let guard = lock_or_recover(&STATE, "state");
-    let Some(state) = guard.as_ref() else {
+    let Some(store) = first_run_store() else {
         return return_error_ptr(SERVICE_ERROR_INTERNAL);
     };
-    let experience_state = match state
-        .store
-        .first_run_experience_state(FirstRunExperience::CURRENT)
-    {
+    let experience_state = match store.first_run_experience_state(FirstRunExperience::CURRENT) {
         Ok(state) => state,
         Err(error) => return return_error_ptr(core_error_service_key(&error)),
     };
@@ -7220,11 +7335,10 @@ pub unsafe extern "C" fn helm_acknowledge_first_run_experience(
     let Some(experience) = experience else {
         return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     };
-    let guard = lock_or_recover(&STATE, "state");
-    let Some(state) = guard.as_ref() else {
+    let Some(store) = first_run_store() else {
         return return_error_bool(SERVICE_ERROR_INTERNAL);
     };
-    match state.store.acknowledge_first_run_experience(experience) {
+    match store.acknowledge_first_run_experience(experience) {
         Ok(()) => true,
         Err(error) => return_error_bool(core_error_service_key(&error)),
     }
@@ -15662,6 +15776,189 @@ mod tests {
                 .unwrap(),
             "app.repair.test.impact"
         );
+    }
+
+    #[test]
+    fn ffi_startup_gate_contract() {
+        use helm_core::persistence::{FirstRunExperience, FirstRunStore};
+        const MODE: &str = "HELM_TEST_STARTUP_MODE";
+        const DATABASE: &str = "HELM_TEST_STARTUP_DB";
+        fn json(pointer: *mut std::ffi::c_char) -> serde_json::Value {
+            assert!(!pointer.is_null());
+            let value =
+                serde_json::from_str(unsafe { CStr::from_ptr(pointer) }.to_str().unwrap()).unwrap();
+            unsafe { super::helm_free_string(pointer) };
+            value
+        }
+        if let Ok(mode) = std::env::var(MODE) {
+            let path = std::env::var(DATABASE).unwrap();
+            let database = CString::new(path.clone()).unwrap();
+            let store = SqliteStore::new(&path);
+            let required = mode != "legacy";
+            assert!(!super::helm_start_runtime());
+            assert!(unsafe { super::helm_prepare_startup(std::ptr::null(), required) }.is_null());
+            let relative = CString::new("relative.db").unwrap();
+            assert!(unsafe { super::helm_prepare_startup(relative.as_ptr(), required) }.is_null());
+            if mode == "corrupt" {
+                assert!(
+                    unsafe { super::helm_prepare_startup(database.as_ptr(), required) }.is_null()
+                );
+                assert!(!super::helm_start_runtime());
+                rusqlite::Connection::open(&path).unwrap().execute(
+                    "DELETE FROM app_settings WHERE key = 'first_run.experience.wayfinder-v0.20.acknowledged'", []
+                ).unwrap();
+            }
+            let snapshot =
+                json(unsafe { super::helm_prepare_startup(database.as_ptr(), required) });
+            assert_eq!(snapshot["schema_version"], 1);
+            assert_eq!(snapshot["requires_first_run_acknowledgment"], required);
+            assert_eq!(
+                snapshot["experience"]["acknowledged"],
+                mode == "acknowledged"
+            );
+            assert_eq!(snapshot["onboarding_completed"], mode != "fresh");
+            assert_eq!(
+                snapshot["accepted_license_terms_version"],
+                if mode == "fresh" {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::json!("accepted-existing-terms")
+                }
+            );
+
+            let preferences = store.list_manager_preferences().unwrap();
+            let history = store.list_recent_tasks(20).unwrap();
+            for _ in 0..2 {
+                assert_eq!(
+                    snapshot,
+                    json(unsafe { super::helm_prepare_startup(database.as_ptr(), required) })
+                );
+                json(super::helm_observe_first_run_environment());
+                json(super::helm_get_first_run_experience_state());
+            }
+            assert!(super::lock_or_recover(&super::STATE, "test-state").is_none());
+            assert!(!super::AUTO_CHECK_TICKER_STARTED.load(Ordering::Acquire));
+            assert!(!super::helm_trigger_refresh());
+            assert!(!super::helm_trigger_detection());
+            assert!(super::helm_list_manager_status().is_null());
+            assert!(!super::helm_set_safe_mode(true));
+            assert!(!super::helm_set_cli_onboarding_completed(false));
+            assert!(!super::helm_reset_database());
+            assert_eq!(history, store.list_recent_tasks(20).unwrap());
+            assert_eq!(preferences, store.list_manager_preferences().unwrap());
+            assert_eq!(store.cli_onboarding_completed().unwrap(), mode != "fresh");
+            if mode != "fresh" {
+                assert!(store.auto_check_for_updates().unwrap());
+                assert_eq!(
+                    history[0].status,
+                    TaskStatus::Running,
+                    "preparation must not recover tasks"
+                );
+            }
+
+            let other_database = CString::new(format!("{path}.other")).unwrap();
+            assert!(
+                unsafe { super::helm_prepare_startup(other_database.as_ptr(), required) }.is_null()
+            );
+            assert!(unsafe { super::helm_prepare_startup(database.as_ptr(), !required) }.is_null());
+            assert!(!unsafe { super::helm_init(other_database.as_ptr()) });
+            assert!(!Path::new(&format!("{path}.other")).exists());
+
+            if required && mode != "acknowledged" {
+                assert!(!super::helm_start_runtime());
+                assert!(
+                    !unsafe { super::helm_init(database.as_ptr()) },
+                    "legacy initializer must not bypass the gate"
+                );
+                let id = CString::new("wayfinder-v0.20").unwrap();
+                if mode == "failed-save" {
+                    let connection = rusqlite::Connection::open(&path).unwrap();
+                    connection
+                        .execute_batch(
+                            "CREATE TRIGGER reject_ack BEFORE INSERT ON app_settings
+                        WHEN NEW.key = 'first_run.experience.wayfinder-v0.20.acknowledged'
+                        BEGIN SELECT RAISE(ABORT, 'simulated disk failure'); END;",
+                        )
+                        .unwrap();
+                    assert!(!unsafe { super::helm_acknowledge_first_run_experience(id.as_ptr()) });
+                    assert!(!super::helm_start_runtime());
+                    assert!(!super::AUTO_CHECK_TICKER_STARTED.load(Ordering::Acquire));
+                    connection.execute_batch("DROP TRIGGER reject_ack").unwrap();
+                }
+                assert!(unsafe { super::helm_acknowledge_first_run_experience(id.as_ptr()) });
+            }
+            // No consent is inferred: activation must not change the user's auto-check preference.
+            let auto_check = store.auto_check_for_updates().unwrap();
+            let threads: Vec<_> = (0..4)
+                .map(|_| std::thread::spawn(|| super::helm_start_runtime()))
+                .collect();
+            for thread in threads {
+                assert!(thread.join().unwrap());
+            }
+            assert!(super::helm_start_runtime());
+            assert!(super::lock_or_recover(&super::STATE, "test-state").is_some());
+            assert_eq!(auto_check, store.auto_check_for_updates().unwrap());
+            assert_eq!(preferences, store.list_manager_preferences().unwrap());
+            assert_eq!(store.cli_onboarding_completed().unwrap(), mode != "fresh");
+            assert!(!unsafe { super::helm_init(other_database.as_ptr()) });
+            return;
+        }
+
+        for mode in [
+            "fresh",
+            "upgrade",
+            "legacy",
+            "acknowledged",
+            "corrupt",
+            "failed-save",
+        ] {
+            let store = temp_sqlite_store(&format!("startup-{mode}"));
+            if mode != "fresh" {
+                store.migrate_to_latest().unwrap();
+                store.set_cli_onboarding_completed(true).unwrap();
+                store
+                    .set_cli_accepted_license_terms_version(Some("accepted-existing-terms"))
+                    .unwrap();
+                store.set_auto_check_for_updates(true).unwrap();
+                store.set_manager_enabled(ManagerId::Mise, false).unwrap();
+                store
+                    .create_task(&TaskRecord {
+                        id: TaskId(201),
+                        manager: ManagerId::Mise,
+                        task_type: TaskType::Refresh,
+                        status: TaskStatus::Running,
+                        created_at: SystemTime::now(),
+                    })
+                    .unwrap();
+            }
+            if mode == "acknowledged" {
+                store
+                    .acknowledge_first_run_experience(FirstRunExperience::CURRENT)
+                    .unwrap();
+            }
+            if mode == "corrupt" {
+                rusqlite::Connection::open(store.database_path()).unwrap().execute(
+                    "INSERT INTO app_settings(key, value) VALUES('first_run.experience.wayfinder-v0.20.acknowledged', 'bad')", []
+                ).unwrap();
+            }
+            let home = store.database_path().with_extension("home");
+            fs::create_dir_all(&home).unwrap();
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tests::ffi_startup_gate_contract", "--nocapture"])
+                .env(MODE, mode)
+                .env(DATABASE, store.database_path())
+                .env("HOME", home)
+                .env("PATH", "/usr/bin:/bin")
+                .env(super::LEGACY_FILE_COORDINATOR_IPC_ENV, "0")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "startup {mode}:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 
     #[test]

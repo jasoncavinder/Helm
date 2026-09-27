@@ -7,6 +7,22 @@
 #include <stdlib.h>
 
 /**
+ * Open Helm-owned storage without adapters, task recovery, or background checks.
+ * Returns the saved entry state as JSON; null is an error, not a fresh install.
+ * The database and acknowledgment requirement cannot change within this process.
+ *
+ * # Safety
+ * `db_path` must be null or a NUL-terminated UTF-8 absolute path.
+ */
+char *helm_prepare_startup(const char *db_path, bool require_first_run_acknowledgment);
+
+/**
+ * Explicitly activate a prepared runtime. Missing/failed acknowledgment keeps
+ * normal APIs unavailable. Repeated successful activation is idempotent.
+ */
+bool helm_start_runtime(void);
+
+/**
  * Initialize the Helm core engine with the given SQLite database path.
  *
  * # Safety

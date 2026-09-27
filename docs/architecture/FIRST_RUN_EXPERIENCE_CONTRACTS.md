@@ -34,8 +34,11 @@ the [non-executing local observer](../validation/v0.20-first-run-local-observati
 returns candidate-file evidence separately from cached detections and stored
 preferences. It does not prove installation/readiness, run adapters, reconcile
 preferences, or refresh catalogs. Ordinary detection/status APIs have additional
-effects and must not substitute for this boundary. Production startup/consent
-gating and further verified discovery remain pending.
+effects and must not substitute for this boundary. The implemented
+[startup boundary](../validation/v0.20-first-run-startup-gate.md) prepares storage
+before explicit activation and can require the saved experience acknowledgment.
+The app still selects legacy compatibility; production entry/consent integration
+and further verified discovery remain pending.
 
 ### 1.2 Network disclosure
 

@@ -619,7 +619,7 @@ final class HelmCore: ObservableObject {
     var upgradePlanCompletionTracker = UpgradePlanCompletionTracker()
     var scopedUpgradeWorkflowStatusCheckInFlight = false
     let appUpdateNotificationEventTracker = AppUpdateNotificationEventTracker()
-    private var connectionGeneration: UInt64 = 0
+    var connectionGeneration: UInt64 = 0
     private var reconnectToken: UUID?
     private var reconnectPolicy = ServiceConnectionRetryPolicy()
     private var refreshRequestedWhileDisconnected = false
@@ -893,34 +893,10 @@ final class HelmCore: ObservableObject {
             return
         }
 
-        withTimeout(
-            5,
-            source: "core.xpc",
-            action: "connectionHandshake",
-            taskType: "connection",
-            operation: { completion in
-                service.getSafeMode { enabled in
-                    completion(enabled)
-                }
-            },
-            fallback: nil
-        ) { [weak self] enabled in
-            guard let self else { return }
-            guard let enabled else {
-                logger.error("XPC connection handshake timed out")
-                self.handleConnectionFailure(generation: generation)
-                return
-            }
-            DispatchQueue.main.async {
-                self.completeConnectionHandshake(
-                    generation: generation,
-                    safeModeEnabled: enabled
-                )
-            }
-        }
+        prepareRuntime(service: service, generation: generation)
     }
 
-    private func completeConnectionHandshake(generation: UInt64, safeModeEnabled: Bool) {
+    func completeConnectionHandshake(generation: UInt64, safeModeEnabled: Bool) {
         guard generation == connectionGeneration, connection != nil else { return }
 
         logger.info("XPC connection handshake succeeded")
@@ -928,6 +904,7 @@ final class HelmCore: ObservableObject {
         reconnectPolicy.markConnected()
         self.safeModeEnabled = safeModeEnabled
         isConnected = true
+        AppUpdateCoordinator.shared.setRuntimeAvailable(true)
 
         if timer == nil {
             startPolling()
@@ -945,7 +922,7 @@ final class HelmCore: ObservableObject {
         }
     }
 
-    private func handleConnectionFailure(generation: UInt64) {
+    func handleConnectionFailure(generation: UInt64) {
         guard generation == connectionGeneration, let failedConnection = connection else {
             return
         }
@@ -954,6 +931,9 @@ final class HelmCore: ObservableObject {
         failedConnection.interruptionHandler = nil
         failedConnection.invalidate()
         connection = nil
+        AppUpdateCoordinator.shared.setRuntimeAvailable(false)
+        timer?.invalidate()
+        timer = nil
         if isConnected {
             isConnected = false
         }
@@ -986,6 +966,7 @@ final class HelmCore: ObservableObject {
     }
 
     private func performPollingTick() {
+        guard isConnected else { return }
         let now = Date()
         let hasInFlightWork = isRefreshing
             || activeTasks.contains(where: \.isRunning)
