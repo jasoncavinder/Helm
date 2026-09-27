@@ -29,9 +29,12 @@ localization and VoiceOver checks with no installation. Cask cancellation and
 approval now pass with the expected privilege boundary and unchanged unrelated
 cask versions. The corrected pause/resume search focus now passes its signed-VM
 owner check. Fixture cleanup through Helm now passes, with marker/Caskroom absence
-and the original native cask inventory independently verified. Recheck the Library
-Install button with the Inspector open on the responsive-column QA build, then
-continue Sparkle handoff. Keep pnpm
+and the original native cask inventory independently verified. The responsive
+Library Install-button layout also passes its signed-VM owner check on UI source
+`443a714e`. Continue the staged Sparkle handoff in `gui-sparkle-443a714e`: select
+Rectangle 0.90 -> 2.0.1, open the vendor app from Plan, and only then complete its
+own update and refresh Helm to verify reconciliation. Do not launch an embedded
+updater executable or mark opening the app as a completed installation. Keep pnpm
 diagnostics VoiceOver and genuinely CLT-free OS coverage explicit.
 Preserve and investigate the disposable QA database corruption observed after
 the forced host restart; cache reconstruction is not a product durability fix.

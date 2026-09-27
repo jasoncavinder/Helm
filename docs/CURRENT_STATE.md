@@ -55,7 +55,9 @@ installed fixture, and task 32 installed the reviewed 1.0.0 marker with Homebrew
 at user UID 502 and only its privileged child at UID 0. Unrelated cask versions
 are unchanged. The owner also passed fixture removal through Helm; independent
 checks confirm its marker/Caskroom are absent and native cask inventory matches
-the baseline. Sparkle handoff remains open. A genuinely CLT-free
+the baseline. Sparkle handoff is staged but remains open: a separate signed QA
+scope detects Rectangle 0.90 with a 2.0.1 candidate and no automatic execution
+steps. The vendor app's signature and team identity are verified. A genuinely CLT-free
 OS is not certified by the simulation.
 The isolated QA database reported corruption after a forced host restart and was
 preserved before rebuilding the test cache. Its cause remains unresolved; this
@@ -71,8 +73,9 @@ on UI source `b3a50416` with the unchanged certified cask backend.
 Library columns now share width compression when the Inspector opens, preserving
 the trailing Install control and restoring preferred column widths when space
 returns. Horizontal scrolling remains available below the combined column minima.
-Native geometry and resize regressions pass in the 367-test macOS suite; the
-signed-VM visual recheck remains pending.
+Native geometry and resize regressions pass in the 367-test macOS suite. The
+owner also passed the signed-VM visual recheck on UI source `443a714e`, with the
+unchanged certified backend and no additional package installation.
 
 A repeated live uv cancellation check exposed duplicate CLI coordinator
 submission from processing temporary request files before atomic publication.
