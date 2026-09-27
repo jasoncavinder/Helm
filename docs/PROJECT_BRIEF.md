@@ -301,6 +301,12 @@ Base Helm requirements:
 - Provide GUI/CLI/TUI contract parity for findings, plans, verification, and receipts where the surface supports first-run interaction.
 - Replace mandatory feature tours with optional contextual guidance.
 - Treat full keyboard, VoiceOver, localization, and Reduce Motion behavior as release requirements.
+- Present the new v0.20 first-run value experience once to users upgrading from
+  earlier versions as well as fresh installs, without resetting preferences,
+  consent or data. Track a versioned acknowledgment separately from legacy
+  onboarding; subsequent RC/stable/patch launches must not replay it after
+  acknowledgment. Production activation and upgrade-path QA remain required
+  under [#561](https://github.com/jasoncavinder/Helm/issues/561).
 
 Product/tier feature allocation:
 
