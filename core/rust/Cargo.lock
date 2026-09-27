@@ -737,6 +737,7 @@ dependencies = [
  "libc",
  "quick-xml",
  "rusqlite",
+ "semver",
  "serde",
  "serde_jcs",
  "serde_json",

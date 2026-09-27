@@ -8,6 +8,7 @@ description = "Helm core domain models and manager adapter contracts"
 [dependencies]
 quick-xml = "0.41"
 rusqlite = { version = "0.40.1", features = ["backup", "bundled"] }
+semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_jcs = "0.2.0"
 serde_json = "1"
