@@ -47,7 +47,12 @@ update no-op. No automatic downgrade, reinstall or policy bypass was introduced.
 Task diagnostics now provide translated pnpm-limit and developer-tools guidance
 from the core failure markers, including persisted task logs when process output
 is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.md)
-is pending; CLI evidence does not close those interactive gates.
+now records the owner's pnpm GUI safety/localization pass and unchanged native
+package versions on signed source `6aaaedf3`. The CLT prerequisite simulation is
+staged; its owner check, cask authorization and Sparkle handoff remain open.
+The isolated QA database reported corruption after a forced host restart and was
+preserved before rebuilding the test cache. Its cause remains unresolved; this
+is not a crash-recovery pass. CLI evidence does not close interactive gates.
 
 A repeated live uv cancellation check exposed duplicate CLI coordinator
 submission from processing temporary request files before atomic publication.

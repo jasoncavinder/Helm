@@ -23,6 +23,11 @@ campaign batch; lifting it requires group-aware consent and preservation evidenc
 Use `docs/validation/v0.20-adapter-gui-checklist.md` to stage the small remaining
 GUI pass. Do not launch an unsigned test app or ask the owner to repeat every
 passing CLI scenario. Account sign-in remains deferred.
+The owner's four pnpm GUI safety/localization checks now pass with both original
+versions retained. Continue with the staged Cargo/CLT simulation, then cask
+authorization and Sparkle handoff. Keep diagnostics VoiceOver coverage explicit.
+Preserve and investigate the disposable QA database corruption observed after
+the forced host restart; cache reconstruction is not a product durability fix.
 Use `docs/validation/v0.20-adapter-cli-capability-matrix.md` for the remaining
 applicable cells rather than treating detection-only features as missing work.
 Preserve the corrected pnpm 10 fresh-store lifecycle, final read sweep, controlled
