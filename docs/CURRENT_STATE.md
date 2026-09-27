@@ -29,7 +29,11 @@ Shipping builds still request legacy compatibility. Debug-only
 `HELM_FIRST_RUN_PRODUCTION_QA=1` selects the real prepared startup, required legal
 acceptance with durable readback, local observation, explicit acknowledgment and
 activation sequence. It preserves the independent legacy CLI onboarding flag.
-The safe verified action and full session consent/receipt wiring remain open.
+The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
+adds one finite shared-core/FFI stale-mise-override action with explicit review,
+atomic preference/receipt persistence and bounded post-change verification.
+It does not claim PATH readiness or general manager health. Full UI session
+consent/receipt wiring remains open; interrupted checks remain unverified.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected
