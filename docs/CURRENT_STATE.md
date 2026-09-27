@@ -40,7 +40,11 @@ The [Cargo mutation-verification boundary](validation/v0.20-cargo-mutation-verif
 now pins an explicit or task-start-resolved candidate and requires observed local
 inventory after install/upgrade/removal, rather than substituting an expected
 version or relying on a fresh registry query. Its VM contracts and real `sd`
-CLI lifecycle pass. General dependency resolution is unchanged: reviewed Plan
+CLI lifecycle pass. Verified targeted upgrades also reconcile durable inventory
+without a cached outdated row, including already-current no-ops; unrelated
+package identities are preserved. An explicit intermediate version retains any
+newer cached candidate with the verified installed baseline. General dependency
+resolution is unchanged: reviewed Plan
 binding, exact source/scope/receipt-feature preservation and lockfile handling
 still need work before #564 closes.
 Signed GUI review remains pending. The

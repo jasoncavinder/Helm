@@ -9,7 +9,8 @@ use helm_core::adapters::{
     UninstallRequest, UpgradeRequest,
 };
 use helm_core::models::{
-    CoreError, CoreErrorKind, InstalledPackage, ManagerAction, ManagerId, PackageRef,
+    CoreError, CoreErrorKind, InstalledPackage, ManagerAction, ManagerId, OutdatedPackage,
+    PackageRef,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 use helm_core::persistence::{PackageStore, TaskStore};
@@ -356,6 +357,104 @@ fn uninstall_must_observe_absence() {
             }));
         assert_eq!(result.is_ok(), after.is_empty());
     }
+}
+
+#[tokio::test]
+async fn verified_upgrade_persists_without_a_cached_outdated_entry() {
+    for native_before in [OLD, NEW] {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(SqliteStore::new(root.path().join("verified.db")));
+        store.migrate_to_latest().unwrap();
+        let cached = InstalledPackage {
+            package: package(),
+            package_identifier: None,
+            installed_version: Some("0.24.0".into()),
+            pinned: false,
+            runtime_state: Default::default(),
+        };
+        store
+            .upsert_installed(std::slice::from_ref(&cached))
+            .unwrap();
+        assert!(store.list_outdated().unwrap().is_empty());
+        let source = Source::new(&[native_before, native_before, NEW]);
+        let runtime = AdapterRuntime::with_all_stores(
+            [Arc::new(CargoAdapter::new(source)) as Arc<dyn ManagerAdapter>],
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+        )
+        .unwrap();
+        let (task, receipt) = runtime
+            .submit_with_persistence(ManagerId::Cargo, upgrade(Some("0.25.0")))
+            .await
+            .unwrap();
+        let terminal = runtime
+            .wait_for_terminal(task, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        assert!(matches!(
+            terminal.terminal_state,
+            Some(AdapterTaskTerminalState::Succeeded(_))
+        ));
+        tokio::time::timeout(Duration::from_secs(5), receipt.wait_for_completion())
+            .await
+            .unwrap();
+        let mut observed = cached;
+        observed.installed_version = Some("0.25.0".into());
+        assert_eq!(store.list_installed().unwrap(), vec![observed]);
+    }
+}
+
+#[tokio::test]
+async fn verified_explicit_upgrade_retains_a_newer_cached_candidate() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Arc::new(SqliteStore::new(root.path().join("still-outdated.db")));
+    store.migrate_to_latest().unwrap();
+    let mut cached_update = OutdatedPackage {
+        package: package(),
+        package_identifier: None,
+        installed_version: Some("0.24.0".into()),
+        candidate_version: "0.26.0".into(),
+        pinned: false,
+        restart_required: false,
+        runtime_state: Default::default(),
+    };
+    store
+        .upsert_outdated(std::slice::from_ref(&cached_update))
+        .unwrap();
+    let source = Source::new(&[OLD, OLD, NEW]);
+    let runtime = AdapterRuntime::with_all_stores(
+        [Arc::new(CargoAdapter::new(source)) as Arc<dyn ManagerAdapter>],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+    let (task, receipt) = runtime
+        .submit_with_persistence(ManagerId::Cargo, upgrade(Some("0.25.0")))
+        .await
+        .unwrap();
+    let terminal = runtime
+        .wait_for_terminal(task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert!(matches!(
+        terminal.terminal_state,
+        Some(AdapterTaskTerminalState::Succeeded(_))
+    ));
+    tokio::time::timeout(Duration::from_secs(5), receipt.wait_for_completion())
+        .await
+        .unwrap();
+    assert_eq!(
+        store.list_installed().unwrap()[0]
+            .installed_version
+            .as_deref(),
+        Some("0.25.0")
+    );
+    cached_update.installed_version = Some("0.25.0".into());
+    assert_eq!(store.list_outdated().unwrap(), vec![cached_update]);
 }
 
 #[tokio::test]

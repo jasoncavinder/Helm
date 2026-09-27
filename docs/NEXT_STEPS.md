@@ -29,7 +29,9 @@ accepted owner checks without a relevant change.
    build, but not a Helm dependency-policy fix. The
    [mutation-verification slice](validation/v0.20-cargo-mutation-verification.md)
    now pins explicit/task-start candidates and verifies observed installed versions;
-   its real CLI lifecycle passes. Finish reviewed Plan/source/scope/receipt-feature
+   its real CLI lifecycle passes. Preserve verified upgrade/no-op persistence even
+   without cached outdated data, and keep a newer cached candidate visible after
+   an explicit intermediate upgrade. Finish reviewed Plan/source/scope/receipt-feature
    binding, explicit absent/stale-lock handling and full receipt reconciliation;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
