@@ -54,6 +54,7 @@
 //! | `helm_get_homebrew_keg_auto_cleanup` | Settings |
 //! | `helm_set_homebrew_keg_auto_cleanup` | Settings |
 //! | `helm_get_first_run_experience_state` | First-run experience |
+//! | `helm_observe_first_run_environment` | First-run experience |
 //! | `helm_acknowledge_first_run_experience` | First-run experience |
 //! | `helm_list_package_keg_policies` | Keg policies |
 //! | `helm_set_package_keg_policy` | Keg policies |
@@ -7139,6 +7140,36 @@ pub extern "C" fn helm_doctor_scan() -> *mut c_char {
     match CString::new(json) {
         Ok(c) => c.into_raw(),
         Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Return non-executing local file evidence and explicitly cached detections.
+/// Unlike normal detection/status polling, this never repairs preferences or
+/// schedules adapter/catalog work. Null is an error, not an empty environment.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_observe_first_run_environment() -> *mut c_char {
+    clear_last_error_key();
+    let store = {
+        let guard = lock_or_recover(&STATE, "state");
+        let Some(state) = guard.as_ref() else {
+            return return_error_ptr(SERVICE_ERROR_INTERNAL);
+        };
+        state.store.clone()
+    };
+    let observation = match helm_core::first_run::observe_first_run_environment(
+        store.as_ref(),
+        &helm_core::first_run::LocalObservationContext::from_environment(),
+    ) {
+        Ok(observation) => observation,
+        Err(error) => return return_error_ptr(core_error_service_key(&error)),
+    };
+    let json = match serde_json::to_string(&observation) {
+        Ok(json) => json,
+        Err(_) => return return_error_ptr(SERVICE_ERROR_INTERNAL),
+    };
+    match CString::new(json) {
+        Ok(json) => json.into_raw(),
+        Err(_) => return_error_ptr(SERVICE_ERROR_INTERNAL),
     }
 }
 
@@ -15630,6 +15661,125 @@ mod tests {
                 .as_deref()
                 .unwrap(),
             "app.repair.test.impact"
+        );
+    }
+
+    #[test]
+    fn ffi_first_run_local_observation_contract() {
+        const CHILD_ENV: &str = "HELM_TEST_FIRST_RUN_OBSERVATION_DB";
+        if let Ok(path) = std::env::var(CHILD_ENV) {
+            assert!(super::helm_observe_first_run_environment().is_null());
+            let error = super::helm_take_last_error_key();
+            assert!(!error.is_null());
+            assert_eq!(
+                unsafe { CStr::from_ptr(error) }.to_str().unwrap(),
+                super::SERVICE_ERROR_INTERNAL
+            );
+            unsafe { super::helm_free_string(error) };
+
+            let database = CString::new(path.clone()).unwrap();
+            assert!(unsafe { super::helm_init(database.as_ptr()) });
+            let store = SqliteStore::new(&path);
+            let preferences = store.list_manager_preferences().unwrap();
+            let detections = store.list_detections().unwrap();
+            let connection = rusqlite::Connection::open(&path).unwrap();
+            let data_version = || {
+                connection
+                    .query_row("PRAGMA data_version", [], |row| row.get::<_, i64>(0))
+                    .unwrap()
+            };
+            let before = data_version();
+            for _ in 0..2 {
+                let pointer = super::helm_observe_first_run_environment();
+                assert!(!pointer.is_null());
+                let value: serde_json::Value =
+                    serde_json::from_str(unsafe { CStr::from_ptr(pointer) }.to_str().unwrap())
+                        .unwrap();
+                unsafe { super::helm_free_string(pointer) };
+                assert!(super::helm_take_last_error_key().is_null());
+                assert_eq!(value["schema_version"], 1);
+                assert_eq!(value["experience_id"], "wayfinder-v0.20");
+                let managers = value["managers"].as_array().unwrap();
+                assert_eq!(managers.len(), ManagerId::ALL.len());
+                let mise = managers
+                    .iter()
+                    .find(|entry| entry["manager_id"] == "mise")
+                    .unwrap();
+                assert_eq!(mise["configured_enabled"], false);
+                assert_eq!(mise["cached_detection"]["version"], "cached-version");
+                assert!(mise.get("installed").is_none());
+                let expected_path = Path::new(&std::env::var("HOME").unwrap()).join("bin/mise");
+                assert!(
+                    mise["candidate_paths"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(expected_path))
+                );
+            }
+            assert_eq!(before, data_version());
+            assert_eq!(preferences, store.list_manager_preferences().unwrap());
+            assert_eq!(detections, store.list_detections().unwrap());
+            assert!(store.list_recent_tasks(10).unwrap().is_empty());
+            assert!(store.list_install_instances(None).unwrap().is_empty());
+            assert!(store.cli_onboarding_completed().unwrap());
+            let marker = Path::new(&std::env::var("HOME").unwrap()).join("bin/mise.executed");
+            assert!(!marker.exists(), "candidate manager must never be launched");
+
+            connection
+                .execute_batch("ALTER TABLE manager_preferences RENAME TO unavailable_preferences")
+                .unwrap();
+            assert!(super::helm_observe_first_run_environment().is_null());
+            let error = super::helm_take_last_error_key();
+            assert!(!error.is_null());
+            assert_eq!(
+                unsafe { CStr::from_ptr(error) }.to_str().unwrap(),
+                super::SERVICE_ERROR_STORAGE_FAILURE
+            );
+            unsafe { super::helm_free_string(error) };
+            return;
+        }
+
+        let store = temp_sqlite_store("first-run-observation");
+        store.migrate_to_latest().unwrap();
+        store.set_auto_check_for_updates(false).unwrap();
+        store.set_manager_enabled(ManagerId::Mise, false).unwrap();
+        store
+            .set_manager_selected_executable_path(ManagerId::Mise, Some("/missing/selected/mise"))
+            .unwrap();
+        store.set_cli_onboarding_completed(true).unwrap();
+        store
+            .upsert_detection(
+                ManagerId::Mise,
+                &DetectionInfo {
+                    installed: true,
+                    executable_path: Some("/missing/selected/mise".into()),
+                    version: Some("cached-version".into()),
+                },
+            )
+            .unwrap();
+        let home = store.database_path().with_extension("home");
+        fs::create_dir_all(home.join("bin")).unwrap();
+        let executable = home.join("bin/mise");
+        fs::write(&executable, b"#!/bin/sh\n: > \"$0.executed\"\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::ffi_first_run_local_observation_contract",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, store.database_path())
+            .env("HOME", &home)
+            .env("PATH", home.join("bin"))
+            .env(super::LEGACY_FILE_COORDINATOR_IPC_ENV, "0")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "FFI observation failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

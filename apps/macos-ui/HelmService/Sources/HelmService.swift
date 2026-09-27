@@ -337,6 +337,16 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(String(cString: cString))
     }
 
+    func observeFirstRunEnvironment(withReply reply: @escaping (String?) -> Void) {
+        guard let cString = helm_observe_first_run_environment() else {
+            logger.warning("helm_observe_first_run_environment returned nil")
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(cString) }
+        reply(String(cString: cString))
+    }
+
     func acknowledgeFirstRunExperience(experienceId: String, withReply reply: @escaping (Bool) -> Void) {
         // A Swift string may contain NUL; do not acknowledge a truncated identifier.
         guard !experienceId.utf8.contains(0) else {
