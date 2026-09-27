@@ -459,8 +459,9 @@ extension HelmCore {
     }
 
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {
-        guard let target = ReviewedUpgradeRequestProjection.resolve(
-            managerId: step.managerId, arguments: step.reasonLabelArgs
+        let submittedTask = upgradePlanTaskProjectionByStepId[step.id]
+        guard let target = ReviewedUpgradeRequestProjection.resolveRetry(
+            stepId: step.id, managerId: step.managerId, task: submittedTask
         ) else {
             recordLastError(
                 source: "core.actions",
@@ -518,7 +519,8 @@ extension HelmCore {
                     taskId: UInt64(taskId),
                     status: "queued",
                     managerId: step.managerId,
-                    labelKey: step.reasonLabelKey
+                    labelKey: step.reasonLabelKey,
+                    labelArgs: submittedTask?.labelArgs
                 )
                 self.rebuildUpgradePlanFailureGroups()
                 completion?(true)

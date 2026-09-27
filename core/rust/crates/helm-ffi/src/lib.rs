@@ -3756,6 +3756,34 @@ fn upgrade_task_label_for(
     (label_key, label_args)
 }
 
+// Retry metadata must describe the submitted request, not a later preview.
+fn upgrade_request_binding_args(request: &AdapterRequest) -> Vec<(&'static str, String)> {
+    let AdapterRequest::Upgrade(request) = request else {
+        return Vec::new();
+    };
+    let Some(package) = &request.package else {
+        return Vec::new();
+    };
+    let mut args = Vec::new();
+    match package.manager {
+        ManagerId::Cargo => {
+            if let Some(version) = &request.version {
+                args.push(("cargo_candidate_version", version.clone()));
+            }
+        }
+        ManagerId::Uv => {
+            if let Some(version) = &request.version {
+                args.push(("uv_candidate_version", version.clone()));
+            }
+            if let Some(target) = &request.target_name {
+                args.push(("uv_package_identifier", target.clone()));
+            }
+        }
+        _ => {}
+    }
+    args
+}
+
 fn push_upgrade_plan_step(
     steps: &mut Vec<FfiUpgradePlanStep>,
     manager: ManagerId,
@@ -8154,10 +8182,12 @@ async fn submit_upgrade_workflow_step(
     control: &UpgradeWorkflowControl,
 ) -> Option<(helm_core::models::TaskId, TaskPersistenceHandle)> {
     let (manager, request, cleanup_old_kegs) = upgrade_workflow_request(step)?;
+    let binding_args = upgrade_request_binding_args(&request);
     match runtime.submit_with_persistence(manager, request).await {
         Ok((task_id, persistence)) => {
-            let (label_key, label_args) =
+            let (label_key, mut label_args) =
                 upgrade_task_label_for(manager, &step.package_name, cleanup_old_kegs);
+            label_args.extend(binding_args);
             set_task_label(task_id, label_key, &label_args);
             if !control.admit_task(task_id) {
                 let _ = runtime.cancel(task_id, CancellationMode::Immediate).await;
@@ -8702,10 +8732,12 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
                     target_name: None,
                     version: Some(version),
                 });
+                let binding_args = upgrade_request_binding_args(&request);
                 match runtime.submit(ManagerId::Cargo, request).await {
                     Ok(task_id) => {
-                        let (label_key, label_args) =
+                        let (label_key, mut label_args) =
                             upgrade_task_label_for(ManagerId::Cargo, &package_name, false);
+                        label_args.extend(binding_args);
                         set_task_label(task_id, label_key, &label_args);
                     }
                     Err(error) => {
@@ -9308,6 +9340,7 @@ pub unsafe extern "C" fn helm_upgrade_package(
         _ => return return_error_i64(SERVICE_ERROR_UNSUPPORTED_CAPABILITY),
     };
     let mut label_args = label_args;
+    label_args.extend(upgrade_request_binding_args(&request));
     if label_key.is_some() {
         label_args.push((
             "plan_step_id",
@@ -13765,6 +13798,13 @@ mod tests {
         };
         assert_eq!(request.version.as_deref(), Some("2.0"));
         assert_eq!(request.target_name.as_deref(), Some("uv-tool:scope:ruff"));
+        assert_eq!(
+            super::upgrade_request_binding_args(&AdapterRequest::Upgrade(request)),
+            vec![
+                ("uv_candidate_version", "2.0".into()),
+                ("uv_package_identifier", "uv-tool:scope:ruff".into()),
+            ]
+        );
         let mut changed = steps.clone();
         changed[0]
             .reason_label_args
@@ -13812,6 +13852,15 @@ mod tests {
                     panic!("upgrade request expected");
                 };
                 self.0.lock().unwrap().push(request.clone());
+                if request.version.as_deref() == Some("1.1.0") {
+                    return Err(helm_core::models::CoreError {
+                        manager: Some(ManagerId::Cargo),
+                        task: None,
+                        action: Some(ManagerAction::Upgrade),
+                        kind: helm_core::models::CoreErrorKind::ProcessFailure,
+                        message: "injected upgrade failure for retry".into(),
+                    });
+                }
                 Ok(AdapterResponse::Mutation(MutationResult {
                     package: request.package.unwrap(),
                     package_identifier: None,
@@ -13860,40 +13909,94 @@ mod tests {
         store.upsert_outdated(&[outdated]).unwrap();
         assert!(retain_reviewed_upgrade_workflow_steps(&mut preview(), &reviewed).is_err());
 
-        let (_, request, _) = upgrade_workflow_request(&reviewed[0]).unwrap();
-        {
+        let workflow_task = {
             let guard = super::lock_or_recover(&super::STATE, "state");
             guard
                 .as_ref()
                 .unwrap()
                 ._tokio_rt
-                .block_on(runtime.submit(ManagerId::Cargo, request))
-                .unwrap();
-        }
+                .block_on(super::submit_upgrade_workflow_step(
+                    &runtime,
+                    &reviewed[0],
+                    &UpgradeWorkflowControl::new(),
+                ))
+                .unwrap()
+                .0
+        };
         let wait_for = |count| {
             let deadline = Instant::now() + Duration::from_secs(5);
-            while recorded.lock().unwrap().len() < count && Instant::now() < deadline {
+            while (recorded.lock().unwrap().len() < count
+                || super::lock_or_recover(&super::TASK_LABELS, "task_labels").len() < count)
+                && Instant::now() < deadline
+            {
                 std::thread::sleep(Duration::from_millis(5));
             }
             assert_eq!(recorded.lock().unwrap().len(), count);
+            assert_eq!(
+                super::lock_or_recover(&super::TASK_LABELS, "task_labels").len(),
+                count
+            );
         };
         wait_for(1);
+        {
+            let guard = super::lock_or_recover(&super::STATE, "state");
+            let terminal = guard
+                .as_ref()
+                .unwrap()
+                ._tokio_rt
+                .block_on(runtime.wait_for_terminal(workflow_task, Some(Duration::from_secs(5))))
+                .unwrap();
+            assert!(matches!(
+                terminal.terminal_state,
+                Some(helm_core::orchestration::AdapterTaskTerminalState::Failed(
+                    _
+                ))
+            ));
+        }
+        // A later preview already has 1.2.0. Retry must use the original task's
+        // submitted binding, never that refreshed preview's reason arguments.
+        assert_eq!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .get(&workflow_task.0)
+                .unwrap()
+                .args
+                .get("cargo_candidate_version")
+                .map(String::as_str),
+            Some("1.1.0")
+        );
         assert!(super::legacy_upgrade_all(false, false));
         wait_for(2);
         let manager = CString::new("cargo").unwrap();
         let name = CString::new("sd").unwrap();
         let version = CString::new("1.3.0").unwrap();
-        assert!(
-            unsafe {
-                super::helm_upgrade_package(
-                    manager.as_ptr(),
-                    name.as_ptr(),
-                    std::ptr::null(),
-                    version.as_ptr(),
-                )
-            } > 0
-        );
+        let direct_task = unsafe {
+            super::helm_upgrade_package(
+                manager.as_ptr(),
+                name.as_ptr(),
+                std::ptr::null(),
+                version.as_ptr(),
+            )
+        };
+        assert!(direct_task > 0);
         wait_for(3);
+        assert_eq!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .get(&(direct_task as u64))
+                .unwrap()
+                .args
+                .get("cargo_candidate_version")
+                .map(String::as_str),
+            Some("1.3.0")
+        );
+        assert!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .values()
+                .any(|label| label
+                    .args
+                    .get("cargo_candidate_version")
+                    .map(String::as_str)
+                    == Some("1.2.0"))
+        );
         let versions = recorded
             .lock()
             .unwrap()

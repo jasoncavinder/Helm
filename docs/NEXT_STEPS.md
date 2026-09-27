@@ -35,7 +35,9 @@ retains their verified-result persistence and bounded authority-overlap coverage
    without cached outdated data, and keep a newer cached candidate visible after
    an explicit intermediate upgrade. The [candidate plan binding](validation/v0.20-cargo-plan-binding.md)
    now preserves GUI-reviewed and CLI workflow versions and rejects stale
-   downgrades. Finish source/scope/receipt-feature binding, explicit
+   downgrades. Preserve failed-task candidate/scope bindings across preview
+   refreshes; require a new review when original retry metadata is unavailable.
+   Finish source/scope/receipt-feature binding, explicit
    absent/stale-lock handling and full receipt reconciliation;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.

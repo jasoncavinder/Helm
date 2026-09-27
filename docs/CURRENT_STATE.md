@@ -51,7 +51,9 @@ carries cached candidates through reviewed GUI workflows, legacy bulk upgrades
 and foreground/background CLI plans, and honors explicit direct FFI versions.
 Individual GUI Cargo upgrades and failed-step retries also retain candidate
 versions; uv retries preserve their existing scope/version binding. Missing
-reviewed retry metadata fails closed. Unsigned UI/test compilation and 63
+reviewed retry metadata fails closed. Retry bindings come from the failed task's
+submitted metadata, not a refreshed preview; unavailable older/service-restart
+metadata requires a new review. Unsigned UI/test compilation and 64
 focused/adjacent Swift tests in the VM pass, without claiming signed GUI QA.
 Changed reviewed candidates require review again; newer installed versions cannot
 be downgraded by an old target. General dependency resolution is unchanged:

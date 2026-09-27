@@ -169,14 +169,6 @@ struct CoreUpgradePlanStep: Codable, Identifiable, Equatable {
     var id: String { stepId }
 }
 
-struct UpgradePlanTaskProjection {
-    let stepId: String
-    let taskId: UInt64
-    let status: String
-    let managerId: String
-    let labelKey: String?
-}
-
 struct UpgradePlanFailureGroup: Identifiable {
     let id: String
     let managerId: String

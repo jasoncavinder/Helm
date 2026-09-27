@@ -1,8 +1,31 @@
 import Foundation
 
+struct UpgradePlanTaskProjection {
+    let stepId: String
+    let taskId: UInt64
+    let status: String
+    let managerId: String
+    let labelKey: String?
+    let labelArgs: [String: String]?
+}
+
 struct ReviewedUpgradeRequestProjection: Equatable {
     let targetName: String?
     let version: String?
+
+    static func resolveRetry(
+        stepId: String,
+        managerId: String,
+        task: UpgradePlanTaskProjection?
+    ) -> Self? {
+        guard ["cargo", "uv"].contains(managerId.lowercased()) else {
+            return Self(targetName: nil, version: nil)
+        }
+        guard let task, task.stepId == stepId,
+              task.managerId.lowercased() == managerId.lowercased(),
+              task.status.lowercased() == "failed" else { return nil }
+        return resolve(managerId: managerId, arguments: task.labelArgs ?? [:])
+    }
 
     static func resolve(managerId: String, arguments: [String: String]) -> Self? {
         func value(_ key: String) -> String? {
