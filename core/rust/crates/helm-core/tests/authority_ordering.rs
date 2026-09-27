@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use helm_core::adapters::manager::{
@@ -53,6 +53,7 @@ where
 struct TimestampedAdapter {
     descriptor: ManagerDescriptor,
     delay: Duration,
+    entry_delay: Duration,
     completion_order: Arc<AtomicU64>,
     concurrency_probe: Option<Arc<ConcurrencyProbe>>,
 }
@@ -77,6 +78,7 @@ impl TimestampedAdapter {
                 ],
             },
             delay,
+            entry_delay: Duration::ZERO,
             completion_order,
             concurrency_probe: None,
         }
@@ -86,18 +88,38 @@ impl TimestampedAdapter {
         self.concurrency_probe = Some(concurrency_probe);
         self
     }
+
+    fn with_entry_delay(mut self, delay: Duration) -> Self {
+        self.entry_delay = delay;
+        self
+    }
 }
 
 #[derive(Default)]
 struct ConcurrencyProbe {
     active: AtomicU64,
     peak: AtomicU64,
+    overlapped: Mutex<bool>,
+    overlap_observed: Condvar,
 }
 
 impl ConcurrencyProbe {
-    fn enter(&self) {
+    fn enter(&self, timeout: Duration) -> bool {
         let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(active, Ordering::SeqCst);
+        let mut overlapped = self.overlapped.lock().unwrap();
+        if active >= 2 {
+            *overlapped = true;
+            self.overlap_observed.notify_all();
+        }
+        // Hold the first call until another adapter actually enters, not for an
+        // assumed scheduling interval. A serial-execution regression must fail,
+        // rather than deadlocking a barrier indefinitely.
+        let (overlapped, _) = self
+            .overlap_observed
+            .wait_timeout_while(overlapped, timeout, |seen| !*seen)
+            .unwrap();
+        *overlapped
     }
 
     fn exit(&self) {
@@ -119,8 +141,18 @@ impl ManagerAdapter for TimestampedAdapter {
     }
 
     fn execute(&self, request: AdapterRequest) -> AdapterResult<AdapterResponse> {
-        if let Some(probe) = &self.concurrency_probe {
-            probe.enter();
+        std::thread::sleep(self.entry_delay);
+        if let Some(probe) = &self.concurrency_probe
+            && !probe.enter(Duration::from_secs(5))
+        {
+            probe.exit();
+            return Err(CoreError {
+                manager: Some(self.descriptor.id),
+                task: None,
+                action: Some(request.action()),
+                kind: CoreErrorKind::ProcessFailure,
+                message: "timed out waiting for another manager to execute concurrently".into(),
+            });
         }
 
         // Simulate work with a blocking sleep
@@ -349,7 +381,7 @@ async fn parallel_within_authoritative_phase() {
         TimestampedAdapter::new(
             ManagerId::Mise,
             ManagerAuthority::Authoritative,
-            Duration::from_millis(50),
+            Duration::ZERO,
             completion_order.clone(),
         )
         .with_concurrency_probe(concurrency_probe.clone()),
@@ -359,10 +391,12 @@ async fn parallel_within_authoritative_phase() {
         TimestampedAdapter::new(
             ManagerId::Rustup,
             ManagerAuthority::Authoritative,
-            Duration::from_millis(50),
+            Duration::ZERO,
             completion_order.clone(),
         )
-        .with_concurrency_probe(concurrency_probe.clone()),
+        .with_concurrency_probe(concurrency_probe.clone())
+        // Exceed the old 50 ms window deliberately; overlap needs a handshake.
+        .with_entry_delay(Duration::from_millis(250)),
     );
 
     let runtime = runtime_with_detection_rows(
@@ -383,6 +417,16 @@ async fn parallel_within_authoritative_phase() {
         "expected manager execution to overlap within a single authority phase"
     );
     assert_eq!(completion_order.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn concurrency_probe_rejects_serial_entries_without_waiting_indefinitely() {
+    let probe = ConcurrencyProbe::default();
+    for _ in 0..2 {
+        assert!(!probe.enter(Duration::from_millis(10)));
+        probe.exit();
+    }
+    assert_eq!(probe.peak(), 1);
 }
 
 #[tokio::test]
