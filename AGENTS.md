@@ -51,6 +51,8 @@ If behavior or policy changes, update the source-of-truth docs that changed real
 - Before any release tag, publication, workflow dispatch, or release recovery, read `docs/operations/RELEASE_FLOW.md` and `docs/RELEASE_CHECKLIST.md`; run the required rehearsal and preflight gates, and obtain explicit user confirmation before a mutating step.
 - Treat SQLite migrations as append-only once shared. Never reuse or edit an existing version, name, or SQL definition; follow `docs/architecture/SQLITE_MIGRATION_SAFETY.md` and run `scripts/ci/check_sqlite_migration_compatibility.sh` for persistence changes.
 - Development builds must use the development database namespace or an explicit isolated `HELM_DB_PATH`; never point automated or agent-run development work at the stable user database.
+- Run development and QA testing in the designated test VM or isolated CI runners, not on the owner's daily-use Mac. This includes GUI/CLI/service execution, automated test suites, and test package-manager operations. Host source editing, compilation, static checks, and explicitly requested read-only diagnostics remain allowed; running a host test or QA process requires an explicit user exception.
+- Preserve the owner's installed production Helm and its normal service on the host. Do not quit, replace, reconfigure, or interrupt them to accommodate development testing; an isolated database alone does not make host QA execution acceptable.
 
 Branch and worktree safety:
 

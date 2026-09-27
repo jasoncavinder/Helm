@@ -1,5 +1,11 @@
 # Next Steps
 
+All future local development and QA testing belongs in the designated VM, with
+automated CI remaining on isolated runners. Preserve the owner's host production
+Helm without closing or interrupting it. Build preparation and static checks may
+remain on the host, but execute GUI/CLI/service checks and test suites in the VM
+or CI unless the owner explicitly authorizes a host exception. See `AGENTS.md`.
+
 The disposable-VM campaign continues without merging its fix PRs until the owner
 reviews the completed batch. Preserve #557's CLI persistence correction and the
 #556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
