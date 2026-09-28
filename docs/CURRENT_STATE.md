@@ -34,8 +34,12 @@ connection invalidation and the controller generation fence reject stale replies
 The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
 adds one finite shared-core/FFI stale-mise-override action with explicit review,
 atomic preference/receipt persistence and bounded post-change verification.
-It does not claim PATH readiness or general manager health. Full UI session
-consent/receipt wiring remains open; interrupted checks remain unverified.
+It does not claim PATH readiness or general manager health. The
+[guarded repair presentation](validation/v0.20-first-run-repair-presentation.md)
+now adds explicit review/consent and durable receipt readback to the Debug-only
+real entry. Failed replies never cause automatic reapplication; interrupted
+checks remain unverified. Shipping activation and signed consent/accessibility
+QA remain open.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected

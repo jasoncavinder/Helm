@@ -24,8 +24,9 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
    supplies the narrow stale-mise-override action and durable verified/unverified
    outcomes through the prepared FFI boundary, not a shipping UI or general setup
-   scheduler. Wire its explicit consent and receipt presentation into the real
-   v0.20 value flow while
+   scheduler. The [guarded presentation](validation/v0.20-first-run-repair-presentation.md)
+   now wires explicit consent and durable receipt readback into the real Debug
+   flow. Complete the approved visual integration and signed QA before activation,
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted
    setup parity remains v0.21 scope.2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.

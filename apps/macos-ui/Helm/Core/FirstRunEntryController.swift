@@ -16,6 +16,7 @@ enum FirstRunReplyDelivery {
 final class FirstRunEntryController: ObservableObject {
     enum Phase: Equatable {
         case idle, preparing, legal, observing, brief, saving, activating, active
+        case reviewingRepair, reviewRepair, applyingRepair, readingRepairReceipt, repairReceipt, repairUnavailable
         case failed
     }
 
@@ -25,10 +26,15 @@ final class FirstRunEntryController: ObservableObject {
         let observe: (@escaping (String?) -> Void) -> Void
         let acknowledge: (String, @escaping (Bool) -> Void) -> Void
         let activate: (@escaping (Bool) -> Void) -> Void
+        var reviewRepair: (@escaping (String?) -> Void) -> Void = { $0(nil) }
+        var applyRepair: (String, @escaping (String?) -> Void) -> Void = { _, reply in reply(nil) }
     }
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var observation: FirstRunLocalEvidence?
+    @Published private(set) var repairReview: FirstRunRepairReview?
+    @Published private(set) var repairReceipt: FirstRunRepairReceipt?
+    @Published private(set) var repairMayHaveChanged = false
     private(set) var snapshot: ServiceStartupSnapshot?
     private var client: Client?
     private var generation = 0
@@ -37,7 +43,13 @@ final class FirstRunEntryController: ObservableObject {
     private var onActivated: (() -> Void)?
 
     var isPresenting: Bool { phase != .active }
-    var canContinue: Bool { phase == .brief }
+    var canReviewRepair: Bool {
+        snapshot?.acceptedLicenseTermsVersion == AppUpdateConfiguration.currentLicenseTermsVersion
+    }
+    var canContinue: Bool {
+        phase == .brief || phase == .repairReceipt || phase == .repairUnavailable
+            || (phase == .reviewRepair && repairReview?.plan == nil)
+    }
 
     init(expectedManagerIDs: Set<String>) {
         self.expectedManagerIDs = expectedManagerIDs
@@ -56,6 +68,9 @@ final class FirstRunEntryController: ObservableObject {
         self.onActivated = onActivated
         snapshot = nil
         observation = nil
+        repairReview = nil
+        repairReceipt = nil
+        repairMayHaveChanged = false
         phase = .preparing
         client.prepare { [weak self] json in
             self?.receive(token) { controller in
@@ -117,6 +132,7 @@ final class FirstRunEntryController: ObservableObject {
     func observe() {
         guard phase == .preparing || phase == .saving || phase == .brief,
               let client else { return }
+        generation += 1
         let token = generation
         phase = .observing
         observation = nil
@@ -134,6 +150,7 @@ final class FirstRunEntryController: ObservableObject {
 
     func continueToHelm() {
         guard canContinue, let client else { return }
+        generation += 1
         let token = generation
         phase = .saving
         client.acknowledge("wayfinder-v0.20") { [weak self] success in
@@ -185,7 +202,76 @@ final class FirstRunEntryController: ObservableObject {
         onActivated = nil
         snapshot = nil
         observation = nil
+        repairReview = nil
+        repairReceipt = nil
         phase = .failed
+    }
+
+    func reviewRepair() {
+        guard phase == .brief || phase == .repairUnavailable, canReviewRepair, let client else { return }
+        generation += 1
+        let token = generation
+        repairReview = nil
+        repairReceipt = nil
+        phase = .reviewingRepair
+        client.reviewRepair { [weak self] json in
+            self?.receive(token) { current in
+                guard current.phase == .reviewingRepair else { return }
+                guard let review = FirstRunRepairReview.decode(json) else {
+                    current.phase = .repairUnavailable
+                    return
+                }
+                current.repairReview = review
+                current.phase = .reviewRepair
+            }
+        }
+    }
+
+    func confirmRepair() {
+        guard phase == .reviewRepair, let review = repairReview,
+              let plan = review.plan, let reviewToken = review.reviewToken, let client else { return }
+        generation += 1
+        let token = generation
+        let previousIDs = Set(review.receipts.map(\.receiptId))
+        repairMayHaveChanged = true
+        phase = .applyingRepair
+        client.applyRepair(reviewToken) { [weak self] json in
+            self?.receive(token) { current in
+                guard current.phase == .applyingRepair else { return }
+                current.phase = .readingRepairReceipt
+                let replied = FirstRunRepairApplyReply.decode(json)?.receipt
+                // Read the ledger even after a timeout/nil reply: a write may have
+                // committed. Never infer rollback or resend the mutation here.
+                client.reviewRepair { [weak current] savedJSON in
+                    current?.receive(token) { controller in
+                        guard controller.phase == .readingRepairReceipt else { return }
+                        guard let saved = FirstRunRepairReview.decode(savedJSON) else {
+                            controller.phase = .repairUnavailable
+                            return
+                        }
+                        let matches = saved.receipts.filter {
+                            !previousIDs.contains($0.receiptId) && $0.matches(plan)
+                        }
+                        guard matches.count == 1, let receipt = matches.first,
+                              replied == nil || replied == receipt else {
+                            controller.phase = .repairUnavailable
+                            return
+                        }
+                        controller.repairReview = saved
+                        controller.repairReceipt = receipt
+                        controller.phase = .repairReceipt
+                    }
+                }
+            }
+        }
+    }
+
+    func returnToBrief() {
+        guard phase == .reviewRepair || phase == .repairReceipt || phase == .repairUnavailable else { return }
+        repairReview = nil
+        repairReceipt = nil
+        phase = .brief
+        observe()
     }
 
     private func receive(_ token: Int, _ body: @escaping (FirstRunEntryController) -> Void) {

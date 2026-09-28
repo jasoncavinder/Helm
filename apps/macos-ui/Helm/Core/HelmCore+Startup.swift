@@ -39,9 +39,9 @@ extension HelmCore {
     }
 
     private func prepareProductionFirstRun(service: HelmServiceProtocol, generation: UInt64) {
-        func jsonRequest(_ action: String, operation: @escaping (@escaping (String?) -> Void) -> Void,
+        func jsonRequest(_ action: String, timeout: TimeInterval = 10, operation: @escaping (@escaping (String?) -> Void) -> Void,
                          reply: @escaping (String?) -> Void) {
-            withTimeout(10, source: "core.firstRun", action: action, operation: operation) { [weak self] value in
+            withTimeout(timeout, source: "core.firstRun", action: action, operation: operation) { [weak self] value in
                 FirstRunReplyDelivery.deliver(value, isCurrent: { [weak self] in
                     guard let self else { return false }
                     return generation == self.connectionGeneration && self.connection != nil
@@ -80,6 +80,14 @@ extension HelmCore {
                 },
                 activate: { reply in
                     boolRequest("activate", operation: service.startRuntime, reply: reply)
+                },
+                reviewRepair: { reply in
+                    jsonRequest("reviewRepair", timeout: 30, operation: service.reviewFirstRunRepair, reply: reply)
+                },
+                applyRepair: { token, reply in
+                    jsonRequest("applyRepair", timeout: 30, operation: {
+                        service.applyFirstRunRepair(reviewToken: token, withReply: $0)
+                    }, reply: reply)
                 }
             ),
             requiresLegalAcceptance: Self.requiresLicenseTermsAcceptance(
