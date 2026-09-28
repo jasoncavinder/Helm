@@ -182,6 +182,11 @@ stable versions below 11 retain their existing path; bounded lifecycle evidence 
 for 10.16.1, not every older release. Both targeted and bulk legacy updates reject
 false success. #559 remains open for group-aware support and the native 12.6.0
 update no-op. No automatic downgrade, reinstall or policy bypass was introduced.
+The [version-aware preview](validation/v0.20-pnpm-mutation-availability.md) now
+surfaces this boundary before Plan execution: blocked updates remain visible but
+cannot be selected or run in the GUI; CLI previews expose the reason and blocked
+runs create no package task. Capability fields and inspector guidance use the
+same shared-core version rule while the live adapter retains its final recheck.
 Task diagnostics now provide translated pnpm-limit and developer-tools guidance
 from the core failure markers, including persisted task logs when process output
 is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.md)

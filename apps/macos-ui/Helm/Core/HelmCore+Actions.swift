@@ -459,6 +459,10 @@ extension HelmCore {
     }
 
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {
+        guard !step.isExecutionBlocked else {
+            completion?(false)
+            return
+        }
         let submittedTask = upgradePlanTaskProjectionByStepId[step.id]
         guard let target = ReviewedUpgradeRequestProjection.resolveRetry(
             stepId: step.id, managerId: step.managerId, task: submittedTask
