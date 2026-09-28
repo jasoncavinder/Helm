@@ -59,5 +59,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+      - name: Build external updater boundary (swift)
+        if: matrix.language == 'swift'
+        run: swift build --package-path service/external-updater --arch arm64
+
       - name: Analyze
         uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3

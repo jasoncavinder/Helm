@@ -35,4 +35,22 @@ if ! grep -Fq \
   fail "contract failure did not identify the incorrect CodeQL reference"
 fi
 
+for workflow in codeql ci-test; do
+  cp "${ROOT_DIR}/.github/workflows/codeql.yml" "${TMP_DIR}/workflows/codeql.yml"
+  cp "${ROOT_DIR}/.github/workflows/ci-test.yml" "${TMP_DIR}/workflows/ci-test.yml"
+  sed '/swift .*--package-path service\/external-updater --arch arm64/d' \
+    "${TMP_DIR}/workflows/${workflow}.yml" > "${TMP_DIR}/missing-package.yml"
+  if cmp -s "${TMP_DIR}/workflows/${workflow}.yml" "${TMP_DIR}/missing-package.yml"; then
+    fail "fixture setup did not remove the ${workflow} external package command"
+  fi
+  mv "${TMP_DIR}/missing-package.yml" "${TMP_DIR}/workflows/${workflow}.yml"
+  if HELM_CI_WORKFLOWS_DIR="${TMP_DIR}/workflows" \
+    "${CONTRACT_PATH}" >"${TMP_DIR}/stdout.log" 2>"${TMP_DIR}/stderr.log"; then
+    fail "missing ${workflow} external package command was accepted"
+  fi
+  if ! grep -Fq "standalone external updater Swift package" "${TMP_DIR}/stderr.log"; then
+    fail "missing ${workflow} package command was not identified"
+  fi
+done
+
 printf '[ci-toolchain-contract-regression] passed\n'
