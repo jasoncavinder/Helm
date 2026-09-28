@@ -35,8 +35,9 @@ struct ReviewedUpgradeRequestProjection: Equatable {
         }
         switch managerId.lowercased() {
         case "cargo":
-            guard let version = value("cargo_candidate_version") else { return nil }
-            return Self(targetName: nil, version: version)
+            guard let version = value("cargo_candidate_version"),
+                  let scope = value("cargo_review_scope") else { return nil }
+            return Self(targetName: scope, version: version)
         case "uv":
             guard let version = value("uv_candidate_version"),
                   let target = value("uv_package_identifier") else { return nil }
