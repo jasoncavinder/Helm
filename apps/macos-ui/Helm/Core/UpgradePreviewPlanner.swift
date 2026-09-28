@@ -244,8 +244,10 @@ struct UpgradePreviewPlanner {
     static func runsAutomatically(
         action: String,
         managerId: String,
-        includeHelmSelfUpdate: Bool
+        includeHelmSelfUpdate: Bool,
+        status: String = "queued"
     ) -> Bool {
+        guard isSelectable(status: status) else { return false }
         if action == externalSparkleAction {
             return false
         }
@@ -429,6 +431,7 @@ struct UpgradePreviewPlanner {
         safeModeEnabled: Bool
     ) -> Bool {
         let normalized = status.lowercased()
+        guard isSelectable(status: normalized) else { return false }
         if normalized == "completed" {
             return false
         }
@@ -450,6 +453,10 @@ struct UpgradePreviewPlanner {
             return true
         }
         return false
+    }
+
+    static func isSelectable(status: String) -> Bool {
+        status.lowercased() != "blocked"
     }
 
     static func planStepId(managerId: String?, labelArgs: [String: String]?) -> String? {

@@ -722,6 +722,7 @@ struct FfiManagerStatus {
     supports_package_install: bool,
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
+    package_mutation_service_error_key: Option<&'static str>,
     package_state_issues: Vec<FfiManagerPackageStateIssue>,
     is_eligible: bool,
     ineligible_reason_code: Option<String>,
@@ -2035,17 +2036,28 @@ fn build_manager_statuses(
                     .map(std::path::Path::new),
             );
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
+            let package_mutation_service_error_key =
+                helm_core::manager_policy::package_mutation_block_key(id, version.as_deref());
             let supports_remote_search = runtime
                 .map(|runtime| can_submit_remote_search(runtime, id))
                 .unwrap_or_else(|| manager_participates_in_package_search(id));
             let supports_package_install = runtime
-                .map(|runtime| supports_individual_package_install(runtime, id))
+                .map(|runtime| {
+                    package_mutation_service_error_key.is_none()
+                        && supports_individual_package_install(runtime, id)
+                })
                 .unwrap_or(false);
             let supports_package_uninstall = runtime
-                .map(|runtime| supports_individual_package_uninstall(runtime, id))
+                .map(|runtime| {
+                    package_mutation_service_error_key.is_none()
+                        && supports_individual_package_uninstall(runtime, id)
+                })
                 .unwrap_or(false);
             let supports_package_upgrade = runtime
-                .map(|runtime| supports_individual_package_upgrade(runtime, id))
+                .map(|runtime| {
+                    package_mutation_service_error_key.is_none()
+                        && supports_individual_package_upgrade(runtime, id)
+                })
                 .unwrap_or(false);
             let manager_install_instances = install_instances_by_manager.get(&id);
             let install_instance_count = manager_install_instances.map_or(0, Vec::len);
@@ -2107,6 +2119,7 @@ fn build_manager_statuses(
                 supports_package_install,
                 supports_package_uninstall,
                 supports_package_upgrade,
+                package_mutation_service_error_key,
                 package_state_issues,
                 is_eligible: eligibility.is_eligible,
                 ineligible_reason_code: eligibility.reason_code.map(str::to_string),
@@ -3685,6 +3698,23 @@ struct FfiUpgradePlanStep {
 
 const MAS_ALL_PACKAGES_TARGET: &str = "__all__";
 const HOMEBREW_CLEANUP_REASON_LABEL_KEY: &str = "service.task.label.upgrade.homebrew_cleanup";
+
+fn apply_package_mutation_preview_policy(steps: &mut [FfiUpgradePlanStep], store: &SqliteStore) {
+    let detections = store.list_detections().unwrap_or_default();
+    for step in steps {
+        let Ok(manager) = step.manager_id.parse::<ManagerId>() else {
+            continue;
+        };
+        let version = detections
+            .iter()
+            .find(|(id, _)| *id == manager)
+            .and_then(|(_, detection)| detection.version.as_deref());
+        if let Some(key) = helm_core::manager_policy::package_mutation_block_key(manager, version) {
+            step.status = "blocked".into();
+            step.reason_label_key = key.into();
+        }
+    }
+}
 
 fn manager_authority_key(id: ManagerId) -> &'static str {
     match helm_core::registry::manager(id).map(|descriptor| descriptor.authority) {
@@ -7974,6 +8004,7 @@ pub extern "C" fn helm_preview_upgrade_plan(
         );
     }
 
+    apply_package_mutation_preview_policy(&mut steps, &state.store);
     let json = match serde_json::to_string(&steps) {
         Ok(json) => json,
         Err(error) => {
@@ -8137,6 +8168,9 @@ fn retain_reviewed_upgrade_workflow_steps(
 fn upgrade_workflow_request(
     step: &FfiUpgradePlanStep,
 ) -> Option<(ManagerId, AdapterRequest, bool)> {
+    if step.status == "blocked" {
+        return None;
+    }
     let manager = step.manager_id.parse::<ManagerId>().ok()?;
     let (target_name, version) = if manager == ManagerId::Uv {
         (
@@ -8226,7 +8260,11 @@ fn start_scoped_upgrade_workflow(
     )?;
     if let Some(reviewed_steps) = reviewed_steps {
         retain_reviewed_upgrade_workflow_steps(&mut steps, &reviewed_steps)?;
+        if steps.iter().any(|step| step.status == "blocked") {
+            return Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
+        }
     }
+    steps.retain(|step| step.status != "blocked");
     let (runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = guard.as_ref().ok_or(SERVICE_ERROR_INTERNAL)?;
@@ -8676,7 +8714,19 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
             }
         }
 
-        if runtime.is_manager_enabled(ManagerId::Pnpm) {
+        let pnpm_version = store
+            .list_detections()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(manager, _)| *manager == ManagerId::Pnpm)
+            .and_then(|(_, detection)| detection.version);
+        if runtime.is_manager_enabled(ManagerId::Pnpm)
+            && helm_core::manager_policy::package_mutation_block_key(
+                ManagerId::Pnpm,
+                pnpm_version.as_deref(),
+            )
+            .is_none()
+        {
             for package_name in targets.pnpm {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
@@ -14694,6 +14744,74 @@ mod tests {
         assert!(!status_for(&statuses, ManagerId::MacPorts).enabled);
         assert!(!status_for(&statuses, ManagerId::NixDarwin).enabled);
         assert!(status_for(&statuses, ManagerId::Mise).enabled);
+    }
+
+    #[test]
+    fn pnpm_preview_blocks_mutation_without_hiding_update_or_disabling_reads() {
+        use helm_core::adapters::{PnpmAdapter, ProcessPnpmSource};
+        let runtime =
+            AdapterRuntime::new(vec![
+                Arc::new(PnpmAdapter::new(ProcessPnpmSource::new(Arc::new(
+                    helm_core::execution::TokioProcessExecutor,
+                )))) as Arc<dyn ManagerAdapter>,
+            ])
+            .unwrap();
+        for version in [Some("12.6.0"), Some("10.16.1"), None] {
+            // Missing versions intentionally preserve an existing detection's
+            // version, so each policy case needs its own persisted snapshot.
+            let store = temp_sqlite_store("pnpm-preview-policy");
+            store.migrate_to_latest().unwrap();
+            store.set_manager_enabled(ManagerId::Pnpm, true).unwrap();
+            let detection = DetectionInfo {
+                installed: true,
+                executable_path: None,
+                version: version.map(str::to_owned),
+            };
+            store.upsert_detection(ManagerId::Pnpm, &detection).unwrap();
+            let statuses = build_manager_statuses(
+                Some(&runtime),
+                Some(&store),
+                &HashMap::new(),
+                &HashMap::new(),
+            );
+            let pnpm = status_for(&statuses, ManagerId::Pnpm);
+            let allowed = version == Some("10.16.1");
+            assert!(
+                pnpm.enabled && pnpm.detected && pnpm.is_eligible && pnpm.supports_remote_search
+            );
+            assert_eq!(pnpm.supports_package_install, allowed);
+            assert_eq!(pnpm.supports_package_uninstall, allowed);
+            // Preserve the existing individual-action allowlist; legacy pnpm
+            // upgrades remain available through Plan, not the individual FFI endpoint.
+            assert!(!pnpm.supports_package_upgrade);
+            assert_eq!(pnpm.package_mutation_service_error_key.is_none(), allowed);
+            let mut steps = Vec::new();
+            let mut order = 0;
+            super::push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Pnpm,
+                "prettier".into(),
+                false,
+                &mut order,
+            );
+            super::push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Npm,
+                "other".into(),
+                false,
+                &mut order,
+            );
+            super::apply_package_mutation_preview_policy(&mut steps, &store);
+            assert_eq!(steps.len(), 2);
+            assert_eq!(steps[0].status, if allowed { "queued" } else { "blocked" });
+            assert_eq!(
+                super::upgrade_workflow_request(&steps[0]).is_some(),
+                allowed
+            );
+            assert_eq!(steps[1].status, "queued");
+            assert!(super::upgrade_workflow_request(&steps[1]).is_some());
+            assert!(store.list_recent_tasks(10).unwrap().is_empty());
+        }
     }
 
     #[test]

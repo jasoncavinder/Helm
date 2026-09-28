@@ -49,9 +49,19 @@ and Helm virtual pins remain available; this does not auto-disable the manager
 or hide updates. Task diagnostics translate the guidance using
 `service.error.pnpm_global_mutation_unsupported`. See the
 [capability matrix](../validation/v0.20-adapter-cli-capability-matrix.md) and
-[#559](https://github.com/jasoncavinder/Helm/issues/559). Group-aware planning and
-version-specific capability presentation remain follow-up work; a visible update
-is not a claim that this version can execute it automatically.
+[#559](https://github.com/jasoncavinder/Helm/issues/559). Shared-core version policy
+now drives the cached CLI/FFI package capability fields and a localized
+`packageMutationServiceErrorKey` on both CLI and FFI manager-status payloads.
+Unsupported/unknown pnpm snapshots retain visible updates but mark Plan rows
+`blocked`; they cannot be selected, automatically run or retried by the GUI.
+CLI previews add `runnable` and `blockedServiceErrorKey`; `updates run` reports
+the blocked result without creating a package task, including detached workflow
+execution. Manager enablement, reads, virtual pins and executable lifecycle
+authority are unchanged. A fresh manager detection restores capabilities after
+an intentional executable/version change. Preview uses cached evidence, never
+authorization: the adapter still checks the live version before every mutation.
+Group-aware planning/consent remains follow-up work; see the
+[preview verification record](../validation/v0.20-pnpm-mutation-availability.md).
 
 Uv global-tool policy: the registered GUI/CLI adapter does not grant uv executable
 lifecycle authority. Its install-instance classifier retains conservative
