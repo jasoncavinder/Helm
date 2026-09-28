@@ -61,8 +61,8 @@ public struct NativeTargetObserver {
         let target = try validatedPath(path)
         let before = try FileIdentity.read(target)
         guard before.isDirectory else { throw ObservationFailure.unsupportedFile }
-        guard let root = roots.first(where: { Self.contains($0, target) }) else { throw ObservationFailure.outsideRoots }
-        let ancestors = try checkAncestors(target, root: root)
+        guard roots.contains(where: { Self.contains($0, target) }) else { throw ObservationFailure.outsideRoots }
+        let ancestors = try checkAncestors(target)
         let permissions = try inspectTree(target)
         let infoURL = target.appendingPathComponent("Contents/Info.plist")
         let infoBytes = try boundedRead(infoURL)
@@ -102,7 +102,7 @@ public struct NativeTargetObserver {
         }
         let afterPermissions = try inspectTree(target)
         guard permissions == afterPermissions,
-              ancestors == (try checkAncestors(target, root: root)) else {
+              ancestors == (try checkAncestors(target)) else {
             throw ObservationFailure.changedDuringObservation
         }
         return NativeTargetEvidence(
@@ -133,10 +133,12 @@ public struct NativeTargetObserver {
         return target
     }
 
-    private func checkAncestors(_ target: URL, root: URL) throws -> [String: FileIdentity] {
+    private func checkAncestors(_ target: URL) throws -> [String: FileIdentity] {
         var parent = target.deletingLastPathComponent()
         var identities: [String: FileIdentity] = [:]
-        while Self.contains(root, parent) || parent.path == root.path {
+        // An OS-account Applications path is not a trust boundary for its
+        // parents: a writable home directory could replace that entire root.
+        while true {
             let info = try FileIdentity.read(parent)
             guard info.isDirectory, info.owner == 0 || info.owner == geteuid(), info.mode & 0o002 == 0 else {
                 throw ObservationFailure.unsafeOwnership
@@ -149,7 +151,7 @@ public struct NativeTargetObserver {
                 throw ObservationFailure.unsafeOwnership
             }
             identities[parent.path] = info
-            if parent.path == root.path { break }
+            if parent.path == "/" { break }
             parent.deleteLastPathComponent()
         }
         return identities
