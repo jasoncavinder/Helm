@@ -26,7 +26,10 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    outcomes through the prepared FFI boundary, not a shipping UI or general setup
    scheduler. The [guarded presentation](validation/v0.20-first-run-repair-presentation.md)
    now wires explicit consent and durable receipt readback into the real Debug
-   flow. Complete the approved visual integration and signed QA before activation,
+   flow. The [Wayfinder evidence view](validation/v0.20-first-run-wayfinder-evidence.md)
+   now groups real local observations without promoting candidate files to
+   readiness or cached status to live health. Complete signed visual and
+   accessibility acceptance of this new presentation before activation,
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted
    setup parity remains v0.21 scope.2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
