@@ -62,7 +62,7 @@ public struct NativeTargetObserver {
         let before = try FileIdentity.read(target)
         guard before.isDirectory else { throw ObservationFailure.unsupportedFile }
         guard let root = roots.first(where: { Self.contains($0, target) }) else { throw ObservationFailure.outsideRoots }
-        try checkAncestors(target, root: root)
+        let ancestors = try checkAncestors(target, root: root)
         let permissions = try inspectTree(target)
         let infoURL = target.appendingPathComponent("Contents/Info.plist")
         let infoBytes = try boundedRead(infoURL)
@@ -101,7 +101,10 @@ public struct NativeTargetObserver {
             throw ObservationFailure.changedDuringObservation
         }
         let afterPermissions = try inspectTree(target)
-        guard permissions == afterPermissions else { throw ObservationFailure.changedDuringObservation }
+        guard permissions == afterPermissions,
+              ancestors == (try checkAncestors(target, root: root)) else {
+            throw ObservationFailure.changedDuringObservation
+        }
         return NativeTargetEvidence(
             canonicalPath: target.path, device: before.device, inode: before.inode,
             bundleIdentifier: identifier, build: build, teamIdentifier: signing.team,
@@ -130,8 +133,9 @@ public struct NativeTargetObserver {
         return target
     }
 
-    private func checkAncestors(_ target: URL, root: URL) throws {
+    private func checkAncestors(_ target: URL, root: URL) throws -> [String: FileIdentity] {
         var parent = target.deletingLastPathComponent()
+        var identities: [String: FileIdentity] = [:]
         while Self.contains(root, parent) || parent.path == root.path {
             let info = try FileIdentity.read(parent)
             guard info.isDirectory, info.owner == 0 || info.owner == geteuid(), info.mode & 0o002 == 0 else {
@@ -144,9 +148,11 @@ public struct NativeTargetObserver {
             if try unsafePermissions(parent, identity: info, allowAdminGroup: allowAdminGroup) {
                 throw ObservationFailure.unsafeOwnership
             }
+            identities[parent.path] = info
             if parent.path == root.path { break }
             parent.deleteLastPathComponent()
         }
+        return identities
     }
 
     private struct TreeSnapshot: Equatable {
