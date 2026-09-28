@@ -3657,7 +3657,7 @@ struct UpgradeAllTargets {
     npm: Vec<String>,
     pnpm: Vec<String>,
     yarn: Vec<String>,
-    cargo: Vec<(String, String)>,
+    cargo: Vec<(String, String, String)>,
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
@@ -3769,6 +3769,9 @@ fn upgrade_request_binding_args(request: &AdapterRequest) -> Vec<(&'static str, 
         ManagerId::Cargo => {
             if let Some(version) = &request.version {
                 args.push(("cargo_candidate_version", version.clone()));
+            }
+            if let Some(target) = &request.target_name {
+                args.push(("cargo_review_scope", target.clone()));
             }
         }
         ManagerId::Uv => {
@@ -3906,6 +3909,9 @@ fn collect_upgrade_all_targets(
                     targets.cargo.push((
                         package.package.name.clone(),
                         package.candidate_version.clone(),
+                        package.package_identifier.clone().unwrap_or_else(|| {
+                            helm_core::adapters::cargo_review_scope::UNAVAILABLE.into()
+                        }),
                     ));
                 }
             }
@@ -7870,14 +7876,17 @@ pub extern "C" fn helm_preview_upgrade_plan(
     }
 
     if state.runtime.is_manager_enabled(ManagerId::Cargo) {
-        for (package_name, version) in targets.cargo {
+        for (package_name, version, binding) in targets.cargo {
             push_upgrade_plan_step_with_extra_reason_args(
                 &mut steps,
                 ManagerId::Cargo,
                 package_name,
                 false,
                 &mut order_index,
-                vec![("cargo_candidate_version", version)],
+                vec![
+                    ("cargo_candidate_version", version),
+                    ("cargo_review_scope", binding),
+                ],
             );
         }
     }
@@ -8175,7 +8184,7 @@ fn upgrade_workflow_request(
         )
     } else if manager == ManagerId::Cargo {
         (
-            None,
+            Some(step.reason_label_args.get("cargo_review_scope")?.clone()),
             Some(
                 step.reason_label_args
                     .get("cargo_candidate_version")?
@@ -8753,13 +8762,13 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
         }
 
         if runtime.is_manager_enabled(ManagerId::Cargo) {
-            for (package_name, version) in targets.cargo {
+            for (package_name, version, binding) in targets.cargo {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: ManagerId::Cargo,
                         name: package_name.clone(),
                     }),
-                    target_name: None,
+                    target_name: Some(binding),
                     version: Some(version),
                 });
                 let binding_args = upgrade_request_binding_args(&request);
@@ -13777,7 +13786,14 @@ mod tests {
         );
         assert!(targets.softwareupdate_outdated);
         assert_eq!(targets.uv, vec!["ruff".to_string()]);
-        assert_eq!(targets.cargo, vec![("sd".into(), "1.1.0".into())]);
+        assert_eq!(
+            targets.cargo,
+            vec![(
+                "sd".into(),
+                "1.1.0".into(),
+                helm_core::adapters::cargo_review_scope::UNAVAILABLE.into()
+            )]
+        );
     }
 
     #[test]
@@ -13790,19 +13806,30 @@ mod tests {
             "sd".into(),
             false,
             &mut order,
-            vec![("cargo_candidate_version", "1.0.0".into())],
+            vec![
+                ("cargo_candidate_version", "1.0.0".into()),
+                ("cargo_review_scope", "cargo-review-v1:old".into()),
+            ],
         );
         let (_, request, _) = super::upgrade_workflow_request(&steps[0]).unwrap();
         let AdapterRequest::Upgrade(request) = request else {
             panic!("upgrade")
         };
         assert_eq!(request.version.as_deref(), Some("1.0.0"));
-        assert_eq!(request.target_name, None);
+        assert_eq!(request.target_name.as_deref(), Some("cargo-review-v1:old"));
         let mut changed = steps.clone();
         changed[0]
             .reason_label_args
             .insert("cargo_candidate_version".into(), "1.1.0".into());
         assert!(super::retain_reviewed_upgrade_workflow_steps(&mut changed, &steps).is_err());
+        let mut changed = steps.clone();
+        changed[0]
+            .reason_label_args
+            .insert("cargo_review_scope".into(), "cargo-review-v1:new".into());
+        assert!(super::retain_reviewed_upgrade_workflow_steps(&mut changed, &steps).is_err());
+        let mut missing_scope = steps[0].clone();
+        missing_scope.reason_label_args.remove("cargo_review_scope");
+        assert!(super::upgrade_workflow_request(&missing_scope).is_none());
         steps[0].reason_label_args.remove("cargo_candidate_version");
         assert!(super::upgrade_workflow_request(&steps[0]).is_none());
     }
@@ -13904,6 +13931,7 @@ mod tests {
         let store = Arc::new(temp_sqlite_store("cargo-plan-binding"));
         store.migrate_to_latest().unwrap();
         let mut outdated = outdated_pkg(ManagerId::Cargo, "sd", false);
+        outdated.package_identifier = Some("cargo-review-v1:first".into());
         store.upsert_outdated(&[outdated.clone()]).unwrap();
         let recorded = Arc::new(Mutex::new(Vec::new()));
         let runtime = Arc::new(
@@ -13928,6 +13956,13 @@ mod tests {
         assert_eq!(
             reviewed[0]
                 .reason_label_args
+                .get("cargo_review_scope")
+                .map(String::as_str),
+            Some("cargo-review-v1:first")
+        );
+        assert_eq!(
+            reviewed[0]
+                .reason_label_args
                 .get("cargo_candidate_version")
                 .unwrap(),
             "1.1.0"
@@ -13936,7 +13971,10 @@ mod tests {
         let reviewed: Vec<FfiUpgradePlanStep> =
             serde_json::from_str(&serde_json::to_string(&reviewed).unwrap()).unwrap();
         outdated.candidate_version = "1.2.0".into();
-        store.upsert_outdated(&[outdated]).unwrap();
+        outdated.package_identifier = Some("cargo-review-v1:second".into());
+        store
+            .replace_outdated_snapshot(ManagerId::Cargo, &[outdated])
+            .unwrap();
         assert!(retain_reviewed_upgrade_workflow_steps(&mut preview(), &reviewed).is_err());
 
         let workflow_task = {
@@ -13968,6 +14006,10 @@ mod tests {
             );
         };
         wait_for(1);
+        assert_eq!(
+            recorded.lock().unwrap()[0].target_name.as_deref(),
+            Some("cargo-review-v1:first")
+        );
         {
             let guard = super::lock_or_recover(&super::STATE, "state");
             let terminal = guard
@@ -13994,8 +14036,21 @@ mod tests {
                 .map(String::as_str),
             Some("1.1.0")
         );
+        assert_eq!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .get(&workflow_task.0)
+                .unwrap()
+                .args
+                .get("cargo_review_scope")
+                .map(String::as_str),
+            Some("cargo-review-v1:first")
+        );
         assert!(super::legacy_upgrade_all(false, false));
         wait_for(2);
+        assert_eq!(
+            recorded.lock().unwrap()[1].target_name.as_deref(),
+            Some("cargo-review-v1:second")
+        );
         let manager = CString::new("cargo").unwrap();
         let name = CString::new("sd").unwrap();
         let version = CString::new("1.3.0").unwrap();

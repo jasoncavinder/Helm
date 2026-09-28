@@ -1,4 +1,6 @@
 {
+  "service.error.cargo_published_lock_unavailable": "Helm は、この指定された Cargo パッケージ操作に対応する公開済みロックファイルを検証できませんでした。パッケージとタスクの詳細を確認してください。ロックファイルが存在しない、古い、または未対応の場合は手動での対応が必要です。Helm は依存関係のロックを解除した再試行や別のインストーラーへの切り替えを行っていません。",
+  "service.error.cargo_receipt_unsupported": "Helm は、この Cargo インストールのソースとビルド設定を安全に保持または検証できませんでした。再試行する前に、インストール記録とタスクの詳細を確認してください。Git、ローカルパス、プライベートレジストリ、未対応のメタデータは手動で管理する必要があります。",
   "service.error.cargo_toolchain_unavailable": "選択された Rust ツールチェーンでは Cargo を利用できません。rustup show active-toolchain と rustup component list --installed で確認してください。コンポーネントやツールチェーンを変更する前に修復内容を確認してください。キャッシュ済みのパッケージ情報は保持され、Helm は別の Cargo に切り替えていません。",
   "service.error.dns_resolution_failed": "接続先のネットワークアドレスを解決できませんでした。DNS、VPN、プロキシ、配信元の状態を確認してから再試行してください。Mac 全体がオフラインとは限りません。キャッシュ済みのデータは引き続き利用できます。",
   "service.error.endpoint_unreachable": "接続先に接続できませんでした。配信元、接続、VPN、プロキシを確認してから再試行してください。Mac 全体がオフラインとは限りません。キャッシュ済みのデータは引き続き利用できます。",
