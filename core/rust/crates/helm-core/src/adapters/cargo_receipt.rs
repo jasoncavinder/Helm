@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::adapters::manager::AdapterResult;
 use crate::execution::CommandSpec;
@@ -11,7 +11,7 @@ use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId};
 const MAX_RECEIPT_BYTES: u64 = 4 * 1024 * 1024;
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CargoInstallReceipt {
     pub version_req: String,
@@ -124,6 +124,23 @@ fn key_parts(key: &str) -> Option<(&str, &str, &str)> {
 }
 
 impl CargoUpgradeReceipt {
+    pub(crate) fn review_identity(&self) -> (&str, &CargoInstallReceipt) {
+        (&self.installed_key, &self.receipt)
+    }
+
+    pub(crate) fn installed_version(&self) -> &str {
+        key_parts(&self.installed_key)
+            .map(|(_, version, _)| version)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn binary_paths(&self) -> impl Iterator<Item = PathBuf> + '_ {
+        self.receipt
+            .bins
+            .iter()
+            .map(|bin| self.root.join("bin").join(bin))
+    }
+
     pub(crate) fn root(&self) -> &Path {
         &self.root
     }

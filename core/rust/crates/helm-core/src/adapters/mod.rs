@@ -9,6 +9,7 @@ pub(crate) mod cargo_outdated;
 pub mod cargo_process;
 mod cargo_published_lock;
 mod cargo_receipt;
+pub mod cargo_review_scope;
 pub mod colima;
 pub mod colima_process;
 pub(crate) mod detect_utils;

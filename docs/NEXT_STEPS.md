@@ -41,8 +41,10 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    for crates.io upgrades and its fail-closed unsupported-source handling.
    Preserve the [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
    and its missing/stale-root/cache-drift rejections without unlocked fallback.
-   Finish review-time executable/root/source binding, general install/reinstall
-   policy and remaining failure/cancellation/reconciliation evidence;
+   Preserve [discovered Cargo scope binding](validation/v0.20-cargo-reviewed-scope.md)
+   through cached workflows/retries and require refresh/review on drift.
+   Finish general install/reinstall policy and remaining
+   failure/cancellation/reconciliation evidence;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,

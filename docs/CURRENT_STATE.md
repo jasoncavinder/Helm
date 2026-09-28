@@ -67,8 +67,13 @@ unsupported or changed cache metadata, and upgrades with `--locked` without an
 unlocked fallback. Native Helm CLI `sd` 0.7.6 to 1.0.0 and `slint-viewer` 1.18.0
 to 1.18.1 upgrades and VM regression checks pass. Cargo still owns
 dependency resolution; this is not a general resolver or supply-chain verifier.
-Review-time executable/root/source binding, general install/reinstall policy and
-the remaining evidence still need work before #564 closes.
+The [discovery-scope binding](validation/v0.20-cargo-reviewed-scope.md) now carries
+native receipt, root, executable/toolchain and candidate identity through cached
+plans and retries; changed or unavailable scope fails closed. Native Rustup-backed
+CLI stale-root/binary rejection and refreshed upgrade pass. Explicit unbound
+low-level calls retain task-start semantics; there is no new durable CLI
+confirmation transaction. General install/reinstall policy and the remaining
+evidence still need work before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.

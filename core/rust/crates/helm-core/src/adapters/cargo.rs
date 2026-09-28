@@ -50,6 +50,28 @@ pub trait CargoSource: Send + Sync {
     fn install(&self, name: &str, version: Option<&str>) -> AdapterResult<String>;
     fn uninstall(&self, name: &str) -> AdapterResult<String>;
     fn upgrade(&self, name: &str, version: &str) -> AdapterResult<String>;
+    fn validate_upgrade_scope(
+        &self,
+        _name: &str,
+        _version: &str,
+        binding: Option<&str>,
+    ) -> AdapterResult<()> {
+        if binding.is_some() {
+            return Err(super::cargo_receipt::receipt_error(
+                "This Cargo source cannot validate a reviewed scope",
+            ));
+        }
+        Ok(())
+    }
+    fn upgrade_reviewed(
+        &self,
+        name: &str,
+        version: &str,
+        binding: Option<&str>,
+    ) -> AdapterResult<String> {
+        self.validate_upgrade_scope(name, version, binding)?;
+        self.upgrade(name, version)
+    }
 }
 
 pub struct CargoAdapter<S: CargoSource> {
@@ -204,14 +226,23 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     .as_deref()
                     .map(|version| exact_cargo_version(version, ManagerAction::Upgrade))
                     .transpose()?;
+                if let Some(binding) = upgrade_request.target_name.as_deref() {
+                    let (Some(name), Some(version)) = (target_name, explicit_version) else {
+                        return Err(super::cargo_receipt::receipt_error(
+                            "A reviewed Cargo scope requires one exact package version",
+                        ));
+                    };
+                    self.source
+                        .validate_upgrade_scope(name, version, Some(binding))?;
+                }
                 let installed = self.source.list_installed()?;
                 // Freeze candidates once. Postconditions use local inventory, not a second
                 // registry query that may fail or advertise a newer release mid-task.
                 let targets = if let Some(name) = target_name {
                     let before = installed_cargo_version(&installed, name)?
                         .ok_or_else(|| cargo_not_installed(name, ManagerAction::Upgrade))?;
-                    let version = if let Some(version) = explicit_version {
-                        version.to_string()
+                    let (version, binding) = if let Some(version) = explicit_version {
+                        (version.to_string(), upgrade_request.target_name)
                     } else {
                         let matches: Vec<_> = parse_cargo_outdated(&self.source.list_outdated()?)?
                             .into_iter()
@@ -223,10 +254,10 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                         matches
                             .into_iter()
                             .next()
-                            .map(|entry| entry.candidate_version)
-                            .unwrap_or_else(|| before.clone())
+                            .map(|entry| (entry.candidate_version, entry.package_identifier))
+                            .unwrap_or_else(|| (before.clone(), None))
                     };
-                    vec![(name.to_string(), before, version)]
+                    vec![(name.to_string(), before, version, binding)]
                 } else {
                     let outdated = parse_cargo_outdated(&self.source.list_outdated()?)?;
                     let mut names = std::collections::BTreeSet::new();
@@ -238,12 +269,19 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                         }
                         let before = installed_cargo_version(&installed, &name)?
                             .ok_or_else(|| cargo_not_installed(&name, ManagerAction::Upgrade))?;
-                        targets.push((name, before, entry.candidate_version));
+                        targets.push((
+                            name,
+                            before,
+                            entry.candidate_version,
+                            entry.package_identifier,
+                        ));
                     }
                     targets
                 };
                 // Validate every bulk target before starting any package mutation.
-                for (name, before, version) in &targets {
+                for (name, before, version, binding) in &targets {
+                    self.source
+                        .validate_upgrade_scope(name, version, binding.as_deref())?;
                     crate::adapters::validate_package_identifier(
                         ManagerId::Cargo,
                         ManagerAction::Upgrade,
@@ -265,7 +303,7 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     }
                 }
                 let mut observed_after = None;
-                for (name, before, version) in &targets {
+                for (name, before, version, binding) in &targets {
                     let current = resolve_installed_cargo_version(&self.source, name)?;
                     if current.as_deref() != Some(before) && current.as_deref() != Some(version) {
                         return Err(cargo_mutation_error(
@@ -277,7 +315,9 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                         ));
                     }
                     if current.as_deref() != Some(version) {
-                        let _ = self.source.upgrade(name, version)?;
+                        let _ = self
+                            .source
+                            .upgrade_reviewed(name, version, binding.as_deref())?;
                     }
                     observed_after = Some(verify_cargo_installed(
                         &self.source,
@@ -287,8 +327,8 @@ impl<S: CargoSource> ManagerAdapter for CargoAdapter<S> {
                     )?);
                 }
 
-                let before_version =
-                    target_name.and_then(|_| targets.first().map(|(_, before, _)| before.clone()));
+                let before_version = target_name
+                    .and_then(|_| targets.first().map(|(_, before, _, _)| before.clone()));
                 let after_version = target_name.and(observed_after);
                 Ok(AdapterResponse::Mutation(crate::adapters::MutationResult {
                     package,
@@ -430,6 +470,8 @@ fn cargo_request(
 
 #[derive(Debug, Deserialize)]
 struct CargoOutdatedEntry {
+    #[serde(default)]
+    package_identifier: Option<String>,
     name: String,
     installed_version: String,
     candidate_version: String,
@@ -735,7 +777,7 @@ pub(crate) fn parse_cargo_outdated(output: &str) -> AdapterResult<Vec<OutdatedPa
                 manager: ManagerId::Cargo,
                 name: name.to_string(),
             },
-            package_identifier: None,
+            package_identifier: entry.package_identifier,
             installed_version: Some(installed.to_string()),
             candidate_version: candidate.to_string(),
             pinned: false,

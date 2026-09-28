@@ -102,6 +102,156 @@ impl ProcessCargoSource {
         }
         self.configure_request(request)
     }
+
+    fn prepared_upgrade_request(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> AdapterResult<(
+        std::path::PathBuf,
+        super::cargo_receipt::CargoUpgradeReceipt,
+        ProcessSpawnRequest,
+    )> {
+        use super::cargo_receipt::{CargoUpgradeReceipt, install_root, receipt_error};
+        if self.cargo_home.is_none()
+            && std::env::var_os("CARGO_HOME")
+                .is_some_and(|home| !std::path::Path::new(&home).is_absolute())
+        {
+            return Err(receipt_error(
+                "Cargo home must be absolute for a verified upgrade",
+            ));
+        }
+        if std::env::vars_os().any(|(key, value)| {
+            let key = key.to_string_lossy();
+            key.starts_with("CARGO_SOURCE_")
+                || key == "CARGO_REGISTRIES_CRATES_IO_INDEX"
+                || (key == "CARGO_REGISTRY_DEFAULT" && value != "crates-io")
+        }) {
+            return Err(receipt_error(
+                "Cargo source environment overrides require manual review",
+            ));
+        }
+        let explicit = self
+            .installation_root
+            .clone()
+            .or_else(|| std::env::var_os("CARGO_INSTALL_ROOT").map(std::path::PathBuf::from));
+        let home = self.cargo_home();
+        if !home.is_absolute() || home.to_str().is_none() {
+            return Err(receipt_error("Cargo home must be absolute UTF-8"));
+        }
+        let receipt = CargoUpgradeReceipt::load(install_root(&home, explicit)?, name)?;
+        let mut request = self.configure_request(cargo_upgrade_request(None, name, version));
+        request.command = receipt
+            .apply(request.command)
+            .env("CARGO_HOME", home.to_string_lossy());
+        if let Some(rustup) = super::cargo_published_lock::rustup_proxy(&request.command.program) {
+            let mut selected = request.clone();
+            selected.command.program = rustup;
+            selected.command.args = vec!["show".into(), "active-toolchain".into()];
+            selected.timeout = Some(std::time::Duration::from_secs(10));
+            selected.private_output_limit = Some(16 * 1024);
+            let output = run_and_collect_stdout(self.executor.as_ref(), selected)?;
+            request.command = request.command.env(
+                "RUSTUP_TOOLCHAIN",
+                super::cargo_published_lock::active_toolchain(&output)?,
+            );
+        }
+        Ok((home, receipt, request))
+    }
+
+    pub fn review_upgrade_token(&self, name: &str, version: &str) -> AdapterResult<String> {
+        self.review_upgrade_token_for_inventory(name, version, None)
+    }
+
+    fn review_upgrade_token_for_inventory(
+        &self,
+        name: &str,
+        version: &str,
+        installed: Option<&str>,
+    ) -> AdapterResult<String> {
+        let (home, receipt, request) = self.prepared_upgrade_request(name, version)?;
+        if installed.is_some_and(|installed| installed != receipt.installed_version()) {
+            return Err(super::cargo_receipt::receipt_error(
+                "Cargo inventory changed during update discovery",
+            ));
+        }
+        self.request_fingerprint(&home, &receipt, &request, version)
+    }
+
+    fn request_fingerprint(
+        &self,
+        home: &std::path::Path,
+        receipt: &super::cargo_receipt::CargoUpgradeReceipt,
+        request: &ProcessSpawnRequest,
+        version: &str,
+    ) -> AdapterResult<String> {
+        let toolchain_cargo = self.toolchain_cargo(request)?;
+        super::cargo_review_scope::fingerprint(
+            home,
+            receipt,
+            &request.command.program,
+            request
+                .command
+                .env
+                .get("RUSTUP_TOOLCHAIN")
+                .map(String::as_str),
+            toolchain_cargo.as_deref(),
+            version,
+        )
+    }
+
+    fn execution_fingerprint(
+        &self,
+        home: &std::path::Path,
+        root: &std::path::Path,
+        request: &ProcessSpawnRequest,
+    ) -> AdapterResult<String> {
+        let toolchain_cargo = self.toolchain_cargo(request)?;
+        super::cargo_review_scope::execution_fingerprint(
+            home,
+            root,
+            &request.command.program,
+            request
+                .command
+                .env
+                .get("RUSTUP_TOOLCHAIN")
+                .map(String::as_str),
+            toolchain_cargo.as_deref(),
+        )
+    }
+
+    fn toolchain_cargo(
+        &self,
+        request: &ProcessSpawnRequest,
+    ) -> AdapterResult<Option<std::path::PathBuf>> {
+        let toolchain = request.command.env.get("RUSTUP_TOOLCHAIN");
+        let toolchain_cargo = if let (Some(toolchain), Some(rustup)) = (
+            toolchain,
+            super::cargo_published_lock::rustup_proxy(&request.command.program),
+        ) {
+            let mut selected = request.clone();
+            selected.command.program = rustup;
+            selected.reviewed_program = Some(selected.command.program.clone());
+            selected.command.args = vec![
+                "which".into(),
+                "--toolchain".into(),
+                toolchain.clone(),
+                "cargo".into(),
+            ];
+            selected.timeout = Some(std::time::Duration::from_secs(10));
+            selected.private_output_limit = Some(16 * 1024);
+            let output = run_and_collect_stdout(self.executor.as_ref(), selected)?;
+            if output.trim().lines().count() != 1 {
+                return Err(super::cargo_receipt::receipt_error(
+                    "Cargo toolchain path is ambiguous",
+                ));
+            }
+            Some(std::path::PathBuf::from(output.trim()))
+        } else {
+            None
+        };
+        Ok(toolchain_cargo)
+    }
 }
 
 impl CargoSource for ProcessCargoSource {
@@ -146,10 +296,31 @@ impl CargoSource for ProcessCargoSource {
     fn list_outdated(&self) -> AdapterResult<String> {
         let installed_raw = self.list_installed()?;
         // cargo has no built-in global outdated list command for installed binaries.
-        synthesize_outdated_payload(ManagerId::Cargo, &installed_raw, |crate_name| {
-            let request = self.configure_request(cargo_search_single_request(None, crate_name));
-            let search_output = run_and_collect_stdout(self.executor.as_ref(), request)?;
-            Ok(parse_cargo_search_version(&search_output, crate_name))
+        let payload =
+            synthesize_outdated_payload(ManagerId::Cargo, &installed_raw, |crate_name| {
+                let request = self.configure_request(cargo_search_single_request(None, crate_name));
+                let search_output = run_and_collect_stdout(self.executor.as_ref(), request)?;
+                Ok(parse_cargo_search_version(&search_output, crate_name))
+            })?;
+        let mut rows: Vec<serde_json::Value> = serde_json::from_str(&payload).map_err(|_| {
+            super::cargo_receipt::receipt_error("Cargo candidates could not be decoded")
+        })?;
+        for row in &mut rows {
+            let name = row["name"].as_str().unwrap_or_default();
+            let version = row["candidate_version"].as_str().unwrap_or_default();
+            let binding = match self.review_upgrade_token_for_inventory(
+                name,
+                version,
+                row["installed_version"].as_str(),
+            ) {
+                Ok(binding) => binding,
+                Err(error) if error.kind == CoreErrorKind::Cancelled => return Err(error),
+                Err(_) => super::cargo_review_scope::UNAVAILABLE.into(),
+            };
+            row["package_identifier"] = serde_json::Value::String(binding);
+        }
+        serde_json::to_string(&rows).map_err(|_| {
+            super::cargo_receipt::receipt_error("Cargo candidates could not be encoded")
         })
     }
 
@@ -173,51 +344,48 @@ impl CargoSource for ProcessCargoSource {
     }
 
     fn upgrade(&self, name: &str, version: &str) -> AdapterResult<String> {
-        use super::cargo_published_lock::{PublishedCargoLock, info_working_directory};
-        use super::cargo_receipt::{CargoUpgradeReceipt, install_root, receipt_error};
-        if self.cargo_home.is_none()
-            && std::env::var_os("CARGO_HOME")
-                .is_some_and(|home| !std::path::Path::new(&home).is_absolute())
+        self.upgrade_reviewed(name, version, None)
+    }
+
+    fn validate_upgrade_scope(
+        &self,
+        name: &str,
+        version: &str,
+        binding: Option<&str>,
+    ) -> AdapterResult<()> {
+        if let Some(binding) = binding
+            && (!super::cargo_review_scope::is_token(binding)
+                || self.review_upgrade_token(name, version)? != binding)
         {
-            return Err(receipt_error(
-                "Cargo home must be absolute for a verified upgrade",
+            return Err(super::cargo_receipt::receipt_error(
+                "Cargo installation changed or has no reviewed scope; refresh and review again",
             ));
         }
-        if std::env::vars_os().any(|(key, value)| {
-            let key = key.to_string_lossy();
-            key.starts_with("CARGO_SOURCE_")
-                || key == "CARGO_REGISTRIES_CRATES_IO_INDEX"
-                || (key == "CARGO_REGISTRY_DEFAULT" && value != "crates-io")
-        }) {
-            return Err(receipt_error(
-                "Cargo source environment overrides require manual review",
-            ));
+        Ok(())
+    }
+
+    fn upgrade_reviewed(
+        &self,
+        name: &str,
+        version: &str,
+        binding: Option<&str>,
+    ) -> AdapterResult<String> {
+        use super::cargo_published_lock::{PublishedCargoLock, info_working_directory};
+        use super::cargo_receipt::{install_root, receipt_error};
+        let (home, receipt, mut request) = self.prepared_upgrade_request(name, version)?;
+        if let Some(binding) = binding {
+            if !super::cargo_review_scope::is_token(binding)
+                || self.request_fingerprint(&home, &receipt, &request, version)? != binding
+            {
+                return Err(receipt_error(
+                    "Cargo installation changed; refresh and review again",
+                ));
+            }
+            request.reviewed_program = Some(request.command.program.clone());
         }
-        let explicit = self
-            .installation_root
-            .clone()
-            .or_else(|| std::env::var_os("CARGO_INSTALL_ROOT").map(std::path::PathBuf::from));
-        let home = self.cargo_home();
-        if !home.is_absolute() || home.to_str().is_none() {
-            return Err(receipt_error("Cargo home must be absolute UTF-8"));
-        }
-        let root = install_root(&home, explicit)?;
-        let receipt = CargoUpgradeReceipt::load(root, name)?;
-        let mut request = self.configure_request(cargo_upgrade_request(None, name, version));
-        request.command = receipt.apply(request.command);
-        request.command = request.command.env("CARGO_HOME", home.to_string_lossy());
-        if let Some(rustup) = super::cargo_published_lock::rustup_proxy(&request.command.program) {
-            // A Rustup proxy chooses by cwd. Bind the caller's selection before
-            // running metadata outside its project so both stages use one toolchain.
-            let mut selected = request.clone();
-            selected.command.program = rustup;
-            selected.command.args = vec!["show".into(), "active-toolchain".into()];
-            selected.timeout = Some(std::time::Duration::from_secs(10));
-            selected.private_output_limit = Some(16 * 1024);
-            let output = run_and_collect_stdout(self.executor.as_ref(), selected)?;
-            let toolchain = super::cargo_published_lock::active_toolchain(&output)?;
-            request.command = request.command.env("RUSTUP_TOOLCHAIN", toolchain);
-        }
+        let execution_identity = binding
+            .map(|_| self.execution_fingerprint(&home, receipt.root(), &request))
+            .transpose()?;
         let mut info = request.clone();
         info.command.args = vec![
             "info".into(),
@@ -237,7 +405,22 @@ impl CargoSource for ProcessCargoSource {
         install_root(&home, Some(receipt.root().to_path_buf()))?;
         receipt.revalidate()?;
         published.revalidate()?;
+        self.validate_upgrade_scope(name, version, binding)?;
         let output = run_and_collect_stdout(self.executor.as_ref(), request)?;
+        if let Some(expected) = execution_identity {
+            let unchanged = self.prepared_upgrade_request(name, version).and_then(
+                |(home, current, request)| {
+                    self.execution_fingerprint(&home, current.root(), &request)
+                },
+            );
+            if unchanged.as_ref().ok() != Some(&expected) {
+                let mut error = receipt_error(
+                    "Cargo completed but its reviewed execution scope changed; the installation may have changed and requires verification",
+                );
+                error.kind = CoreErrorKind::ProcessFailure;
+                return Err(error);
+            }
+        }
         published.revalidate().map_err(|mut error| {
             error.kind = CoreErrorKind::ProcessFailure;
             error.message = "[cargo_published_lock_unavailable] Cargo completed, but its published metadata changed during execution; the installation may have changed and requires verification".into();

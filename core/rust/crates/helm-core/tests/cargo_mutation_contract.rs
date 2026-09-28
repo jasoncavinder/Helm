@@ -170,6 +170,21 @@ fn stale_candidates_cannot_downgrade_newer_installed_versions() {
 }
 
 #[test]
+fn reviewed_scope_cannot_be_ignored_even_for_an_already_current_version() {
+    let source = Source::new(&[NEW, NEW]);
+    let error = CargoAdapter::new(source.clone())
+        .execute(AdapterRequest::Upgrade(UpgradeRequest {
+            package: Some(package()),
+            target_name: Some("cargo-review-v1:stale".into()),
+            version: Some("0.25.0".into()),
+        }))
+        .unwrap_err();
+    assert!(error.message.contains("reviewed scope"));
+    assert!(source.mutations.lock().unwrap().is_empty());
+    assert_eq!(source.inventories.lock().unwrap().len(), 2);
+}
+
+#[test]
 fn missing_wrong_ambiguous_malformed_and_source_annotated_results_fail_verification() {
     for observed in [
         "",
