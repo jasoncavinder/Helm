@@ -21,6 +21,8 @@ const INSTALLED_FIXTURE: &str = include_str!("fixtures/cargo/install_list.txt");
 const SEARCH_FIXTURE: &str = include_str!("fixtures/cargo/search.txt");
 const PUBLISHED_MANIFEST: &str = "[package]\nname = 'bat'\nversion = '0.25.0'\n";
 const PUBLISHED_LOCK: &str = "version = 4\n[[package]]\nname = 'bat'\nversion = '0.25.0'\n";
+const INSTALL_MANIFEST: &str = "[package]\nname = 'rargs'\nversion = '0.3.0'\n";
+const INSTALL_LOCK: &str = "version = 4\n[[package]]\nname = 'rargs'\nversion = '0.3.0'\n";
 
 fn installed_fixture_with_bat_version(version: &str) -> String {
     INSTALLED_FIXTURE.replace("bat v0.24.0:", &format!("bat v{version}:"))
@@ -79,6 +81,8 @@ impl ProcessExecutor for CargoFakeExecutor {
             match args.last().map(String::as_str) {
                 Some("bat-0.25.0/Cargo.toml") => PUBLISHED_MANIFEST.as_bytes().to_vec(),
                 Some("bat-0.25.0/Cargo.lock") => PUBLISHED_LOCK.as_bytes().to_vec(),
+                Some("rargs-0.3.0/Cargo.toml") => INSTALL_MANIFEST.as_bytes().to_vec(),
+                Some("rargs-0.3.0/Cargo.lock") => INSTALL_LOCK.as_bytes().to_vec(),
                 _ => panic!("unexpected archive read: {args:?}"),
             }
         } else if program == "cargo" || program.ends_with("/cargo") {
@@ -89,7 +93,7 @@ impl ProcessExecutor for CargoFakeExecutor {
                         && source == "crates-io"
                         && color == "--color"
                         && never == "never"
-                        && spec == "bat@0.25.0" =>
+                        && (spec == "bat@0.25.0" || spec == "rargs@0.3.0") =>
                 {
                     assert_eq!(request.command.working_dir, Some(PathBuf::from("/")));
                     assert!(request.private_output_limit.is_some());
@@ -138,7 +142,40 @@ impl ProcessExecutor for CargoFakeExecutor {
                         _ => Vec::new(),
                     }
                 }
-                [arg0, crate_name] if arg0 == "install" && crate_name == "rargs" => {
+                [command, limit, one, color, never, registry, source, name]
+                    if command == "search"
+                        && limit == "--limit"
+                        && one == "1"
+                        && color == "--color"
+                        && never == "never"
+                        && registry == "--registry"
+                        && source == "crates-io"
+                        && name == "rargs" =>
+                {
+                    b"rargs = \"0.3.0\" # argument parser\n".to_vec()
+                }
+                [arg0, crate_name, ..] if arg0 == "install" && crate_name == "rargs" => {
+                    assert!(args.iter().any(|arg| arg == "--locked"));
+                    assert!(!args.iter().any(|arg| arg == "--force"));
+                    assert!(args.windows(2).any(|pair| pair == ["--version", "0.3.0"]));
+                    assert!(
+                        args.windows(2)
+                            .any(|pair| pair == ["--registry", "crates-io"])
+                    );
+                    assert!(args.windows(2).any(|pair| pair == ["--profile", "release"]));
+                    let root = root.as_ref().unwrap();
+                    let path = root.join(".crates2.json");
+                    let mut receipts: serde_json::Value = std::fs::read(&path)
+                        .ok()
+                        .map(|bytes| serde_json::from_slice(&bytes).unwrap())
+                        .unwrap_or_else(|| serde_json::json!({"installs":{}}));
+                    receipts["installs"]["rargs 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)"] = serde_json::json!({
+                        "version_req":"=0.3.0", "bins":["rargs"], "features":[], "all_features":false,
+                        "no_default_features":false, "profile":"release", "target":"aarch64-apple-darwin", "rustc":"rustc 1.98.1"
+                    });
+                    std::fs::create_dir_all(root.join("bin")).unwrap();
+                    std::fs::write(root.join("bin/rargs"), "installed rargs").unwrap();
+                    std::fs::write(path, receipts.to_string()).unwrap();
                     self.rargs_installed.store(true, Ordering::SeqCst);
                     Vec::new()
                 }
@@ -194,6 +231,15 @@ fn build_runtime(executor: Arc<dyn ProcessExecutor>, root: PathBuf) -> AdapterRu
     std::fs::write(source_path.join("Cargo.lock"), PUBLISHED_LOCK).unwrap();
     std::fs::write(
         archive_path.join("bat-0.25.0.crate"),
+        b"fake executor archive",
+    )
+    .unwrap();
+    let install_source = home.join("registry/src/index.crates.io-1949cf8c6b5b557f/rargs-0.3.0");
+    std::fs::create_dir_all(&install_source).unwrap();
+    std::fs::write(install_source.join("Cargo.toml"), INSTALL_MANIFEST).unwrap();
+    std::fs::write(install_source.join("Cargo.lock"), INSTALL_LOCK).unwrap();
+    std::fs::write(
+        archive_path.join("rargs-0.3.0.crate"),
         b"fake executor archive",
     )
     .unwrap();
@@ -711,6 +757,148 @@ async fn post_install_cache_drift_reports_unverified_mutation_not_preflight_reje
     assert_eq!(error.kind, helm_core::models::CoreErrorKind::ProcessFailure);
     assert!(error.message.contains("installation may have changed"));
     assert!(executor.inner.bat_upgraded.load(Ordering::SeqCst));
+}
+
+struct FreshInstallFaultExecutor {
+    inner: Arc<ReviewedScopeExecutor>,
+    root: PathBuf,
+    fault: &'static str,
+}
+
+impl ProcessExecutor for FreshInstallFaultExecutor {
+    fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+        let info = request
+            .command
+            .args
+            .first()
+            .is_some_and(|arg| arg == "info");
+        let install = request
+            .command
+            .args
+            .starts_with(&["install".into(), "rargs".into()]);
+        let source = self
+            .root
+            .join("cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rargs-0.3.0");
+        if info {
+            match self.fault {
+                "missing-lock" => std::fs::remove_file(source.join("Cargo.lock")).unwrap(),
+                "stale-lock" => std::fs::write(
+                    source.join("Cargo.lock"),
+                    INSTALL_LOCK.replace("0.3.0", "0.2.0"),
+                )
+                .unwrap(),
+                "manifest-drift" => std::fs::write(source.join("Cargo.toml"), "changed").unwrap(),
+                "binary-drift" => std::fs::write(self.root.join("bin/bat"), "changed").unwrap(),
+                "executable-drift" => {
+                    std::fs::write(self.inner.program.lock().unwrap().as_path(), "changed").unwrap()
+                }
+                "metadata-failure" | "cancelled" => {
+                    return Err(helm_core::models::CoreError {
+                        manager: Some(ManagerId::Cargo),
+                        task: Some(helm_core::models::TaskType::Install),
+                        action: Some(helm_core::models::ManagerAction::Install),
+                        kind: if self.fault == "cancelled" {
+                            helm_core::models::CoreErrorKind::Cancelled
+                        } else {
+                            helm_core::models::CoreErrorKind::ProcessFailure
+                        },
+                        message: "controlled metadata failure".into(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        let result = self.inner.spawn(request);
+        if install {
+            match self.fault {
+                "post-lock-drift" => std::fs::write(source.join("Cargo.lock"), "changed").unwrap(),
+                "post-binary-drift" => {
+                    std::fs::write(self.root.join("bin/bat"), "changed").unwrap()
+                }
+                "post-executable-drift" => {
+                    std::fs::write(self.inner.program.lock().unwrap().as_path(), "changed").unwrap()
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+}
+
+#[test]
+fn fresh_install_rejects_preflight_drift_and_does_not_retry_after_uncertain_mutation() {
+    use helm_core::adapters::cargo::CargoSource;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _entered = runtime.enter();
+    for fault in [
+        "missing-lock",
+        "stale-lock",
+        "manifest-drift",
+        "binary-drift",
+        "executable-drift",
+        "metadata-failure",
+        "cancelled",
+        "post-lock-drift",
+        "post-binary-drift",
+        "post-executable-drift",
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let (inner, _) = reviewed_scope_source(root.path());
+        let executor = Arc::new(FreshInstallFaultExecutor {
+            inner: inner.clone(),
+            root: root.path().into(),
+            fault,
+        });
+        let source = ProcessCargoSource::with_installation_scope(
+            executor,
+            root.path().into(),
+            root.path().join("cargo-home"),
+        );
+        let result = source.install("rargs", Some("0.3.0")).unwrap_err();
+        assert_eq!(
+            result.action,
+            Some(helm_core::models::ManagerAction::Install)
+        );
+        if fault.starts_with("post-") {
+            assert!(inner.inner.rargs_installed.load(Ordering::SeqCst));
+            assert_eq!(
+                result.kind,
+                helm_core::models::CoreErrorKind::ProcessFailure
+            );
+            assert!(result.message.contains("may have changed"));
+        } else {
+            assert!(
+                !inner.inner.rargs_installed.load(Ordering::SeqCst),
+                "{fault}"
+            );
+            assert!(!root.path().join("bin/rargs").exists());
+            if fault == "cancelled" {
+                assert_eq!(result.kind, helm_core::models::CoreErrorKind::Cancelled);
+            }
+        }
+    }
+}
+
+#[test]
+fn fresh_install_pins_native_candidate_and_reinstall_preserves_existing_options() {
+    use helm_core::adapters::cargo::CargoSource;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _entered = runtime.enter();
+    let root = tempfile::tempdir().unwrap();
+    let (executor, source) = reviewed_scope_source(root.path());
+    source.install("rargs", None).unwrap();
+    assert!(executor.inner.rargs_installed.load(Ordering::SeqCst));
+    let before = std::fs::read_to_string(root.path().join(".crates2.json")).unwrap();
+    source.install("bat", Some("0.25.0")).unwrap();
+    assert!(executor.inner.bat_upgraded.load(Ordering::SeqCst));
+    let after = std::fs::read_to_string(root.path().join(".crates2.json")).unwrap();
+    assert_eq!(after, before.replace("0.24.0", "0.25.0"));
 }
 
 struct RustupBoundExecutor {

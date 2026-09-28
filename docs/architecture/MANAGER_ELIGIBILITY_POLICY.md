@@ -70,8 +70,14 @@ Cargo upgrades additionally require a supported native installation receipt at
 execution time. Crates.io upgrades preserve the existing binary/features/profile/
 target choices and explicit root; Git/path/private registries, source overrides
 and incomplete or ambiguous metadata fail closed with `cargo_receipt_unsupported`.
-This does not disable Cargo discovery or claim full review-time source binding.
-See [receipt preservation and remaining limits](../validation/v0.20-cargo-receipt-preservation.md).
+This does not disable Cargo discovery. Cached upgrade workflows additionally
+retain the [discovered source/scope binding](../validation/v0.20-cargo-reviewed-scope.md).
+Fresh installs and existing-package reinstalls use the
+[published-lock install policy](../validation/v0.20-cargo-install-policy.md), with
+exact task-start candidates, unrelated-state verification and native option
+preservation. Unsupported or missing published locks require manual handling;
+Helm never silently resolves unlocked dependencies. Explicit install and unbound
+low-level calls are not a new durable cross-command approval transaction.
 
 Policy checks are applied in these places:
 

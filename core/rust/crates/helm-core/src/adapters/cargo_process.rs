@@ -112,13 +112,25 @@ impl ProcessCargoSource {
         super::cargo_receipt::CargoUpgradeReceipt,
         ProcessSpawnRequest,
     )> {
-        use super::cargo_receipt::{CargoUpgradeReceipt, install_root, receipt_error};
+        use super::cargo_receipt::CargoUpgradeReceipt;
+        let (home, root, mut request) =
+            self.registry_request(cargo_upgrade_request(None, name, version))?;
+        let receipt = CargoUpgradeReceipt::load(root, name)?;
+        request.command = receipt.apply(request.command);
+        Ok((home, receipt, request))
+    }
+
+    fn registry_request(
+        &self,
+        request: ProcessSpawnRequest,
+    ) -> AdapterResult<(std::path::PathBuf, std::path::PathBuf, ProcessSpawnRequest)> {
+        use super::cargo_receipt::{install_root, receipt_error};
         if self.cargo_home.is_none()
             && std::env::var_os("CARGO_HOME")
                 .is_some_and(|home| !std::path::Path::new(&home).is_absolute())
         {
             return Err(receipt_error(
-                "Cargo home must be absolute for a verified upgrade",
+                "Cargo home must be absolute for a verified mutation",
             ));
         }
         if std::env::vars_os().any(|(key, value)| {
@@ -139,11 +151,9 @@ impl ProcessCargoSource {
         if !home.is_absolute() || home.to_str().is_none() {
             return Err(receipt_error("Cargo home must be absolute UTF-8"));
         }
-        let receipt = CargoUpgradeReceipt::load(install_root(&home, explicit)?, name)?;
-        let mut request = self.configure_request(cargo_upgrade_request(None, name, version));
-        request.command = receipt
-            .apply(request.command)
-            .env("CARGO_HOME", home.to_string_lossy());
+        let root = install_root(&home, explicit)?;
+        let mut request = self.configure_request(request);
+        request.command = request.command.env("CARGO_HOME", home.to_string_lossy());
         if let Some(rustup) = super::cargo_published_lock::rustup_proxy(&request.command.program) {
             let mut selected = request.clone();
             selected.command.program = rustup;
@@ -156,7 +166,114 @@ impl ProcessCargoSource {
                 super::cargo_published_lock::active_toolchain(&output)?,
             );
         }
-        Ok((home, receipt, request))
+        Ok((home, root, request))
+    }
+
+    fn install_locked(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
+        use super::cargo_fresh_install::FreshInstall;
+        use super::cargo_published_lock::{PublishedCargoLock, info_working_directory};
+        use super::cargo_receipt::{install_root, receipt_error};
+        crate::adapters::validate_package_identifier(
+            ManagerId::Cargo,
+            ManagerAction::Install,
+            name,
+        )?;
+        let (home, root, mut request) =
+            self.registry_request(cargo_install_request(None, name, version))?;
+        request.reviewed_program = Some(request.command.program.clone());
+        let working_dir = info_working_directory()?;
+        let version = if let Some(version) = version {
+            version.to_owned()
+        } else {
+            let mut search = request.clone();
+            search.command.args = vec![
+                "search".into(),
+                "--limit".into(),
+                "1".into(),
+                "--color".into(),
+                "never".into(),
+                "--registry".into(),
+                "crates-io".into(),
+                name.into(),
+            ];
+            search.command.working_dir = Some(working_dir.clone());
+            search.timeout = Some(std::time::Duration::from_secs(30));
+            search.private_output_limit = Some(256 * 1024);
+            let output = run_and_collect_stdout(self.executor.as_ref(), search)?;
+            parse_cargo_search_version(&output, name)
+                .ok_or_else(|| receipt_error("No exact crates.io install candidate was found"))?
+        };
+        if semver::Version::parse(&version).is_err() {
+            return Err(receipt_error("An exact Cargo install version is required"));
+        }
+        let Some(fresh) = FreshInstall::prepare(root.clone(), name)? else {
+            // Reinstallation must not reset existing native features/profile/target.
+            let binding = self.review_upgrade_token(name, &version)?;
+            return self.upgrade_reviewed(name, &version, Some(&binding));
+        };
+        // An explicitly requested installation may create its storage directories,
+        // but never invent receipts or replace existing binaries during preflight.
+        std::fs::create_dir_all(&home)
+            .and_then(|_| std::fs::create_dir_all(&root))
+            .map_err(|_| receipt_error("Cargo installation storage could not be prepared"))?;
+        request.command.args = vec![
+            "install".into(),
+            name.into(),
+            "--version".into(),
+            version.clone(),
+            "--locked".into(),
+            "--registry".into(),
+            "crates-io".into(),
+            "--root".into(),
+            root.to_string_lossy().into_owned(),
+            "--profile".into(),
+            "release".into(),
+        ];
+        request.command.working_dir = Some(working_dir.clone());
+        let identity = self.execution_fingerprint(&home, &root, &request)?;
+        let mut info = request.clone();
+        info.command.args = vec![
+            "info".into(),
+            "--registry".into(),
+            "crates-io".into(),
+            "--color".into(),
+            "never".into(),
+            format!("{name}@{version}"),
+        ];
+        info.timeout = Some(std::time::Duration::from_secs(120));
+        info.private_output_limit = Some(256 * 1024);
+        run_and_collect_stdout(self.executor.as_ref(), info)?;
+        let published = PublishedCargoLock::load(self.executor.as_ref(), &home, name, &version)?;
+        if install_root(&home, Some(root.clone()))? != root
+            || self.execution_fingerprint(&home, &root, &request)? != identity
+        {
+            return Err(receipt_error(
+                "Cargo execution scope changed before installation",
+            ));
+        }
+        fresh.revalidate()?;
+        published.revalidate()?;
+        let output = run_and_collect_stdout(self.executor.as_ref(), request.clone())?;
+        let verified = (|| -> AdapterResult<()> {
+            if install_root(&home, Some(root.clone()))? != root
+                || self.execution_fingerprint(&home, &root, &request)? != identity
+            {
+                return Err(receipt_error(
+                    "Cargo execution scope changed during installation",
+                ));
+            }
+            published.revalidate()?;
+            fresh.verify(&version)
+        })();
+        verified.map_err(|mut error| {
+            error.kind = CoreErrorKind::ProcessFailure;
+            error.message = format!(
+                "[cargo_receipt_unsupported] Cargo installation may have changed and requires verification: {}",
+                error.message
+            );
+            error
+        })?;
+        Ok(output)
     }
 
     pub fn review_upgrade_token(&self, name: &str, version: &str) -> AdapterResult<String> {
@@ -334,8 +451,11 @@ impl CargoSource for ProcessCargoSource {
     }
 
     fn install(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
-        let request = self.scope_request(cargo_install_request(None, name, version));
-        run_and_collect_stdout(self.executor.as_ref(), request)
+        self.install_locked(name, version).map_err(|mut error| {
+            error.action = Some(ManagerAction::Install);
+            error.task = Some(TaskType::Install);
+            error
+        })
     }
 
     fn uninstall(&self, name: &str) -> AdapterResult<String> {

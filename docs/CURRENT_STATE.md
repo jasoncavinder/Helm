@@ -78,8 +78,15 @@ keeping installed identity unscoped; still-newer candidates retain the verified
 baseline without receiving a fresh review token. Unrelated identities are preserved.
 Explicit unbound
 low-level calls retain task-start semantics; there is no new durable CLI
-confirmation transaction. General install/reinstall policy and the remaining
-evidence still need work before #564 closes.
+confirmation transaction. The [install/reinstall policy](validation/v0.20-cargo-install-policy.md)
+extends published-lock validation to fresh installs, pins task-start candidates,
+preserves existing receipt options on reinstall, and verifies unrelated state.
+Verified reinstalls replace the prior cached Cargo version without changing the
+Install action identity, retain pin/runtime flags and any newer cached candidate,
+and leave snapshots untouched on failed or unverified completion.
+The paired-empty native receipt case now has a narrow fresh-store contract.
+Full Rust VM regressions and real fresh install/reinstall pass; integrated-head
+validation and the remaining evidence are still required before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.
