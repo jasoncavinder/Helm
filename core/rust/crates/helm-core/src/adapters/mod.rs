@@ -7,6 +7,7 @@ pub mod cargo_binstall;
 pub mod cargo_binstall_process;
 pub(crate) mod cargo_outdated;
 pub mod cargo_process;
+mod cargo_receipt;
 pub mod colima;
 pub mod colima_process;
 pub(crate) mod detect_utils;

@@ -66,6 +66,13 @@ See [lifecycle scope and certification](../validation/uv-global-tools-lifecycle.
 [installation policy](../validation/uv-installation-policy.md), and
 [candidate eligibility](../validation/uv-tool-eligibility.md).
 
+Cargo upgrades additionally require a supported native installation receipt at
+execution time. Crates.io upgrades preserve the existing binary/features/profile/
+target choices and explicit root; Git/path/private registries, source overrides
+and incomplete or ambiguous metadata fail closed with `cargo_receipt_unsupported`.
+This does not disable Cargo discovery or claim full review-time source binding.
+See [receipt preservation and remaining limits](../validation/v0.20-cargo-receipt-preservation.md).
+
 Policy checks are applied in these places:
 
 - manager status computation (`enabled` is effective `configured && eligible`)

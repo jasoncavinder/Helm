@@ -63,7 +63,12 @@ impl ProcessExecutor for CargoFakeExecutor {
     fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
         let now = SystemTime::now();
         let program = request.command.program.to_string_lossy().to_string();
-        let args = request.command.args.clone();
+        let mut args = request.command.args.clone();
+        let root = args.iter().position(|arg| arg == "--root").map(|index| {
+            let root = PathBuf::from(&args[index + 1]);
+            args.drain(index..index + 2);
+            root
+        });
 
         let stdout: Vec<u8> = if program.ends_with("which") {
             b"/Users/test/.cargo/bin/cargo".to_vec()
@@ -120,13 +125,22 @@ impl ProcessExecutor for CargoFakeExecutor {
                     self.ripgrep_removed.store(true, Ordering::SeqCst);
                     Vec::new()
                 }
-                [arg0, arg1, crate_name, flag, version]
+                [arg0, arg1, crate_name, flag, version, ..]
                     if arg0 == "install"
                         && arg1 == "--force"
                         && crate_name == "bat"
                         && flag == "--version"
                         && version == "0.25.0" =>
                 {
+                    let root = root.as_ref().expect("upgrade binds its installation root");
+                    let path = root.join(".crates2.json");
+                    let receipt = std::fs::read_to_string(&path).unwrap();
+                    std::fs::write(path, receipt.replace("0.24.0", "0.25.0")).unwrap();
+                    assert!(args.windows(2).any(|pair| pair == ["--bin", "bat"]));
+                    assert!(
+                        args.windows(2)
+                            .any(|pair| pair == ["--registry", "crates-io"])
+                    );
                     self.bat_upgraded.store(true, Ordering::SeqCst);
                     Vec::new()
                 }
@@ -148,8 +162,8 @@ impl ProcessExecutor for CargoFakeExecutor {
     }
 }
 
-fn build_runtime(executor: Arc<dyn ProcessExecutor>) -> AdapterRuntime {
-    let source = ProcessCargoSource::new(executor);
+fn build_runtime(executor: Arc<dyn ProcessExecutor>, root: PathBuf) -> AdapterRuntime {
+    let source = ProcessCargoSource::with_installation_root(executor, root);
     let adapter: Arc<dyn ManagerAdapter> = Arc::new(CargoAdapter::new(source));
     AdapterRuntime::new([adapter]).expect("runtime creation should succeed")
 }
@@ -278,7 +292,16 @@ async fn unusable_cargo_proxy_retains_inventory_and_recovers_without_toolchain_c
 
 #[tokio::test]
 async fn cargo_detect_list_search_and_mutate_through_orchestration() {
-    let runtime = build_runtime(Arc::new(CargoFakeExecutor::new()));
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("bin")).unwrap();
+    std::fs::write(root.path().join("bin/bat"), "fixture").unwrap();
+    std::fs::write(root.path().join(".crates2.json"), serde_json::json!({"installs": {
+        "bat 0.24.0 (registry+https://github.com/rust-lang/crates.io-index)": {
+            "version_req": "=0.24.0", "bins":["bat"], "features":[], "all_features":false,
+            "no_default_features":false, "profile":"release", "target":"aarch64-apple-darwin", "rustc":"rustc 1.98.1"
+        }
+    }}).to_string()).unwrap();
+    let runtime = build_runtime(Arc::new(CargoFakeExecutor::new()), root.path().into());
 
     let detect_task = runtime
         .submit(ManagerId::Cargo, AdapterRequest::Detect(DetectRequest))

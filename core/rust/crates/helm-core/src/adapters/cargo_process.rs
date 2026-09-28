@@ -14,14 +14,29 @@ use crate::models::{CoreError, CoreErrorKind, ManagerAction, ManagerId, SearchQu
 
 pub struct ProcessCargoSource {
     executor: Arc<dyn ProcessExecutor>,
+    installation_root: Option<std::path::PathBuf>,
 }
 
 impl ProcessCargoSource {
     pub fn new(executor: Arc<dyn ProcessExecutor>) -> Self {
-        Self { executor }
+        Self {
+            executor,
+            installation_root: None,
+        }
     }
 
-    fn cargo_bin_dir() -> String {
+    /// Bind an explicitly selected installation root, including isolated certification scopes.
+    pub fn with_installation_root(
+        executor: Arc<dyn ProcessExecutor>,
+        root: std::path::PathBuf,
+    ) -> Self {
+        Self {
+            executor,
+            installation_root: Some(root),
+        }
+    }
+
+    fn cargo_home() -> std::path::PathBuf {
         std::env::var_os("CARGO_HOME")
             .filter(|value| !value.is_empty())
             .map(std::path::PathBuf::from)
@@ -32,9 +47,10 @@ impl ProcessCargoSource {
                     .unwrap_or_default()
                     .join(".cargo")
             })
-            .join("bin")
-            .to_string_lossy()
-            .to_string()
+    }
+
+    fn cargo_bin_dir() -> String {
+        Self::cargo_home().join("bin").to_string_lossy().to_string()
     }
 
     fn configure_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
@@ -56,6 +72,13 @@ impl ProcessCargoSource {
         }
 
         request
+    }
+
+    fn scope_request(&self, mut request: ProcessSpawnRequest) -> ProcessSpawnRequest {
+        if let Some(root) = &self.installation_root {
+            request.command = request.command.args(["--root", &root.to_string_lossy()]);
+        }
+        self.configure_request(request)
     }
 }
 
@@ -94,7 +117,7 @@ impl CargoSource for ProcessCargoSource {
     }
 
     fn list_installed(&self) -> AdapterResult<String> {
-        let request = self.configure_request(cargo_list_installed_request(None));
+        let request = self.scope_request(cargo_list_installed_request(None));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
@@ -118,17 +141,45 @@ impl CargoSource for ProcessCargoSource {
     }
 
     fn install(&self, name: &str, version: Option<&str>) -> AdapterResult<String> {
-        let request = self.configure_request(cargo_install_request(None, name, version));
+        let request = self.scope_request(cargo_install_request(None, name, version));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn uninstall(&self, name: &str) -> AdapterResult<String> {
-        let request = self.configure_request(cargo_uninstall_request(None, name));
+        let request = self.scope_request(cargo_uninstall_request(None, name));
         run_and_collect_stdout(self.executor.as_ref(), request)
     }
 
     fn upgrade(&self, name: &str, version: &str) -> AdapterResult<String> {
-        let request = self.configure_request(cargo_upgrade_request(None, name, version));
-        run_and_collect_stdout(self.executor.as_ref(), request)
+        use super::cargo_receipt::{CargoUpgradeReceipt, install_root, receipt_error};
+        if std::env::var_os("CARGO_HOME")
+            .is_some_and(|home| !std::path::Path::new(&home).is_absolute())
+        {
+            return Err(receipt_error(
+                "Cargo home must be absolute for a verified upgrade",
+            ));
+        }
+        if std::env::vars_os().any(|(key, value)| {
+            let key = key.to_string_lossy();
+            key.starts_with("CARGO_SOURCE_")
+                || key == "CARGO_REGISTRIES_CRATES_IO_INDEX"
+                || (key == "CARGO_REGISTRY_DEFAULT" && value != "crates-io")
+        }) {
+            return Err(receipt_error(
+                "Cargo source environment overrides require manual review",
+            ));
+        }
+        let explicit = self
+            .installation_root
+            .clone()
+            .or_else(|| std::env::var_os("CARGO_INSTALL_ROOT").map(std::path::PathBuf::from));
+        let root = install_root(&Self::cargo_home(), explicit)?;
+        let receipt = CargoUpgradeReceipt::load(root, name)?;
+        let mut request = self.configure_request(cargo_upgrade_request(None, name, version));
+        request.command = receipt.apply(request.command);
+        receipt.revalidate()?;
+        let output = run_and_collect_stdout(self.executor.as_ref(), request)?;
+        receipt.verify(version)?;
+        Ok(output)
     }
 }

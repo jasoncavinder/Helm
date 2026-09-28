@@ -6,8 +6,8 @@ Use [v0.20 release readiness](validation/v0.20-release-readiness.md) as the curr
 ordered checklist, superseding older per-PR pending instructions below. PRs
 #557/#558 and #568/#569 are reviewed and merged with passing head checks. Do not repeat their
 accepted owner checks without a relevant change.
-PRs #570/#571 are also reviewed and merged. The candidate plan-binding follow-up
-retains their verified-result persistence and bounded authority-overlap coverage.
+PRs #570/#571/#572 are also reviewed and merged. Preserve their verified-result
+persistence, candidate/retry binding and bounded authority-overlap coverage.
 
 1. Complete upgrade-first-run production entry (#561), using the implemented
    [shared acknowledgment foundation](validation/v0.20-first-run-acknowledgment.md).
@@ -37,8 +37,12 @@ retains their verified-result persistence and bounded authority-overlap coverage
    now preserves GUI-reviewed and CLI workflow versions and rejects stale
    downgrades. Preserve failed-task candidate/scope bindings across preview
    refreshes; require a new review when original retry metadata is unavailable.
-   Finish source/scope/receipt-feature binding, explicit
-   absent/stale-lock handling and full receipt reconciliation;
+   Preserve the [execution-time native receipt guard](validation/v0.20-cargo-receipt-preservation.md)
+   for crates.io upgrades and its fail-closed unsupported-source handling.
+   Retain acceptance of native null historical version requirements while keeping
+   exact upgrade targets and incomplete-metadata rejection.
+   Finish review-time executable/root/source binding, install/reinstall policy,
+   explicit absent/stale-lock handling and remaining receipt reconciliation;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,
