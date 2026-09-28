@@ -43,8 +43,9 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    and its missing/stale-root/cache-drift rejections without unlocked fallback.
    Preserve [discovered Cargo scope binding](validation/v0.20-cargo-reviewed-scope.md)
    through cached workflows/retries and require refresh/review on drift.
-   Finish general install/reinstall policy and remaining
-   failure/cancellation/reconciliation evidence;
+   Preserve the [fresh install/reinstall policy](validation/v0.20-cargo-install-policy.md),
+   including native empty-store handling and existing option preservation.
+   Finish integrated-head and remaining failure/cancellation/reconciliation evidence;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,

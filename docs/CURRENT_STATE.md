@@ -72,8 +72,12 @@ native receipt, root, executable/toolchain and candidate identity through cached
 plans and retries; changed or unavailable scope fails closed. Native Rustup-backed
 CLI stale-root/binary rejection and refreshed upgrade pass. Explicit unbound
 low-level calls retain task-start semantics; there is no new durable CLI
-confirmation transaction. General install/reinstall policy and the remaining
-evidence still need work before #564 closes.
+confirmation transaction. The [install/reinstall policy](validation/v0.20-cargo-install-policy.md)
+extends published-lock validation to fresh installs, pins task-start candidates,
+preserves existing receipt options on reinstall, and verifies unrelated state.
+The paired-empty native receipt case now has a narrow fresh-store contract.
+Full Rust VM regressions and real fresh install/reinstall pass; integrated-head
+validation and the remaining evidence are still required before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.

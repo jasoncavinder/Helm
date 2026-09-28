@@ -98,7 +98,7 @@ fn read_bounded(path: &Path) -> AdapterResult<Vec<u8>> {
     Ok(bytes)
 }
 
-fn read_receipts(root: &Path) -> AdapterResult<BTreeMap<String, CargoInstallReceipt>> {
+pub(super) fn read_receipts(root: &Path) -> AdapterResult<BTreeMap<String, CargoInstallReceipt>> {
     let bytes = read_bounded(&root.join(".crates2.json"))?;
     let receipts: CargoReceipts = serde_json::from_slice(&bytes)
         .map_err(|_| receipt_error("Cargo installation metadata is incomplete or unsupported"))?;
@@ -115,7 +115,7 @@ fn simple_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"_.+-".contains(&byte))
 }
 
-fn key_parts(key: &str) -> Option<(&str, &str, &str)> {
+pub(super) fn key_parts(key: &str) -> Option<(&str, &str, &str)> {
     let (package, source) = key.strip_suffix(')')?.split_once(" (")?;
     let (name, version) = package.split_once(' ')?;
     simple_name(name).then_some(())?;

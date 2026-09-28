@@ -5,6 +5,7 @@ pub mod bundler_process;
 pub mod cargo;
 pub mod cargo_binstall;
 pub mod cargo_binstall_process;
+mod cargo_fresh_install;
 pub(crate) mod cargo_outdated;
 pub mod cargo_process;
 mod cargo_published_lock;
