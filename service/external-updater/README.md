@@ -1,8 +1,8 @@
 # External Updater Native Observation
 
 Development foundation only. This package is not embedded in Helm and has no
-installer, network request, manager mutation, privileged operation or client
-transport. It does not enable direct third-party updates.
+installer, network request, manager mutation, privileged operation or updater
+command transport. Its data-free XPC bootstrap does not enable direct updates.
 
 `NativeTargetObserver` reads a concrete application beneath `/Applications` or
 the current OS account's `Applications` directory. It rejects aliases, nested
@@ -29,11 +29,15 @@ advertised as an updater.
 
 `ExternalUpdaterPeerAuthentication` prepares inactive anonymous XPC listeners
 and connections with fixed, bidirectional macOS code-signing requirements. It
-does not expose an updater protocol or exported production object. The future
-helper delegate must call `admit` before exporting/activating an incoming
-connection. The returned Boolean means gate configuration, not successful peer
-authentication or operation authorization. Never use it to populate a trusted
-boundary observation. Native message delivery enforces the live requirement.
+does not expose an updater command protocol. For the bootstrap, the helper
+delegate passes each newly accepted, inactive connection directly to
+`ExternalUpdaterBootstrapServer`, whose initializer calls `admit` exactly once
+before exporting or activating it. Do not call `admit` separately first:
+Foundation permits configuring the connection requirement only once. A future
+alternative exported object must perform that same setup before activation.
+The returned Boolean means gate configuration, not successful peer authentication
+or operation authorization. Never use it to populate a trusted boundary
+observation. Native message delivery enforces the live requirement.
 
 Incoming peers require the exact sandboxed Developer ID consumer Helm identity,
 team and signed distribution field; responses require the exact separate helper
@@ -44,8 +48,12 @@ connections are required and root/setuid process initialization is rejected.
 Interruption invalidates the connection instead of silently reconnecting. A
 future runtime must quarantine its durable operation on connection loss.
 
-A client must complete an authenticated, data-free handshake and validate the
-peer account before sending an operation. Response authentication alone does
+A client uses `ExternalUpdaterBootstrapClient` to complete the authenticated,
+data-free nonce/version handshake and validate the peer account before any future
+operation could be sent. It fails closed on malformed replies, timeout,
+cancellation or connection loss, with no reconnect. Readiness is not update
+consent, and the session nonce is not an authorization token. Response
+authentication alone does
 not prove that an outgoing request was never observed by an impostor endpoint.
 This package deliberately has no such operation request yet. Real accepted-peer,
 entitlement/notarization, service packaging and sandbox-access tests are still
