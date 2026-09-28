@@ -38,9 +38,9 @@ impl ProcessFailureDiagnostic {
 
     pub(crate) fn owner(self) -> &'static str {
         match self {
-            Self::CargoToolchainUnavailable | Self::CargoReceiptUnsupported | Self::CargoOfflineCacheMiss => {
-                "local_configuration"
-            }
+            Self::CargoToolchainUnavailable
+            | Self::CargoReceiptUnsupported
+            | Self::CargoOfflineCacheMiss => "local_configuration",
             Self::CargoBuildFailed | Self::CargoPublishedLockUnavailable => "package_build",
             Self::DnsResolutionFailed | Self::EndpointUnreachable => "undetermined",
         }
