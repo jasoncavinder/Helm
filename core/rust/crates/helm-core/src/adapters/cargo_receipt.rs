@@ -134,6 +134,10 @@ fn key_parts(key: &str) -> Option<(&str, &str, &str)> {
 }
 
 impl CargoUpgradeReceipt {
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
     pub(crate) fn load(root: PathBuf, name: &str) -> AdapterResult<Self> {
         if !root.is_absolute() || root.to_str().is_none() {
             return Err(receipt_error("Cargo install root must be absolute UTF-8"));

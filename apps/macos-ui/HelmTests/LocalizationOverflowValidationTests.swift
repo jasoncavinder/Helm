@@ -2,6 +2,20 @@ import XCTest
 import AppKit
 
 final class LocalizationOverflowValidationTests: XCTestCase {
+    func testPublishedLockGuidanceRequiresTrustedLeadingMarker() {
+        let marker = "cargo_published_lock_unavailable"
+        for code in ["unsupported_capability", "process_failure"] {
+            XCTAssertEqual(TaskSafetyGuidance.localizationKey(errorCode: code,
+                errorMessage: "[\(marker)] detail"), "service.error.\(marker)")
+            XCTAssertEqual(TaskSafetyGuidance.localizationKey(taskLogMessages: [
+                "task failed [\(code)]: [\(marker)] detail"
+            ]), "service.error.\(marker)")
+            XCTAssertNil(TaskSafetyGuidance.localizationKey(errorCode: code,
+                errorMessage: "unrelated [\(marker)] detail"))
+        }
+        XCTAssertNil(TaskSafetyGuidance.localizationKey(errorCode: "cancelled",
+            errorMessage: "[\(marker)] detail"))
+    }
     func testCargoReceiptGuidanceCoversPreflightAndPostconditionFailures() {
         for code in ["unsupported_capability", "process_failure"] {
             XCTAssertEqual(TaskSafetyGuidance.localizationKey(errorCode: code,
@@ -45,7 +59,8 @@ final class LocalizationOverflowValidationTests: XCTestCase {
     func testTaskSafetyGuidanceIsTranslatedAndMirrored() throws {
         let keys = ["service.error.pnpm_global_mutation_unsupported", "service.error.developer_tools_required",
                     "service.error.cargo_toolchain_unavailable", "service.error.dns_resolution_failed",
-                    "service.error.endpoint_unreachable", "service.error.cargo_build_failed", "service.error.cargo_receipt_unsupported"]
+                    "service.error.endpoint_unreachable", "service.error.cargo_build_failed", "service.error.cargo_receipt_unsupported",
+                    "service.error.cargo_published_lock_unavailable"]
         func strings(_ base: String, _ locale: String) throws -> [String: String] {
             let data = try Data(contentsOf: repoRootURL.appendingPathComponent("\(base)/\(locale)/service.json"))
             return try JSONDecoder().decode([String: String].self, from: data)

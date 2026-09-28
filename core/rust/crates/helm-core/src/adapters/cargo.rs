@@ -406,6 +406,7 @@ pub fn cargo_upgrade_request(
             crate_name,
             "--version",
             version,
+            "--locked",
         ]),
         MUTATION_TIMEOUT,
     )
@@ -882,7 +883,14 @@ mod tests {
         let upgrade = cargo_upgrade_request(None, "ripgrep", "14.1.1");
         assert_eq!(
             upgrade.command.args,
-            vec!["install", "--force", "ripgrep", "--version", "14.1.1"]
+            vec![
+                "install",
+                "--force",
+                "ripgrep",
+                "--version",
+                "14.1.1",
+                "--locked"
+            ]
         );
     }
 
