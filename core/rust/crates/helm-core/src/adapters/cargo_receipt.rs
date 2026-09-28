@@ -14,7 +14,10 @@ const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CargoInstallReceipt {
-    pub version_req: String,
+    // Native Cargo writes null when the original install omitted --version.
+    // Keep the field required while accepting that complete native shape.
+    #[serde(deserialize_with = "required_version_req")]
+    pub version_req: Option<String>,
     pub bins: BTreeSet<String>,
     pub features: BTreeSet<String>,
     pub all_features: bool,
@@ -22,6 +25,13 @@ pub(crate) struct CargoInstallReceipt {
     pub profile: String,
     pub target: String,
     pub rustc: String,
+}
+
+fn required_version_req<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,7 +190,10 @@ impl CargoUpgradeReceipt {
                 .all(|feature| !feature.is_empty() && feature.split('/').all(simple_name))
             || !simple_name(&receipt.profile)
             || !simple_name(&receipt.target)
-            || semver::VersionReq::parse(&receipt.version_req).is_err()
+            || receipt
+                .version_req
+                .as_deref()
+                .is_some_and(|requirement| semver::VersionReq::parse(requirement).is_err())
         {
             return Err(receipt_error(
                 "Cargo build options cannot be preserved safely",
@@ -412,6 +425,27 @@ mod tests {
     }
 
     #[test]
+    fn native_unversioned_install_receipt_can_be_upgraded() {
+        let root = tempfile::tempdir().unwrap();
+        let mut original = entry();
+        original["version_req"] = Value::Null;
+        save(root.path(), "1.0.0", CRATES_IO, original.clone());
+        let plan = CargoUpgradeReceipt::load(root.path().into(), "tool").unwrap();
+        plan.revalidate().unwrap();
+        let command =
+            plan.apply(CommandSpec::new("cargo").args(["install", "tool", "--version", "=2.0.0"]));
+        assert!(
+            command
+                .args
+                .windows(2)
+                .any(|args| args == ["--version", "=2.0.0"])
+        );
+        original["version_req"] = json!("=2.0.0");
+        save(root.path(), "2.0.0", CRATES_IO, original);
+        plan.verify("2.0.0").unwrap();
+    }
+
+    #[test]
     fn unsupported_sources_and_incomplete_receipts_fail_closed() {
         let root = tempfile::tempdir().unwrap();
         for source in [
@@ -423,6 +457,7 @@ mod tests {
             assert!(CargoUpgradeReceipt::load(root.path().into(), "tool").is_err());
         }
         for field in [
+            "version_req",
             "features",
             "bins",
             "profile",
@@ -440,6 +475,12 @@ mod tests {
         }
         save(root.path(), "1.0.0", CRATES_IO, entry());
         assert!(CargoUpgradeReceipt::load(root.path().into(), "missing").is_err());
+        for requirement in [json!("not a requirement"), json!(42), json!([])] {
+            let mut invalid = entry();
+            invalid["version_req"] = requirement;
+            save(root.path(), "1.0.0", CRATES_IO, invalid);
+            assert!(CargoUpgradeReceipt::load(root.path().into(), "tool").is_err());
+        }
     }
 
     #[test]
