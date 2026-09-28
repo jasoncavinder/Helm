@@ -1,6 +1,78 @@
 import XCTest
 
 final class FirstRunEntryControllerTests: XCTestCase {
+    func testReplyValidationAndDeliveryOccurOnMainQueue() {
+        let delivered = expectation(description: "main-queue reply")
+        DispatchQueue.global().async {
+            FirstRunReplyDelivery.deliver("evidence", isCurrent: {
+                XCTAssertTrue(Thread.isMainThread)
+                return true
+            }, reply: { value in
+                XCTAssertTrue(Thread.isMainThread)
+                XCTAssertEqual(value, "evidence")
+                delivered.fulfill()
+            })
+        }
+        wait(for: [delivered], timeout: 2)
+    }
+
+    func testConnectionChangedBeforeQueuedReplyCannotAdvanceFirstRun() {
+        XCTAssertTrue(Thread.isMainThread)
+        let service = Service()
+        let snapshot = service.snapshot
+        let entry = FirstRunEntryController(expectedManagerIDs: Service.managerIDs)
+        let queued = DispatchSemaphore(value: 0)
+        let validated = expectation(description: "validation after invalidation")
+        var generation = 1
+        var connected = true
+        var client = service.client
+        client = .init(prepare: { reply in
+            DispatchQueue.global().async {
+                FirstRunReplyDelivery.deliver(snapshot, isCurrent: {
+                    XCTAssertTrue(Thread.isMainThread)
+                    validated.fulfill()
+                    return generation == 1 && connected
+                }, reply: { value in
+                    XCTFail("A stale service reply reached the first-run controller")
+                    reply(value)
+                })
+                queued.signal()
+            }
+        }, acceptTerms: client.acceptTerms, observe: client.observe,
+        acknowledge: client.acknowledge, activate: client.activate)
+        entry.begin(client: client, requiresLegalAcceptance: true, localAcceptedTerms: nil) {
+            XCTFail("A stale reply activated the runtime")
+        }
+        // Hold the main queue until the background transport has queued delivery.
+        // Invalidation wins before any connection state is read by that reply.
+        XCTAssertEqual(queued.wait(timeout: .now() + 2), .success)
+        generation = 2
+        connected = false
+        entry.disconnect()
+        wait(for: [validated], timeout: 2)
+        XCTAssertEqual(entry.phase, .failed)
+        XCTAssertTrue(service.events.isEmpty)
+    }
+
+    func testCurrentBackgroundReplyAdvancesControllerWithoutInlinePublishing() {
+        let service = Service()
+        let snapshot = service.snapshot
+        let entry = FirstRunEntryController(expectedManagerIDs: Service.managerIDs)
+        var client = service.client
+        client = .init(prepare: { reply in
+            DispatchQueue.global().async {
+                FirstRunReplyDelivery.deliver(snapshot, isCurrent: { true }, reply: reply)
+            }
+        }, acceptTerms: client.acceptTerms, observe: client.observe,
+        acknowledge: client.acknowledge, activate: client.activate)
+        entry.begin(client: client, requiresLegalAcceptance: true, localAcceptedTerms: nil) {
+            XCTFail("No acknowledgment was given")
+        }
+        XCTAssertEqual(entry.phase, .preparing)
+        awaitPhase(.legal, entry)
+        XCTAssertFalse(service.acknowledged)
+    }
+
     private final class Service {
         static let managerIDs: Set<String> = ["homebrew_formula", "homebrew_cask", "cargo"]
         var acknowledged = false
