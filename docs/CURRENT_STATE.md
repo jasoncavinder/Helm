@@ -29,6 +29,8 @@ Shipping builds still request legacy compatibility. Debug-only
 `HELM_FIRST_RUN_PRODUCTION_QA=1` selects the real prepared startup, required legal
 acceptance with durable readback, local observation, explicit acknowledgment and
 activation sequence. It preserves the independent legacy CLI onboarding flag.
+First-run XPC reply validation and delivery are serialized on the main queue;
+connection invalidation and the controller generation fence reject stale replies.
 The safe verified action and full session consent/receipt wiring remain open.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only

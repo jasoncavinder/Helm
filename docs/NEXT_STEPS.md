@@ -19,6 +19,8 @@ retains their verified-result persistence and bounded authority-overlap coverage
    verifies legal acceptance/acknowledgment readback, and keeps polling/updaters
    behind activation. Shipping retains legacy compatibility. Candidate files
    are not current readiness or action approval.
+   Preserve main-queue first-run reply validation and both connection/controller
+   generation fences when extending this flow.
    Wire the real v0.20 value flow and supported safe verified improvement while
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted
