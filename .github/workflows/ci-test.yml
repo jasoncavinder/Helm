@@ -51,6 +51,10 @@ jobs:
       - name: Run cargo test
         run: cargo test --workspace
 
+      - name: Validate uv certification harness safety
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/tests -p test_uv_vm_cli_plan.py
+
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
 

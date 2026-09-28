@@ -4,6 +4,11 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The [repeatable uv multi-package Plan check](validation/v0.20-uv-multi-package-plan.md)
+passes both bounded supported endpoints in the VM, including pin exclusion,
+receipt preservation and a second no-op run. This adds reusable CLI evidence,
+not a signed GUI or platform gate waiver.
+
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
 PRs #570/#571 are also reviewed and merged; their Cargo persistence and
