@@ -23,34 +23,102 @@ import tempfile
 import time
 
 
-def run_process(argv, env, cwd, timeout=1800):
+class OwnedSessions:
+    """Only sessions created by this harness, including surviving coordinators."""
+
+    def __init__(self, grace=3):
+        self.sessions = set()
+        self.grace = grace
+
+    def add(self, pid):
+        # Popen(start_new_session=True) makes the child its session leader.
+        if pid <= 1 or pid == os.getsid(0):
+            raise RuntimeError('refusing to own the caller session')
+        self.sessions.add(pid)
+
+    def members(self):
+        if not self.sessions:
+            return []
+        # BSD/macOS and procps/Linux both support these fields. Do not use the
+        # platform-dependent ps "sess" column: getsid returns the actual ID.
+        snapshot = subprocess.run(['/bin/ps', '-axo', 'pid=,stat='],
+                                  env={'LC_ALL': 'C', 'PATH': '/usr/bin:/bin'},
+                                  stdin=subprocess.DEVNULL, capture_output=True,
+                                  text=True, timeout=3, check=True)
+        members = []
+        for line in snapshot.stdout.splitlines():
+            fields = line.split()
+            if len(fields) != 2 or not fields[0].isdigit():
+                raise RuntimeError('cannot validate owned process inventory')
+            pid, state = int(fields[0]), fields[1]
+            with suppress(ProcessLookupError, PermissionError):
+                session = os.getsid(pid)
+                if session in self.sessions and not state.startswith('Z'):
+                    members.append((pid, session))
+        return members
+
+    def stop(self):
+        # Cargo has its own process group, and a later CLI waiter need not be
+        # the parent of the persistent coordinator. Signal every live member
+        # of our sessions, rechecking membership immediately before each signal.
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            deadline = time.monotonic() + self.grace
+            while True:
+                members = self.members()
+                if not members:
+                    self.sessions.clear()
+                    return
+                for pid, session in members:
+                    with suppress(ProcessLookupError):
+                        if os.getsid(pid) == session:
+                            os.kill(pid, sig)
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.05)
+        if self.members():
+            raise RuntimeError('owned subprocesses did not stop within the cleanup deadline')
+        self.sessions.clear()
+
+    def forget_exited(self):
+        # Do not keep completed session IDs throughout a long compilation:
+        # once empty, their numbers can eventually be reused by unrelated work.
+        self.sessions.intersection_update(session for _, session in self.members())
+
+
+def run_process(argv, env, cwd, timeout=1800, owned_sessions=None):
     started = time.monotonic()
     timed_out = False
-    with subprocess.Popen(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                          text=True, start_new_session=True) as process:
+    sessions = owned_sessions if owned_sessions is not None else OwnedSessions()
+    process = subprocess.Popen(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, start_new_session=True)
+    sessions.add(process.pid)
+    try:
         try:
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGTERM)
-            try:
-                stdout, stderr = process.communicate(timeout=3)
-            except subprocess.TimeoutExpired:
-                with suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-                stdout, stderr = process.communicate()
+            sessions.stop()
+            stdout, stderr = process.communicate(timeout=3)
         except BaseException:
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.communicate(timeout=3)
-            except subprocess.TimeoutExpired:
-                with suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-                process.communicate()
+            sessions.stop()
             raise
+    finally:
+        try:
+            if owned_sessions is None:
+                sessions.stop()
+            else:
+                sessions.forget_exited()
+        finally:
+            # Even if process inventory fails, reap the exact direct child.
+            # All waits remain bounded; do not block indefinitely on pipe EOF.
+            if process.poll() is None:
+                process.kill()
+            try:
+                process.wait(timeout=3)
+            finally:
+                process.stdout.close()
+                process.stderr.close()
     return {'argv': argv, 'exit': process.returncode, 'stdout': stdout,
             'stderr': stderr, 'timed_out': timed_out,
             'seconds': round(time.monotonic() - started, 3)}
@@ -111,10 +179,12 @@ def main():
               'rustc_sha256': digest(toolchain / 'bin/rustc'), 'toolchain': args.toolchain,
               'scope': 'isolated CLI/core public crates.io lifecycle; not GUI or all-crate certification'}
     records = []
+    owned_sessions = OwnedSessions()
     print(f'Evidence: {root}', flush=True)
 
     def run(label, argv):
-        result = run_process([str(argument) for argument in argv], env, root)
+        result = run_process([str(argument) for argument in argv], env, root,
+                             owned_sessions=owned_sessions)
         result['label'] = label
         records.append(result)
         (root / 'commands.json').write_text(json.dumps(records, indent=2) + '\n')
@@ -199,8 +269,14 @@ def main():
         report.update(status='failed', error=f'{type(error).__name__}: {error}')
         raise
     finally:
-        report['commands'] = len(records)
-        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+        try:
+            owned_sessions.stop()
+        except BaseException as error:
+            report.update(status='failed', cleanup_error=f'{type(error).__name__}: {error}')
+            raise
+        finally:
+            report['commands'] = len(records)
+            (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
 
 
 if __name__ == '__main__':

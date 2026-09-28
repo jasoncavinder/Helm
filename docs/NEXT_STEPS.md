@@ -48,6 +48,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    Use the [opt-in Cargo VM lifecycle](validation/v0.20-cargo-cli-lifecycle.md)
    to repeat the real multi-package and empty-store postconditions on future
    candidates; ordinary CI runs its harness guards, not native package installs.
+   Retain lifecycle-wide owned-session cleanup on timeout/interruption and normal
+   completion, including coordinator children, without stopping unrelated work.
    Finish integrated-head and remaining failure/cancellation/reconciliation evidence;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.

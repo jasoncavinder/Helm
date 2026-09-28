@@ -79,6 +79,9 @@ The paired-empty native receipt case now has a narrow fresh-store contract.
 The [opt-in VM CLI lifecycle](validation/v0.20-cargo-cli-lifecycle.md) now makes
 two-package Plan, sibling-preserving removal, empty-store recovery and native
 option-preserving reinstall evidence repeatable without host package changes.
+Its timeout/interruption cleanup now covers all retained harness-owned sessions,
+including the earlier CLI coordinator and separately grouped Cargo children,
+without signaling unrelated sessions; targeted VM regressions cover this boundary.
 Full Rust VM regressions and real fresh install/reinstall pass; integrated-head
 validation and the remaining evidence are still required before #564 closes.
 Signed GUI review remains pending. The
