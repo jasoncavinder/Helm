@@ -31,6 +31,8 @@ use crate::sqlite::migrations::{
 use crate::versioning::normalize_package_family_key;
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
+#[path = "store_external_update.rs"]
+mod external_update;
 #[cfg(unix)]
 #[path = "store_first_run_repair.rs"]
 mod first_run_repair;
@@ -2934,7 +2936,22 @@ fn apply_down_migration(
     connection: &mut Connection,
     migration: &SqliteMigration,
 ) -> rusqlite::Result<()> {
-    let transaction = connection.transaction()?;
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if migration.version == 23 {
+        // Reset must not erase an external installer's unresolved reservation.
+        // The same write lock serializes this check with new session claims.
+        let pending: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM external_update_sessions WHERE holds_target = 1)",
+            [],
+            |row| row.get(0),
+        )?;
+        if pending {
+            return Err(storage_error_sqlite(
+                "external update recovery required before resetting local data",
+            ));
+        }
+    }
     transaction.execute_batch(migration.down_sql)?;
     transaction.execute(
         &format!("DELETE FROM {MIGRATIONS_TABLE} WHERE version = ?1"),

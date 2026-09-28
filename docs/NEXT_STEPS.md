@@ -66,6 +66,9 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    Preserve the [passing Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
    and complete its signed GUI progress/failure/recovery checks without repeating
    the accepted chooser-only matrix.
+   Preserve the [durable session foundation](validation/v0.20-sparkle-durable-session.md)
+   and complete native observation, authenticated helper/callback integration,
+   installer-quiescence recovery and signed live QA before enabling direct updates.
 4. Only then freeze and prepare v0.20.0-rc.1 through the protected release flow,
    final integrated VM/CI gates and explicit release-mutation approval.
 
