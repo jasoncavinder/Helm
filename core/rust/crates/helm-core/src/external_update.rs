@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
 
+pub mod durable;
+
 pub const HELPER_IDENTIFIER: &str = "com.jasoncavinder.Helm.SparkleExternalUpdater";
 const HELM_IDENTIFIER: &str = "com.jasoncavinder.Helm";
 const HELM_TEAM: &str = "V73WPJR9M4";
@@ -232,8 +234,8 @@ impl ReviewedUpdate {
         &self.fingerprint
     }
 
-    /// Consumes this in-memory review. A future runtime must independently enforce
-    /// durable single-use authorization and serialize actions for the target app.
+    /// Consumes this in-memory review. The external runtime must persist the
+    /// returned session through `durable` before starting any side effect.
     pub fn confirm(
         self,
         target: TargetObservation,

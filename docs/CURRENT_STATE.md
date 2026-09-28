@@ -17,7 +17,13 @@ a pure shared-core eligibility, stale-review and result-verification contract.
 Its 12 new policy tests and all 821 core unit tests pass in the VM. It does not
 add a helper, transport, installer or new automatic capability; native observation,
 durable authorization, signed/notarized packaging and live integration remain
-open. The current vendor-app handoff and Helm's sandbox are unchanged.
+open. The [durable session foundation](validation/v0.20-sparkle-durable-session.md)
+now consumes operation IDs, serializes targets, records handoff before returning
+an installation permit, and quarantines uncertain results without resumption.
+Migration 23 is append-only; authorization writes use full synchronization and
+pending reservations block destructive reset. Native observation, authenticated
+helper integration and signed installation/recovery evidence are still required.
+The current vendor-app handoff and Helm's sandbox are unchanged.
 
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
