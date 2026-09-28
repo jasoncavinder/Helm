@@ -80,6 +80,9 @@ jobs:
       - name: Validate Ventura arm64 compatibility contract
         run: scripts/ci/check_macos_ventura_compatibility.sh
 
+      - name: Test external updater native observation (no installer)
+        run: swift test --package-path service/external-updater --arch arm64
+
       - name: Build and test Xcode project
         run: |
           set -euo pipefail

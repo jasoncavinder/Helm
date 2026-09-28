@@ -38,6 +38,12 @@ an installation permit, and quarantines uncertain results without resumption.
 Migration 23 is append-only; authorization writes use full synchronization and
 pending reservations block destructive reset. Native observation, authenticated
 helper integration and signed installation/recovery evidence are still required.
+The [native observation slice](validation/v0.20-sparkle-native-observation.md)
+now provides a read-only, nonshipping macOS package with local signature,
+filesystem identity, bounded metadata and ownership/ACL evidence. It neither
+trusts client-supplied signing facts nor establishes manager authority. An actual
+signed Rectangle app was inspected in the VM without launch or mutation; this is
+not a notarized helper, direct update, or installation/recovery certification.
 The current vendor-app handoff and Helm's sandbox are unchanged.
 
 The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
