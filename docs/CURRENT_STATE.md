@@ -65,8 +65,12 @@ It does not claim PATH readiness or general manager health. The
 [guarded repair presentation](validation/v0.20-first-run-repair-presentation.md)
 now adds explicit review/consent and durable receipt readback to the Debug-only
 real entry. Failed replies never cause automatic reapplication; interrupted
-checks remain unverified. Shipping activation and signed consent/accessibility
-QA remain open.
+checks remain unverified. The
+[Wayfinder evidence presentation](validation/v0.20-first-run-wayfinder-evidence.md)
+now gives the real local evidence a fixed-action, source-list-only scrolling
+layout with explicit file-versus-readiness and saved-preference distinctions.
+All 410 Swift tests pass in the VM. Shipping activation and signed visual,
+consent/accessibility QA remain open.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected
