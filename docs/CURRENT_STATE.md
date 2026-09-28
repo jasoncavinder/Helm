@@ -19,12 +19,25 @@ passes bounded VM persistence/error-boundary regressions; see
 [the implementation record](validation/v0.20-first-run-acknowledgment.md).
 The [read-only local observation endpoint](validation/v0.20-first-run-local-observation.md)
 now separates candidate-file evidence from cached detections without launching
-managers, scheduling catalogs, or reconciling preferences. It is not yet consumed
-by first-run UI. The [startup boundary](validation/v0.20-first-run-startup-gate.md)
+managers, scheduling catalogs, or reconciling preferences. The
+[development-gated real entry](validation/v0.20-first-run-entry-integration.md)
+now consumes this evidence without synthetic progress or receipts. The
+[startup boundary](validation/v0.20-first-run-startup-gate.md)
 now separates storage preparation from runtime activation, enforces an optional
 saved-acknowledgment gate, and defers UI polling/updater checks until activation.
-The app currently requests legacy compatibility; real entry/consent wiring and
-the safe verified action remain open.
+Shipping builds still request legacy compatibility. Debug-only
+`HELM_FIRST_RUN_PRODUCTION_QA=1` selects the real prepared startup, required legal
+acceptance with durable readback, local observation, explicit acknowledgment and
+activation sequence. It preserves the independent legacy CLI onboarding flag.
+The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
+adds one finite shared-core/FFI stale-mise-override action with explicit review,
+atomic preference/receipt persistence and bounded post-change verification.
+It does not claim PATH readiness or general manager health. The
+[guarded repair presentation](validation/v0.20-first-run-repair-presentation.md)
+now adds explicit review/consent and durable receipt readback to the Debug-only
+real entry. Failed replies never cause automatic reapplication; interrupted
+checks remain unverified. Shipping activation and signed consent/accessibility
+QA remain open.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected

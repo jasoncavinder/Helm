@@ -31,6 +31,9 @@ use crate::sqlite::migrations::{
 use crate::versioning::normalize_package_family_key;
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
+#[cfg(unix)]
+#[path = "store_first_run_repair.rs"]
+mod first_run_repair;
 const MIGRATION_CHECKSUM_SCHEMA_VERSION: i64 = 20;
 pub const BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY: &str = "bundled:helm";
 

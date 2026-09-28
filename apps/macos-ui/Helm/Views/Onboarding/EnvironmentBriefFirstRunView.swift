@@ -89,7 +89,7 @@ struct EnvironmentBriefFirstRunView: View {
     }
 }
 
-private struct EnvironmentBriefLegalGateView: View {
+struct EnvironmentBriefLegalGateView: View {
     let onAccept: () -> Void
 
     var body: some View {
