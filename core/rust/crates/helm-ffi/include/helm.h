@@ -182,6 +182,15 @@ char *helm_observe_first_run_environment(void);
 char *helm_get_first_run_experience_state(void);
 
 /**
+ * Record explicit acceptance of the current bundled terms before activation.
+ * Does not acknowledge the experience, change manager settings, or start work.
+ *
+ * # Safety
+ * `version` must be null or a valid NUL-terminated UTF-8 string.
+ */
+bool helm_accept_first_run_license_terms(const char *version);
+
+/**
  * Acknowledge exactly the experience the caller presented, not a build version.
  * This does not complete CLI onboarding, accept terms, or authorize any actions.
  *

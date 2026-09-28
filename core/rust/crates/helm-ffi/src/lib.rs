@@ -7351,6 +7351,36 @@ pub extern "C" fn helm_get_first_run_experience_state() -> *mut c_char {
     }
 }
 
+/// Record explicit acceptance of the current bundled terms before activation.
+/// Does not acknowledge the experience, change manager settings, or start work.
+///
+/// # Safety
+/// `version` must be null or a valid NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_accept_first_run_license_terms(version: *const c_char) -> bool {
+    clear_last_error_key();
+    if version.is_null() {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let Ok(version) = (unsafe { CStr::from_ptr(version) }).to_str() else {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    };
+    if version != "helm-source-available-license-v1.0-pre1.0" {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let Some(store) = first_run_store() else {
+        return return_error_bool(SERVICE_ERROR_INTERNAL);
+    };
+    match store.set_cli_accepted_license_terms_version(Some(version)) {
+        Ok(()) => match store.cli_accepted_license_terms_version() {
+            Ok(Some(saved)) if saved == version => true,
+            Ok(_) => return_error_bool(SERVICE_ERROR_STORAGE_FAILURE),
+            Err(error) => return_error_bool(core_error_service_key(&error)),
+        },
+        Err(error) => return_error_bool(core_error_service_key(&error)),
+    }
+}
+
 /// Acknowledge exactly the experience the caller presented, not a build version.
 /// This does not complete CLI onboarding, accept terms, or authorize any actions.
 ///
@@ -16181,6 +16211,45 @@ mod tests {
             assert!(!super::helm_set_safe_mode(true));
             assert!(!super::helm_set_cli_onboarding_completed(false));
             assert!(!super::helm_reset_database());
+            let unknown_terms = CString::new("unreviewed-version").unwrap();
+            assert!(!unsafe { super::helm_accept_first_run_license_terms(std::ptr::null()) });
+            assert!(!unsafe { super::helm_accept_first_run_license_terms(unknown_terms.as_ptr()) });
+            if mode == "fresh" {
+                let terms = CString::new("helm-source-available-license-v1.0-pre1.0").unwrap();
+                let connection = rusqlite::Connection::open(&path).unwrap();
+                connection
+                    .execute_batch(
+                        "CREATE TRIGGER reject_terms BEFORE INSERT ON app_settings
+                    WHEN NEW.key = 'cli_accepted_license_terms_version'
+                    BEGIN SELECT RAISE(ABORT, 'simulated disk failure'); END;",
+                    )
+                    .unwrap();
+                assert!(!unsafe { super::helm_accept_first_run_license_terms(terms.as_ptr()) });
+                assert!(
+                    store
+                        .cli_accepted_license_terms_version()
+                        .unwrap()
+                        .is_none()
+                );
+                connection
+                    .execute_batch("DROP TRIGGER reject_terms")
+                    .unwrap();
+                assert!(unsafe { super::helm_accept_first_run_license_terms(terms.as_ptr()) });
+                assert_eq!(
+                    store
+                        .cli_accepted_license_terms_version()
+                        .unwrap()
+                        .as_deref(),
+                    terms.to_str().ok()
+                );
+                assert!(
+                    !store
+                        .first_run_experience_state(FirstRunExperience::CURRENT)
+                        .unwrap()
+                        .acknowledged
+                );
+                assert!(!super::helm_start_runtime());
+            }
             assert_eq!(history, store.list_recent_tasks(20).unwrap());
             assert_eq!(preferences, store.list_manager_preferences().unwrap());
             assert_eq!(store.cli_onboarding_completed().unwrap(), mode != "fresh");
