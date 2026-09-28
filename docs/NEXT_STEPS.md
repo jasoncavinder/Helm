@@ -19,6 +19,8 @@ retains their verified-result persistence and bounded authority-overlap coverage
    verifies legal acceptance/acknowledgment readback, and keeps polling/updaters
    behind activation. Shipping retains legacy compatibility. Candidate files
    are not current readiness or action approval.
+   Preserve main-queue first-run reply validation and both connection/controller
+   generation fences when extending this flow.
    The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
    supplies the narrow stale-mise-override action and durable verified/unverified
    outcomes through the prepared FFI boundary, not a shipping UI or general setup

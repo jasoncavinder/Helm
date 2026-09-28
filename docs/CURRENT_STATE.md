@@ -29,6 +29,8 @@ Shipping builds still request legacy compatibility. Debug-only
 `HELM_FIRST_RUN_PRODUCTION_QA=1` selects the real prepared startup, required legal
 acceptance with durable readback, local observation, explicit acknowledgment and
 activation sequence. It preserves the independent legacy CLI onboarding flag.
+First-run XPC reply validation and delivery are serialized on the main queue;
+connection invalidation and the controller generation fence reject stale replies.
 The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
 adds one finite shared-core/FFI stale-mise-override action with explicit review,
 atomic preference/receipt persistence and bounded post-change verification.
