@@ -27,6 +27,13 @@ change window layout/level, or replace Settings behavior. Focused policy tests
 pass, but the [two-fullscreen-Space acceptance](validation/v0.20-dashboard-active-space.md)
 remains pending before this issue can close.
 
+The [external Sparkle boundary](architecture/EXTERNAL_SPARKLE_BOUNDARY.md) now has
+a pure shared-core eligibility, stale-review and result-verification contract.
+Its 12 new policy tests and all 821 core unit tests pass in the VM. It does not
+add a helper, transport, installer or new automatic capability; native observation,
+durable authorization, signed/notarized packaging and live integration remain
+open. The current vendor-app handoff and Helm's sandbox are unchanged.
+
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
 The shared Rust/FFI/XPC versioned acknowledgment foundation is implemented and
