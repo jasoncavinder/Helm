@@ -44,6 +44,10 @@ filesystem identity, bounded metadata and ownership/ACL evidence. It neither
 trusts client-supplied signing facts nor establishes manager authority. An actual
 signed Rectangle app was inspected in the VM without launch or mutation; this is
 not a notarized helper, direct update, or installation/recovery certification.
+The [peer-authentication foundation](validation/v0.20-sparkle-peer-authentication.md)
+configures fixed bidirectional native XPC requirements before activation. VM
+control/rejection tests pass; accepted signed peers, a data-free handshake and
+the production helper protocol are not yet implemented or certified.
 The current vendor-app handoff and Helm's sandbox are unchanged.
 
 The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)

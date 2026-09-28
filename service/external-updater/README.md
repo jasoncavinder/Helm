@@ -27,6 +27,30 @@ JSON includes local paths and app identity, so retain output locally or redact
 it before sharing. It is not the shipped Helm CLI and must not be bundled or
 advertised as an updater.
 
+`ExternalUpdaterPeerAuthentication` prepares inactive anonymous XPC listeners
+and connections with fixed, bidirectional macOS code-signing requirements. It
+does not expose an updater protocol or exported production object. The future
+helper delegate must call `admit` before exporting/activating an incoming
+connection. The returned Boolean means gate configuration, not successful peer
+authentication or operation authorization. Never use it to populate a trusted
+boundary observation. Native message delivery enforces the live requirement.
+
+Incoming peers require the exact sandboxed Developer ID consumer Helm identity,
+team and signed distribution field; responses require the exact separate helper
+identity/team without sandbox inheritance. Both require notarization and exclude
+debug injection entitlements. There is no environment/preference override, PID
+lookup, developer-build allowlist or weaker fallback. Same-account incoming
+connections are required and root/setuid process initialization is rejected.
+Interruption invalidates the connection instead of silently reconnecting. A
+future runtime must quarantine its durable operation on connection loss.
+
+A client must complete an authenticated, data-free handshake and validate the
+peer account before sending an operation. Response authentication alone does
+not prove that an outgoing request was never observed by an impostor endpoint.
+This package deliberately has no such operation request yet. Real accepted-peer,
+entitlement/notarization, service packaging and sandbox-access tests are still
+required; unsigned negative/control tests do not substitute for them.
+
 Compile on the host if needed; execute only in the designated VM or CI:
 
 ```sh
