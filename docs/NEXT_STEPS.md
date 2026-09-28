@@ -45,6 +45,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    and its missing/stale-root/cache-drift rejections without unlocked fallback.
    Preserve [discovered Cargo scope binding](validation/v0.20-cargo-reviewed-scope.md)
    through cached workflows/retries and require refresh/review on drift.
+   Keep its outdated-only review tokens reconciled after verified mutations;
+   they must not become installed identities or leave completed updates visible.
    Preserve the [fresh install/reinstall policy](validation/v0.20-cargo-install-policy.md),
    including native empty-store handling and existing option preservation.
    Preserve verified reinstall cache reconciliation, including same-version

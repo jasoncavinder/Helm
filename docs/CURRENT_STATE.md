@@ -72,7 +72,11 @@ dependency resolution; this is not a general resolver or supply-chain verifier.
 The [discovery-scope binding](validation/v0.20-cargo-reviewed-scope.md) now carries
 native receipt, root, executable/toolchain and candidate identity through cached
 plans and retries; changed or unavailable scope fails closed. Native Rustup-backed
-CLI stale-root/binary rejection and refreshed upgrade pass. Explicit unbound
+CLI stale-root/binary rejection and refreshed upgrade pass. Verified Cargo
+install/upgrade/removal results reconcile token-scoped cached updates while
+keeping installed identity unscoped; still-newer candidates retain the verified
+baseline without receiving a fresh review token. Unrelated identities are preserved.
+Explicit unbound
 low-level calls retain task-start semantics; there is no new durable CLI
 confirmation transaction. The [install/reinstall policy](validation/v0.20-cargo-install-policy.md)
 extends published-lock validation to fresh installs, pins task-start candidates,
