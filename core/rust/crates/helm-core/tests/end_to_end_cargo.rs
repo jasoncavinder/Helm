@@ -828,7 +828,10 @@ impl ProcessExecutor for FreshInstallFaultExecutor {
 #[test]
 fn fresh_install_rejects_preflight_drift_and_does_not_retry_after_uncertain_mutation() {
     use helm_core::adapters::cargo::CargoSource;
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let _entered = runtime.enter();
     for fault in [
         "missing-lock",
@@ -882,7 +885,10 @@ fn fresh_install_rejects_preflight_drift_and_does_not_retry_after_uncertain_muta
 #[test]
 fn fresh_install_pins_native_candidate_and_reinstall_preserves_existing_options() {
     use helm_core::adapters::cargo::CargoSource;
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let _entered = runtime.enter();
     let root = tempfile::tempdir().unwrap();
     let (executor, source) = reviewed_scope_source(root.path());

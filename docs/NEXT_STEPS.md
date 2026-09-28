@@ -45,6 +45,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    through cached workflows/retries and require refresh/review on drift.
    Preserve the [fresh install/reinstall policy](validation/v0.20-cargo-install-policy.md),
    including native empty-store handling and existing option preservation.
+   Preserve verified reinstall cache reconciliation, including same-version
+   reinstalls, retained newer candidates and unchanged snapshots on failure.
    Finish integrated-head and remaining failure/cancellation/reconciliation evidence;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
