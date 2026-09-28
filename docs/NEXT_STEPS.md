@@ -2,6 +2,10 @@
 
 ## Immediate v0.20 Closeout
 
+Review the [unattended implementation batch](validation/v0.20-unattended-review-index.md)
+in prerequisite order. Preserve its combined evidence without treating pending
+PRs, unsigned compilation or automated tests as merged/shipping or owner-QA truth.
+
 Use [v0.20 release readiness](validation/v0.20-release-readiness.md) as the current
 ordered checklist, superseding older per-PR pending instructions below. PRs
 #557/#558 and #568/#569 are reviewed and merged with passing head checks. Do not repeat their
