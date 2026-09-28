@@ -21,6 +21,12 @@ The [implementation record](validation/v0.20-environment-insertion-reordering.md
 retains signed pointer/autoscroll/keyboard/VoiceOver QA as pending; #464 is not yet
 closed by automated tests alone.
 
+The Dashboard now applies an explicit active-Space presentation policy before
+ordering/activating its retained window (#529). It does not join every Space,
+change window layout/level, or replace Settings behavior. Focused policy tests
+pass, but the [two-fullscreen-Space acceptance](validation/v0.20-dashboard-active-space.md)
+remains pending before this issue can close.
+
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
 The shared Rust/FFI/XPC versioned acknowledgment foundation is implemented and
