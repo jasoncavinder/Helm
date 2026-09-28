@@ -204,6 +204,41 @@ final class NativeTargetObserverTests: XCTestCase {
         }
     }
 
+    func testAncestorPermissionsChangingDuringSignatureValidationFailClosed() throws {
+        let observer = NativeTargetObserver(roots: [root]) { _ in
+            XCTAssertEqual(chmod(self.root.path, 0o777), 0)
+            return self.signature()
+        }
+        XCTAssertThrowsError(try observer.observe(path: target.path)) { error in
+            XCTAssertEqual(error as? ObservationFailure, .unsafeOwnership)
+        }
+    }
+
+    func testAncestorACLChangingDuringSignatureValidationFailsClosed() throws {
+        let observer = NativeTargetObserver(roots: [root]) { _ in
+            guard let acl = acl_from_text("!#acl 1\nuser:\(UUID().uuidString):::allow:write\n") else {
+                throw ObservationFailure.unreadablePermissions
+            }
+            defer { acl_free(UnsafeMutableRawPointer(acl)) }
+            XCTAssertEqual(acl_set_file(self.root.path, ACL_TYPE_EXTENDED, acl), 0)
+            return self.signature()
+        }
+        XCTAssertThrowsError(try observer.observe(path: target.path)) { error in
+            XCTAssertEqual(error as? ObservationFailure, .unsafeOwnership)
+        }
+    }
+
+    func testSafeAncestorModeDriftRequiresFreshObservation() throws {
+        XCTAssertEqual(chmod(root.path, 0o755), 0)
+        let observer = NativeTargetObserver(roots: [root]) { _ in
+            XCTAssertEqual(chmod(self.root.path, 0o700), 0)
+            return self.signature()
+        }
+        XCTAssertThrowsError(try observer.observe(path: target.path)) { error in
+            XCTAssertEqual(error as? ObservationFailure, .changedDuringObservation)
+        }
+    }
+
     func testOversizedBundleInfoIsRejectedBeforeNativeValidation() throws {
         try Data(repeating: 0, count: 2 * 1024 * 1024 + 1).write(to: target.appendingPathComponent("Contents/Info.plist"))
         var calls = 0
