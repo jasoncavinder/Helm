@@ -8,11 +8,14 @@ final class NativeTargetObserverTests: XCTestCase {
     private var target: URL!
 
     override func setUpWithError() throws {
-        root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+        // Shared temporary roots can contain aliases or writable ancestors;
+        // use a private, home-rooted fixture like the supported app location.
+        root = FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath()
             .appendingPathComponent("helm-observer-\(UUID().uuidString)")
         target = root.appendingPathComponent("Example.app")
         let resources = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources")
         try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        XCTAssertEqual(chmod(root.path, 0o700), 0)
         try plist(signature().info).write(to: target.appendingPathComponent("Contents/Info.plist"))
         try plist([
             "CFBundleIdentifier": "org.sparkle-project.Sparkle",
@@ -237,6 +240,24 @@ final class NativeTargetObserverTests: XCTestCase {
         XCTAssertThrowsError(try observer.observe(path: target.path)) { error in
             XCTAssertEqual(error as? ObservationFailure, .changedDuringObservation)
         }
+    }
+
+    func testWritableParentAboveApplicationRootIsRejectedBeforeValidation() throws {
+        let applicationRoot = root.appendingPathComponent("Applications")
+        try FileManager.default.createDirectory(at: applicationRoot, withIntermediateDirectories: true)
+        let moved = applicationRoot.appendingPathComponent("Example.app")
+        try FileManager.default.moveItem(at: target, to: moved)
+        target = moved
+        XCTAssertEqual(chmod(root.path, 0o777), 0)
+        var calls = 0
+        let observer = NativeTargetObserver(roots: [applicationRoot]) { _ in
+            calls += 1
+            return self.signature()
+        }
+        XCTAssertThrowsError(try observer.observe(path: target.path)) { error in
+            XCTAssertEqual(error as? ObservationFailure, .unsafeOwnership)
+        }
+        XCTAssertEqual(calls, 0)
     }
 
     func testOversizedBundleInfoIsRejectedBeforeNativeValidation() throws {
