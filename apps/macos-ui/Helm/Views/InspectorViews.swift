@@ -2223,6 +2223,8 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func displayedPackageIdentifier(for package: PackageItem) -> String {
+        // Cargo's opaque update receipt is execution provenance, not a package name.
+        if package.managerId.lowercased() == "cargo" { return package.id }
         let trimmedIdentifier = package.packageIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !trimmedIdentifier.isEmpty {
             return trimmedIdentifier

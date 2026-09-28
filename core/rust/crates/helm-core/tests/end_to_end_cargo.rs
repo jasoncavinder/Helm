@@ -327,8 +327,8 @@ async fn unusable_cargo_proxy_retains_inventory_and_recovers_without_toolchain_c
 #[tokio::test]
 async fn cargo_detect_list_search_and_mutate_through_orchestration() {
     let root = tempfile::tempdir().unwrap();
-    seed_installed_bat(root.path());
-    let runtime = build_runtime(Arc::new(CargoFakeExecutor::new()), root.path().into());
+    let (executor, _) = reviewed_scope_source(root.path());
+    let runtime = build_runtime(executor, root.path().into());
 
     assert_cargo_lifecycle(runtime).await;
 }
@@ -357,10 +357,7 @@ async fn assert_cargo_lifecycle(runtime: AdapterRuntime) {
         Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::Detection(info))) => {
             assert!(info.installed);
             assert_eq!(info.version.as_deref(), Some("1.84.1"));
-            assert_eq!(
-                info.executable_path,
-                Some(PathBuf::from("/Users/test/.cargo/bin/cargo"))
-            );
+            assert!(info.executable_path.unwrap().ends_with("manager/cargo"));
         }
         other => panic!("expected Detection response, got {other:?}"),
     }
@@ -721,6 +718,233 @@ struct RustupBoundExecutor {
     proxy: PathBuf,
     bound_info: AtomicBool,
     bound_install: AtomicBool,
+}
+
+struct ReviewedScopeExecutor {
+    inner: CargoFakeExecutor,
+    program: std::sync::Mutex<PathBuf>,
+    change_on_info: AtomicBool,
+    change_after_install: AtomicBool,
+}
+
+impl ProcessExecutor for ReviewedScopeExecutor {
+    fn spawn(&self, request: ProcessSpawnRequest) -> ExecutionResult<Box<dyn RunningProcess>> {
+        if request.command.program.ends_with("which") {
+            let now = SystemTime::now();
+            return Ok(Box::new(FakeProcess {
+                output: ProcessOutput {
+                    status: ProcessExitStatus::ExitCode(0),
+                    stdout: self
+                        .program
+                        .lock()
+                        .unwrap()
+                        .to_string_lossy()
+                        .as_bytes()
+                        .to_vec(),
+                    stderr: Vec::new(),
+                    started_at: now,
+                    finished_at: now,
+                },
+            }));
+        }
+        let info = request
+            .command
+            .args
+            .first()
+            .is_some_and(|arg| arg == "info");
+        let install = request
+            .command
+            .args
+            .starts_with(&["install".into(), "--force".into()]);
+        let result = self.inner.spawn(request);
+        if (info && self.change_on_info.load(Ordering::SeqCst))
+            || (install && self.change_after_install.load(Ordering::SeqCst))
+        {
+            std::fs::write(self.program.lock().unwrap().as_path(), "changed executable").unwrap();
+        }
+        result
+    }
+}
+
+fn reviewed_scope_source(
+    root: &std::path::Path,
+) -> (Arc<ReviewedScopeExecutor>, ProcessCargoSource) {
+    seed_installed_bat(root);
+    let program = root.join("manager/cargo");
+    std::fs::create_dir(program.parent().unwrap()).unwrap();
+    std::fs::write(&program, "original executable").unwrap();
+    let executor = Arc::new(ReviewedScopeExecutor {
+        inner: CargoFakeExecutor::new(),
+        program: std::sync::Mutex::new(program),
+        change_on_info: AtomicBool::new(false),
+        change_after_install: AtomicBool::new(false),
+    });
+    // Seed the packaged candidate/cache fixtures using the existing orchestration fixture.
+    let _ = build_runtime(executor.clone(), root.into());
+    let source = ProcessCargoSource::with_installation_scope(
+        executor.clone(),
+        root.into(),
+        root.join("cargo-home"),
+    );
+    (executor, source)
+}
+
+#[test]
+fn reviewed_scope_upgrade_preserves_the_native_receipt_contract() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _entered = runtime.enter();
+    use helm_core::adapters::cargo::CargoSource;
+    let root = tempfile::tempdir().unwrap();
+    let (executor, source) = reviewed_scope_source(root.path());
+    let token = source.review_upgrade_token("bat", "0.25.0").unwrap();
+    assert!(token.starts_with("cargo-review-v1:"));
+    let payload: serde_json::Value =
+        serde_json::from_str(&source.list_outdated().unwrap()).unwrap();
+    assert_eq!(payload[0]["package_identifier"], token);
+    let result = CargoAdapter::new(source)
+        .execute(AdapterRequest::Upgrade(UpgradeRequest {
+            package: Some(PackageRef {
+                manager: ManagerId::Cargo,
+                name: "bat".into(),
+            }),
+            version: Some("0.25.0".into()),
+            target_name: Some(token),
+        }))
+        .unwrap();
+    assert!(matches!(result, AdapterResponse::Mutation(_)));
+    assert!(executor.inner.bat_upgraded.load(Ordering::SeqCst));
+}
+
+#[test]
+fn changed_reviewed_scope_never_starts_the_install() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _entered = runtime.enter();
+    use helm_core::adapters::cargo::CargoSource;
+    for change in [
+        "binary",
+        "features",
+        "executable",
+        "selection",
+        "candidate",
+        "missing",
+        "unavailable",
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let (executor, source) = reviewed_scope_source(root.path());
+        let mut token = source.review_upgrade_token("bat", "0.25.0").unwrap();
+        let mut version = "0.25.0";
+        match change {
+            "binary" => std::fs::write(root.path().join("bin/bat"), "changed binary").unwrap(),
+            "features" => {
+                let path = root.path().join(".crates2.json");
+                let mut receipt: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                receipt["installs"]
+                    .as_object_mut()
+                    .unwrap()
+                    .values_mut()
+                    .next()
+                    .unwrap()["features"] = serde_json::json!(["color"]);
+                std::fs::write(path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+            }
+            "executable" => {
+                std::fs::write(executor.program.lock().unwrap().as_path(), "changed").unwrap()
+            }
+            "selection" => {
+                let other = root.path().join("other/cargo");
+                std::fs::create_dir(other.parent().unwrap()).unwrap();
+                std::fs::write(&other, "other").unwrap();
+                *executor.program.lock().unwrap() = other;
+            }
+            "candidate" => version = "0.26.0",
+            "missing" => std::fs::remove_file(root.path().join(".crates2.json")).unwrap(),
+            "unavailable" => token = helm_core::adapters::cargo_review_scope::UNAVAILABLE.into(),
+            _ => unreachable!(),
+        }
+        assert!(
+            source
+                .upgrade_reviewed("bat", version, Some(&token))
+                .is_err(),
+            "{change}"
+        );
+        assert!(
+            !executor.inner.bat_upgraded.load(Ordering::SeqCst),
+            "{change}"
+        );
+    }
+}
+
+#[test]
+fn scope_drift_during_metadata_download_fails_before_mutation() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _entered = runtime.enter();
+    use helm_core::adapters::cargo::CargoSource;
+    let root = tempfile::tempdir().unwrap();
+    let (executor, source) = reviewed_scope_source(root.path());
+    let token = source.review_upgrade_token("bat", "0.25.0").unwrap();
+    executor.change_on_info.store(true, Ordering::SeqCst);
+    assert!(
+        source
+            .upgrade_reviewed("bat", "0.25.0", Some(&token))
+            .is_err()
+    );
+    assert!(!executor.inner.bat_upgraded.load(Ordering::SeqCst));
+}
+
+#[test]
+fn scope_drift_after_install_reports_possible_mutation_not_verified_success() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _entered = runtime.enter();
+    use helm_core::adapters::cargo::CargoSource;
+    let root = tempfile::tempdir().unwrap();
+    let (executor, source) = reviewed_scope_source(root.path());
+    let token = source.review_upgrade_token("bat", "0.25.0").unwrap();
+    executor.change_after_install.store(true, Ordering::SeqCst);
+    let error = source
+        .upgrade_reviewed("bat", "0.25.0", Some(&token))
+        .unwrap_err();
+    assert!(error.message.contains("installation may have changed"));
+    assert!(executor.inner.bat_upgraded.load(Ordering::SeqCst));
+}
+
+#[test]
+fn unrelated_receipt_changes_do_not_invalidate_a_remaining_reviewed_package() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _entered = runtime.enter();
+    let root = tempfile::tempdir().unwrap();
+    let (_, source) = reviewed_scope_source(root.path());
+    let token = source.review_upgrade_token("bat", "0.25.0").unwrap();
+    let path = root.path().join(".crates2.json");
+    let mut receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let mut other = receipt["installs"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()
+        .clone();
+    other["bins"] = serde_json::json!(["other"]);
+    receipt["installs"]["other 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)"] =
+        other;
+    std::fs::write(path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+    std::fs::write(root.path().join("bin/other"), "unrelated").unwrap();
+    assert_eq!(source.review_upgrade_token("bat", "0.25.0").unwrap(), token);
 }
 
 impl ProcessExecutor for RustupBoundExecutor {
