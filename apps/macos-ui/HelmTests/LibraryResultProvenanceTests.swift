@@ -5,11 +5,15 @@ final class LibraryResultProvenanceTests: XCTestCase {
     func testRetryUsesFailedTaskBindingAfterPreviewRefresh() {
         for manager in ["cargo", "uv"] {
             let versionKey = manager == "cargo" ? "cargo_candidate_version" : "uv_candidate_version"
+            let scopeKey = manager == "cargo" ? "cargo_review_scope" : "uv_package_identifier"
             var submittedArguments = [versionKey: "1.0.0"]
             var refreshedArguments = [versionKey: "2.0.0"]
             if manager == "uv" {
                 submittedArguments["uv_package_identifier"] = "uv-tool:old-store:tool"
                 refreshedArguments["uv_package_identifier"] = "uv-tool:new-store:tool"
+            } else {
+                submittedArguments[scopeKey] = "cargo-review-v1:old"
+                refreshedArguments[scopeKey] = "cargo-review-v1:new"
             }
             let refreshed = UpgradePreviewPlanner.PlanStep(
                 id: "\(manager):tool", orderIndex: 0, managerId: manager,
@@ -25,7 +29,8 @@ final class LibraryResultProvenanceTests: XCTestCase {
                 stepId: refreshed.id, managerId: refreshed.managerId, task: failed
             )
             XCTAssertEqual(retry?.version, "1.0.0")
-            XCTAssertEqual(retry?.targetName, submittedArguments["uv_package_identifier"])
+            XCTAssertEqual(retry?.targetName, submittedArguments[scopeKey])
+            XCTAssertNotEqual(retry?.targetName, refreshedArguments[scopeKey])
             XCTAssertNotEqual(retry?.version, refreshed.reasonLabelArgs[versionKey])
             XCTAssertNil(ReviewedUpgradeRequestProjection.resolveRetry(
                 stepId: refreshed.id, managerId: manager, task: nil
@@ -47,19 +52,24 @@ final class LibraryResultProvenanceTests: XCTestCase {
     }
 
     func testCargoUpgradeUsesCandidateWithoutChangingRemovalVersion() {
-        let package = PackageItem(id: "cargo:sd", name: "sd", version: "0.7.6",
+        let package = PackageItem(id: "cargo:sd", name: "sd", packageIdentifier: "cargo-review-v1:scope", version: "0.7.6",
                                   latestVersion: "1.0.0", managerId: "cargo", manager: "Cargo")
         XCTAssertEqual(package.upgradeMutationVersion, "1.0.0")
         XCTAssertNil(package.mutationVersion)
+        XCTAssertNil(package.mutationTargetPackageName)
+        XCTAssertEqual(package.upgradeMutationTargetName, "cargo-review-v1:scope")
     }
 
     func testReviewedUpgradeRetryRetainsCargoAndUvBindings() {
         XCTAssertEqual(
             ReviewedUpgradeRequestProjection.resolve(
-                managerId: "cargo", arguments: ["cargo_candidate_version": "1.0.0"]
+                managerId: "cargo", arguments: ["cargo_candidate_version": "1.0.0", "cargo_review_scope": "cargo-review-v1:scope"]
             ),
-            ReviewedUpgradeRequestProjection(targetName: nil, version: "1.0.0")
+            ReviewedUpgradeRequestProjection(targetName: "cargo-review-v1:scope", version: "1.0.0")
         )
+        XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(
+            managerId: "cargo", arguments: ["cargo_candidate_version": "1.0.0"]
+        ))
         XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(managerId: "cargo", arguments: [:]))
         XCTAssertNil(ReviewedUpgradeRequestProjection.resolve(
             managerId: "cargo", arguments: ["cargo_candidate_version": " "]

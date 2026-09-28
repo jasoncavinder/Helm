@@ -997,6 +997,132 @@ fn verified_cargo_upgrade_reconciles_only_its_cached_package_identity() {
 }
 
 #[test]
+fn verified_cargo_mutations_reconcile_only_review_transport_rows() {
+    for scope in [
+        format!("cargo-review-v1:{}", "a".repeat(64)),
+        helm_core::adapters::cargo_review_scope::UNAVAILABLE.into(),
+    ] {
+        for action in ["upgrade", "install", "uninstall"] {
+            for (candidate, observed, newer) in [
+                ("0.26.0", "0.25.0", true),
+                ("0.25.0", "0.25.0", false),
+                ("0.24.0", "0.25.0", false),
+                ("0.25.0", "0.25.0-rc.1", true),
+                ("0.25.0-rc.1", "0.25.0", false),
+                ("0.25.0+z", "0.25.0+a", false),
+                ("unknown", "0.25.0", true),
+            ] {
+                let root = tempfile::tempdir().unwrap();
+                let store = SqliteStore::new(root.path().join("review-transport.db"));
+                store.migrate_to_latest().unwrap();
+                let mut target = OutdatedPackage {
+                    package: PackageRef {
+                        manager: ManagerId::Cargo,
+                        name: "bat".into(),
+                    },
+                    package_identifier: Some(scope.clone()),
+                    installed_version: Some("0.23.0".into()),
+                    candidate_version: candidate.into(),
+                    pinned: true,
+                    restart_required: true,
+                    runtime_state: helm_core::models::PackageRuntimeState {
+                        is_active: true,
+                        is_default: true,
+                        has_override: true,
+                    },
+                };
+                let mut other_manager = target.clone();
+                other_manager.package.manager = ManagerId::HomebrewFormula;
+                let mut other_package = target.clone();
+                other_package.package.name = "zellij".into();
+                let mut unrelated = vec![other_manager, other_package];
+                for identifier in ["other-scope", "cargo-review-v1:invalid"] {
+                    let mut other_identity = target.clone();
+                    other_identity.package_identifier = Some(identifier.into());
+                    unrelated.push(other_identity);
+                }
+                store.upsert_outdated(&unrelated).unwrap();
+                store
+                    .upsert_outdated(std::slice::from_ref(&target))
+                    .unwrap();
+                match action {
+                    "upgrade" => store.apply_upgrade_result(
+                        &target.package,
+                        None,
+                        Some("0.23.0"),
+                        Some(observed),
+                    ),
+                    "install" => store.apply_install_result(&target.package, None, Some(observed)),
+                    "uninstall" => {
+                        store.apply_uninstall_result(&target.package, None, Some("0.23.0"))
+                    }
+                    _ => unreachable!(),
+                }
+                .unwrap();
+                let outdated = store.list_outdated().unwrap();
+                for entry in &unrelated {
+                    assert!(outdated.contains(entry), "{action}: {entry:?}");
+                }
+                let retain = newer && action != "uninstall";
+                assert_eq!(outdated.len(), unrelated.len() + usize::from(retain));
+                if retain {
+                    target.installed_version = Some(observed.into());
+                    assert!(outdated.contains(&target));
+                }
+                let installed = store.list_installed().unwrap();
+                if action == "uninstall" {
+                    assert!(installed.is_empty());
+                } else {
+                    assert_eq!(installed.len(), 1);
+                    assert_eq!(installed[0].package_identifier, None);
+                    assert_eq!(installed[0].installed_version.as_deref(), Some(observed));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn unverified_or_other_identity_results_do_not_reconcile_cargo_review_tokens() {
+    let root = tempfile::tempdir().unwrap();
+    let store = SqliteStore::new(root.path().join("unverified-review-transport.db"));
+    store.migrate_to_latest().unwrap();
+    let target = OutdatedPackage {
+        package: PackageRef {
+            manager: ManagerId::Cargo,
+            name: "bat".into(),
+        },
+        package_identifier: Some(format!("cargo-review-v1:{}", "a".repeat(64))),
+        installed_version: Some("0.24.0".into()),
+        candidate_version: "0.25.0".into(),
+        pinned: false,
+        restart_required: false,
+        runtime_state: Default::default(),
+    };
+    store
+        .upsert_outdated(std::slice::from_ref(&target))
+        .unwrap();
+    store
+        .apply_upgrade_result(&target.package, None, Some("0.24.0"), None)
+        .unwrap();
+    store
+        .apply_install_result(&target.package, None, None)
+        .unwrap();
+    store
+        .apply_upgrade_result(
+            &target.package,
+            Some("other-scope"),
+            Some("0.24.0"),
+            Some("0.25.0"),
+        )
+        .unwrap();
+    store
+        .apply_uninstall_result(&target.package, Some("other-scope"), None)
+        .unwrap();
+    assert_eq!(store.list_outdated().unwrap(), vec![target]);
+}
+
+#[test]
 fn verified_cargo_upgrade_clears_only_reached_candidates() {
     for (candidate, observed, retain) in [
         ("0.26.0", "0.25.0", true),
