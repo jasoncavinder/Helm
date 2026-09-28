@@ -791,7 +791,10 @@ fn reviewed_scope_source(
 
 #[test]
 fn reviewed_scope_upgrade_preserves_the_native_receipt_contract() {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let _entered = runtime.enter();
     use helm_core::adapters::cargo::CargoSource;
     let root = tempfile::tempdir().unwrap();
@@ -817,7 +820,10 @@ fn reviewed_scope_upgrade_preserves_the_native_receipt_contract() {
 
 #[test]
 fn changed_reviewed_scope_never_starts_the_install() {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let _entered = runtime.enter();
     use helm_core::adapters::cargo::CargoSource;
     for change in [
@@ -876,7 +882,10 @@ fn changed_reviewed_scope_never_starts_the_install() {
 
 #[test]
 fn scope_drift_during_metadata_download_fails_before_mutation() {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let _entered = runtime.enter();
     use helm_core::adapters::cargo::CargoSource;
     let root = tempfile::tempdir().unwrap();
@@ -893,7 +902,10 @@ fn scope_drift_during_metadata_download_fails_before_mutation() {
 
 #[test]
 fn scope_drift_after_install_reports_possible_mutation_not_verified_success() {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let _entered = runtime.enter();
     use helm_core::adapters::cargo::CargoSource;
     let root = tempfile::tempdir().unwrap();
@@ -909,7 +921,10 @@ fn scope_drift_after_install_reports_possible_mutation_not_verified_success() {
 
 #[test]
 fn unrelated_receipt_changes_do_not_invalidate_a_remaining_reviewed_package() {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let _entered = runtime.enter();
     let root = tempfile::tempdir().unwrap();
     let (_, source) = reviewed_scope_source(root.path());

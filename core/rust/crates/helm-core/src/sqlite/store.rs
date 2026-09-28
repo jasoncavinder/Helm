@@ -123,6 +123,72 @@ fn read_first_run_acknowledgment(
     }
 }
 
+fn cargo_candidate_is_reached(observed: &str, candidate: &str) -> bool {
+    match (
+        semver::Version::parse(observed),
+        semver::Version::parse(candidate),
+    ) {
+        (Ok(observed), Ok(candidate)) => !observed.cmp_precedence(&candidate).is_lt(),
+        _ => observed == candidate,
+    }
+}
+
+/// Cargo review tokens describe an outdated snapshot, not a second installed
+/// package identity. Reconcile those rows alongside the native unscoped result.
+fn reconcile_cargo_reviewed_outdated(
+    transaction: &rusqlite::Transaction<'_>,
+    package: &PackageRef,
+    package_identifier: &str,
+    observed_version: Option<&str>,
+) -> rusqlite::Result<()> {
+    use crate::adapters::cargo_review_scope::{UNAVAILABLE, is_token};
+
+    if package.manager != ManagerId::Cargo
+        || !package_identifier.is_empty()
+        || package.name == "__all__"
+    {
+        return Ok(());
+    }
+    let mut statement = transaction.prepare(
+        "SELECT package_identifier, candidate_version FROM outdated_packages
+         WHERE manager_id = ?1 AND package_name = ?2",
+    )?;
+    let entries = statement
+        .query_map(
+            params![package.manager.as_str(), package.name.as_str()],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (identifier, candidate) in entries {
+        if identifier != UNAVAILABLE && !is_token(&identifier) {
+            continue;
+        }
+        if observed_version.is_none_or(|observed| cargo_candidate_is_reached(observed, &candidate))
+        {
+            transaction.execute(
+                "DELETE FROM outdated_packages
+                 WHERE manager_id = ?1 AND package_name = ?2 AND package_identifier = ?3",
+                params![package.manager.as_str(), package.name.as_str(), identifier],
+            )?;
+        } else {
+            // Preserve a newer candidate without minting a fresh review token.
+            // Changed native state still requires discovery/review before reuse.
+            transaction.execute(
+                "UPDATE outdated_packages SET installed_version = ?4,
+                 updated_at_unix = strftime('%s', 'now')
+                 WHERE manager_id = ?1 AND package_name = ?2 AND package_identifier = ?3",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    identifier,
+                    observed_version
+                ],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 impl FirstRunStore for SqliteStore {
     fn first_run_experience_state(
         &self,
@@ -642,6 +708,15 @@ WHERE manager_id = ?1
                 )?;
             }
 
+            if installed_version.is_some() {
+                reconcile_cargo_reviewed_outdated(
+                    &transaction,
+                    package,
+                    package_identifier_token,
+                    installed_version,
+                )?;
+            }
+
             transaction.commit()?;
             Ok(())
         })
@@ -718,6 +793,13 @@ WHERE manager_id = ?1
                     package.name.as_str(),
                     package_identifier_token,
                 ],
+            )?;
+
+            reconcile_cargo_reviewed_outdated(
+                &transaction,
+                package,
+                package_identifier_token,
+                None,
             )?;
 
             transaction.commit()?;
@@ -836,15 +918,7 @@ ON CONFLICT(manager_id, package_name, package_identifier, installed_version) DO 
                     // An explicitly requested version may still precede the
                     // cached registry candidate. Keep that update visible with
                     // the verified baseline, ignoring SemVer build metadata.
-                    clear_outdated = match (
-                        semver::Version::parse(promoted_version),
-                        semver::Version::parse(&candidate_version),
-                    ) {
-                        (Ok(observed), Ok(candidate)) => {
-                            !observed.cmp_precedence(&candidate).is_lt()
-                        }
-                        _ => promoted_version == candidate_version,
-                    };
+                    clear_outdated = cargo_candidate_is_reached(promoted_version, &candidate_version);
                     if !clear_outdated {
                         transaction.execute(
                             "
@@ -912,6 +986,15 @@ WHERE manager_id = ?1
                         package.name.as_str(),
                         package_identifier_token,
                     ],
+                )?;
+            }
+
+            if verified_cargo {
+                reconcile_cargo_reviewed_outdated(
+                    &transaction,
+                    package,
+                    package_identifier_token,
+                    after_version,
                 )?;
             }
 
