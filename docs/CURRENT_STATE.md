@@ -61,6 +61,8 @@ be downgraded by an old target. The
 preserves crates.io source, explicit install root, binaries, features, profile
 and target when an upgrade actually executes. Unsupported/ambiguous receipts
 fail closed; observed postconditions include unrelated receipt preservation.
+Native null historical version requirements are accepted without relaxing the
+exact upgrade target or source/build-option checks.
 The [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
 now validates exact packaged manifest/lock identities, rejects missing, stale-root,
 unsupported or changed cache metadata, and upgrades with `--locked` without an
