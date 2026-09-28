@@ -46,8 +46,10 @@ signed Rectangle app was inspected in the VM without launch or mutation; this is
 not a notarized helper, direct update, or installation/recovery certification.
 The [peer-authentication foundation](validation/v0.20-sparkle-peer-authentication.md)
 configures fixed bidirectional native XPC requirements before activation. VM
-control/rejection tests pass; accepted signed peers, a data-free handshake and
-the production helper protocol are not yet implemented or certified.
+control/rejection tests pass. The [data-free bootstrap](validation/v0.20-sparkle-bootstrap-handshake.md)
+now verifies nonce/version/account replies before readiness and closes on timeout,
+loss or cancellation without reconnecting. Its protocol and native rejection
+tests pass; accepted signed peers and operational helper integration remain open.
 The current vendor-app handoff and Helm's sandbox are unchanged.
 
 The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
