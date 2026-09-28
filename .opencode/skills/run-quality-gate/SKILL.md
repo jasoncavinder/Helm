@@ -71,6 +71,11 @@ execution rather than passing `HELM_SKIP_XCODE=1` and claiming everything passed
    environment, logs and failed attempts. If source changes after testing, rerun
    affected gates or demonstrate exact unchanged-subtree attribution. Separate
    unsigned compilation, automated runtime, signed GUI and owner acceptance.
+7. If an existing Rosetta installation is used, record x86_64 Mach-O and
+   translation evidence separately from native Intel hardware/older-OS coverage.
+   Native child tools may differ in architecture support. Reproduce failures
+   directly before changing product architecture selection or calling a mixed-
+   architecture toolchain limitation a Helm regression.
 
 The successful supplied-VM procedure and its evidence limits are illustrated in
 `docs/validation/v0.20-unattended-review-index.md`. Guest paths and SSH setup are
