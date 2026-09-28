@@ -39,6 +39,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    refreshes; require a new review when original retry metadata is unavailable.
    Preserve the [execution-time native receipt guard](validation/v0.20-cargo-receipt-preservation.md)
    for crates.io upgrades and its fail-closed unsupported-source handling.
+   Retain acceptance of native null historical version requirements while keeping
+   exact upgrade targets and incomplete-metadata rejection.
    Preserve the [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
    and its missing/stale-root/cache-drift rejections without unlocked fallback.
    Finish review-time executable/root/source binding, general install/reinstall
