@@ -1,4 +1,5 @@
 {
+  "service.error.cargo_offline_cache_miss": "A Cargo offline beállítása megakadályozott egy szükséges letöltést. Újrapróbálkozás előtt ellenőrizze a CARGO_NET_OFFLINE és a Cargo net.offline beállítását. A Helm nem engedélyezett hálózati hozzáférést és nem módosított függőségeket; ez nem bizonyítja, hogy a Mac offline.",
   "service.error.cargo_toolchain_unavailable": "A kiválasztott Rust-eszközlánc nem tudja biztosítani a Cargo programot. Ellenőrizze a rustup show active-toolchain és a rustup component list --installed paranccsal. Módosítás előtt tekintse át a javítást. A tárolt csomagadatok megmaradnak; a Helm nem váltott másik Cargo programra.",
   "service.error.dns_resolution_failed": "A cél hálózati címe nem oldható fel. Ellenőrizze a DNS, VPN, proxy vagy a forrás elérhetőségét, majd próbálja újra. Ez nem jelenti, hogy az egész Mac offline; a tárolt adatok továbbra is elérhetők.",
   "service.error.endpoint_unreachable": "Nem sikerült kapcsolódni a célhoz. Ellenőrizze a forrást, a kapcsolatot, a VPN-t vagy a proxyt, majd próbálja újra. Ez nem jelenti, hogy az egész Mac offline; a tárolt adatok továbbra is elérhetők.",

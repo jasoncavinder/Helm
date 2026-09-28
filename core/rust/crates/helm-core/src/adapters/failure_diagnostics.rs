@@ -3,6 +3,7 @@ use crate::models::ManagerId;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProcessFailureDiagnostic {
     CargoToolchainUnavailable,
+    CargoOfflineCacheMiss,
     DnsResolutionFailed,
     EndpointUnreachable,
     CargoBuildFailed,
@@ -12,6 +13,7 @@ impl ProcessFailureDiagnostic {
     pub(crate) fn marker(self) -> &'static str {
         match self {
             Self::CargoToolchainUnavailable => "cargo_toolchain_unavailable",
+            Self::CargoOfflineCacheMiss => "cargo_offline_cache_miss",
             Self::DnsResolutionFailed => "dns_resolution_failed",
             Self::EndpointUnreachable => "endpoint_unreachable",
             Self::CargoBuildFailed => "cargo_build_failed",
@@ -21,6 +23,7 @@ impl ProcessFailureDiagnostic {
     pub(crate) fn issue_key(self) -> &'static str {
         match self {
             Self::CargoToolchainUnavailable => "cargo.toolchain_unavailable",
+            Self::CargoOfflineCacheMiss => "cargo.offline_cache_miss",
             Self::DnsResolutionFailed => "network.dns_resolution_failed",
             Self::EndpointUnreachable => "network.endpoint_unreachable",
             Self::CargoBuildFailed => "cargo.build_failed",
@@ -29,7 +32,7 @@ impl ProcessFailureDiagnostic {
 
     pub(crate) fn owner(self) -> &'static str {
         match self {
-            Self::CargoToolchainUnavailable => "local_configuration",
+            Self::CargoToolchainUnavailable | Self::CargoOfflineCacheMiss => "local_configuration",
             Self::CargoBuildFailed => "package_build",
             Self::DnsResolutionFailed | Self::EndpointUnreachable => "undetermined",
         }
@@ -39,6 +42,9 @@ impl ProcessFailureDiagnostic {
         match self {
             Self::CargoToolchainUnavailable => {
                 "The selected Rust toolchain cannot provide Cargo. Inspect it with rustup show active-toolchain and rustup component list --installed. Review any repair before changing components or toolchains; Helm has not switched Cargo or cleared cached packages."
+            }
+            Self::CargoOfflineCacheMiss => {
+                "Cargo's offline setting prevented a required download. Review CARGO_NET_OFFLINE and Cargo's net.offline configuration before retrying. Helm has not enabled network access or changed dependencies; this does not establish that the Mac is offline."
             }
             Self::DnsResolutionFailed => {
                 "The request could not resolve its destination's network address. Check DNS, VPN, proxy, or source availability, then retry. This does not mean the entire Mac is offline; cached data remains available."
@@ -82,6 +88,12 @@ pub(crate) fn classify_process_failure(
             && text.contains("toolchain");
         if unavailable || missing {
             return Some(ProcessFailureDiagnostic::CargoToolchainUnavailable);
+        }
+        if text.contains("attempting to make an http request, but --offline was specified")
+            || (text.contains("as a reminder, you're using offline mode (--offline)")
+                && text.contains("no matching package named"))
+        {
+            return Some(ProcessFailureDiagnostic::CargoOfflineCacheMiss);
         }
     }
     if [
@@ -129,4 +141,31 @@ pub(crate) fn actionable_failure_text(manager: ManagerId, text: &str) -> &str {
         offset += line.len();
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn offline_cache_miss_is_configuration_not_compilation_or_global_connectivity() {
+        let text = "error: failed to compile `cargo-binstall v1.24.0`\nCaused by:\n  failed to download `adler2 v2.0.1`\nCaused by:\n  attempting to make an HTTP request, but --offline was specified";
+        let diagnostic = classify_process_failure(ManagerId::Cargo, text).unwrap();
+        assert_eq!(diagnostic, ProcessFailureDiagnostic::CargoOfflineCacheMiss);
+        assert_eq!(diagnostic.owner(), "local_configuration");
+        assert_eq!(diagnostic.issue_key(), "cargo.offline_cache_miss");
+        assert!(diagnostic.guidance().contains("CARGO_NET_OFFLINE"));
+        assert_eq!(classify_process_failure(ManagerId::Npm, text), None);
+        assert_eq!(
+            classify_process_failure(ManagerId::Cargo, "offline package failed to compile"),
+            None
+        );
+        assert_eq!(
+            classify_process_failure(
+                ManagerId::Cargo,
+                "error[E0433]: missing symbol\nerror: could not compile `offline`"
+            ),
+            Some(ProcessFailureDiagnostic::CargoBuildFailed)
+        );
+    }
 }

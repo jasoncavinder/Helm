@@ -44,6 +44,9 @@ retains their verified-result persistence and bounded authority-overlap coverage
 3. Finish remaining planned runtime work (direct third-party Sparkle updating,
    insertion-placeholder reordering), exact certification/issue dispositions,
    participant and cross-workflow accessibility gates from the checklist.
+   Preserve the [passing Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
+   and complete its signed GUI progress/failure/recovery checks without repeating
+   the accepted chooser-only matrix.
 4. Only then freeze and prepare v0.20.0-rc.1 through the protected release flow,
    final integrated VM/CI gates and explicit release-mutation approval.
 

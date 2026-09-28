@@ -12,6 +12,13 @@ The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
 
+The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
+now passes cargo-binstall install/detection, cancellation, controlled failure,
+recovery and cleanup through Cargo/Homebrew. Cargo's native offline cache-miss
+diagnostic now distinguishes local offline configuration from compiler failure;
+seven-locale guidance and durable logs are covered. Signed GUI progress/recovery
+and broader method/platform certification remain open.
+
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
 The shared Rust/FFI/XPC versioned acknowledgment foundation is implemented and

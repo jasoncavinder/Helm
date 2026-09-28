@@ -1,4 +1,5 @@
 {
+  "service.error.cargo_offline_cache_miss": "Cargo のオフライン設定により、必要なダウンロードができませんでした。再試行する前に CARGO_NET_OFFLINE と Cargo の net.offline 設定を確認してください。Helm はネットワークアクセスを有効にしたり依存関係を変更したりしていません。Mac 自体がオフラインとは限りません。",
   "service.error.cargo_toolchain_unavailable": "選択された Rust ツールチェーンでは Cargo を利用できません。rustup show active-toolchain と rustup component list --installed で確認してください。コンポーネントやツールチェーンを変更する前に修復内容を確認してください。キャッシュ済みのパッケージ情報は保持され、Helm は別の Cargo に切り替えていません。",
   "service.error.dns_resolution_failed": "接続先のネットワークアドレスを解決できませんでした。DNS、VPN、プロキシ、配信元の状態を確認してから再試行してください。Mac 全体がオフラインとは限りません。キャッシュ済みのデータは引き続き利用できます。",
   "service.error.endpoint_unreachable": "接続先に接続できませんでした。配信元、接続、VPN、プロキシを確認してから再試行してください。Mac 全体がオフラインとは限りません。キャッシュ済みのデータは引き続き利用できます。",
