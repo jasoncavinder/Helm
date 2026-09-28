@@ -53,7 +53,8 @@ retains their verified-result persistence and bounded authority-overlap coverage
    Build Sparkle integration on the [shared-core boundary contract](architecture/EXTERNAL_SPARKLE_BOUNDARY.md);
    its passing pure-policy tests are not a signed helper or live installation.
    Preserve the [durable session foundation](validation/v0.20-sparkle-durable-session.md)
-   and complete native observation, authenticated helper/callback integration,
+   and the [read-only native observer](validation/v0.20-sparkle-native-observation.md).
+   Complete its authority mapping, authenticated helper/callback integration,
    installer-quiescence recovery and signed live QA before enabling direct updates.
 4. Only then freeze and prepare v0.20.0-rc.1 through the protected release flow,
    final integrated VM/CI gates and explicit release-mutation approval.

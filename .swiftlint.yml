@@ -5,6 +5,7 @@ included:
   - apps/macos
   - apps/macos-ui
   - service/macos-service
+  - service/external-updater
 
 excluded:
   - apps/macos-ui/Generated
