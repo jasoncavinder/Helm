@@ -6,7 +6,7 @@ It reflects reality, not intention.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
 The [unattended review index](validation/v0.20-unattended-review-index.md) records
-the pending #573-#594 implementation/evidence batch, dependency order, combined VM evidence
+the pending #573-#595 implementation/evidence batch, dependency order, combined VM evidence
 and remaining owner gates. Those branches are not merged implementation state.
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
 PRs #570/#571 are also reviewed and merged; their Cargo persistence and
