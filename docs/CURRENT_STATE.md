@@ -75,6 +75,9 @@ low-level calls retain task-start semantics; there is no new durable CLI
 confirmation transaction. The [install/reinstall policy](validation/v0.20-cargo-install-policy.md)
 extends published-lock validation to fresh installs, pins task-start candidates,
 preserves existing receipt options on reinstall, and verifies unrelated state.
+Verified reinstalls replace the prior cached Cargo version without changing the
+Install action identity, retain pin/runtime flags and any newer cached candidate,
+and leave snapshots untouched on failed or unverified completion.
 The paired-empty native receipt case now has a narrow fresh-store contract.
 The [opt-in VM CLI lifecycle](validation/v0.20-cargo-cli-lifecycle.md) now makes
 two-package Plan, sibling-preserving removal, empty-store recovery and native
