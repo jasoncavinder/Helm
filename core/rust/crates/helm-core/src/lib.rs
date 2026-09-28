@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod doctor;
 pub mod execution;
+pub mod external_update;
 pub mod first_run;
 pub(crate) mod install_instances;
 pub mod managed_automation_policy;

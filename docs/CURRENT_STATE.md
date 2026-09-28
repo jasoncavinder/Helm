@@ -12,6 +12,13 @@ The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
 
+The [external Sparkle boundary](architecture/EXTERNAL_SPARKLE_BOUNDARY.md) now has
+a pure shared-core eligibility, stale-review and result-verification contract.
+Its 12 new policy tests and all 821 core unit tests pass in the VM. It does not
+add a helper, transport, installer or new automatic capability; native observation,
+durable authorization, signed/notarized packaging and live integration remain
+open. The current vendor-app handoff and Helm's sandbox are unchanged.
+
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
 The shared Rust/FFI/XPC versioned acknowledgment foundation is implemented and
