@@ -176,6 +176,25 @@ char *helm_doctor_scan(void);
 char *helm_observe_first_run_environment(void);
 
 /**
+ * Propose the finite first-run repair without commands or preference writes.
+ * Available only in a prepared, legally accepted, unacknowledged startup.
+ * Re-proposing invalidates any earlier review token in this process.
+ */
+char *helm_review_first_run_repair(void);
+
+/**
+ * Apply only a previously reviewed local repair, consuming its approval once.
+ * The caller must disclose the preference change and bounded local version
+ * check and obtain explicit consent. No runtime, catalog, installer or network
+ * action is activated. A null reply never means the preference was unchanged;
+ * re-read durable receipts after transport/storage failure.
+ *
+ * # Safety
+ * `review_token` must be null or a NUL-terminated UTF-8 string.
+ */
+char *helm_apply_first_run_repair(const char *review_token);
+
+/**
  * Return the current product experience's versioned acknowledgment JSON.
  * Null means unavailable/error, never an invitation to start first-run work.
  */

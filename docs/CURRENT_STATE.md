@@ -31,7 +31,11 @@ acceptance with durable readback, local observation, explicit acknowledgment and
 activation sequence. It preserves the independent legacy CLI onboarding flag.
 First-run XPC reply validation and delivery are serialized on the main queue;
 connection invalidation and the controller generation fence reject stale replies.
-The safe verified action and full session consent/receipt wiring remain open.
+The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
+adds one finite shared-core/FFI stale-mise-override action with explicit review,
+atomic preference/receipt persistence and bounded post-change verification.
+It does not claim PATH readiness or general manager health. Full UI session
+consent/receipt wiring remains open; interrupted checks remain unverified.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected

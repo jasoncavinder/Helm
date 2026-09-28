@@ -55,6 +55,8 @@
 //! | `helm_set_homebrew_keg_auto_cleanup` | Settings |
 //! | `helm_get_first_run_experience_state` | First-run experience |
 //! | `helm_observe_first_run_environment` | First-run experience |
+//! | `helm_review_first_run_repair` | Prepared first-run repair review |
+//! | `helm_apply_first_run_repair` | Consented first-run repair and verification |
 //! | `helm_acknowledge_first_run_experience` | First-run experience |
 //! | `helm_list_package_keg_policies` | Keg policies |
 //! | `helm_set_package_keg_policy` | Keg policies |
@@ -205,6 +207,7 @@ struct HelmState {
 struct PreparedStartup {
     store: Arc<SqliteStore>,
     require_first_run_acknowledgment: bool,
+    reviewed_repair: Option<(String, helm_core::first_run_repair::FirstRunRepairPlan)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -5761,6 +5764,7 @@ pub unsafe extern "C" fn helm_prepare_startup(
     *prepared = Some(PreparedStartup {
         store,
         require_first_run_acknowledgment,
+        reviewed_repair: None,
     });
     json.into_raw()
 }
@@ -7326,6 +7330,142 @@ pub extern "C" fn helm_observe_first_run_environment() -> *mut c_char {
     match CString::new(json) {
         Ok(json) => json.into_raw(),
         Err(_) => return_error_ptr(SERVICE_ERROR_INTERNAL),
+    }
+}
+
+/// Propose the finite first-run repair without commands or preference writes.
+/// Available only in a prepared, legally accepted, unacknowledged startup.
+/// Re-proposing invalidates any earlier review token in this process.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_review_first_run_repair() -> *mut c_char {
+    use helm_core::first_run_repair::{FirstRunRepairStore, propose_first_run_repair};
+    clear_last_error_key();
+    let _startup = lock_or_recover(&STARTUP_LOCK, "startup");
+    let mut prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+    let Some(prepared) = prepared.as_mut() else {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    };
+    prepared.reviewed_repair = None;
+    if !prepared_repair_allowed(prepared) {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let plan = match propose_first_run_repair(prepared.store.as_ref(), &first_run_repair_context())
+    {
+        Ok(plan) => plan,
+        Err(error) => return return_error_ptr(core_error_service_key(&error)),
+    };
+    let receipts = match prepared.store.first_run_repair_receipts() {
+        Ok(receipts) => receipts,
+        Err(error) => return return_error_ptr(core_error_service_key(&error)),
+    };
+    static NEXT_REVIEW: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let token = plan.as_ref().map(|plan| {
+        format!(
+            "{}:{:x}:{:x}:{:x}",
+            plan.fingerprint(),
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            NEXT_REVIEW.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        )
+    });
+    let value = serde_json::json!({"schema_version": 1, "plan": plan, "review_token": token, "receipts": receipts});
+    let Ok(json) = CString::new(value.to_string()) else {
+        return return_error_ptr(SERVICE_ERROR_INTERNAL);
+    };
+    prepared.reviewed_repair = token.zip(plan);
+    json.into_raw()
+}
+
+fn prepared_repair_allowed(prepared: &PreparedStartup) -> bool {
+    prepared.require_first_run_acknowledgment
+        && lock_or_recover(&STATE, "state").is_none()
+        && matches!(prepared.store.first_run_experience_state(FirstRunExperience::CURRENT),
+            Ok(state) if !state.acknowledged)
+        && matches!(prepared.store.cli_accepted_license_terms_version(),
+            Ok(Some(version)) if version == "helm-source-available-license-v1.0-pre1.0")
+}
+
+fn first_run_repair_context() -> helm_core::first_run::LocalObservationContext {
+    #[cfg(test)]
+    if let Some(path) = std::env::var_os("HELM_TEST_FIRST_RUN_REPAIR_SEARCH_ROOT") {
+        return helm_core::first_run::LocalObservationContext {
+            search_directories: vec![path.into()],
+            include_system_candidates: false,
+        };
+    }
+    helm_core::first_run::LocalObservationContext::from_environment()
+}
+
+/// Apply only a previously reviewed local repair, consuming its approval once.
+/// The caller must disclose the preference change and bounded local version
+/// check and obtain explicit consent. No runtime, catalog, installer or network
+/// action is activated. A null reply never means the preference was unchanged;
+/// re-read durable receipts after transport/storage failure.
+///
+/// # Safety
+/// `review_token` must be null or a NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_apply_first_run_repair(review_token: *const c_char) -> *mut c_char {
+    clear_last_error_key();
+    if review_token.is_null() {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let Ok(token) = (unsafe { CStr::from_ptr(review_token) }).to_str() else {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    };
+    if !(70..=128).contains(&token.len()) {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let _startup = lock_or_recover(&STARTUP_LOCK, "startup");
+    let (store, plan) = {
+        let mut guard = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+        let Some(prepared) = guard.as_mut() else {
+            return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+        };
+        if !prepared_repair_allowed(prepared)
+            || prepared
+                .reviewed_repair
+                .as_ref()
+                .map(|(token, _)| token.as_str())
+                != Some(token)
+        {
+            return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+        }
+        (
+            prepared.store.clone(),
+            prepared
+                .reviewed_repair
+                .take()
+                .expect("validated reviewed plan")
+                .1,
+        )
+    };
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(_) => return return_error_ptr(SERVICE_ERROR_INTERNAL),
+    };
+    let receipt = runtime.block_on(
+        helm_core::first_run_repair::apply_approved_first_run_repair(
+            store.as_ref(),
+            &first_run_repair_context(),
+            &plan,
+            &TokioProcessExecutor,
+        ),
+    );
+    match receipt {
+        Ok(receipt) => match CString::new(
+            serde_json::json!({"schema_version": 1, "receipt": receipt}).to_string(),
+        ) {
+            Ok(json) => json.into_raw(),
+            Err(_) => return_error_ptr(SERVICE_ERROR_INTERNAL),
+        },
+        Err(error) => return_error_ptr(core_error_service_key(&error)),
     }
 }
 
@@ -16142,6 +16282,83 @@ mod tests {
                 .as_deref()
                 .unwrap(),
             "app.repair.test.impact"
+        );
+    }
+
+    #[test]
+    fn ffi_first_run_repair_requires_legal_review_once_and_preserves_startup_gate() {
+        use helm_core::first_run_repair::FirstRunRepairStore;
+        use std::ffi::c_char;
+        use std::os::unix::fs::PermissionsExt;
+        use std::path::PathBuf;
+        const ROOT: &str = "HELM_TEST_FIRST_RUN_REPAIR_SEARCH_ROOT";
+        if let Some(root) = std::env::var_os(ROOT) {
+            fn json(pointer: *mut c_char) -> serde_json::Value {
+                assert!(!pointer.is_null());
+                let value =
+                    serde_json::from_str(unsafe { CStr::from_ptr(pointer) }.to_str().unwrap())
+                        .unwrap();
+                unsafe { super::helm_free_string(pointer) };
+                value
+            }
+            let root = PathBuf::from(root);
+            let database = CString::new(root.join("helm.db").to_str().unwrap()).unwrap();
+            let store = SqliteStore::new(root.join("helm.db"));
+            store.migrate_to_latest().unwrap();
+            let binary = root.join("mise");
+            std::fs::write(&binary, [0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]).unwrap();
+            std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+            store.set_manager_enabled(ManagerId::Mise, true).unwrap();
+            store
+                .set_manager_selected_executable_path(ManagerId::Mise, root.join("absent").to_str())
+                .unwrap();
+            assert!(super::helm_review_first_run_repair().is_null());
+            json(unsafe { super::helm_prepare_startup(database.as_ptr(), true) });
+            assert!(super::helm_review_first_run_repair().is_null());
+            let terms = CString::new("helm-source-available-license-v1.0-pre1.0").unwrap();
+            assert!(unsafe { super::helm_accept_first_run_license_terms(terms.as_ptr()) });
+            let review = json(super::helm_review_first_run_repair());
+            let old = CString::new(review["review_token"].as_str().unwrap()).unwrap();
+            let review = json(super::helm_review_first_run_repair());
+            let token = CString::new(review["review_token"].as_str().unwrap()).unwrap();
+            assert_ne!(old, token);
+            assert!(unsafe { super::helm_apply_first_run_repair(old.as_ptr()) }.is_null());
+            assert!(store.first_run_repair_receipts().unwrap().is_empty());
+            let outcome = json(unsafe { super::helm_apply_first_run_repair(token.as_ptr()) });
+            // The test file is a native header, not an executable: a spawn error
+            // must be durably failed, never advertised as a verified repair.
+            assert_eq!(outcome["receipt"]["verification"], "failed");
+            assert_eq!(outcome["receipt"]["applied"], true);
+            assert!(unsafe { super::helm_apply_first_run_repair(token.as_ptr()) }.is_null());
+            assert_eq!(store.first_run_repair_receipts().unwrap().len(), 1);
+            assert!(!super::helm_start_runtime());
+            assert!(!super::AUTO_CHECK_TICKER_STARTED.load(Ordering::Acquire));
+            assert!(super::lock_or_recover(&super::STATE, "test").is_none());
+            let recovery = json(super::helm_review_first_run_repair());
+            assert!(recovery["plan"].is_null());
+            assert_eq!(recovery["receipts"].as_array().unwrap().len(), 1);
+            let experience = CString::new("wayfinder-v0.20").unwrap();
+            assert!(unsafe { super::helm_acknowledge_first_run_experience(experience.as_ptr()) });
+            assert!(super::helm_review_first_run_repair().is_null());
+            return;
+        }
+        let store = temp_sqlite_store("first-run-repair-boundary");
+        let root = store.database_path().with_extension("fixture");
+        std::fs::create_dir_all(&root).unwrap();
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::ffi_first_run_repair_requires_legal_review_once_and_preserves_startup_gate",
+                "--nocapture",
+            ])
+            .env(ROOT, &root)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
         );
     }
 

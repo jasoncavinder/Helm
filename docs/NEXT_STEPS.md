@@ -21,11 +21,14 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    are not current readiness or action approval.
    Preserve main-queue first-run reply validation and both connection/controller
    generation fences when extending this flow.
-   Wire the real v0.20 value flow and supported safe verified improvement while
+   The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
+   supplies the narrow stale-mise-override action and durable verified/unverified
+   outcomes through the prepared FFI boundary, not a shipping UI or general setup
+   scheduler. Wire its explicit consent and receipt presentation into the real
+   v0.20 value flow while
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted
-   setup parity remains v0.21 scope.
-2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
+   setup parity remains v0.21 scope.2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
    The [read-only investigation](validation/v0.19.1-rust-task-triage.md) separates
    toolchain readiness, DNS failure and dependency compilation. The
    [diagnostic/cache-preservation correction](validation/v0.20-rust-task-diagnostics.md)
