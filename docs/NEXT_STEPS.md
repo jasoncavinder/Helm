@@ -32,7 +32,10 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    accessibility acceptance of this new presentation before activation,
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted
-   setup parity remains v0.21 scope.2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
+   setup parity remains v0.21 scope.
+   Preserve the [main-queue first-run reply boundary](validation/v0.20-first-run-reply-order.md)
+   and both connection/controller generation fences when extending this flow.
+2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
    The [read-only investigation](validation/v0.19.1-rust-task-triage.md) separates
    toolchain readiness, DNS failure and dependency compilation. The
    [diagnostic/cache-preservation correction](validation/v0.20-rust-task-diagnostics.md)
