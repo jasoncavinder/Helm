@@ -23,7 +23,7 @@ impl ProcessXcodeCommandLineToolsSource {
 impl XcodeCommandLineToolsSource for ProcessXcodeCommandLineToolsSource {
     fn detect(&self) -> AdapterResult<XcodeCommandLineToolsDetectOutput> {
         let clang_path = Path::new("/Library/Developer/CommandLineTools/usr/bin/clang");
-        let executable_path = if clang_path.exists() {
+        let executable_path = if clang_path.is_file() {
             Some(clang_path.to_path_buf())
         } else {
             None

@@ -39,6 +39,15 @@ pub struct XcodeCommandLineToolsDetectOutput {
     pub version_output: String,
 }
 
+impl XcodeCommandLineToolsDetectOutput {
+    fn installed_version(&self) -> Option<String> {
+        // Apple's protected receipt can survive removal of the CLT payload.
+        // It supplies a version, not proof that the tools are still installed.
+        self.executable_path.as_ref()?;
+        parse_xcode_clt_version(&self.version_output)
+    }
+}
+
 pub trait XcodeCommandLineToolsSource: Send + Sync {
     fn detect(&self) -> AdapterResult<XcodeCommandLineToolsDetectOutput>;
     fn list_outdated(&self) -> AdapterResult<String>;
@@ -70,7 +79,7 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
         match request {
             AdapterRequest::Detect(_) => {
                 let output = self.source.detect()?;
-                let version = parse_xcode_clt_version(&output.version_output);
+                let version = output.installed_version();
                 let installed = version.is_some();
                 Ok(AdapterResponse::Detection(DetectionInfo {
                     installed,
@@ -80,7 +89,7 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
             }
             AdapterRequest::Refresh(_) => {
                 let output = self.source.detect()?;
-                let version = parse_xcode_clt_version(&output.version_output);
+                let version = output.installed_version();
                 if version.is_none() {
                     return Ok(AdapterResponse::SnapshotSync {
                         installed: Some(Vec::new()),
@@ -105,7 +114,7 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
             }
             AdapterRequest::ListInstalled(_) => {
                 let output = self.source.detect()?;
-                let version = parse_xcode_clt_version(&output.version_output);
+                let version = output.installed_version();
                 let installed = version.is_some();
                 let packages = if installed {
                     vec![InstalledPackage {
@@ -124,6 +133,9 @@ impl<S: XcodeCommandLineToolsSource> ManagerAdapter for XcodeCommandLineToolsAda
                 Ok(AdapterResponse::InstalledPackages(packages))
             }
             AdapterRequest::ListOutdated(_) => {
+                if self.source.detect()?.installed_version().is_none() {
+                    return Ok(AdapterResponse::OutdatedPackages(Vec::new()));
+                }
                 let raw = self.source.list_outdated()?;
                 let packages = parse_xcode_clt_outdated(&raw)?;
                 Ok(AdapterResponse::OutdatedPackages(packages))
@@ -376,7 +388,7 @@ mod tests {
 
     use crate::adapters::manager::{
         AdapterRequest, AdapterResponse, AdapterResult, DetectRequest, ListInstalledRequest,
-        ListOutdatedRequest, ManagerAdapter,
+        ListOutdatedRequest, ManagerAdapter, RefreshRequest,
     };
     use crate::adapters::xcode_command_line_tools::{
         XcodeCommandLineToolsAdapter, XcodeCommandLineToolsDetectOutput,
@@ -532,6 +544,73 @@ mod tests {
             panic!("expected detection response");
         };
         assert!(!info.installed);
+    }
+
+    fn stale_receipt_adapter() -> XcodeCommandLineToolsAdapter<FixtureSource> {
+        XcodeCommandLineToolsAdapter::new(FixtureSource {
+            detect_result: Ok(XcodeCommandLineToolsDetectOutput {
+                executable_path: None,
+                version_output: PKGUTIL_FIXTURE.to_string(),
+            }),
+            list_outdated_result: Err(crate::models::CoreError {
+                manager: Some(ManagerId::XcodeCommandLineTools),
+                task: None,
+                action: Some(ManagerAction::ListOutdated),
+                kind: crate::models::CoreErrorKind::Internal,
+                message: "softwareupdate must not run for an absent CLT payload".into(),
+            }),
+        })
+    }
+
+    #[test]
+    fn stale_receipt_without_payload_is_not_detected() {
+        let response = stale_receipt_adapter()
+            .execute(AdapterRequest::Detect(DetectRequest))
+            .unwrap();
+        let AdapterResponse::Detection(info) = response else {
+            panic!("expected detection response");
+        };
+        assert!(!info.installed);
+        assert_eq!(info.executable_path, None);
+        assert_eq!(info.version, None);
+    }
+
+    #[test]
+    fn stale_receipt_without_payload_has_no_installed_packages() {
+        let response = stale_receipt_adapter()
+            .execute(AdapterRequest::ListInstalled(ListInstalledRequest))
+            .unwrap();
+        let AdapterResponse::InstalledPackages(packages) = response else {
+            panic!("expected installed packages response");
+        };
+        assert!(packages.is_empty());
+    }
+
+    #[test]
+    fn stale_receipt_refresh_clears_cached_inventory_without_querying_updates() {
+        let response = stale_receipt_adapter()
+            .execute(AdapterRequest::Refresh(RefreshRequest))
+            .unwrap();
+        let AdapterResponse::SnapshotSync {
+            installed,
+            outdated,
+        } = response
+        else {
+            panic!("expected snapshot response");
+        };
+        assert_eq!(installed, Some(Vec::new()));
+        assert_eq!(outdated, Some(Vec::new()));
+    }
+
+    #[test]
+    fn stale_receipt_without_payload_has_no_outdated_packages() {
+        let response = stale_receipt_adapter()
+            .execute(AdapterRequest::ListOutdated(ListOutdatedRequest))
+            .unwrap();
+        let AdapterResponse::OutdatedPackages(packages) = response else {
+            panic!("expected outdated packages response");
+        };
+        assert!(packages.is_empty());
     }
 
     struct FixtureSource {
