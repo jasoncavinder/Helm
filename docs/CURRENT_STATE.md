@@ -6,8 +6,8 @@ It reflects reality, not intention.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
-PRs #570/#571 are also reviewed and merged; their Cargo persistence and
-authority-concurrency regressions are retained in the plan-binding follow-up.
+PRs #570/#571/#572 are also reviewed and merged; their Cargo persistence,
+candidate/retry binding and authority-concurrency regressions are retained.
 The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
@@ -67,9 +67,43 @@ submitted metadata, not a refreshed preview; unavailable older/service-restart
 metadata requires a new review. Unsigned UI/test compilation and 64
 focused/adjacent Swift tests in the VM pass, without claiming signed GUI QA.
 Changed reviewed candidates require review again; newer installed versions cannot
-be downgraded by an old target. General dependency resolution is unchanged:
-exact source/scope/receipt-feature preservation and lockfile handling
-still need work before #564 closes.
+be downgraded by an old target. The
+[native receipt guard](validation/v0.20-cargo-receipt-preservation.md) now
+preserves crates.io source, explicit install root, binaries, features, profile
+and target when an upgrade actually executes. Unsupported/ambiguous receipts
+fail closed; observed postconditions include unrelated receipt preservation.
+Native null historical version requirements are accepted without relaxing the
+exact upgrade target or source/build-option checks.
+The [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
+now validates exact packaged manifest/lock identities, rejects missing, stale-root,
+unsupported or changed cache metadata, and upgrades with `--locked` without an
+unlocked fallback. Native Helm CLI `sd` 0.7.6 to 1.0.0 and `slint-viewer` 1.18.0
+to 1.18.1 upgrades and VM regression checks pass. Cargo still owns
+dependency resolution; this is not a general resolver or supply-chain verifier.
+The [discovery-scope binding](validation/v0.20-cargo-reviewed-scope.md) now carries
+native receipt, root, executable/toolchain and candidate identity through cached
+plans and retries; changed or unavailable scope fails closed. Native Rustup-backed
+CLI stale-root/binary rejection and refreshed upgrade pass. Verified Cargo
+install/upgrade/removal results reconcile token-scoped cached updates while
+keeping installed identity unscoped; still-newer candidates retain the verified
+baseline without receiving a fresh review token. Unrelated identities are preserved.
+Explicit unbound
+low-level calls retain task-start semantics; there is no new durable CLI
+confirmation transaction. The [install/reinstall policy](validation/v0.20-cargo-install-policy.md)
+extends published-lock validation to fresh installs, pins task-start candidates,
+preserves existing receipt options on reinstall, and verifies unrelated state.
+Verified reinstalls replace the prior cached Cargo version without changing the
+Install action identity, retain pin/runtime flags and any newer cached candidate,
+and leave snapshots untouched on failed or unverified completion.
+The paired-empty native receipt case now has a narrow fresh-store contract.
+The [opt-in VM CLI lifecycle](validation/v0.20-cargo-cli-lifecycle.md) now makes
+two-package Plan, sibling-preserving removal, empty-store recovery and native
+option-preserving reinstall evidence repeatable without host package changes.
+Its timeout/interruption cleanup now covers all retained harness-owned sessions,
+including the earlier CLI coordinator and separately grouped Cargo children,
+without signaling unrelated sessions; targeted VM regressions cover this boundary.
+Full Rust VM regressions and real fresh install/reinstall pass; integrated-head
+validation and the remaining evidence are still required before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.
