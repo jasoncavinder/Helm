@@ -56,6 +56,8 @@ retains their verified-result persistence and bounded authority-overlap coverage
    and the [read-only native observer](validation/v0.20-sparkle-native-observation.md).
    Preserve the [native peer gates](validation/v0.20-sparkle-peer-authentication.md)
    without treating configured requirements as an authenticated session.
+   Preserve the [bounded data-free bootstrap](validation/v0.20-sparkle-bootstrap-handshake.md)
+   and its no-operational-request boundary; a ready event is not update consent.
    Complete its authority mapping, signed handshake/helper/callback integration,
    installer-quiescence recovery and signed live QA before enabling direct updates.
 4. Only then freeze and prepare v0.20.0-rc.1 through the protected release flow,
