@@ -1044,6 +1044,25 @@ Contract and limits: [uv global-tool lifecycle](validation/uv-global-tools-lifec
 
 ---
 
+## Decision 048 - Preserve Task Creation History Across Recovery
+
+**Decision:**
+Task storage updates cannot rewrite the original creation timestamp. Transition
+and recovery times belong in task logs. Completed/cancelled retention uses the
+latest log matching the terminal state, never a time earlier than creation;
+legacy logless records fall back to creation time. Failure retention is unchanged.
+
+**Rationale:**
+Restart reconciliation must not make an older operation appear newly started.
+Conversely, an older operation that just finished or was recovered must remain
+visible for the usual retention interval. Determine expired task IDs before
+deleting their logs, and delete both transactionally.
+
+This does not rewrite shared migrations or fabricate missing historical times.
+See [validation and limits](validation/v0.20-task-creation-history.md).
+
+---
+
 ## Summary
 
 Helm prioritizes:

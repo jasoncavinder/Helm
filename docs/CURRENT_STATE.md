@@ -5,6 +5,11 @@ This document describes the current implementation status of Helm.
 It reflects reality, not intention.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
+Task creation time is now immutable across status persistence and restart
+recovery. Completed/cancelled history retention uses terminal log time, with
+creation-time fallback for legacy logless records, so recently recovered or
+long-running tasks do not disappear immediately. See the
+[history preservation regression](validation/v0.20-task-creation-history.md).
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
 PRs #570/#571 are also reviewed and merged; their Cargo persistence and
 authority-concurrency regressions are retained in the plan-binding follow-up.
