@@ -1,6 +1,17 @@
 import Combine
 import Foundation
 
+enum FirstRunReplyDelivery {
+    static func deliver<Value>(_ value: Value, isCurrent: @escaping () -> Bool, reply: @escaping (Value) -> Void) {
+        // XPC success replies may arrive off-main. Validate only after joining
+        // the queue that owns connection generation and disconnect handling.
+        DispatchQueue.main.async {
+            guard isCurrent() else { return }
+            reply(value)
+        }
+    }
+}
+
 /// Presentation state for the real storage-only startup boundary, never fixture progress.
 final class FirstRunEntryController: ObservableObject {
     enum Phase: Equatable {

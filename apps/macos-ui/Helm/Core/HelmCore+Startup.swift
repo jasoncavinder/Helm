@@ -42,16 +42,20 @@ extension HelmCore {
         func jsonRequest(_ action: String, timeout: TimeInterval = 10, operation: @escaping (@escaping (String?) -> Void) -> Void,
                          reply: @escaping (String?) -> Void) {
             withTimeout(timeout, source: "core.firstRun", action: action, operation: operation) { [weak self] value in
-                guard let self, generation == self.connectionGeneration, self.connection != nil else { return }
-                reply(value)
+                FirstRunReplyDelivery.deliver(value, isCurrent: { [weak self] in
+                    guard let self else { return false }
+                    return generation == self.connectionGeneration && self.connection != nil
+                }, reply: reply)
             }
         }
         func boolRequest(_ action: String, operation: @escaping (@escaping (Bool) -> Void) -> Void,
                          reply: @escaping (Bool) -> Void) {
             withTimeout(30, source: "core.firstRun", action: action,
                         operation: { completion in operation { completion($0) } }) { [weak self] value in
-                guard let self, generation == self.connectionGeneration, self.connection != nil else { return }
-                reply(value == true)
+                FirstRunReplyDelivery.deliver(value == true, isCurrent: { [weak self] in
+                    guard let self else { return false }
+                    return generation == self.connectionGeneration && self.connection != nil
+                }, reply: reply)
             }
         }
         productionFirstRun.begin(

@@ -89,6 +89,9 @@ now gives the real local evidence a fixed-action, source-list-only scrolling
 layout with explicit file-versus-readiness and saved-preference distinctions.
 All 410 Swift tests pass in the VM. Shipping activation and signed visual,
 consent/accessibility QA remain open.
+The [reply-order correction](validation/v0.20-first-run-reply-order.md) now places
+both JSON and Boolean first-run XPC connection checks on the main queue before
+controller delivery, preventing off-main reads during disconnect/reconnect.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected
