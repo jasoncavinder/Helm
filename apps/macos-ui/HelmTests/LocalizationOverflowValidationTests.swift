@@ -28,7 +28,8 @@ final class LocalizationOverflowValidationTests: XCTestCase {
             errorMessage: "[cargo_receipt_unsupported] detail"))
     }
     func testProcessFailureGuidanceRequiresTrustedCodeAndLeadingMarker() {
-        for marker in ["cargo_toolchain_unavailable", "dns_resolution_failed", "endpoint_unreachable", "cargo_build_failed"] {
+        for marker in ["cargo_toolchain_unavailable", "cargo_offline_cache_miss",
+                       "dns_resolution_failed", "endpoint_unreachable", "cargo_build_failed"] {
             XCTAssertEqual(TaskSafetyGuidance.localizationKey(errorCode: "process_failure", errorMessage: "[\(marker)] details"), "service.error.\(marker)")
             XCTAssertEqual(TaskSafetyGuidance.localizationKey(taskLogMessages: ["task failed [process_failure]: [\(marker)] details"]), "service.error.\(marker)")
             XCTAssertNil(TaskSafetyGuidance.localizationKey(errorCode: "cancelled", errorMessage: "[\(marker)] details"))
@@ -60,7 +61,8 @@ final class LocalizationOverflowValidationTests: XCTestCase {
         let keys = ["service.error.pnpm_global_mutation_unsupported", "service.error.developer_tools_required",
                     "service.error.cargo_toolchain_unavailable", "service.error.dns_resolution_failed",
                     "service.error.endpoint_unreachable", "service.error.cargo_build_failed", "service.error.cargo_receipt_unsupported",
-                    "service.error.cargo_published_lock_unavailable"]
+                    "service.error.cargo_published_lock_unavailable",
+                    "service.error.cargo_offline_cache_miss"]
         func strings(_ base: String, _ locale: String) throws -> [String: String] {
             let data = try Data(contentsOf: repoRootURL.appendingPathComponent("\(base)/\(locale)/service.json"))
             return try JSONDecoder().decode([String: String].self, from: data)
