@@ -81,6 +81,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
 3. Finish remaining planned runtime work (direct third-party Sparkle updating),
    signed QA of the [implemented insertion-placeholder reordering](validation/v0.20-environment-insertion-reordering.md), exact certification/issue dispositions,
    participant and cross-workflow accessibility gates from the checklist.
+   Build Sparkle integration on the [shared-core boundary contract](architecture/EXTERNAL_SPARKLE_BOUNDARY.md);
+   its passing pure-policy tests are not a signed helper or live installation.
    Preserve the [passing Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
    and complete its signed GUI progress/failure/recovery checks without repeating
    the accepted chooser-only matrix.
