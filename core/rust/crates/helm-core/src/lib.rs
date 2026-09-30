@@ -3,6 +3,8 @@ pub mod doctor;
 pub mod execution;
 pub mod external_update;
 pub mod first_run;
+#[cfg(unix)]
+pub mod first_run_repair;
 pub(crate) mod install_instances;
 pub mod managed_automation_policy;
 pub mod manager_dependencies;
