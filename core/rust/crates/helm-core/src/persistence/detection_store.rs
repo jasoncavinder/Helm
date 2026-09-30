@@ -4,7 +4,7 @@ use crate::models::{
 };
 use crate::persistence::PersistenceResult;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ManagerPreference {
     pub manager: ManagerId,
     pub enabled: bool,

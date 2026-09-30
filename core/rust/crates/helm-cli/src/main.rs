@@ -387,6 +387,7 @@ struct CliManagerStatus {
     supports_package_install: bool,
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
+    package_mutation_service_error_key: Option<&'static str>,
     selected_executable_path: Option<String>,
     selected_executable_differs_from_default: bool,
     executable_path_diagnostic: String,
@@ -503,6 +504,7 @@ struct ManagerUninstallPlan {
 
 #[derive(Clone, Debug)]
 struct UpgradeExecutionStep {
+    mutation_block_key: Option<&'static str>,
     manager: ManagerId,
     package_name: String,
     cleanup_old_kegs: bool,
@@ -510,11 +512,15 @@ struct UpgradeExecutionStep {
     restart_required: bool,
     uv_target: Option<(String, String)>,
     cargo_version: Option<String>,
+    cargo_scope: Option<String>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CliUpgradePlanStep {
+    runnable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blocked_service_error_key: Option<&'static str>,
     step_id: String,
     order_index: u64,
     manager_id: String,
@@ -526,6 +532,8 @@ struct CliUpgradePlanStep {
     cleanup_old_kegs: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     candidate_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reviewed_scope: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -3482,6 +3490,12 @@ fn cmd_updates_preview(
             restart,
             cleanup
         );
+        if step.blocked_service_error_key.is_some() {
+            println!(
+                "    BLOCKED: {}",
+                helm_core::manager_policy::PNPM_GLOBAL_MUTATION_MESSAGE
+            );
+        }
     }
     Ok(())
 }
@@ -3576,6 +3590,20 @@ fn cmd_updates_run(
 
     let mut results: Vec<CliUpgradeRunStepResult> = Vec::with_capacity(steps.len());
     for step in &steps {
+        if let Some(key) = step.mutation_block_key {
+            results.push(CliUpgradeRunStepResult {
+                step_id: upgrade_plan_step_id(step.manager, &step.package_name),
+                manager_id: step.manager.as_str().into(),
+                package_name: step.package_name.clone(),
+                task_id: None,
+                success: false,
+                error: Some(format!(
+                    "{key}: {}",
+                    helm_core::manager_policy::PNPM_GLOBAL_MUTATION_MESSAGE
+                )),
+            });
+            continue;
+        }
         let request = upgrade_execution_request(step);
         let response = tokio_runtime.block_on(submit_request_wait(&runtime, step.manager, request));
         match response {
@@ -4148,6 +4176,13 @@ fn cmd_managers(
                         .unwrap_or_else(|| "-".to_string())
                 );
                 println!("  eligible: {}", row.is_eligible);
+                if let Some(key) = row.package_mutation_service_error_key {
+                    println!("  package_mutation_block: {key}");
+                    println!(
+                        "  guidance: {}",
+                        helm_core::manager_policy::PNPM_GLOBAL_MUTATION_MESSAGE
+                    );
+                }
                 if !row.is_eligible {
                     println!(
                         "  ineligible_reason_code: {}",
@@ -12262,6 +12297,12 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
         );
         let enabled = configured_enabled && eligibility.is_eligible;
 
+        let package_mutation_service_error_key =
+            helm_core::manager_policy::package_mutation_block_key(
+                descriptor.id,
+                detection.and_then(|info| info.version.as_deref()),
+            );
+
         rows.push(CliManagerStatus {
             manager_id: descriptor.id.as_str().to_string(),
             display_name: descriptor.display_name.to_string(),
@@ -12283,9 +12324,13 @@ fn list_managers(store: &SqliteStore) -> Result<Vec<CliManagerStatus>, String> {
             ),
             is_detection_only: matches!(descriptor.authority, ManagerAuthority::DetectionOnly),
             supports_remote_search: descriptor.capabilities.contains(&Capability::Search),
-            supports_package_install: descriptor.capabilities.contains(&Capability::Install),
-            supports_package_uninstall: descriptor.capabilities.contains(&Capability::Uninstall),
-            supports_package_upgrade: descriptor.capabilities.contains(&Capability::Upgrade),
+            supports_package_install: package_mutation_service_error_key.is_none()
+                && descriptor.capabilities.contains(&Capability::Install),
+            supports_package_uninstall: package_mutation_service_error_key.is_none()
+                && descriptor.capabilities.contains(&Capability::Uninstall),
+            supports_package_upgrade: package_mutation_service_error_key.is_none()
+                && descriptor.capabilities.contains(&Capability::Upgrade),
+            package_mutation_service_error_key,
             selected_executable_path,
             selected_executable_differs_from_default,
             executable_path_diagnostic,
@@ -14808,6 +14853,15 @@ where
 {
     let mut failures = 0usize;
     for step in steps {
+        if let Some(key) = step.mutation_block_key {
+            failures += 1;
+            verbose_log(format!(
+                "upgrade step blocked before submission: {}:{}: {key}",
+                step.manager.as_str(),
+                step.package_name
+            ));
+            continue;
+        }
         if let Err(error) = run_step(step) {
             failures += 1;
             verbose_log(format!(
@@ -14827,7 +14881,11 @@ fn upgrade_execution_request(step: &UpgradeExecutionStep) -> AdapterRequest {
             manager: step.manager,
             name: upgrade_request_name(step),
         }),
-        target_name: step.uv_target.as_ref().map(|(target, _)| target.clone()),
+        target_name: if step.manager == ManagerId::Cargo {
+            step.cargo_scope.clone()
+        } else {
+            step.uv_target.as_ref().map(|(target, _)| target.clone())
+        },
         version: if step.manager == ManagerId::Cargo {
             step.cargo_version.clone()
         } else {
@@ -14841,6 +14899,8 @@ fn serialize_upgrade_plan_steps(steps: &[UpgradeExecutionStep]) -> Vec<CliUpgrad
         .iter()
         .enumerate()
         .map(|(index, step)| CliUpgradePlanStep {
+            runnable: step.mutation_block_key.is_none(),
+            blocked_service_error_key: step.mutation_block_key,
             step_id: upgrade_plan_step_id(step.manager, &step.package_name),
             order_index: index as u64,
             manager_id: step.manager.as_str().to_string(),
@@ -14851,6 +14911,7 @@ fn serialize_upgrade_plan_steps(steps: &[UpgradeExecutionStep]) -> Vec<CliUpgrad
             restart_required: step.restart_required,
             cleanup_old_kegs: step.cleanup_old_kegs,
             candidate_version: step.cargo_version.clone(),
+            reviewed_scope: step.cargo_scope.clone(),
         })
         .collect()
 }
@@ -14864,6 +14925,9 @@ fn collect_upgrade_execution_steps(
 ) -> Result<Vec<UpgradeExecutionStep>, String> {
     let enabled_map = manager_enabled_map(store)?;
     let outdated = list_outdated_for_enabled(store, &enabled_map)?;
+    let detections = store
+        .list_detections()
+        .map_err(|error| format!("failed to read manager capabilities: {error}"))?;
     let pinned_keys: std::collections::HashSet<String> = store
         .list_pins()
         .map_err(|error| format!("failed to list pin records: {error}"))?
@@ -14913,6 +14977,13 @@ fn collect_upgrade_execution_steps(
             .entry(manager)
             .or_default()
             .push(UpgradeExecutionStep {
+                mutation_block_key: helm_core::manager_policy::package_mutation_block_key(
+                    manager,
+                    detections
+                        .iter()
+                        .find(|(id, _)| *id == manager)
+                        .and_then(|(_, info)| info.version.as_deref()),
+                ),
                 manager,
                 package_name: step_name,
                 cleanup_old_kegs,
@@ -14920,6 +14991,11 @@ fn collect_upgrade_execution_steps(
                 restart_required: package.restart_required,
                 cargo_version: (manager == ManagerId::Cargo)
                     .then(|| package.candidate_version.clone()),
+                cargo_scope: (manager == ManagerId::Cargo).then(|| {
+                    package.package_identifier.clone().unwrap_or_else(|| {
+                        helm_core::adapters::cargo_review_scope::UNAVAILABLE.into()
+                    })
+                }),
                 uv_target: if manager == ManagerId::Uv {
                     Some((
                         package.package_identifier.clone().unwrap_or_default(),
@@ -16831,27 +16907,33 @@ mod tests {
         let steps = vec![
             UpgradeExecutionStep {
                 manager: ManagerId::Npm,
+                mutation_block_key: None,
                 package_name: "first".to_string(),
                 uv_target: None,
                 cargo_version: None,
+                cargo_scope: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
             },
             UpgradeExecutionStep {
                 manager: ManagerId::Pnpm,
+                mutation_block_key: None,
                 package_name: "second".to_string(),
                 uv_target: None,
                 cargo_version: None,
+                cargo_scope: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
             },
             UpgradeExecutionStep {
                 manager: ManagerId::Yarn,
+                mutation_block_key: None,
                 package_name: "third".to_string(),
                 uv_target: None,
                 cargo_version: None,
+                cargo_scope: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16882,8 +16964,10 @@ mod tests {
     #[test]
     fn upgrade_request_name_encodes_homebrew_cleanup_targets() {
         let homebrew_step = UpgradeExecutionStep {
+            mutation_block_key: None,
             uv_target: None,
             cargo_version: None,
+            cargo_scope: None,
             manager: ManagerId::HomebrewFormula,
             package_name: "wget".to_string(),
             cleanup_old_kegs: true,
@@ -16891,8 +16975,10 @@ mod tests {
             restart_required: false,
         };
         let npm_step = UpgradeExecutionStep {
+            mutation_block_key: None,
             uv_target: None,
             cargo_version: None,
+            cargo_scope: None,
             manager: ManagerId::Npm,
             package_name: "eslint".to_string(),
             cleanup_old_kegs: true,
@@ -16932,6 +17018,81 @@ mod tests {
     }
 
     #[test]
+    fn pnpm_plan_retains_blocked_rows_and_never_submits_them() {
+        use helm_core::adapters::{PnpmAdapter, ProcessPnpmSource};
+        use helm_core::models::{DetectionInfo, OutdatedPackage, PackageRef};
+        use helm_core::persistence::{DetectionStore, PackageStore};
+        let store = SqliteStore::new(temp_db_path("pnpm-plan-availability"));
+        store.migrate_to_latest().unwrap();
+        store.set_manager_enabled(ManagerId::Pnpm, true).unwrap();
+        store
+            .upsert_outdated(&[OutdatedPackage {
+                package: PackageRef {
+                    manager: ManagerId::Pnpm,
+                    name: "prettier".into(),
+                },
+                package_identifier: None,
+                installed_version: Some("3.0.0".into()),
+                candidate_version: "3.6.0".into(),
+                pinned: false,
+                restart_required: false,
+                runtime_state: Default::default(),
+            }])
+            .unwrap();
+        let runtime =
+            helm_core::orchestration::adapter_runtime::AdapterRuntime::new(vec![Arc::new(
+                PnpmAdapter::new(ProcessPnpmSource::new(Arc::new(
+                    helm_core::execution::TokioProcessExecutor,
+                ))),
+            )
+                as Arc<dyn super::ManagerAdapter>])
+            .unwrap();
+        for version in [None, Some("12.6.0"), Some("10.16.1")] {
+            store
+                .upsert_detection(
+                    ManagerId::Pnpm,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: None,
+                        version: version.map(str::to_owned),
+                    },
+                )
+                .unwrap();
+            let steps = super::collect_upgrade_execution_steps(
+                &store,
+                &runtime,
+                false,
+                false,
+                Some(ManagerId::Pnpm),
+            )
+            .unwrap();
+            assert_eq!(steps.len(), 1);
+            let allowed = version == Some("10.16.1");
+            let preview =
+                serde_json::to_value(super::serialize_upgrade_plan_steps(&steps)).unwrap();
+            assert_eq!(preview[0]["runnable"], allowed);
+            assert_eq!(steps[0].mutation_block_key.is_none(), allowed);
+            let mut submissions = 0;
+            let failures = super::count_upgrade_step_failures(&steps, |_| {
+                submissions += 1;
+                Ok(())
+            });
+            assert_eq!(submissions, usize::from(allowed));
+            assert_eq!(failures, usize::from(!allowed));
+            let managers = super::list_managers(&store).unwrap();
+            let pnpm = managers
+                .iter()
+                .find(|row| row.manager_id == "pnpm")
+                .unwrap();
+            assert!(pnpm.enabled && pnpm.detected && pnpm.supports_remote_search);
+            assert_eq!(pnpm.supports_package_install, allowed);
+            assert_eq!(pnpm.supports_package_uninstall, allowed);
+            assert_eq!(pnpm.supports_package_upgrade, allowed);
+        }
+        assert_eq!(store.list_outdated().unwrap().len(), 1);
+    }
+
+    #[test]
     fn cargo_update_plan_freezes_snapshot_version_for_execution() {
         use helm_core::adapters::{AdapterRequest, CargoAdapter, ProcessCargoSource};
         use helm_core::execution::TokioProcessExecutor;
@@ -16947,7 +17108,7 @@ mod tests {
                 manager: ManagerId::Cargo,
                 name: "sd".into(),
             },
-            package_identifier: None,
+            package_identifier: Some("cargo-review-v1:original".into()),
             installed_version: Some("0.7.6".into()),
             candidate_version: "1.0.0".into(),
             pinned: false,
@@ -16976,15 +17137,26 @@ mod tests {
         assert_eq!(steps.len(), 1);
         let preview = serde_json::to_value(super::serialize_upgrade_plan_steps(&steps)).unwrap();
         assert_eq!(preview[0]["candidateVersion"], "1.0.0");
+        assert_eq!(preview[0]["reviewedScope"], "cargo-review-v1:original");
         outdated.candidate_version = "1.1.0".into();
-        store.upsert_outdated(&[outdated.clone()]).unwrap();
+        outdated.package_identifier = Some("cargo-review-v1:changed".into());
+        store
+            .replace_outdated_snapshot(ManagerId::Cargo, &[outdated.clone()])
+            .unwrap();
         let AdapterRequest::Upgrade(request) = super::upgrade_execution_request(&steps[0]) else {
             panic!("upgrade expected");
         };
         assert_eq!(request.version.as_deref(), Some("1.0.0"));
         assert_eq!(request.package.unwrap().name, "sd");
-        assert_eq!(request.target_name, None);
+        assert_eq!(
+            request.target_name.as_deref(),
+            Some("cargo-review-v1:original")
+        );
         assert_eq!(collect()[0].cargo_version.as_deref(), Some("1.1.0"));
+        assert_eq!(
+            collect()[0].cargo_scope.as_deref(),
+            Some("cargo-review-v1:changed")
+        );
         outdated.pinned = true;
         store.upsert_outdated(&[outdated]).unwrap();
         assert!(collect().is_empty());
@@ -17008,6 +17180,7 @@ mod tests {
     fn shared_upgrade_request_preserves_uv_target_and_homebrew_cleanup() {
         use helm_core::adapters::AdapterRequest;
         let mut step = UpgradeExecutionStep {
+            mutation_block_key: None,
             manager: ManagerId::Uv,
             package_name: "ruff".into(),
             cleanup_old_kegs: false,
@@ -17015,6 +17188,7 @@ mod tests {
             restart_required: false,
             uv_target: Some(("uv-tool:scope:ruff".into(), "2.0".into())),
             cargo_version: None,
+            cargo_scope: None,
         };
         let AdapterRequest::Upgrade(request) = super::upgrade_execution_request(&step) else {
             panic!("upgrade expected");

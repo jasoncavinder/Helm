@@ -2,7 +2,73 @@ use std::path::{Path, PathBuf};
 
 use crate::models::ManagerId;
 
+pub const PNPM_GLOBAL_MUTATION_SERVICE_ERROR_KEY: &str =
+    "service.error.pnpm_global_mutation_unsupported";
+pub const PNPM_GLOBAL_MUTATION_MESSAGE: &str = "[pnpm_global_mutation_unsupported] Helm cannot safely change global packages with pnpm 11 or newer, or an unrecognized pnpm version. Newer versions use install groups that can change or remove other packages. Inventory and update checks remain available. Review the complete group with pnpm directly; do not downgrade or reinstall the existing scope as a workaround.";
+
+/// Preview policy uses cached detection; adapters must recheck the live version
+/// before mutation. This restriction never disables read-only manager actions.
+pub fn package_mutation_block_key(
+    manager: ManagerId,
+    version: Option<&str>,
+) -> Option<&'static str> {
+    if manager != ManagerId::Pnpm {
+        return None;
+    }
+    let components = version.and_then(|version| {
+        version
+            .split('.')
+            .map(|part| {
+                (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+                    .then(|| part.parse::<u64>().ok())
+                    .flatten()
+            })
+            .collect::<Option<Vec<_>>>()
+    });
+    // v11 introduced install groups. Per-package consent does not cover peers.
+    if components.is_some_and(|parts| parts.len() == 3 && (1..=10).contains(&parts[0])) {
+        None
+    } else {
+        Some(PNPM_GLOBAL_MUTATION_SERVICE_ERROR_KEY)
+    }
+}
+
 pub const RUBYGEMS_SYSTEM_UNMANAGED_REASON_CODE: &str = "rubygems.system_unmanaged";
+
+#[cfg(test)]
+mod mutation_version_tests {
+    use super::*;
+
+    #[test]
+    fn pnpm_preview_and_live_guard_share_conservative_version_policy() {
+        for version in [
+            None,
+            Some(""),
+            Some("11.0.0"),
+            Some("12.6.0"),
+            Some("10.0.0-rc.1"),
+            Some("10.1"),
+            Some("10.1.0+build"),
+            Some("garbage"),
+            Some("0.1.0"),
+        ] {
+            assert_eq!(
+                package_mutation_block_key(ManagerId::Pnpm, version),
+                Some(PNPM_GLOBAL_MUTATION_SERVICE_ERROR_KEY)
+            );
+        }
+        for version in ["1.0.0", "9.15.0", "10.16.1"] {
+            assert_eq!(
+                package_mutation_block_key(ManagerId::Pnpm, Some(version)),
+                None
+            );
+        }
+        for manager in [ManagerId::Npm, ManagerId::Yarn, ManagerId::Cargo] {
+            assert_eq!(package_mutation_block_key(manager, None), None);
+            assert_eq!(package_mutation_block_key(manager, Some("12.6.0")), None);
+        }
+    }
+}
 pub const RUBYGEMS_SYSTEM_UNMANAGED_SERVICE_ERROR_KEY: &str =
     "service.error.rubygems_system_unmanaged";
 pub const RUBYGEMS_SYSTEM_UNMANAGED_MESSAGE: &str = "RubyGems at '/usr/bin/gem' is the macOS base-system installation and is not supported for Helm-managed actions. Select a non-system Ruby/Gems executable (for example Homebrew, mise, or asdf).";

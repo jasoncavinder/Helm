@@ -66,19 +66,9 @@ impl<S: PnpmSource> PnpmAdapter<S> {
     fn ensure_mutations_supported(&self, action: ManagerAction) -> AdapterResult<()> {
         let output = self.source.detect()?;
         let version = parse_pnpm_version(&output.version_output);
-        let components = version.as_deref().and_then(|version| {
-            version
-                .split('.')
-                .map(|part| {
-                    (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-                        .then(|| part.parse::<u64>().ok())
-                        .flatten()
-                })
-                .collect::<Option<Vec<_>>>()
-        });
-        // v11 introduced install groups: removing one alias removes its peers,
-        // and updates also target the whole group. A per-package plan is not consent.
-        if components.is_some_and(|parts| parts.len() == 3 && (1..=10).contains(&parts[0])) {
+        if crate::manager_policy::package_mutation_block_key(ManagerId::Pnpm, version.as_deref())
+            .is_none()
+        {
             return Ok(());
         }
         Err(CoreError {
@@ -86,7 +76,7 @@ impl<S: PnpmSource> PnpmAdapter<S> {
             task: None,
             action: Some(action),
             kind: CoreErrorKind::UnsupportedCapability,
-            message: "[pnpm_global_mutation_unsupported] Helm cannot safely change global packages with pnpm 11 or newer, or an unrecognized pnpm version. Newer versions use install groups that can change or remove other packages. Inventory and update checks remain available. Review the complete group with pnpm directly; do not downgrade or reinstall the existing scope as a workaround.".into(),
+            message: crate::manager_policy::PNPM_GLOBAL_MUTATION_MESSAGE.into(),
         })
     }
 }

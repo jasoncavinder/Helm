@@ -55,6 +55,8 @@
 //! | `helm_set_homebrew_keg_auto_cleanup` | Settings |
 //! | `helm_get_first_run_experience_state` | First-run experience |
 //! | `helm_observe_first_run_environment` | First-run experience |
+//! | `helm_review_first_run_repair` | Prepared first-run repair review |
+//! | `helm_apply_first_run_repair` | Consented first-run repair and verification |
 //! | `helm_acknowledge_first_run_experience` | First-run experience |
 //! | `helm_list_package_keg_policies` | Keg policies |
 //! | `helm_set_package_keg_policy` | Keg policies |
@@ -205,6 +207,7 @@ struct HelmState {
 struct PreparedStartup {
     store: Arc<SqliteStore>,
     require_first_run_acknowledgment: bool,
+    reviewed_repair: Option<(String, helm_core::first_run_repair::FirstRunRepairPlan)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -722,6 +725,7 @@ struct FfiManagerStatus {
     supports_package_install: bool,
     supports_package_uninstall: bool,
     supports_package_upgrade: bool,
+    package_mutation_service_error_key: Option<&'static str>,
     package_state_issues: Vec<FfiManagerPackageStateIssue>,
     is_eligible: bool,
     ineligible_reason_code: Option<String>,
@@ -2035,17 +2039,28 @@ fn build_manager_statuses(
                     .map(std::path::Path::new),
             );
             let version = detection.and_then(|d| normalize_nonempty(d.version.clone()));
+            let package_mutation_service_error_key =
+                helm_core::manager_policy::package_mutation_block_key(id, version.as_deref());
             let supports_remote_search = runtime
                 .map(|runtime| can_submit_remote_search(runtime, id))
                 .unwrap_or_else(|| manager_participates_in_package_search(id));
             let supports_package_install = runtime
-                .map(|runtime| supports_individual_package_install(runtime, id))
+                .map(|runtime| {
+                    package_mutation_service_error_key.is_none()
+                        && supports_individual_package_install(runtime, id)
+                })
                 .unwrap_or(false);
             let supports_package_uninstall = runtime
-                .map(|runtime| supports_individual_package_uninstall(runtime, id))
+                .map(|runtime| {
+                    package_mutation_service_error_key.is_none()
+                        && supports_individual_package_uninstall(runtime, id)
+                })
                 .unwrap_or(false);
             let supports_package_upgrade = runtime
-                .map(|runtime| supports_individual_package_upgrade(runtime, id))
+                .map(|runtime| {
+                    package_mutation_service_error_key.is_none()
+                        && supports_individual_package_upgrade(runtime, id)
+                })
                 .unwrap_or(false);
             let manager_install_instances = install_instances_by_manager.get(&id);
             let install_instance_count = manager_install_instances.map_or(0, Vec::len);
@@ -2107,6 +2122,7 @@ fn build_manager_statuses(
                 supports_package_install,
                 supports_package_uninstall,
                 supports_package_upgrade,
+                package_mutation_service_error_key,
                 package_state_issues,
                 is_eligible: eligibility.is_eligible,
                 ineligible_reason_code: eligibility.reason_code.map(str::to_string),
@@ -3657,7 +3673,7 @@ struct UpgradeAllTargets {
     npm: Vec<String>,
     pnpm: Vec<String>,
     yarn: Vec<String>,
-    cargo: Vec<(String, String)>,
+    cargo: Vec<(String, String, String)>,
     cargo_binstall: Vec<String>,
     pip: Vec<String>,
     pipx: Vec<String>,
@@ -3685,6 +3701,23 @@ struct FfiUpgradePlanStep {
 
 const MAS_ALL_PACKAGES_TARGET: &str = "__all__";
 const HOMEBREW_CLEANUP_REASON_LABEL_KEY: &str = "service.task.label.upgrade.homebrew_cleanup";
+
+fn apply_package_mutation_preview_policy(steps: &mut [FfiUpgradePlanStep], store: &SqliteStore) {
+    let detections = store.list_detections().unwrap_or_default();
+    for step in steps {
+        let Ok(manager) = step.manager_id.parse::<ManagerId>() else {
+            continue;
+        };
+        let version = detections
+            .iter()
+            .find(|(id, _)| *id == manager)
+            .and_then(|(_, detection)| detection.version.as_deref());
+        if let Some(key) = helm_core::manager_policy::package_mutation_block_key(manager, version) {
+            step.status = "blocked".into();
+            step.reason_label_key = key.into();
+        }
+    }
+}
 
 fn manager_authority_key(id: ManagerId) -> &'static str {
     match helm_core::registry::manager(id).map(|descriptor| descriptor.authority) {
@@ -3769,6 +3802,9 @@ fn upgrade_request_binding_args(request: &AdapterRequest) -> Vec<(&'static str, 
         ManagerId::Cargo => {
             if let Some(version) = &request.version {
                 args.push(("cargo_candidate_version", version.clone()));
+            }
+            if let Some(target) = &request.target_name {
+                args.push(("cargo_review_scope", target.clone()));
             }
         }
         ManagerId::Uv => {
@@ -3906,6 +3942,9 @@ fn collect_upgrade_all_targets(
                     targets.cargo.push((
                         package.package.name.clone(),
                         package.candidate_version.clone(),
+                        package.package_identifier.clone().unwrap_or_else(|| {
+                            helm_core::adapters::cargo_review_scope::UNAVAILABLE.into()
+                        }),
                     ));
                 }
             }
@@ -5755,6 +5794,7 @@ pub unsafe extern "C" fn helm_prepare_startup(
     *prepared = Some(PreparedStartup {
         store,
         require_first_run_acknowledgment,
+        reviewed_repair: None,
     });
     json.into_raw()
 }
@@ -7323,6 +7363,142 @@ pub extern "C" fn helm_observe_first_run_environment() -> *mut c_char {
     }
 }
 
+/// Propose the finite first-run repair without commands or preference writes.
+/// Available only in a prepared, legally accepted, unacknowledged startup.
+/// Re-proposing invalidates any earlier review token in this process.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_review_first_run_repair() -> *mut c_char {
+    use helm_core::first_run_repair::{FirstRunRepairStore, propose_first_run_repair};
+    clear_last_error_key();
+    let _startup = lock_or_recover(&STARTUP_LOCK, "startup");
+    let mut prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+    let Some(prepared) = prepared.as_mut() else {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    };
+    prepared.reviewed_repair = None;
+    if !prepared_repair_allowed(prepared) {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let plan = match propose_first_run_repair(prepared.store.as_ref(), &first_run_repair_context())
+    {
+        Ok(plan) => plan,
+        Err(error) => return return_error_ptr(core_error_service_key(&error)),
+    };
+    let receipts = match prepared.store.first_run_repair_receipts() {
+        Ok(receipts) => receipts,
+        Err(error) => return return_error_ptr(core_error_service_key(&error)),
+    };
+    static NEXT_REVIEW: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let token = plan.as_ref().map(|plan| {
+        format!(
+            "{}:{:x}:{:x}:{:x}",
+            plan.fingerprint(),
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            NEXT_REVIEW.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        )
+    });
+    let value = serde_json::json!({"schema_version": 1, "plan": plan, "review_token": token, "receipts": receipts});
+    let Ok(json) = CString::new(value.to_string()) else {
+        return return_error_ptr(SERVICE_ERROR_INTERNAL);
+    };
+    prepared.reviewed_repair = token.zip(plan);
+    json.into_raw()
+}
+
+fn prepared_repair_allowed(prepared: &PreparedStartup) -> bool {
+    prepared.require_first_run_acknowledgment
+        && lock_or_recover(&STATE, "state").is_none()
+        && matches!(prepared.store.first_run_experience_state(FirstRunExperience::CURRENT),
+            Ok(state) if !state.acknowledged)
+        && matches!(prepared.store.cli_accepted_license_terms_version(),
+            Ok(Some(version)) if version == "helm-source-available-license-v1.0-pre1.0")
+}
+
+fn first_run_repair_context() -> helm_core::first_run::LocalObservationContext {
+    #[cfg(test)]
+    if let Some(path) = std::env::var_os("HELM_TEST_FIRST_RUN_REPAIR_SEARCH_ROOT") {
+        return helm_core::first_run::LocalObservationContext {
+            search_directories: vec![path.into()],
+            include_system_candidates: false,
+        };
+    }
+    helm_core::first_run::LocalObservationContext::from_environment()
+}
+
+/// Apply only a previously reviewed local repair, consuming its approval once.
+/// The caller must disclose the preference change and bounded local version
+/// check and obtain explicit consent. No runtime, catalog, installer or network
+/// action is activated. A null reply never means the preference was unchanged;
+/// re-read durable receipts after transport/storage failure.
+///
+/// # Safety
+/// `review_token` must be null or a NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_apply_first_run_repair(review_token: *const c_char) -> *mut c_char {
+    clear_last_error_key();
+    if review_token.is_null() {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let Ok(token) = (unsafe { CStr::from_ptr(review_token) }).to_str() else {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    };
+    if !(70..=128).contains(&token.len()) {
+        return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let _startup = lock_or_recover(&STARTUP_LOCK, "startup");
+    let (store, plan) = {
+        let mut guard = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+        let Some(prepared) = guard.as_mut() else {
+            return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+        };
+        if !prepared_repair_allowed(prepared)
+            || prepared
+                .reviewed_repair
+                .as_ref()
+                .map(|(token, _)| token.as_str())
+                != Some(token)
+        {
+            return return_error_ptr(SERVICE_ERROR_INVALID_INPUT);
+        }
+        (
+            prepared.store.clone(),
+            prepared
+                .reviewed_repair
+                .take()
+                .expect("validated reviewed plan")
+                .1,
+        )
+    };
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(_) => return return_error_ptr(SERVICE_ERROR_INTERNAL),
+    };
+    let receipt = runtime.block_on(
+        helm_core::first_run_repair::apply_approved_first_run_repair(
+            store.as_ref(),
+            &first_run_repair_context(),
+            &plan,
+            &TokioProcessExecutor,
+        ),
+    );
+    match receipt {
+        Ok(receipt) => match CString::new(
+            serde_json::json!({"schema_version": 1, "receipt": receipt}).to_string(),
+        ) {
+            Ok(json) => json.into_raw(),
+            Err(_) => return_error_ptr(SERVICE_ERROR_INTERNAL),
+        },
+        Err(error) => return_error_ptr(core_error_service_key(&error)),
+    }
+}
+
 /// Return the current product experience's versioned acknowledgment JSON.
 /// Null means unavailable/error, never an invitation to start first-run work.
 #[unsafe(no_mangle)]
@@ -7342,6 +7518,36 @@ pub extern "C" fn helm_get_first_run_experience_state() -> *mut c_char {
     match CString::new(json) {
         Ok(json) => json.into_raw(),
         Err(_) => return_error_ptr(SERVICE_ERROR_INTERNAL),
+    }
+}
+
+/// Record explicit acceptance of the current bundled terms before activation.
+/// Does not acknowledge the experience, change manager settings, or start work.
+///
+/// # Safety
+/// `version` must be null or a valid NUL-terminated UTF-8 string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_accept_first_run_license_terms(version: *const c_char) -> bool {
+    clear_last_error_key();
+    if version.is_null() {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let Ok(version) = (unsafe { CStr::from_ptr(version) }).to_str() else {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    };
+    if version != "helm-source-available-license-v1.0-pre1.0" {
+        return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+    }
+    let Some(store) = first_run_store() else {
+        return return_error_bool(SERVICE_ERROR_INTERNAL);
+    };
+    match store.set_cli_accepted_license_terms_version(Some(version)) {
+        Ok(()) => match store.cli_accepted_license_terms_version() {
+            Ok(Some(saved)) if saved == version => true,
+            Ok(_) => return_error_bool(SERVICE_ERROR_STORAGE_FAILURE),
+            Err(error) => return_error_bool(core_error_service_key(&error)),
+        },
+        Err(error) => return_error_bool(core_error_service_key(&error)),
     }
 }
 
@@ -7840,14 +8046,17 @@ pub extern "C" fn helm_preview_upgrade_plan(
     }
 
     if state.runtime.is_manager_enabled(ManagerId::Cargo) {
-        for (package_name, version) in targets.cargo {
+        for (package_name, version, binding) in targets.cargo {
             push_upgrade_plan_step_with_extra_reason_args(
                 &mut steps,
                 ManagerId::Cargo,
                 package_name,
                 false,
                 &mut order_index,
-                vec![("cargo_candidate_version", version)],
+                vec![
+                    ("cargo_candidate_version", version),
+                    ("cargo_review_scope", binding),
+                ],
             );
         }
     }
@@ -7974,6 +8183,7 @@ pub extern "C" fn helm_preview_upgrade_plan(
         );
     }
 
+    apply_package_mutation_preview_policy(&mut steps, &state.store);
     let json = match serde_json::to_string(&steps) {
         Ok(json) => json,
         Err(error) => {
@@ -8137,6 +8347,9 @@ fn retain_reviewed_upgrade_workflow_steps(
 fn upgrade_workflow_request(
     step: &FfiUpgradePlanStep,
 ) -> Option<(ManagerId, AdapterRequest, bool)> {
+    if step.status == "blocked" {
+        return None;
+    }
     let manager = step.manager_id.parse::<ManagerId>().ok()?;
     let (target_name, version) = if manager == ManagerId::Uv {
         (
@@ -8145,7 +8358,7 @@ fn upgrade_workflow_request(
         )
     } else if manager == ManagerId::Cargo {
         (
-            None,
+            Some(step.reason_label_args.get("cargo_review_scope")?.clone()),
             Some(
                 step.reason_label_args
                     .get("cargo_candidate_version")?
@@ -8226,7 +8439,11 @@ fn start_scoped_upgrade_workflow(
     )?;
     if let Some(reviewed_steps) = reviewed_steps {
         retain_reviewed_upgrade_workflow_steps(&mut steps, &reviewed_steps)?;
+        if steps.iter().any(|step| step.status == "blocked") {
+            return Err(SERVICE_ERROR_UNSUPPORTED_CAPABILITY);
+        }
     }
+    steps.retain(|step| step.status != "blocked");
     let (runtime, rt_handle) = {
         let guard = lock_or_recover(&STATE, "state");
         let state = guard.as_ref().ok_or(SERVICE_ERROR_INTERNAL)?;
@@ -8676,7 +8893,19 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
             }
         }
 
-        if runtime.is_manager_enabled(ManagerId::Pnpm) {
+        let pnpm_version = store
+            .list_detections()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(manager, _)| *manager == ManagerId::Pnpm)
+            .and_then(|(_, detection)| detection.version);
+        if runtime.is_manager_enabled(ManagerId::Pnpm)
+            && helm_core::manager_policy::package_mutation_block_key(
+                ManagerId::Pnpm,
+                pnpm_version.as_deref(),
+            )
+            .is_none()
+        {
             for package_name in targets.pnpm {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
@@ -8723,13 +8952,13 @@ fn legacy_upgrade_all(include_pinned: bool, allow_os_updates: bool) -> bool {
         }
 
         if runtime.is_manager_enabled(ManagerId::Cargo) {
-            for (package_name, version) in targets.cargo {
+            for (package_name, version, binding) in targets.cargo {
                 let request = AdapterRequest::Upgrade(UpgradeRequest {
                     package: Some(PackageRef {
                         manager: ManagerId::Cargo,
                         name: package_name.clone(),
                     }),
-                    target_name: None,
+                    target_name: Some(binding),
                     version: Some(version),
                 });
                 let binding_args = upgrade_request_binding_args(&request);
@@ -12819,14 +13048,14 @@ mod tests {
             manager: ManagerId::Rustup,
             task_type: TaskType::Uninstall,
             status: TaskStatus::Queued,
-            created_at: SystemTime::now(),
+            created_at: UNIX_EPOCH + Duration::from_secs(201),
         };
         let stale_running = TaskRecord {
             id: TaskId(202),
             manager: ManagerId::Mise,
             task_type: TaskType::Install,
             status: TaskStatus::Running,
-            created_at: SystemTime::now(),
+            created_at: UNIX_EPOCH + Duration::from_secs(202),
         };
         let completed = TaskRecord {
             id: TaskId(203),
@@ -12878,6 +13107,12 @@ mod tests {
             by_id.get(&TaskId(203)).map(|task| task.status),
             Some(TaskStatus::Completed)
         );
+        assert_eq!(by_id[&stale_queued.id].created_at, stale_queued.created_at);
+        assert_eq!(
+            by_id[&stale_running.id].created_at,
+            stale_running.created_at
+        );
+        assert_eq!(store.prune_completed_tasks(300).unwrap(), 0);
 
         let logs = store
             .list_task_logs(TaskId(201), 10)
@@ -12886,6 +13121,10 @@ mod tests {
             logs.iter()
                 .any(|entry| entry.message.contains("test_reconcile")),
             "reconciled task log should include reconciliation context"
+        );
+        assert!(
+            logs.iter()
+                .all(|entry| entry.created_at > stale_queued.created_at)
         );
 
         let _ = fs::remove_file(store.database_path());
@@ -12903,7 +13142,7 @@ mod tests {
             manager: ManagerId::Rustup,
             task_type: TaskType::Refresh,
             status: TaskStatus::Running,
-            created_at: SystemTime::now(),
+            created_at: UNIX_EPOCH + Duration::from_secs(401),
         };
 
         store
@@ -12942,6 +13181,8 @@ mod tests {
             .find(|task| task.id == stale_running.id)
             .expect("task should exist");
         assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(task.created_at, stale_running.created_at);
+        assert_eq!(store.prune_completed_tasks(300).unwrap(), 0);
 
         let logs = store
             .list_task_logs(stale_running.id, 20)
@@ -13747,7 +13988,14 @@ mod tests {
         );
         assert!(targets.softwareupdate_outdated);
         assert_eq!(targets.uv, vec!["ruff".to_string()]);
-        assert_eq!(targets.cargo, vec![("sd".into(), "1.1.0".into())]);
+        assert_eq!(
+            targets.cargo,
+            vec![(
+                "sd".into(),
+                "1.1.0".into(),
+                helm_core::adapters::cargo_review_scope::UNAVAILABLE.into()
+            )]
+        );
     }
 
     #[test]
@@ -13760,19 +14008,30 @@ mod tests {
             "sd".into(),
             false,
             &mut order,
-            vec![("cargo_candidate_version", "1.0.0".into())],
+            vec![
+                ("cargo_candidate_version", "1.0.0".into()),
+                ("cargo_review_scope", "cargo-review-v1:old".into()),
+            ],
         );
         let (_, request, _) = super::upgrade_workflow_request(&steps[0]).unwrap();
         let AdapterRequest::Upgrade(request) = request else {
             panic!("upgrade")
         };
         assert_eq!(request.version.as_deref(), Some("1.0.0"));
-        assert_eq!(request.target_name, None);
+        assert_eq!(request.target_name.as_deref(), Some("cargo-review-v1:old"));
         let mut changed = steps.clone();
         changed[0]
             .reason_label_args
             .insert("cargo_candidate_version".into(), "1.1.0".into());
         assert!(super::retain_reviewed_upgrade_workflow_steps(&mut changed, &steps).is_err());
+        let mut changed = steps.clone();
+        changed[0]
+            .reason_label_args
+            .insert("cargo_review_scope".into(), "cargo-review-v1:new".into());
+        assert!(super::retain_reviewed_upgrade_workflow_steps(&mut changed, &steps).is_err());
+        let mut missing_scope = steps[0].clone();
+        missing_scope.reason_label_args.remove("cargo_review_scope");
+        assert!(super::upgrade_workflow_request(&missing_scope).is_none());
         steps[0].reason_label_args.remove("cargo_candidate_version");
         assert!(super::upgrade_workflow_request(&steps[0]).is_none());
     }
@@ -13874,6 +14133,7 @@ mod tests {
         let store = Arc::new(temp_sqlite_store("cargo-plan-binding"));
         store.migrate_to_latest().unwrap();
         let mut outdated = outdated_pkg(ManagerId::Cargo, "sd", false);
+        outdated.package_identifier = Some("cargo-review-v1:first".into());
         store.upsert_outdated(&[outdated.clone()]).unwrap();
         let recorded = Arc::new(Mutex::new(Vec::new()));
         let runtime = Arc::new(
@@ -13898,6 +14158,13 @@ mod tests {
         assert_eq!(
             reviewed[0]
                 .reason_label_args
+                .get("cargo_review_scope")
+                .map(String::as_str),
+            Some("cargo-review-v1:first")
+        );
+        assert_eq!(
+            reviewed[0]
+                .reason_label_args
                 .get("cargo_candidate_version")
                 .unwrap(),
             "1.1.0"
@@ -13906,7 +14173,10 @@ mod tests {
         let reviewed: Vec<FfiUpgradePlanStep> =
             serde_json::from_str(&serde_json::to_string(&reviewed).unwrap()).unwrap();
         outdated.candidate_version = "1.2.0".into();
-        store.upsert_outdated(&[outdated]).unwrap();
+        outdated.package_identifier = Some("cargo-review-v1:second".into());
+        store
+            .replace_outdated_snapshot(ManagerId::Cargo, &[outdated])
+            .unwrap();
         assert!(retain_reviewed_upgrade_workflow_steps(&mut preview(), &reviewed).is_err());
 
         let workflow_task = {
@@ -13938,6 +14208,10 @@ mod tests {
             );
         };
         wait_for(1);
+        assert_eq!(
+            recorded.lock().unwrap()[0].target_name.as_deref(),
+            Some("cargo-review-v1:first")
+        );
         {
             let guard = super::lock_or_recover(&super::STATE, "state");
             let terminal = guard
@@ -13964,8 +14238,21 @@ mod tests {
                 .map(String::as_str),
             Some("1.1.0")
         );
+        assert_eq!(
+            super::lock_or_recover(&super::TASK_LABELS, "task_labels")
+                .get(&workflow_task.0)
+                .unwrap()
+                .args
+                .get("cargo_review_scope")
+                .map(String::as_str),
+            Some("cargo-review-v1:first")
+        );
         assert!(super::legacy_upgrade_all(false, false));
         wait_for(2);
+        assert_eq!(
+            recorded.lock().unwrap()[1].target_name.as_deref(),
+            Some("cargo-review-v1:second")
+        );
         let manager = CString::new("cargo").unwrap();
         let name = CString::new("sd").unwrap();
         let version = CString::new("1.3.0").unwrap();
@@ -14694,6 +14981,74 @@ mod tests {
         assert!(!status_for(&statuses, ManagerId::MacPorts).enabled);
         assert!(!status_for(&statuses, ManagerId::NixDarwin).enabled);
         assert!(status_for(&statuses, ManagerId::Mise).enabled);
+    }
+
+    #[test]
+    fn pnpm_preview_blocks_mutation_without_hiding_update_or_disabling_reads() {
+        use helm_core::adapters::{PnpmAdapter, ProcessPnpmSource};
+        let runtime =
+            AdapterRuntime::new(vec![
+                Arc::new(PnpmAdapter::new(ProcessPnpmSource::new(Arc::new(
+                    helm_core::execution::TokioProcessExecutor,
+                )))) as Arc<dyn ManagerAdapter>,
+            ])
+            .unwrap();
+        for version in [Some("12.6.0"), Some("10.16.1"), None] {
+            // Missing versions intentionally preserve an existing detection's
+            // version, so each policy case needs its own persisted snapshot.
+            let store = temp_sqlite_store("pnpm-preview-policy");
+            store.migrate_to_latest().unwrap();
+            store.set_manager_enabled(ManagerId::Pnpm, true).unwrap();
+            let detection = DetectionInfo {
+                installed: true,
+                executable_path: None,
+                version: version.map(str::to_owned),
+            };
+            store.upsert_detection(ManagerId::Pnpm, &detection).unwrap();
+            let statuses = build_manager_statuses(
+                Some(&runtime),
+                Some(&store),
+                &HashMap::new(),
+                &HashMap::new(),
+            );
+            let pnpm = status_for(&statuses, ManagerId::Pnpm);
+            let allowed = version == Some("10.16.1");
+            assert!(
+                pnpm.enabled && pnpm.detected && pnpm.is_eligible && pnpm.supports_remote_search
+            );
+            assert_eq!(pnpm.supports_package_install, allowed);
+            assert_eq!(pnpm.supports_package_uninstall, allowed);
+            // Preserve the existing individual-action allowlist; legacy pnpm
+            // upgrades remain available through Plan, not the individual FFI endpoint.
+            assert!(!pnpm.supports_package_upgrade);
+            assert_eq!(pnpm.package_mutation_service_error_key.is_none(), allowed);
+            let mut steps = Vec::new();
+            let mut order = 0;
+            super::push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Pnpm,
+                "prettier".into(),
+                false,
+                &mut order,
+            );
+            super::push_upgrade_plan_step(
+                &mut steps,
+                ManagerId::Npm,
+                "other".into(),
+                false,
+                &mut order,
+            );
+            super::apply_package_mutation_preview_policy(&mut steps, &store);
+            assert_eq!(steps.len(), 2);
+            assert_eq!(steps[0].status, if allowed { "queued" } else { "blocked" });
+            assert_eq!(
+                super::upgrade_workflow_request(&steps[0]).is_some(),
+                allowed
+            );
+            assert_eq!(steps[1].status, "queued");
+            assert!(super::upgrade_workflow_request(&steps[1]).is_some());
+            assert!(store.list_recent_tasks(10).unwrap().is_empty());
+        }
     }
 
     #[test]
@@ -16061,6 +16416,83 @@ mod tests {
     }
 
     #[test]
+    fn ffi_first_run_repair_requires_legal_review_once_and_preserves_startup_gate() {
+        use helm_core::first_run_repair::FirstRunRepairStore;
+        use std::ffi::c_char;
+        use std::os::unix::fs::PermissionsExt;
+        use std::path::PathBuf;
+        const ROOT: &str = "HELM_TEST_FIRST_RUN_REPAIR_SEARCH_ROOT";
+        if let Some(root) = std::env::var_os(ROOT) {
+            fn json(pointer: *mut c_char) -> serde_json::Value {
+                assert!(!pointer.is_null());
+                let value =
+                    serde_json::from_str(unsafe { CStr::from_ptr(pointer) }.to_str().unwrap())
+                        .unwrap();
+                unsafe { super::helm_free_string(pointer) };
+                value
+            }
+            let root = PathBuf::from(root);
+            let database = CString::new(root.join("helm.db").to_str().unwrap()).unwrap();
+            let store = SqliteStore::new(root.join("helm.db"));
+            store.migrate_to_latest().unwrap();
+            let binary = root.join("mise");
+            std::fs::write(&binary, [0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]).unwrap();
+            std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+            store.set_manager_enabled(ManagerId::Mise, true).unwrap();
+            store
+                .set_manager_selected_executable_path(ManagerId::Mise, root.join("absent").to_str())
+                .unwrap();
+            assert!(super::helm_review_first_run_repair().is_null());
+            json(unsafe { super::helm_prepare_startup(database.as_ptr(), true) });
+            assert!(super::helm_review_first_run_repair().is_null());
+            let terms = CString::new("helm-source-available-license-v1.0-pre1.0").unwrap();
+            assert!(unsafe { super::helm_accept_first_run_license_terms(terms.as_ptr()) });
+            let review = json(super::helm_review_first_run_repair());
+            let old = CString::new(review["review_token"].as_str().unwrap()).unwrap();
+            let review = json(super::helm_review_first_run_repair());
+            let token = CString::new(review["review_token"].as_str().unwrap()).unwrap();
+            assert_ne!(old, token);
+            assert!(unsafe { super::helm_apply_first_run_repair(old.as_ptr()) }.is_null());
+            assert!(store.first_run_repair_receipts().unwrap().is_empty());
+            let outcome = json(unsafe { super::helm_apply_first_run_repair(token.as_ptr()) });
+            // The test file is a native header, not an executable: a spawn error
+            // must be durably failed, never advertised as a verified repair.
+            assert_eq!(outcome["receipt"]["verification"], "failed");
+            assert_eq!(outcome["receipt"]["applied"], true);
+            assert!(unsafe { super::helm_apply_first_run_repair(token.as_ptr()) }.is_null());
+            assert_eq!(store.first_run_repair_receipts().unwrap().len(), 1);
+            assert!(!super::helm_start_runtime());
+            assert!(!super::AUTO_CHECK_TICKER_STARTED.load(Ordering::Acquire));
+            assert!(super::lock_or_recover(&super::STATE, "test").is_none());
+            let recovery = json(super::helm_review_first_run_repair());
+            assert!(recovery["plan"].is_null());
+            assert_eq!(recovery["receipts"].as_array().unwrap().len(), 1);
+            let experience = CString::new("wayfinder-v0.20").unwrap();
+            assert!(unsafe { super::helm_acknowledge_first_run_experience(experience.as_ptr()) });
+            assert!(super::helm_review_first_run_repair().is_null());
+            return;
+        }
+        let store = temp_sqlite_store("first-run-repair-boundary");
+        let root = store.database_path().with_extension("fixture");
+        std::fs::create_dir_all(&root).unwrap();
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::ffi_first_run_repair_requires_legal_review_once_and_preserves_startup_gate",
+                "--nocapture",
+            ])
+            .env(ROOT, &root)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    #[test]
     fn ffi_startup_gate_contract() {
         use helm_core::persistence::{FirstRunExperience, FirstRunStore};
         const MODE: &str = "HELM_TEST_STARTUP_MODE";
@@ -16126,6 +16558,45 @@ mod tests {
             assert!(!super::helm_set_safe_mode(true));
             assert!(!super::helm_set_cli_onboarding_completed(false));
             assert!(!super::helm_reset_database());
+            let unknown_terms = CString::new("unreviewed-version").unwrap();
+            assert!(!unsafe { super::helm_accept_first_run_license_terms(std::ptr::null()) });
+            assert!(!unsafe { super::helm_accept_first_run_license_terms(unknown_terms.as_ptr()) });
+            if mode == "fresh" {
+                let terms = CString::new("helm-source-available-license-v1.0-pre1.0").unwrap();
+                let connection = rusqlite::Connection::open(&path).unwrap();
+                connection
+                    .execute_batch(
+                        "CREATE TRIGGER reject_terms BEFORE INSERT ON app_settings
+                    WHEN NEW.key = 'cli_accepted_license_terms_version'
+                    BEGIN SELECT RAISE(ABORT, 'simulated disk failure'); END;",
+                    )
+                    .unwrap();
+                assert!(!unsafe { super::helm_accept_first_run_license_terms(terms.as_ptr()) });
+                assert!(
+                    store
+                        .cli_accepted_license_terms_version()
+                        .unwrap()
+                        .is_none()
+                );
+                connection
+                    .execute_batch("DROP TRIGGER reject_terms")
+                    .unwrap();
+                assert!(unsafe { super::helm_accept_first_run_license_terms(terms.as_ptr()) });
+                assert_eq!(
+                    store
+                        .cli_accepted_license_terms_version()
+                        .unwrap()
+                        .as_deref(),
+                    terms.to_str().ok()
+                );
+                assert!(
+                    !store
+                        .first_run_experience_state(FirstRunExperience::CURRENT)
+                        .unwrap()
+                        .acknowledged
+                );
+                assert!(!super::helm_start_runtime());
+            }
             assert_eq!(history, store.list_recent_tasks(20).unwrap());
             assert_eq!(preferences, store.list_manager_preferences().unwrap());
             assert_eq!(store.cli_onboarding_completed().unwrap(), mode != "fresh");
