@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 from pathlib import Path
 import sys
 import tempfile
@@ -81,6 +82,16 @@ def main():
         cli('pin-peer', 'packages', 'pin', 'semver', '--manager', 'pnpm')
         plan = cli('review', 'updates', 'preview', '--manager', 'pnpm')
         assert all(step.get('package_name', step.get('packageName')) != 'semver' for step in plan['steps'])
+        assert plan['steps'], 'expected the visible prettier update, not a hidden blocked manager'
+        assert all(not step['runnable'] and step['blockedServiceErrorKey'] ==
+                   'service.error.pnpm_global_mutation_unsupported' for step in plan['steps'])
+        with sqlite3.connect(root / 'helm.db') as database:
+            tasks_before = database.execute('SELECT COUNT(*) FROM task_records').fetchone()[0]
+        run('blocked-plan-no-package-tasks', [args.helm, '--json', '--wait', 'updates', 'run',
+                                            '--manager', 'pnpm', '--yes'], success=False)
+        with sqlite3.connect(root / 'helm.db') as database:
+            assert database.execute('SELECT COUNT(*) FROM task_records').fetchone()[0] == tasks_before
+        assert installed() == {'prettier': '3.5.3', 'semver': '7.6.3'}
         for label, command in [
             ('blocked-install', ['install', 'prettier', '--version', '3.5.3']),
             ('blocked-upgrade', ['upgrade', 'prettier']),

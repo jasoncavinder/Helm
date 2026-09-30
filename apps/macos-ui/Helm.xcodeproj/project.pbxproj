@@ -7,6 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		R57500000000000000000001 /* ManagerPriorityReordering.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000011 /* ManagerPriorityReordering.swift */; };
+		R57500000000000000000002 /* ManagerPriorityReordering.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000011 /* ManagerPriorityReordering.swift */; };
+		R57500000000000000000003 /* ManagerPriorityDragHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000012 /* ManagerPriorityDragHandle.swift */; };
+		R57500000000000000000004 /* ManagerPriorityReorderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000013 /* ManagerPriorityReorderingTests.swift */; };
+        C58400000000000000000001 /* FirstRunEvidencePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58400000000000000000011 /* FirstRunEvidencePresentation.swift */; };
+        C58400000000000000000002 /* FirstRunEvidencePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58400000000000000000011 /* FirstRunEvidencePresentation.swift */; };
+        C58400000000000000000003 /* ProductionFirstRunEvidenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58400000000000000000012 /* ProductionFirstRunEvidenceView.swift */; };
+        C58400000000000000000004 /* FirstRunEvidencePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58400000000000000000013 /* FirstRunEvidencePresentationTests.swift */; };
+        C57900000000000000000001 /* FirstRunRepairPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57900000000000000000011 /* FirstRunRepairPresentation.swift */; };
+        C57900000000000000000002 /* FirstRunRepairPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57900000000000000000011 /* FirstRunRepairPresentation.swift */; };
         C57400000000000000000001 /* FirstRunEntryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57400000000000000000011 /* FirstRunEntryController.swift */; };
         C57400000000000000000002 /* FirstRunEntryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57400000000000000000011 /* FirstRunEntryController.swift */; };
         C57400000000000000000003 /* ProductionFirstRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57400000000000000000012 /* ProductionFirstRunView.swift */; };
@@ -228,6 +238,13 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		R57500000000000000000011 /* ManagerPriorityReordering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerPriorityReordering.swift; sourceTree = "<group>"; };
+		R57500000000000000000012 /* ManagerPriorityDragHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerPriorityDragHandle.swift; sourceTree = "<group>"; };
+		R57500000000000000000013 /* ManagerPriorityReorderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerPriorityReorderingTests.swift; sourceTree = "<group>"; };
+        C58400000000000000000011 /* FirstRunEvidencePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunEvidencePresentation.swift; sourceTree = "<group>"; };
+        C58400000000000000000012 /* ProductionFirstRunEvidenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionFirstRunEvidenceView.swift; sourceTree = "<group>"; };
+        C58400000000000000000013 /* FirstRunEvidencePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunEvidencePresentationTests.swift; sourceTree = "<group>"; };
+        C57900000000000000000011 /* FirstRunRepairPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunRepairPresentation.swift; sourceTree = "<group>"; };
         C57400000000000000000011 /* FirstRunEntryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunEntryController.swift; sourceTree = "<group>"; };
         C57400000000000000000012 /* ProductionFirstRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionFirstRunView.swift; sourceTree = "<group>"; };
         C57400000000000000000013 /* FirstRunEntryControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunEntryControllerTests.swift; sourceTree = "<group>"; };
@@ -450,6 +467,8 @@
 				C42400000000000000000011 /* ServiceConnectionRetryPolicy.swift */,
 				C56800000000000000000011 /* HelmCore+Startup.swift */,
                 C57400000000000000000011 /* FirstRunEntryController.swift */,
+                C57900000000000000000011 /* FirstRunRepairPresentation.swift */,
+                C58400000000000000000011 /* FirstRunEvidencePresentation.swift */,
 				J100000000000000000000001 /* AppUpdateConfiguration.swift */,
 				A41200000000000000000002 /* AppUpdateCoordinator.swift */,
 				P100000000000000000000002 /* ExternalSparkleUpdateCoordinator.swift */,
@@ -463,6 +482,7 @@
 				X100000000000000000000002 /* HelmOverviewState.swift */,
 				Z100000000000000000000001 /* FirstRunPresentationSupport.swift */,
 				C10000000000000000000003 /* UpgradePreviewPlanner.swift */,
+				R57500000000000000000011 /* ManagerPriorityReordering.swift */,
 				M100000000000000000000001 /* LocalizationPreference.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
@@ -509,6 +529,7 @@
 				E10000000000000000000001 /* InspectorViews.swift */,
 				A46300000000000000000012 /* DashboardManagerInstallationView.swift */,
 					B10000000000000000000010 /* ManagersView.swift */,
+					R57500000000000000000012 /* ManagerPriorityDragHandle.swift */,
 					B10000000000000000000007 /* NavigationBarView.swift */,
 					8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
 					V100000000000000000000001 /* SettingsPane.swift */,
@@ -627,6 +648,7 @@
 			children = (
 				Y100000000000000000000001 /* EnvironmentBriefFirstRunView.swift */,
                 C57400000000000000000012 /* ProductionFirstRunView.swift */,
+                C58400000000000000000012 /* ProductionFirstRunEvidenceView.swift */,
 				R531000000000000000000012 /* ResearchFirstRunFlowView.swift */,
 				B10000000000000000000011 /* OnboardingContainerView.swift */,
 				B10000000000000000000014 /* OnboardingConfigureView.swift */,
@@ -658,6 +680,7 @@
 				C42400000000000000000012 /* ServiceConnectionRetryPolicyTests.swift */,
 				Z100000000000000000000002 /* FirstRunPresentationSupportTests.swift */,
                 C57400000000000000000013 /* FirstRunEntryControllerTests.swift */,
+                C58400000000000000000013 /* FirstRunEvidencePresentationTests.swift */,
 				W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */,
 				H100000000000000000000001 /* AppUpdateConfigurationTests.swift */,
 				C38300000000000000000013 /* ControlCenterContextTests.swift */,
@@ -670,6 +693,7 @@
 				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
 				K100000000000000000000002 /* SupportRedactorTests.swift */,
 				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
+				R57500000000000000000013 /* ManagerPriorityReorderingTests.swift */,
 				Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */,
 				R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */,
 				R513000000000000000000012 /* LibraryResultProvenanceTests.swift */,
@@ -915,7 +939,10 @@
 				C42400000000000000000001 /* ServiceConnectionRetryPolicy.swift in Sources */,
 				C56800000000000000000001 /* HelmCore+Startup.swift in Sources */,
                 C57400000000000000000001 /* FirstRunEntryController.swift in Sources */,
+                C57900000000000000000001 /* FirstRunRepairPresentation.swift in Sources */,
                 C57400000000000000000003 /* ProductionFirstRunView.swift in Sources */,
+                C58400000000000000000001 /* FirstRunEvidencePresentation.swift in Sources */,
+                C58400000000000000000003 /* ProductionFirstRunEvidenceView.swift in Sources */,
 				A41200000000000000000001 /* AppUpdateCoordinator.swift in Sources */,
 				P100000000000000000000001 /* ExternalSparkleUpdateCoordinator.swift in Sources */,
 				R513000000000000000000001 /* LibraryResultProvenance.swift in Sources */,
@@ -927,6 +954,8 @@
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
 				C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */,
+				R57500000000000000000001 /* ManagerPriorityReordering.swift in Sources */,
+				R57500000000000000000003 /* ManagerPriorityDragHandle.swift in Sources */,
 				K200000000000000000000001 /* SupportRedactor.swift in Sources */,
 				M200000000000000000000001 /* LocalizationPreference.swift in Sources */,
 				B20000000000000000000015 /* LocalizationManager.swift in Sources */,
@@ -1017,7 +1046,10 @@
 				C41900000000000000000003 /* StatusItemActivationPolicyTests.swift in Sources */,
 				C42400000000000000000002 /* ServiceConnectionRetryPolicy.swift in Sources */,
                 C57400000000000000000002 /* FirstRunEntryController.swift in Sources */,
+                C57900000000000000000002 /* FirstRunRepairPresentation.swift in Sources */,
                 C57400000000000000000004 /* FirstRunEntryControllerTests.swift in Sources */,
+                C58400000000000000000002 /* FirstRunEvidencePresentation.swift in Sources */,
+                C58400000000000000000004 /* FirstRunEvidencePresentationTests.swift in Sources */,
 				C42400000000000000000003 /* ServiceConnectionRetryPolicyTests.swift in Sources */,
 				J200000000000000000000002 /* AppUpdateConfiguration.swift in Sources */,
 				S200000000000000000000002 /* ControlCenterSearchBridge.swift in Sources */,
@@ -1039,6 +1071,8 @@
 				M200000000000000000000002 /* LocalizationPreference.swift in Sources */,
 				C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */,
 				C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */,
+				R57500000000000000000002 /* ManagerPriorityReordering.swift in Sources */,
+				R57500000000000000000004 /* ManagerPriorityReorderingTests.swift in Sources */,
 				K200000000000000000000002 /* SupportRedactor.swift in Sources */,
 				K200000000000000000000003 /* SupportRedactorTests.swift in Sources */,
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,
