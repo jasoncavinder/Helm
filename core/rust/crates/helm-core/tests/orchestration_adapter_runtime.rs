@@ -238,16 +238,23 @@ impl TaskStore for RecordingTaskStore {
             kind: CoreErrorKind::Internal,
             message: "recording store mutex poisoned".to_string(),
         })?;
-        if !records.contains_key(&task.id) {
-            return Err(CoreError {
+        let created_at = records
+            .get(&task.id)
+            .map(|record| record.created_at)
+            .ok_or_else(|| CoreError {
                 manager: None,
                 task: None,
                 action: None,
                 kind: CoreErrorKind::StorageFailure,
                 message: "task record not found".to_string(),
-            });
-        }
-        records.insert(task.id, task.clone());
+            })?;
+        records.insert(
+            task.id,
+            TaskRecord {
+                created_at,
+                ..task.clone()
+            },
+        );
         Ok(())
     }
 
@@ -263,16 +270,23 @@ impl TaskStore for RecordingTaskStore {
             kind: CoreErrorKind::Internal,
             message: "recording store mutex poisoned".to_string(),
         })?;
-        if !records.contains_key(&task.id) {
-            return Err(CoreError {
+        let created_at = records
+            .get(&task.id)
+            .map(|record| record.created_at)
+            .ok_or_else(|| CoreError {
                 manager: None,
                 task: None,
                 action: None,
                 kind: CoreErrorKind::StorageFailure,
                 message: "task record not found".to_string(),
-            });
-        }
-        records.insert(task.id, task.clone());
+            })?;
+        records.insert(
+            task.id,
+            TaskRecord {
+                created_at,
+                ..task.clone()
+            },
+        );
         Ok(())
     }
 

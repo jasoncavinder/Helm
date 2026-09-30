@@ -26,6 +26,24 @@ transaction.
 
 ## Runtime Ledger
 
+Migration 23 adds external Sparkle update sessions. Operation IDs remain consumed
+after terminal results, independently of ordinary task-history deletion. Active
+canonical paths and original filesystem identities have unique reservations;
+unverified outcomes retain their reservations. Session writes use per-connection
+`synchronous=FULL` plus `fullfsync=ON` before committing authorization or handoff;
+ordinary cache connections retain the existing NORMAL policy. This requests
+stronger durability for external effects, not an absolute hardware/power-loss
+guarantee. Reset/downgrade cannot drop this ledger while a reservation remains;
+the check and table removal are serialized with new claims in one immediate
+transaction. No installer or automatic restart recovery is activated by this
+migration. See [the session contract](../validation/v0.20-sparkle-durable-session.md).
+
+Migration 22 adds local first-run preference-repair receipts. The reviewed
+preference change and applied/unverified receipt commit atomically; a separate
+post-observation transaction finalizes the verification result. Interruption
+does not replay the mutation or imply success. This is a narrow action ledger,
+not a generalized persisted setup scheduler.
+
 Migration 21 adds a durable task-ID high-water mark, seeded from existing task
 records. Queued tasks are reserved in one immediate transaction before adapter
 execution. Record insertion advances the mark, and history deletion/pruning does

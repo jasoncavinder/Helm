@@ -1075,7 +1075,56 @@ DROP TABLE task_id_sequence;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 21] = [
+const MIGRATION_0022: SqliteMigration = SqliteMigration {
+    version: 22,
+    name: "add_first_run_repair_receipts",
+    up_sql: r#"
+CREATE TABLE first_run_repair_receipts (
+    receipt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_fingerprint TEXT NOT NULL,
+    before_preference_json TEXT NOT NULL,
+    receipt_json TEXT NOT NULL
+);
+"#,
+    down_sql: r#"
+DROP TABLE first_run_repair_receipts;
+"#,
+};
+
+const MIGRATION_0023: SqliteMigration = SqliteMigration {
+    version: 23,
+    name: "add_external_update_sessions",
+    up_sql: r#"
+CREATE TABLE external_update_sessions (
+    operation_id TEXT PRIMARY KEY NOT NULL,
+    fingerprint TEXT NOT NULL,
+    target_path TEXT NOT NULL,
+    target_device TEXT NOT NULL,
+    target_inode TEXT NOT NULL,
+    bundle_identifier TEXT NOT NULL,
+    installed_build TEXT NOT NULL,
+    candidate_build TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN (
+        'downloading', 'ready_to_install', 'installing', 'awaiting_verification',
+        'cancelled_before_install', 'failed_before_install', 'unverified', 'version_verified'
+    )),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    holds_target INTEGER NOT NULL CHECK (holds_target IN (0, 1)),
+    CHECK (holds_target = (state NOT IN (
+        'cancelled_before_install', 'failed_before_install', 'version_verified'
+    )))
+);
+CREATE UNIQUE INDEX external_update_active_path
+ON external_update_sessions(target_path) WHERE holds_target = 1;
+CREATE UNIQUE INDEX external_update_active_identity
+ON external_update_sessions(target_device, target_inode) WHERE holds_target = 1;
+"#,
+    down_sql: r#"
+DROP TABLE external_update_sessions;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 23] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -1097,6 +1146,8 @@ const MIGRATIONS: [SqliteMigration; 21] = [
     MIGRATION_0019,
     MIGRATION_0020,
     MIGRATION_0021,
+    MIGRATION_0022,
+    MIGRATION_0023,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {
