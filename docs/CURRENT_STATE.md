@@ -22,6 +22,12 @@ The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
 
+The Dashboard now applies an explicit active-Space presentation policy before
+ordering/activating its retained window (#529). It does not join every Space,
+change window layout/level, or replace Settings behavior. Focused policy tests
+pass, but the [two-fullscreen-Space acceptance](validation/v0.20-dashboard-active-space.md)
+remains pending before this issue can close.
+
 The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
 now passes cargo-binstall install/detection, cancellation, controlled failure,
 recovery and cleanup through Cargo/Homebrew. Cargo's native offline cache-miss
