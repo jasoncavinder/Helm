@@ -4,6 +4,11 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The [repeatable uv multi-package Plan check](validation/v0.20-uv-multi-package-plan.md)
+passes both bounded supported endpoints in the VM, including pin exclusion,
+receipt preservation and a second no-op run. This adds reusable CLI evidence,
+not a signed GUI or platform gate waiver.
+
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with
