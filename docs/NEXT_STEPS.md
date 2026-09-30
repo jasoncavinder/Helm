@@ -87,6 +87,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    and the [read-only native observer](validation/v0.20-sparkle-native-observation.md).
    Preserve the [native peer gates](validation/v0.20-sparkle-peer-authentication.md)
    without treating configured requirements as an authenticated session.
+   Preserve the [bounded data-free bootstrap](validation/v0.20-sparkle-bootstrap-handshake.md)
+   and its no-operational-request boundary; a ready event is not update consent.
    Complete its authority mapping, signed handshake/helper/callback integration,
    installer-quiescence recovery and signed live QA before enabling direct updates.
    Preserve the [passing Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
