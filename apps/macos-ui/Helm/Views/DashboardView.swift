@@ -40,9 +40,13 @@ struct WayfinderPopoverView: View {
 
     var body: some View {
         Group {
-            if popoverFixture == nil
+            if ProductionFirstRunGate.isEnabled && !core.hasCompletedGUIEntry {
+                Button(L10n.App.Action.openControlCenter.localized, action: onOpenControlCenter)
+                    .buttonStyle(HelmPrimaryButtonStyle())
+                    .frame(width: WayfinderPopoverLayout.width, height: WayfinderPopoverLayout.ordinaryHeight)
+            } else if popoverFixture == nil
                 && researchAmbientHealthPresentation == nil
-                && (!core.hasCompletedOnboarding || core.requiresLicenseTermsAcceptance) {
+                && (!core.hasCompletedGUIEntry || core.requiresLicenseTermsAcceptance) {
                 OnboardingContainerView {
                     core.completeOnboarding()
                     core.triggerRefresh()

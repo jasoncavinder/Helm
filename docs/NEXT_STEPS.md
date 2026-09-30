@@ -2,25 +2,44 @@
 
 ## Immediate v0.20 Closeout
 
+Preserve the [task-history correction](validation/v0.20-task-creation-history.md)
+when integrating the first-run upgrade path. Recovery may change stale task
+status and append a log, but must retain its original creation time. Previously
+overwritten historical timestamps cannot be reconstructed by this fix.
+
 Use [v0.20 release readiness](validation/v0.20-release-readiness.md) as the current
 ordered checklist, superseding older per-PR pending instructions below. PRs
 #557/#558 and #568/#569 are reviewed and merged with passing head checks. Do not repeat their
 accepted owner checks without a relevant change.
-PRs #570/#571 are also reviewed and merged. The candidate plan-binding follow-up
-retains their verified-result persistence and bounded authority-overlap coverage.
+PRs #570/#571/#572 are also reviewed and merged. Preserve their verified-result
+persistence, candidate/retry binding and bounded authority-overlap coverage.
 
 1. Complete upgrade-first-run production entry (#561), using the implemented
    [shared acknowledgment foundation](validation/v0.20-first-run-acknowledgment.md).
    Use the [non-executing local observer](validation/v0.20-first-run-local-observation.md)
    for initial evidence, not ordinary detection/status APIs that can schedule
    catalogs or repair preferences. The [two-step startup boundary](validation/v0.20-first-run-startup-gate.md)
-   is implemented; select its guarded policy when integrating real entry instead
-   of the current legacy-compatibility handshake. Keep polling/updaters behind
-   activation; candidate files are not current readiness or action approval.
-   Wire the real v0.20 value flow and supported safe verified improvement while
+   is implemented. The [real entry integration](validation/v0.20-first-run-entry-integration.md)
+   now selects its guarded policy under Debug-only `HELM_FIRST_RUN_PRODUCTION_QA=1`,
+   verifies legal acceptance/acknowledgment readback, and keeps polling/updaters
+   behind activation. Shipping retains legacy compatibility. Candidate files
+   are not current readiness or action approval.
+   Preserve main-queue first-run reply validation and both connection/controller
+   generation fences when extending this flow.
+   The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
+   supplies the narrow stale-mise-override action and durable verified/unverified
+   outcomes through the prepared FFI boundary, not a shipping UI or general setup
+   scheduler. The [guarded presentation](validation/v0.20-first-run-repair-presentation.md)
+   now wires explicit consent and durable receipt readback into the real Debug
+   flow. The [Wayfinder evidence view](validation/v0.20-first-run-wayfinder-evidence.md)
+   now groups real local observations without promoting candidate files to
+   readiness or cached status to live health. Complete signed visual and
+   accessibility acceptance of this new presentation before activation,
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. Signed upgrade-path QA remains pending; broader persisted
    setup parity remains v0.21 scope.
+   Preserve the [main-queue first-run reply boundary](validation/v0.20-first-run-reply-order.md)
+   and both connection/controller generation fences when extending this flow.
 2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
    The [read-only investigation](validation/v0.19.1-rust-task-triage.md) separates
    toolchain readiness, DNS failure and dependency compilation. The
@@ -37,13 +56,44 @@ retains their verified-result persistence and bounded authority-overlap coverage
    now preserves GUI-reviewed and CLI workflow versions and rejects stale
    downgrades. Preserve failed-task candidate/scope bindings across preview
    refreshes; require a new review when original retry metadata is unavailable.
-   Finish source/scope/receipt-feature binding, explicit
-   absent/stale-lock handling and full receipt reconciliation;
+   Preserve the [execution-time native receipt guard](validation/v0.20-cargo-receipt-preservation.md)
+   for crates.io upgrades and its fail-closed unsupported-source handling.
+   Retain acceptance of native null historical version requirements while keeping
+   exact upgrade targets and incomplete-metadata rejection.
+   Preserve the [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
+   and its missing/stale-root/cache-drift rejections without unlocked fallback.
+   Preserve [discovered Cargo scope binding](validation/v0.20-cargo-reviewed-scope.md)
+   through cached workflows/retries and require refresh/review on drift.
+   Keep its outdated-only review tokens reconciled after verified mutations;
+   they must not become installed identities or leave completed updates visible.
+   Preserve the [fresh install/reinstall policy](validation/v0.20-cargo-install-policy.md),
+   including native empty-store handling and existing option preservation.
+   Preserve verified reinstall cache reconciliation, including same-version
+   reinstalls, retained newer candidates and unchanged snapshots on failure.
+   Use the [opt-in Cargo VM lifecycle](validation/v0.20-cargo-cli-lifecycle.md)
+   to repeat the real multi-package and empty-store postconditions on future
+   candidates; ordinary CI runs its harness guards, not native package installs.
+   Retain lifecycle-wide owned-session cleanup on timeout/interruption and normal
+   completion, including coordinator children, without stopping unrelated work.
+   Finish integrated-head and remaining failure/cancellation/reconciliation evidence;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
-3. Finish remaining planned runtime work (direct third-party Sparkle updating,
-   insertion-placeholder reordering), exact certification/issue dispositions,
+3. Finish remaining planned runtime work (direct third-party Sparkle updating),
+   signed QA of the [implemented insertion-placeholder reordering](validation/v0.20-environment-insertion-reordering.md), exact certification/issue dispositions,
    participant and cross-workflow accessibility gates from the checklist.
+   Build Sparkle integration on the [shared-core boundary contract](architecture/EXTERNAL_SPARKLE_BOUNDARY.md);
+   its passing pure-policy tests are not a signed helper or live installation.
+   Preserve the [durable session foundation](validation/v0.20-sparkle-durable-session.md)
+   and the [read-only native observer](validation/v0.20-sparkle-native-observation.md).
+   Preserve the [native peer gates](validation/v0.20-sparkle-peer-authentication.md)
+   without treating configured requirements as an authenticated session.
+   Preserve the [bounded data-free bootstrap](validation/v0.20-sparkle-bootstrap-handshake.md)
+   and its no-operational-request boundary; a ready event is not update consent.
+   Complete its authority mapping, signed handshake/helper/callback integration,
+   installer-quiescence recovery and signed live QA before enabling direct updates.
+   Preserve the [passing Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
+   and complete its signed GUI progress/failure/recovery checks without repeating
+   the accepted chooser-only matrix.
 4. Only then freeze and prepare v0.20.0-rc.1 through the protected release flow,
    final integrated VM/CI gates and explicit release-mutation approval.
 
@@ -91,6 +141,12 @@ mutation guard for pnpm 11+ and unknown/prerelease versions. Keep reads availabl
 retain the passing pnpm 10.16.1 lifecycle, and do not interpret the guard as pnpm
 12 lifecycle certification. Review this explicit compatibility boundary with the
 campaign batch; lifting it requires group-aware consent and preservation evidence.
+The [version-aware preview](validation/v0.20-pnpm-mutation-availability.md) now
+keeps affected updates visible but unselectable, explains the limit in inspectors
+and CLI preview, and avoids package tasks for known-blocked Plan work. Preserve
+the live version recheck and obtain signed visual/accessibility acceptance of
+this new pre-execution presentation; earlier task-diagnostic QA remains valid
+within its original scope.
 Preserve the completed bounded owner GUI checks in
 `docs/validation/v0.20-adapter-gui-checklist.md`. Do not launch an unsigned test app
 or ask the owner to repeat passing scenarios without a relevant code change.

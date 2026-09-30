@@ -31,6 +31,11 @@ use crate::sqlite::migrations::{
 use crate::versioning::normalize_package_family_key;
 
 const MIGRATIONS_TABLE: &str = "helm_schema_migrations";
+#[path = "store_external_update.rs"]
+mod external_update;
+#[cfg(unix)]
+#[path = "store_first_run_repair.rs"]
+mod first_run_repair;
 const MIGRATION_CHECKSUM_SCHEMA_VERSION: i64 = 20;
 pub const BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY: &str = "bundled:helm";
 
@@ -121,6 +126,72 @@ fn read_first_run_acknowledgment(
             )),
         )),
     }
+}
+
+fn cargo_candidate_is_reached(observed: &str, candidate: &str) -> bool {
+    match (
+        semver::Version::parse(observed),
+        semver::Version::parse(candidate),
+    ) {
+        (Ok(observed), Ok(candidate)) => !observed.cmp_precedence(&candidate).is_lt(),
+        _ => observed == candidate,
+    }
+}
+
+/// Cargo review tokens describe an outdated snapshot, not a second installed
+/// package identity. Reconcile those rows alongside the native unscoped result.
+fn reconcile_cargo_reviewed_outdated(
+    transaction: &rusqlite::Transaction<'_>,
+    package: &PackageRef,
+    package_identifier: &str,
+    observed_version: Option<&str>,
+) -> rusqlite::Result<()> {
+    use crate::adapters::cargo_review_scope::{UNAVAILABLE, is_token};
+
+    if package.manager != ManagerId::Cargo
+        || !package_identifier.is_empty()
+        || package.name == "__all__"
+    {
+        return Ok(());
+    }
+    let mut statement = transaction.prepare(
+        "SELECT package_identifier, candidate_version FROM outdated_packages
+         WHERE manager_id = ?1 AND package_name = ?2",
+    )?;
+    let entries = statement
+        .query_map(
+            params![package.manager.as_str(), package.name.as_str()],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (identifier, candidate) in entries {
+        if identifier != UNAVAILABLE && !is_token(&identifier) {
+            continue;
+        }
+        if observed_version.is_none_or(|observed| cargo_candidate_is_reached(observed, &candidate))
+        {
+            transaction.execute(
+                "DELETE FROM outdated_packages
+                 WHERE manager_id = ?1 AND package_name = ?2 AND package_identifier = ?3",
+                params![package.manager.as_str(), package.name.as_str(), identifier],
+            )?;
+        } else {
+            // Preserve a newer candidate without minting a fresh review token.
+            // Changed native state still requires discovery/review before reuse.
+            transaction.execute(
+                "UPDATE outdated_packages SET installed_version = ?4,
+                 updated_at_unix = strftime('%s', 'now')
+                 WHERE manager_id = ?1 AND package_name = ?2 AND package_identifier = ?3",
+                params![
+                    package.manager.as_str(),
+                    package.name.as_str(),
+                    identifier,
+                    observed_version
+                ],
+            )?;
+        }
+    }
+    Ok(())
 }
 
 impl FirstRunStore for SqliteStore {
@@ -642,6 +713,15 @@ WHERE manager_id = ?1
                 )?;
             }
 
+            if installed_version.is_some() {
+                reconcile_cargo_reviewed_outdated(
+                    &transaction,
+                    package,
+                    package_identifier_token,
+                    installed_version,
+                )?;
+            }
+
             transaction.commit()?;
             Ok(())
         })
@@ -718,6 +798,13 @@ WHERE manager_id = ?1
                     package.name.as_str(),
                     package_identifier_token,
                 ],
+            )?;
+
+            reconcile_cargo_reviewed_outdated(
+                &transaction,
+                package,
+                package_identifier_token,
+                None,
             )?;
 
             transaction.commit()?;
@@ -836,15 +923,7 @@ ON CONFLICT(manager_id, package_name, package_identifier, installed_version) DO 
                     // An explicitly requested version may still precede the
                     // cached registry candidate. Keep that update visible with
                     // the verified baseline, ignoring SemVer build metadata.
-                    clear_outdated = match (
-                        semver::Version::parse(promoted_version),
-                        semver::Version::parse(&candidate_version),
-                    ) {
-                        (Ok(observed), Ok(candidate)) => {
-                            !observed.cmp_precedence(&candidate).is_lt()
-                        }
-                        _ => promoted_version == candidate_version,
-                    };
+                    clear_outdated = cargo_candidate_is_reached(promoted_version, &candidate_version);
                     if !clear_outdated {
                         transaction.execute(
                             "
@@ -912,6 +991,15 @@ WHERE manager_id = ?1
                         package.name.as_str(),
                         package_identifier_token,
                     ],
+                )?;
+            }
+
+            if verified_cargo {
+                reconcile_cargo_reviewed_outdated(
+                    &transaction,
+                    package,
+                    package_identifier_token,
+                    after_version,
                 )?;
             }
 
@@ -1199,7 +1287,7 @@ VALUES (?1, ?2, ?3, ?4, ?5)
             let updated = connection.execute(
                 "
 UPDATE task_records
-SET manager_id = ?2, task_type = ?3, status = ?4, created_at_unix = ?5
+SET manager_id = ?2, task_type = ?3, status = ?4
 WHERE task_id = ?1
 ",
                 params![
@@ -1207,7 +1295,6 @@ WHERE task_id = ?1
                     task.manager.as_str(),
                     task_type_to_str(task.task_type),
                     task_status_to_str(task.status),
-                    to_unix_seconds(task.created_at)?,
                 ],
             )?;
 
@@ -1229,7 +1316,7 @@ WHERE task_id = ?1
             let updated = transaction.execute(
                 "
 UPDATE task_records
-SET manager_id = ?2, task_type = ?3, status = ?4, created_at_unix = ?5
+SET manager_id = ?2, task_type = ?3, status = ?4
 WHERE task_id = ?1
 ",
                 params![
@@ -1237,7 +1324,6 @@ WHERE task_id = ?1
                     task.manager.as_str(),
                     task_type_to_str(task.task_type),
                     task_status_to_str(task.status),
-                    to_unix_seconds(task.created_at)?,
                 ],
             )?;
 
@@ -1326,26 +1412,36 @@ LIMIT ?1
                 .as_secs() as i64
                 - max_age_secs;
             let transaction = connection.transaction()?;
-            transaction.execute(
-                "
-DELETE FROM task_log_records
-WHERE task_id IN (
-    SELECT task_id
-    FROM task_records
-    WHERE status IN ('completed', 'cancelled')
-      AND created_at_unix < ?1
-)
-",
-                params![cutoff],
-            )?;
-            let deleted = transaction.execute(
-                "
-DELETE FROM task_records
+            // Decide once, before deleting logs that provide the completion timestamp.
+            let expired_ids = {
+                let mut statement = transaction.prepare(
+                    "
+SELECT task_id
+FROM task_records
 WHERE status IN ('completed', 'cancelled')
-  AND created_at_unix < ?1
+  AND MAX(created_at_unix, COALESCE((
+      SELECT MAX(logs.created_at_unix)
+      FROM task_log_records AS logs
+      WHERE logs.task_id = task_records.task_id
+        AND logs.status = task_records.status
+  ), created_at_unix)) < ?1
 ",
-                params![cutoff],
-            )?;
+                )?;
+                statement
+                    .query_map(params![cutoff], |row| row.get::<_, i64>(0))?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let mut deleted = 0;
+            for task_id in expired_ids {
+                transaction.execute(
+                    "DELETE FROM task_log_records WHERE task_id = ?1",
+                    params![task_id],
+                )?;
+                deleted += transaction.execute(
+                    "DELETE FROM task_records WHERE task_id = ?1",
+                    params![task_id],
+                )?;
+            }
             transaction.commit()?;
             Ok(deleted)
         })
@@ -2931,7 +3027,22 @@ fn apply_down_migration(
     connection: &mut Connection,
     migration: &SqliteMigration,
 ) -> rusqlite::Result<()> {
-    let transaction = connection.transaction()?;
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if migration.version == 23 {
+        // Reset must not erase an external installer's unresolved reservation.
+        // The same write lock serializes this check with new session claims.
+        let pending: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM external_update_sessions WHERE holds_target = 1)",
+            [],
+            |row| row.get(0),
+        )?;
+        if pending {
+            return Err(storage_error_sqlite(
+                "external update recovery required before resetting local data",
+            ));
+        }
+    }
     transaction.execute_batch(migration.down_sql)?;
     transaction.execute(
         &format!("DELETE FROM {MIGRATIONS_TABLE} WHERE version = ?1"),

@@ -1,0 +1,106 @@
+# External Sparkle Update Boundary
+
+Status: shared-core policy and state-machine foundation only, 2026-09-28.
+This is not a working external updater, a security attestation, or permission to
+relax Helm's sandbox. The existing vendor-app handoff remains unchanged.
+
+## Authority and Scope
+
+`helm_core::external_update` defines a deterministic review/confirmation contract.
+Only the versioned `ReviewRequest` is deserializable. It is bounded to 8 KiB,
+rejects unknown fields, and accepts operation identity, target path, bundle ID,
+and expected installed/candidate builds, not commands, environment, feed URLs,
+signing requirements, roots, or caller-supplied trust decisions.
+
+The future native helper must independently collect target, candidate and boundary
+observations. Their Rust types deliberately do not implement `Deserialize`.
+Constructing these types or setting a Boolean is not authentication. A helper
+must validate its live caller using a system-enforced code-signing requirement,
+not trust a PID lookup or a client assertion. The selected helper identifier is
+`com.jasoncavinder.Helm.SparkleExternalUpdater`; the policy requires Helm's exact
+direct-consumer identity and team, a separately signed/notarized helper, and an
+unchanged sandbox on Helm itself. No helper target or executable is added here.
+
+Initial eligibility is intentionally narrow: standalone, signed Sparkle 2 app
+bundles in locally authorized `/Applications` or the current user's
+`~/Applications`, with HTTPS feeds and Ed25519 keys. Other manager authority,
+unknown provenance, App Store receipts, translocation, writable-by-others
+locations, nested app bundles, and Helm's own bundle namespace fail closed.
+Native collection must resolve symlinks and assess parents/ownership; lexical
+path validation in this model does not replace filesystem authorization.
+
+Candidate observations must come from Sparkle's accepted update, not Helm's
+abbreviated inventory. The first boundary admits full ZIP application updates
+in the default channel with a bounded length and signature; packages, deltas,
+custom channels and other unsupported cases retain Open App. Sparkle remains
+responsible for platform compatibility, archive signature checking, installation
+and native authorization. Helm must not inject the vendor's embedded updater or
+invoke its private installer binary directly.
+
+## Review, Execution and Verification
+
+- Review fingerprints bind the complete request, target device/inode/signing and
+  update configuration, exact candidate, and helper identity. Confirmation
+  re-observes these facts and expires after 120 monotonic seconds. Drift or a
+  backwards clock fails closed. This in-memory consumption is not durable
+  single-use authorization; a runtime must add that independently.
+- The runtime must record `InstallationWillBegin` before handing control to an
+  installer. Download completion only reaches `ReadyToInstall`; installer
+  completion only reaches `AwaitingVerification`.
+- Cancellation, failure or connection loss after handoff produces `Unverified`,
+  never a claim that the app was unchanged. Before handoff the terminal state is
+  explicitly before installation, not a guarantee against unrelated actors.
+  Native callbacks must not interpret a dismissed Sparkle dialog as cancellation
+  if Sparkle has deferred installation.
+- Reconciliation requires fresh native bundle/signature/authority observations
+  at the exact reviewed path and expected candidate build. Replacement may change
+  inode and code-directory hash. Changed identity/team/update configuration or
+  an old version remains unverified. A verified version does not prove relaunch
+  or attribute all external changes to Helm. Key rotation is conservatively
+  unsupported by this initial contract.
+- Events and reconciliation are bound to operation identity. Invalid transitions
+  leave state unchanged. No automatic retry, rollback, process termination,
+  password capture, or elevation fallback exists in this module.
+
+## Required Before Activation
+
+Implement and independently review a native observer and an authenticated,
+uniquely identified helper with its own bundled Sparkle framework. Use the
+[durable session foundation](../validation/v0.20-sparkle-durable-session.md) for
+one-shot authorization, target reservations and conservative loss quarantine.
+Complete native installer-quiescence/recovery reconciliation and bounded private
+diagnostics. Connect the state machine to real Sparkle callbacks
+and shared GUI/CLI receipts; do not expose an automatic capability merely because
+this policy module exists. Preserve fallback for unsupported apps.
+
+Use public peer-code-signing APIs available on the Ventura baseline; validate
+actual signed/notarized artifacts, distribution entitlements and sandbox access.
+Run representative real download/install/relaunch/version, cancellation, stale
+review, authorization denial, helper loss and recovery checks in the VM. Native
+App Management consent must remain under macOS control. Packaging and release
+mutation approvals remain separate from implementing this contract.
+
+The release gate stays open until this integration and evidence are complete.
+
+## Verification
+
+Twelve new pure-policy tests cover strict requests, roots, helper/target/candidate
+eligibility, identity drift, expiry, operation isolation and uncertain outcomes.
+All 821 core unit tests pass in the disposable macOS 27 arm64 VM. Host workspace
+Clippy and formatting checks pass; no host runtime or app launch was used. The
+first VM attempt lacked four existing Bundler fixtures; after transferring the
+fixture tree, the complete unchanged suite passed. This is not live Sparkle
+installation, signed-helper, Ventura-runtime or Intel certification.
+
+## References
+
+- [Sparkle: updating other bundles](https://sparkle-project.org/documentation/bundles/)
+  distinguishes host and application bundles and recommends separate updater
+  processes for other applications.
+- [Sparkle updater delegate](https://sparkle-project.org/documentation/api-reference/Protocols/SPUUpdaterDelegate.html)
+  provides candidate/permission hooks; Sparkle's checks and deferred-installation
+  behavior must be preserved rather than inferred from dialog dismissal.
+- [Sparkle sandboxing](https://sparkle-project.org/documentation/sandboxing/)
+  documents installation XPC services and sandbox boundaries.
+- [Apple peer code-signing requirements](https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:))
+  provide the native connection authentication primitive for the future helper.

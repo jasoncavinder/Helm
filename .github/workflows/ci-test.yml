@@ -9,6 +9,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   rust-tests:
     name: Rust Core Tests
@@ -48,8 +52,16 @@ jobs:
         working-directory: .
         run: scripts/ci/check_sqlite_migration_compatibility.sh
 
+      - name: Test Cargo certification harness without package installs
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/tests -p test_cargo_vm_cli_lifecycle.py -v
+
       - name: Run cargo test
         run: cargo test --workspace
+
+      - name: Validate uv certification harness safety
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/tests -p test_uv_vm_cli_plan.py
 
       - name: Run cargo fmt check
         run: cargo fmt --all -- --check
@@ -79,6 +91,9 @@ jobs:
 
       - name: Validate Ventura arm64 compatibility contract
         run: scripts/ci/check_macos_ventura_compatibility.sh
+
+      - name: Test external updater native observation (no installer)
+        run: swift test --package-path service/external-updater --arch arm64
 
       - name: Build and test Xcode project
         run: |
