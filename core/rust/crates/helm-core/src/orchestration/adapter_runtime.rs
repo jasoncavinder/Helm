@@ -3128,6 +3128,16 @@ mod tests {
                 "network.dns_resolution_failed",
             ),
             (
+                ManagerId::Cargo,
+                "error: failed to compile `cargo-binstall v1.24.0`\nCaused by:\n  failed to download `adler2 v2.0.1`\nCaused by:\n  attempting to make an HTTP request, but --offline was specified",
+                "cargo.offline_cache_miss",
+            ),
+            (
+                ManagerId::Cargo,
+                "error: no matching package named `example` found\nAs a reminder, you're using offline mode (--offline)",
+                "cargo.offline_cache_miss",
+            ),
+            (
                 ManagerId::Rustup,
                 "https://static.rust-lang.org: failed to connect: connection refused",
                 "network.endpoint_unreachable",

@@ -22,6 +22,13 @@ The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
 
+The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
+now passes cargo-binstall install/detection, cancellation, controlled failure,
+recovery and cleanup through Cargo/Homebrew. Cargo's native offline cache-miss
+diagnostic now distinguishes local offline configuration from compiler failure;
+seven-locale guidance and durable logs are covered. Signed GUI progress/recovery
+and broader method/platform certification remain open.
+
 Environment priority reordering now uses a temporary moving insertion placeholder
 for detected managers. Native drag completion restores the uncommitted list after
 Escape or an invalid/outside drop. Valid commits revalidate installed membership,
