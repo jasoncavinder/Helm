@@ -37,8 +37,12 @@ preferences, or refresh catalogs. Ordinary detection/status APIs have additional
 effects and must not substitute for this boundary. The implemented
 [startup boundary](../validation/v0.20-first-run-startup-gate.md) prepares storage
 before explicit activation and can require the saved experience acknowledgment.
-The app still selects legacy compatibility; production entry/consent integration
-and further verified discovery remain pending.
+Shipping builds still select legacy compatibility. The
+[development-gated real entry integration](../validation/v0.20-first-run-entry-integration.md)
+selects guarded startup, persists and re-reads required legal acceptance before
+observation, and re-reads explicit acknowledgment before activation. It does not
+implement the full setup-session/action/receipt or network-consent contract below;
+those and signed upgrade-path QA remain prerequisites to shipping activation.
 
 ### 1.2 Network disclosure
 

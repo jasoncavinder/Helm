@@ -106,6 +106,11 @@
       "version": 21,
       "name": "add_durable_task_id_sequence",
       "definition_sha256": "83910546a9d29f35adc97d6ff7c082b3214ece11bdceffcd7a8594a506587f98"
+    },
+    {
+      "version": 22,
+      "name": "add_first_run_repair_receipts",
+      "definition_sha256": "c4afe5b50bf209c9d656586717c83fa4746bf49e3cc55734fa02323829aace03"
     }
   ]
 }

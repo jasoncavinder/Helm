@@ -26,6 +26,12 @@ transaction.
 
 ## Runtime Ledger
 
+Migration 22 adds local first-run preference-repair receipts. The reviewed
+preference change and applied/unverified receipt commit atomically; a separate
+post-observation transaction finalizes the verification result. Interruption
+does not replay the mutation or imply success. This is a narrow action ledger,
+not a generalized persisted setup scheduler.
+
 Migration 21 adds a durable task-ID high-water mark, seeded from existing task
 records. Queued tasks are reserved in one immediate transaction before adapter
 execution. Record insertion advances the mark, and history deletion/pruning does

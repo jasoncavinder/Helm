@@ -40,7 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 
     private var presentsEnvironmentBrief: Bool {
-        controlCenterContext.shouldPresentFirstRun(
+        if ProductionFirstRunGate.isEnabled { return core.productionFirstRun.isPresenting }
+        return controlCenterContext.shouldPresentFirstRun(
             mode: EnvironmentBriefFirstRunConfiguration.mode(),
             hasCompletedOnboarding: core.hasCompletedOnboarding
         )
@@ -130,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
         if core.hasCompletedOnboarding
             && !core.requiresLicenseTermsAcceptance
+            && !ProductionFirstRunGate.isEnabled
             && !researchFixtureActive
             && EnvironmentBriefFirstRunConfiguration.allowsAutomaticRefresh(
                 mode: firstRunMode,
@@ -257,11 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
         let clickKind: StatusItemClickKind = NSApp.currentEvent?.type == .rightMouseUp
             ? .secondary
             : .primary
-        let firstRunMode = EnvironmentBriefFirstRunConfiguration.mode()
-        let shouldPresentFirstRun = controlCenterContext.shouldPresentFirstRun(
-            mode: firstRunMode,
-            hasCompletedOnboarding: core.hasCompletedOnboarding
-        )
+        let shouldPresentFirstRun = presentsEnvironmentBrief
 
         switch StatusItemActivationPolicy.route(
             clickKind: clickKind,
@@ -943,6 +941,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
     }
 
     private func bindStatusItem() {
+        core.productionFirstRun.$phase
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] phase in
+                guard ProductionFirstRunGate.isEnabled, phase == .legal || phase == .brief else { return }
+                if self?.controlCenterWindowController == nil {
+                    self?.openControlCenter()
+                }
+            }
+            .store(in: &cancellables)
+
         core.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -1072,7 +1081,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUs
 
     private func preferredPopoverHeight(forWidth _: CGFloat) -> CGFloat {
         WayfinderPopoverLayout.preferredHeight(
-            hasCompletedOnboarding: core.hasCompletedOnboarding,
+            hasCompletedOnboarding: core.hasCompletedGUIEntry,
             requiresLicenseTermsAcceptance: core.requiresLicenseTermsAcceptance,
             bypassesOnboarding: WayfinderPopoverFixtureProvider.isActive()
                 || core.overviewState.researchAmbientHealthPresentation != nil

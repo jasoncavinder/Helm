@@ -1425,6 +1425,22 @@ async fn persist_adapter_response(
                     mutation.before_version.as_deref(),
                     false,
                 ),
+                ManagerAction::Install
+                    if mutation.package.manager == ManagerId::Cargo
+                        && mutation.before_version.is_some()
+                        && mutation.after_version.is_some() =>
+                {
+                    // A verified Cargo reinstall replaces its single native
+                    // version, even though the requested action remains Install.
+                    // Reuse upgrade reconciliation to preserve remaining newer
+                    // candidates and avoid retaining a removed installed version.
+                    package_store.apply_upgrade_result(
+                        &mutation.package,
+                        mutation.package_identifier.as_deref(),
+                        mutation.before_version.as_deref(),
+                        mutation.after_version.as_deref(),
+                    )
+                }
                 ManagerAction::Install => package_store.apply_install_result(
                     &mutation.package,
                     mutation.package_identifier.as_deref(),
