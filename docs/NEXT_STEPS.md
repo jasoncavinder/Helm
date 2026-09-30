@@ -84,7 +84,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    Build Sparkle integration on the [shared-core boundary contract](architecture/EXTERNAL_SPARKLE_BOUNDARY.md);
    its passing pure-policy tests are not a signed helper or live installation.
    Preserve the [durable session foundation](validation/v0.20-sparkle-durable-session.md)
-   and complete native observation, authenticated helper/callback integration,
+   and the [read-only native observer](validation/v0.20-sparkle-native-observation.md).
+   Complete its authority mapping, authenticated helper/callback integration,
    installer-quiescence recovery and signed live QA before enabling direct updates.
    Preserve the [passing Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
    and complete its signed GUI progress/failure/recovery checks without repeating

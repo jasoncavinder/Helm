@@ -115,4 +115,16 @@ validate_action_pin \
   "${EXPECTED_CODEQL_ACTION_SHA}" \
   "v4.37.3"
 
+has_pattern 'swift build --package-path service/external-updater --arch arm64' \
+  "${WORKFLOWS_DIR}/codeql.yml" || {
+  echo "error: CodeQL must explicitly build the standalone external updater Swift package." >&2
+  exit 1
+}
+
+has_pattern 'swift test --package-path service/external-updater --arch arm64' \
+  "${WORKFLOWS_DIR}/ci-test.yml" || {
+  echo "error: CI must explicitly test the standalone external updater Swift package." >&2
+  exit 1
+}
+
 echo "CI toolchain contracts validated."
