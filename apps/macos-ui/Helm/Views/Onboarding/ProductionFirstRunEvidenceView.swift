@@ -208,6 +208,8 @@ private struct ProductionFirstRunSourceRow: View {
                             pathText(saved)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 12)
                     .padding(.top, 6)
                 }
                 .accessibilityLabel("\("app.first_run.evidence.paths".localized): \(localizedManagerDisplayName(manager.managerId))")
@@ -224,6 +226,8 @@ private struct ProductionFirstRunSourceRow: View {
         Text(path)
             .font(.system(.caption, design: .monospaced))
             .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
