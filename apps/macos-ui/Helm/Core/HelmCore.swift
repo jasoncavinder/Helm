@@ -156,6 +156,7 @@ struct CoreRustupToolchainDetail: Codable, Hashable {
 }
 
 struct CoreUpgradePlanStep: Codable, Identifiable, Equatable {
+    var isExecutionBlocked: Bool { !UpgradePreviewPlanner.isSelectable(status: status) }
     let stepId: String
     let orderIndex: UInt64
     let managerId: String
@@ -218,6 +219,7 @@ struct ManagerStatus: Codable {
     let supportsPackageInstall: Bool
     let supportsPackageUninstall: Bool
     let supportsPackageUpgrade: Bool
+    var packageMutationServiceErrorKey: String?
     let packageStateIssues: [ManagerPackageStateIssue]?
     let isEligible: Bool?
     let ineligibleReasonCode: String?

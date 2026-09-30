@@ -930,7 +930,7 @@ extension HelmCore {
         packageIdentifier: String? = nil
     ) -> String {
         let trimmedIdentifier = packageIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !trimmedIdentifier.isEmpty {
+        if managerId.lowercased() != "cargo", !trimmedIdentifier.isEmpty {
             return "\(managerId):\(packageName)#\(trimmedIdentifier)"
         }
         return "\(managerId):\(packageName)"

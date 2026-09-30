@@ -24,7 +24,8 @@ struct ManagersSectionView: View {
         .environmentRuntimeState()
     @ObservedObject private var managersState = HelmCore.shared.managersState
     @EnvironmentObject private var context: ControlCenterContext
-    @State private var draggedManagerId: String?
+    @StateObject private var priorityDrag = ManagerPriorityDragState()
+    @State private var managerRowHeights: [String: CGFloat] = [:]
     @State private var managerDependencyAlert: ManagerDependencyAlertState?
 
     private var researchEnvironmentProjection: ResearchEnvironmentProjection? {
@@ -154,8 +155,11 @@ struct ManagersSectionView: View {
             .padding(.bottom, 18)
         }
         .onDisappear {
-            draggedManagerId = nil
+            priorityDrag.cancel()
         }
+        .onChange(of: context.environmentRouteStage) { _ in priorityDrag.cancel() }
+        .onChange(of: prioritySnapshot) { _ in priorityDrag.cancel() }
+        .onPreferenceChange(ManagerRowHeightKey.self) { managerRowHeights = $0 }
         .alert(item: $managerDependencyAlert) { alertState in
             switch alertState.kind {
             case let .disableBlocked(managerId, dependents):
@@ -272,9 +276,14 @@ struct ManagersSectionView: View {
             if !group.managers.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     managerGroupHeading(group.authority)
-                    ForEach(group.managers) { manager in
-                        productionManagerRow(manager, authority: group.authority)
+                    ForEach(previewManagers(group.managers, authority: group.authority)) { manager in
+                        if priorityDrag.session?.managerID == manager.id {
+                            managerInsertionPlaceholder(manager, authority: group.authority)
+                                .id(manager.id)
+                        } else {
+                            productionManagerRow(manager, authority: group.authority)
                             .id(manager.id)
+                        }
                     }
                 }
             }
@@ -286,6 +295,48 @@ struct ManagersSectionView: View {
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 20)
         }
+    }
+
+    private var prioritySnapshot: [[String]] {
+        ManagerAuthority.allCases.map { core.installedManagerPriorityOrder(for: $0) }
+    }
+
+    private func previewManagers(_ managers: [ManagerInfo], authority: ManagerAuthority) -> [ManagerInfo] {
+        guard let session = priorityDrag.session, session.authorityKey == authority.key else { return managers }
+        let rank = Dictionary(uniqueKeysWithValues: session.proposedOrder.enumerated().map { ($1, $0) })
+        return managers.enumerated().sorted {
+            (rank[$0.element.id] ?? (session.proposedOrder.count + $0.offset))
+                < (rank[$1.element.id] ?? (session.proposedOrder.count + $1.offset))
+        }.map(\.element)
+    }
+
+    private func managerInsertionPlaceholder(_ manager: ManagerInfo, authority: ManagerAuthority) -> some View {
+        Text("app.managers.reorder.place_here".localized(with: ["manager": localizedManagerDisplayName(manager.id)]))
+            .font(.callout)
+            .foregroundColor(HelmTheme.blue500)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: priorityDrag.rowHeight)
+            .background(HelmTheme.selectionFill, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(
+                HelmTheme.selectionStroke, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])
+            ))
+            .padding(.horizontal, 20)
+            .onDrop(of: [ManagerPriorityDragType.identifier], delegate: ManagerPriorityDropDelegate(
+                core: core, authority: authority, targetManagerId: manager.id,
+                rowHeight: priorityDrag.rowHeight, state: priorityDrag
+            ))
+            .accessibilityHidden(true)
+    }
+
+    private func moveManager(_ manager: ManagerInfo, authority: ManagerAuthority, offset: Int) {
+        priorityDrag.cancel()
+        let order = core.installedManagerPriorityOrder(for: authority)
+        guard let index = order.firstIndex(of: manager.id), order.indices.contains(index + offset),
+              var session = ManagerPriorityReorderSession(managerID: manager.id, authorityKey: authority.key, installedOrder: order)
+        else { return }
+        guard session.propose(targetID: order[index + offset], after: offset > 0, authorityKey: authority.key) else { return }
+        core.commitManagerPriorityMove(session, authority: authority)
     }
 
     private func managerGroupHeading(_ authority: ManagerAuthority) -> some View {
@@ -303,6 +354,8 @@ struct ManagersSectionView: View {
         let canReorder = ManagerPriorityDragPolicy.canInitiateDrag(
             isDetected: core.isManagerDetected(manager.id)
         )
+        let order = core.installedManagerPriorityOrder(for: authority)
+        let index = order.firstIndex(of: manager.id)
         return ManagerSectionRow(
             manager: manager,
             status: managersState.managerStatusesById[manager.id],
@@ -313,6 +366,16 @@ struct ManagersSectionView: View {
             isManagerUninstalling: core.isManagerUninstalling(manager.id),
             isSelected: context.selectedManagerId == manager.id,
             canReorder: canReorder,
+            priorityDrag: priorityDrag,
+            beginDrag: {
+                priorityDrag.begin(managerID: manager.id, authorityKey: authority.key,
+                                   installedOrder: core.installedManagerPriorityOrder(for: authority),
+                                   rowHeight: managerRowHeights[manager.id] ?? 100)
+            },
+            canMoveUp: index.map { $0 > 0 } ?? false,
+            canMoveDown: index.map { $0 < order.count - 1 } ?? false,
+            onMoveUp: { moveManager(manager, authority: authority, offset: -1) },
+            onMoveDown: { moveManager(manager, authority: authority, offset: 1) },
             onSelect: {
                 context.selectedManagerId = manager.id
                 context.selectedPackageId = nil
@@ -347,20 +410,17 @@ struct ManagersSectionView: View {
                 handleManagerToggle(managerId: manager.id, enable: enabled)
             }
         )
-        .modifier(
-            ManagerPriorityDragModifier(
-                managerId: manager.id,
-                canInitiateDrag: canReorder,
-                draggedManagerId: $draggedManagerId
-            )
-        )
+        .background(GeometryReader { geometry in
+            Color.clear.preference(key: ManagerRowHeightKey.self, value: [manager.id: geometry.size.height])
+        })
         .onDrop(
-            of: [UTType.text.identifier],
+            of: [ManagerPriorityDragType.identifier],
             delegate: ManagerPriorityDropDelegate(
                 core: core,
                 authority: authority,
                 targetManagerId: manager.id,
-                draggedManagerId: $draggedManagerId
+                rowHeight: managerRowHeights[manager.id] ?? 100,
+                state: priorityDrag
             )
         )
     }
@@ -559,6 +619,12 @@ private struct ManagerSectionRow: View {
     let isManagerUninstalling: Bool
     let isSelected: Bool
     let canReorder: Bool
+    let priorityDrag: ManagerPriorityDragState
+    let beginDrag: () -> UUID?
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
     let onSelect: () -> Void
     let onViewPackages: () -> Void
     let onDetectManager: () -> Void
@@ -636,7 +702,13 @@ private struct ManagerSectionRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(HelmTheme.textSecondary)
                     .opacity(canReorder ? 1 : 0)
-                    .frame(width: 12)
+                    .frame(width: 20, height: 24)
+                    .overlay {
+                        if canReorder {
+                            ManagerPriorityDragHandle(title: localizedManagerDisplayName(manager.id), state: priorityDrag, begin: beginDrag)
+                        }
+                    }
+                    .help("app.managers.reorder.hint".localized)
                     .accessibilityHidden(true)
 
                 HealthBadgeView(status: health)
@@ -698,6 +770,20 @@ private struct ManagerSectionRow: View {
             }
 
             HStack(spacing: 8) {
+                if canReorder {
+                    Menu {
+                        Button("app.managers.reorder.move_up".localized, action: onMoveUp)
+                            .disabled(!canMoveUp)
+                        Button("app.managers.reorder.move_down".localized, action: onMoveDown)
+                            .disabled(!canMoveDown)
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("app.managers.reorder.title".localized)
+                    .accessibilityLabel("app.managers.reorder.title".localized)
+                }
                 if enabled && outdatedCount > 0 {
                     Button(L10n.App.Settings.Action.upgradeAll.localized) {
                         core.upgradeAllPackages(forManagerId: manager.id)
@@ -809,21 +895,10 @@ struct ManagersView: View {
     }
 }
 
-private struct ManagerPriorityDragModifier: ViewModifier {
-    let managerId: String
-    let canInitiateDrag: Bool
-    @Binding var draggedManagerId: String?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if canInitiateDrag {
-            content.onDrag {
-                draggedManagerId = managerId
-                return NSItemProvider(object: managerId as NSString)
-            }
-        } else {
-            content
-        }
+private struct ManagerRowHeightKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
@@ -831,22 +906,37 @@ private struct ManagerPriorityDropDelegate: DropDelegate {
     let core: HelmCore
     let authority: ManagerAuthority
     let targetManagerId: String
-    @Binding var draggedManagerId: String?
+    let rowHeight: CGFloat
+    let state: ManagerPriorityDragState
 
-    func performDrop(info: DropInfo) -> Bool {
-        guard let draggedManagerId else { return false }
-        core.moveManagerPriority(
-            authority: authority,
-            draggedManagerId: draggedManagerId,
-            targetManagerId: targetManagerId
-        )
-        self.draggedManagerId = nil
-        return true
+    func validateDrop(info: DropInfo) -> Bool {
+        guard info.hasItemsConforming(to: [ManagerPriorityDragType.identifier]),
+              let session = state.session, session.authorityKey == authority.key,
+              session.originalOrder.contains(targetManagerId) else { return false }
+        return session.validatedOrder(currentInstalledOrder: core.installedManagerPriorityOrder(for: authority),
+                                      authorityKey: authority.key) != nil
     }
 
-    func dropExited(info: DropInfo) {
-        if !info.hasItemsConforming(to: [UTType.text.identifier]) {
-            draggedManagerId = nil
-        }
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
+        updatePreview(info)
+        return DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        if validateDrop(info: info) { updatePreview(info) }
+    }
+
+    private func updatePreview(_ info: DropInfo) {
+        state.propose(targetID: targetManagerId, after: info.location.y >= rowHeight / 2, authorityKey: authority.key)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard validateDrop(info: info) else { state.cancel(); return false }
+        updatePreview(info)
+        guard let session = state.session else { return false }
+        let accepted = core.commitManagerPriorityMove(session, authority: authority)
+        state.cancel(id: session.id)
+        return accepted
     }
 }
