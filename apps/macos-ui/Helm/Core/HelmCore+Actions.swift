@@ -142,7 +142,7 @@ extension HelmCore {
             service.upgradePackage(
                 managerId: package.managerId,
                 packageName: package.name,
-                packageTargetName: package.mutationTargetPackageName,
+                packageTargetName: package.upgradeMutationTargetName,
                 version: package.upgradeMutationVersion
             ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in

@@ -537,6 +537,16 @@ final class HelmCore: ObservableObject {
     @Published var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: HelmCore.onboardingCompletedKey) {
         didSet { scheduleDerivedViewStateRefresh() }
     }
+    @Published var productionFirstRunActive = false
+    var hasCompletedGUIEntry: Bool {
+        ProductionFirstRunGate.isEnabled ? productionFirstRunActive : hasCompletedOnboarding
+    }
+
+    func applyPreparedLicenseTerms(_ version: String?) {
+        guard version == Self.currentLicenseTermsVersion else { return }
+        acceptedLicenseTermsVersion = version
+        UserDefaults.standard.set(version, forKey: Self.acceptedLicenseTermsVersionKey)
+    }
     @Published var acceptedLicenseTermsVersion: String? = UserDefaults.standard.string(
         forKey: HelmCore.acceptedLicenseTermsVersionKey
     ) {
@@ -567,6 +577,7 @@ final class HelmCore: ObservableObject {
 
     let overviewState = HelmOverviewState()
     let firstRunPresentationModel = FirstRunPresentationModel()
+    let productionFirstRun = FirstRunEntryController(expectedManagerIDs: Set(ManagerInfo.all.map(\.id)))
     let managersState = HelmManagersState()
 
     var timer: Timer?
@@ -898,6 +909,7 @@ final class HelmCore: ObservableObject {
         reconnectPolicy.markConnected()
         self.safeModeEnabled = safeModeEnabled
         isConnected = true
+        if ProductionFirstRunGate.isEnabled { productionFirstRunActive = true }
         AppUpdateCoordinator.shared.setRuntimeAvailable(true)
 
         if timer == nil {
@@ -906,7 +918,8 @@ final class HelmCore: ObservableObject {
         fetchHomebrewKegAutoCleanup()
         fetchPackageKegPolicies()
         fetchPackageManagerPreferences()
-        syncOnboardingStateWithSharedStore()
+        // Versioned entry already reconciled terms; do not backfill the independent CLI flag.
+        if !ProductionFirstRunGate.isEnabled { syncOnboardingStateWithSharedStore() }
         syncNetworkAvailabilityToService()
         scheduleDerivedViewStateRefresh()
 
@@ -925,6 +938,10 @@ final class HelmCore: ObservableObject {
         failedConnection.interruptionHandler = nil
         failedConnection.invalidate()
         connection = nil
+        if ProductionFirstRunGate.isEnabled {
+            productionFirstRunActive = false
+            productionFirstRun.disconnect()
+        }
         AppUpdateCoordinator.shared.setRuntimeAvailable(false)
         timer?.invalidate()
         timer = nil

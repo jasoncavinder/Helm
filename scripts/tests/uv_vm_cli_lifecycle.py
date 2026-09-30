@@ -7,6 +7,7 @@ Retains private evidence and the isolated database even after a failed check.
 """
 
 import argparse
+from contextlib import suppress
 import hashlib
 import json
 import os
@@ -25,12 +26,15 @@ def run_process(argv, env, cwd, timeout=120):
                           text=True, start_new_session=True) as process:
         try:
             stdout, stderr = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGTERM)
+        except BaseException:
+            # Reap only this invocation's process group on timeout or interruption.
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGTERM)
             try:
                 process.communicate(timeout=3)
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
                 process.communicate()
             raise
     return {"argv": argv, "exit": process.returncode, "stdout": stdout,
@@ -41,7 +45,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--helm", required=True, type=Path)
     parser.add_argument("--uv", required=True, type=Path)
-    parser.add_argument("--fixture", required=True, type=Path)
+    parser.add_argument("--fixture", type=Path, default=Path(__file__).resolve().parents[2]
+                        / "core/rust/crates/helm-core/tests/fixtures/uv/isolated_lifecycle.py")
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--confirm-disposable-environment", action="store_true")
     args = parser.parse_args()

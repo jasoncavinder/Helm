@@ -512,6 +512,7 @@ struct UpgradeExecutionStep {
     restart_required: bool,
     uv_target: Option<(String, String)>,
     cargo_version: Option<String>,
+    cargo_scope: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -531,6 +532,8 @@ struct CliUpgradePlanStep {
     cleanup_old_kegs: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     candidate_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reviewed_scope: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -14878,7 +14881,11 @@ fn upgrade_execution_request(step: &UpgradeExecutionStep) -> AdapterRequest {
             manager: step.manager,
             name: upgrade_request_name(step),
         }),
-        target_name: step.uv_target.as_ref().map(|(target, _)| target.clone()),
+        target_name: if step.manager == ManagerId::Cargo {
+            step.cargo_scope.clone()
+        } else {
+            step.uv_target.as_ref().map(|(target, _)| target.clone())
+        },
         version: if step.manager == ManagerId::Cargo {
             step.cargo_version.clone()
         } else {
@@ -14904,6 +14911,7 @@ fn serialize_upgrade_plan_steps(steps: &[UpgradeExecutionStep]) -> Vec<CliUpgrad
             restart_required: step.restart_required,
             cleanup_old_kegs: step.cleanup_old_kegs,
             candidate_version: step.cargo_version.clone(),
+            reviewed_scope: step.cargo_scope.clone(),
         })
         .collect()
 }
@@ -14983,6 +14991,11 @@ fn collect_upgrade_execution_steps(
                 restart_required: package.restart_required,
                 cargo_version: (manager == ManagerId::Cargo)
                     .then(|| package.candidate_version.clone()),
+                cargo_scope: (manager == ManagerId::Cargo).then(|| {
+                    package.package_identifier.clone().unwrap_or_else(|| {
+                        helm_core::adapters::cargo_review_scope::UNAVAILABLE.into()
+                    })
+                }),
                 uv_target: if manager == ManagerId::Uv {
                     Some((
                         package.package_identifier.clone().unwrap_or_default(),
@@ -16898,6 +16911,7 @@ mod tests {
                 package_name: "first".to_string(),
                 uv_target: None,
                 cargo_version: None,
+                cargo_scope: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16908,6 +16922,7 @@ mod tests {
                 package_name: "second".to_string(),
                 uv_target: None,
                 cargo_version: None,
+                cargo_scope: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16918,6 +16933,7 @@ mod tests {
                 package_name: "third".to_string(),
                 uv_target: None,
                 cargo_version: None,
+                cargo_scope: None,
                 cleanup_old_kegs: false,
                 pinned: false,
                 restart_required: false,
@@ -16951,6 +16967,7 @@ mod tests {
             mutation_block_key: None,
             uv_target: None,
             cargo_version: None,
+            cargo_scope: None,
             manager: ManagerId::HomebrewFormula,
             package_name: "wget".to_string(),
             cleanup_old_kegs: true,
@@ -16961,6 +16978,7 @@ mod tests {
             mutation_block_key: None,
             uv_target: None,
             cargo_version: None,
+            cargo_scope: None,
             manager: ManagerId::Npm,
             package_name: "eslint".to_string(),
             cleanup_old_kegs: true,
@@ -17090,7 +17108,7 @@ mod tests {
                 manager: ManagerId::Cargo,
                 name: "sd".into(),
             },
-            package_identifier: None,
+            package_identifier: Some("cargo-review-v1:original".into()),
             installed_version: Some("0.7.6".into()),
             candidate_version: "1.0.0".into(),
             pinned: false,
@@ -17119,15 +17137,26 @@ mod tests {
         assert_eq!(steps.len(), 1);
         let preview = serde_json::to_value(super::serialize_upgrade_plan_steps(&steps)).unwrap();
         assert_eq!(preview[0]["candidateVersion"], "1.0.0");
+        assert_eq!(preview[0]["reviewedScope"], "cargo-review-v1:original");
         outdated.candidate_version = "1.1.0".into();
-        store.upsert_outdated(&[outdated.clone()]).unwrap();
+        outdated.package_identifier = Some("cargo-review-v1:changed".into());
+        store
+            .replace_outdated_snapshot(ManagerId::Cargo, &[outdated.clone()])
+            .unwrap();
         let AdapterRequest::Upgrade(request) = super::upgrade_execution_request(&steps[0]) else {
             panic!("upgrade expected");
         };
         assert_eq!(request.version.as_deref(), Some("1.0.0"));
         assert_eq!(request.package.unwrap().name, "sd");
-        assert_eq!(request.target_name, None);
+        assert_eq!(
+            request.target_name.as_deref(),
+            Some("cargo-review-v1:original")
+        );
         assert_eq!(collect()[0].cargo_version.as_deref(), Some("1.1.0"));
+        assert_eq!(
+            collect()[0].cargo_scope.as_deref(),
+            Some("cargo-review-v1:changed")
+        );
         outdated.pinned = true;
         store.upsert_outdated(&[outdated]).unwrap();
         assert!(collect().is_empty());
@@ -17159,6 +17188,7 @@ mod tests {
             restart_required: false,
             uv_target: Some(("uv-tool:scope:ruff".into(), "2.0".into())),
             cargo_version: None,
+            cargo_scope: None,
         };
         let AdapterRequest::Upgrade(request) = super::upgrade_execution_request(&step) else {
             panic!("upgrade expected");
