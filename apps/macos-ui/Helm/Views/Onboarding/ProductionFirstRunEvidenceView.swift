@@ -209,6 +209,7 @@ private struct ProductionFirstRunSourceRow: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 12)
                     .padding(.top, 6)
                 }
                 .accessibilityLabel("\("app.first_run.evidence.paths".localized): \(localizedManagerDisplayName(manager.managerId))")
