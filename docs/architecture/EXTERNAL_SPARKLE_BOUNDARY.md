@@ -65,9 +65,11 @@ invoke its private installer binary directly.
 ## Required Before Activation
 
 Implement and independently review a native observer and an authenticated,
-uniquely identified helper with its own bundled Sparkle framework. Add durable
-one-shot review authorization, per-target serialization, crash recovery and
-bounded private diagnostics. Connect the state machine to real Sparkle callbacks
+uniquely identified helper with its own bundled Sparkle framework. Use the
+[durable session foundation](../validation/v0.20-sparkle-durable-session.md) for
+one-shot authorization, target reservations and conservative loss quarantine.
+Complete native installer-quiescence/recovery reconciliation and bounded private
+diagnostics. Connect the state machine to real Sparkle callbacks
 and shared GUI/CLI receipts; do not expose an automatic capability merely because
 this policy module exists. Preserve fallback for unsupported apps.
 

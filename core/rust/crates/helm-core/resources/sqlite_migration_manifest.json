@@ -111,6 +111,11 @@
       "version": 22,
       "name": "add_first_run_repair_receipts",
       "definition_sha256": "c4afe5b50bf209c9d656586717c83fa4746bf49e3cc55734fa02323829aace03"
+    },
+    {
+      "version": 23,
+      "name": "add_external_update_sessions",
+      "definition_sha256": "dfa1a4db8ae8bec9249c96878d28739cf94562a32d82e6ce50e92cb4280074d1"
     }
   ]
 }
