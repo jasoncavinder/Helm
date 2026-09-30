@@ -85,7 +85,9 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    its passing pure-policy tests are not a signed helper or live installation.
    Preserve the [durable session foundation](validation/v0.20-sparkle-durable-session.md)
    and the [read-only native observer](validation/v0.20-sparkle-native-observation.md).
-   Complete its authority mapping, authenticated helper/callback integration,
+   Preserve the [native peer gates](validation/v0.20-sparkle-peer-authentication.md)
+   without treating configured requirements as an authenticated session.
+   Complete its authority mapping, signed handshake/helper/callback integration,
    installer-quiescence recovery and signed live QA before enabling direct updates.
    Preserve the [passing Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
    and complete its signed GUI progress/failure/recovery checks without repeating
