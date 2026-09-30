@@ -113,7 +113,7 @@ follow-up; their head CI passed. The delayed-observer regression is
 red-before/green-after;
 six search tests pass 20 consecutive VM runs and 43 adjacent tests pass. This is
 not all-platform certification:
-account/OS/no-candidate limits, genuinely CLT-free runtime evidence, pnpm 11+
+account/OS/no-candidate limits, bounded CLT-free runtime evidence, pnpm 11+
 mutation support (#559), and #560 candidate/canary validation remain explicit.
 Do not close #500/#526 or waive release gates based only on the supplied VM's
 passing checks.
@@ -122,8 +122,10 @@ Preserve the merged #557/#558 corrections, including CLI persistence and the
 #556 last-uv-tool removal postcondition correction. Both uv 0.12.9 and 0.12.18 pass
 the bounded offline CLI lifecycle, reinstall and repeated loopback authenticated
 cancellation checks; retain their exact scope while finishing the remaining gates.
-Preserve the operation-specific Command Line Tools preflight and complete its
-CLT-free/GUI evidence, not an implicit requirement to launch Helm. The owner
+Preserve the operation-specific Command Line Tools preflight and the completed
+bounded [CLT-free launch/read/prerequisite evidence](validation/v0.20-clt-free-runtime.md),
+including the stale-receipt correction. Do not add an implicit startup requirement
+or infer that all source-build paths and platforms are certified. The owner
 directed that account-dependent App Store/Setapp checks be recorded as blocked.
 See `docs/validation/v0.20-adapter-vm-certification.md`.
 Continue the current manager-family matrix in
@@ -164,8 +166,8 @@ first-run Accessibility request in the VM; the temporary grant has been reset
 and Rectangle stopped. Do not repeat these passing checks or interpret them as
 direct third-party installation by Helm. The separately staged pnpm diagnostics
 VoiceOver check now passes, including title/guidance reading, diagnostic-tab
-navigation and Escape dismissal. Keep genuinely CLT-free OS and other platform
-gaps explicit.
+navigation and Escape dismissal. Keep the later CLT-free runtime check's limits
+and other platform gaps explicit.
 Preserve and investigate the disposable QA database corruption observed after
 the forced host restart under #560; cache reconstruction is not a product
 durability fix. The original and a hash-verified local copy are retained; do not
@@ -198,7 +200,7 @@ v0.20.x core workflow implementation and v0.19.1 stable monitoring
 ```
 
 Focus:
-- close out the disposable-VM adapter campaign using `docs/validation/v0.20-release-readiness.md` and `docs/validation/v0.20-adapter-vm-family-results.md`: #557/#558 are reviewed and merged, with passing bounded uv/manager-family scenarios and CI. Preserve accepted CLI/GUI evidence while completing genuinely CLT-free/platform dispositions, pnpm 11+ compatibility (#559), database candidate/canary validation (#560), and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
+- close out the disposable-VM adapter campaign using `docs/validation/v0.20-release-readiness.md` and `docs/validation/v0.20-adapter-vm-family-results.md`: #557/#558 are reviewed and merged, with passing bounded uv/manager-family scenarios and CI. Preserve accepted CLI/GUI and actual CLT-payload-absence evidence while completing other platform dispositions, pnpm 11+ compatibility (#559), database candidate/canary validation (#560), and remaining capability gates. The original 29-manager baseline is not all-adapter certification; #500/#526 remain open. Account-dependent App Store/Setapp checks are explicitly blocked by owner decision, not waiting for credentials.
 - retain the exact-pinned uv PEP 440 matcher and its prerelease/epoch/postrelease, zero-padding, and Requires-Python regressions when integrating candidate discovery; dependency upgrades require explicit review, and matching candidates still need source-aware resolution
 - complete final synchronized-head CI and owner merge for the v0.20 Dashboard Add manager PR #547, preserving `docs/validation/v0.20-add-manager-dashboard.md`: source `3876f7c0` passed owner navigation/cancellation, scroll/filter handoff, Cargo/Homebrew choices, toolbar, appearance, keyboard/VoiceOver, and offline-safety checks; the corrected installation-panel language recheck passed on signed source `0548920c`, which also passed independent code review without findings. The `dev` synchronization adds only the merged website security lockfile update, not app changes. Do not reopen accepted presentation checks absent a runtime change. Keep actual installation/failure/cancellation/recovery evidence in an isolated environment and the all-manager certification pass (#463/#500); do not install managers on the owner's Mac as an automated test
 - preserve the 2026-09-21 owner-confirmed live Sparkle Plan/confirmation evidence on source `edb4270b`: Arc and iTerm2 were interactive-only, the review reported 101 selected versus 99 automatic updates, and cancellation did not execute the reviewed plan. Keep the exact provenance and setup-incident limits in the readiness record; this supersedes the targeted Sparkle-presentation gate mentioned below, not vendor-installation or participant validation. Complete protected arm64/macOS 13.0-target CI on the readiness PR, retaining the distinction between deployment-target compatibility and actual Ventura runtime coverage; then proceed to the remaining moderated and production-route decisions without reopening completed owner matrices

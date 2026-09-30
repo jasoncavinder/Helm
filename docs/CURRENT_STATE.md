@@ -208,7 +208,11 @@ cross-process and migration-compatibility checks. Homebrew cask formats and
 authorization delegation, tap-qualified formula identities, RubyGems search,
 and Docker/nix-darwin detection have bounded live evidence. Operation-specific
 developer-tools preflight is implemented; simulated missing-tool CLI and localized
-GUI prerequisite checks pass, but truly CLT-free runtime QA remains open. App Store/Setapp
+GUI prerequisite checks pass. A later [actual CLT-payload removal/restoration
+check](validation/v0.20-clt-free-runtime.md) also passes signed launch, cached
+reads, Cargo prerequisite handling and a binary-only uv lifecycle. CLT detection
+now requires the payload as well as a receipt, preventing stale-receipt false
+positives. This does not certify every source-build path or a CLT update. App Store/Setapp
 account-dependent checks are blocked by owner decision. pnpm 12 compatibility
 (#559) and remaining capability/environment dispositions remain open; the campaign
 implementation PR is reviewed and merged.
