@@ -1255,6 +1255,13 @@ private struct InspectorPackageDetailView: View {
 
             packageActionRow
 
+            if let key = core.managerStatuses[activePackage.managerId]?.packageMutationServiceErrorKey {
+                Text(key.localized)
+                    .font(.caption)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if supportsKegPolicyOverride {
                 kegPolicyMenuField
             }
@@ -3299,6 +3306,13 @@ private struct InspectorManagerDetailView: View {
                             ? HelmTheme.textSecondary
                             : HelmTheme.stateUpdatesReady
                     )
+            }
+
+            if let key = status?.packageMutationServiceErrorKey {
+                Text(key.localized)
+                    .font(.caption)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if multiInstanceAttentionNeeded {

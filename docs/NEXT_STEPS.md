@@ -126,6 +126,12 @@ mutation guard for pnpm 11+ and unknown/prerelease versions. Keep reads availabl
 retain the passing pnpm 10.16.1 lifecycle, and do not interpret the guard as pnpm
 12 lifecycle certification. Review this explicit compatibility boundary with the
 campaign batch; lifting it requires group-aware consent and preservation evidence.
+The [version-aware preview](validation/v0.20-pnpm-mutation-availability.md) now
+keeps affected updates visible but unselectable, explains the limit in inspectors
+and CLI preview, and avoids package tasks for known-blocked Plan work. Preserve
+the live version recheck and obtain signed visual/accessibility acceptance of
+this new pre-execution presentation; earlier task-diagnostic QA remains valid
+within its original scope.
 Preserve the completed bounded owner GUI checks in
 `docs/validation/v0.20-adapter-gui-checklist.md`. Do not launch an unsigned test app
 or ask the owner to repeat passing scenarios without a relevant code change.
