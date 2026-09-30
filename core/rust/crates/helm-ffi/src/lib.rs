@@ -12998,14 +12998,14 @@ mod tests {
             manager: ManagerId::Rustup,
             task_type: TaskType::Uninstall,
             status: TaskStatus::Queued,
-            created_at: SystemTime::now(),
+            created_at: UNIX_EPOCH + Duration::from_secs(201),
         };
         let stale_running = TaskRecord {
             id: TaskId(202),
             manager: ManagerId::Mise,
             task_type: TaskType::Install,
             status: TaskStatus::Running,
-            created_at: SystemTime::now(),
+            created_at: UNIX_EPOCH + Duration::from_secs(202),
         };
         let completed = TaskRecord {
             id: TaskId(203),
@@ -13057,6 +13057,12 @@ mod tests {
             by_id.get(&TaskId(203)).map(|task| task.status),
             Some(TaskStatus::Completed)
         );
+        assert_eq!(by_id[&stale_queued.id].created_at, stale_queued.created_at);
+        assert_eq!(
+            by_id[&stale_running.id].created_at,
+            stale_running.created_at
+        );
+        assert_eq!(store.prune_completed_tasks(300).unwrap(), 0);
 
         let logs = store
             .list_task_logs(TaskId(201), 10)
@@ -13065,6 +13071,10 @@ mod tests {
             logs.iter()
                 .any(|entry| entry.message.contains("test_reconcile")),
             "reconciled task log should include reconciliation context"
+        );
+        assert!(
+            logs.iter()
+                .all(|entry| entry.created_at > stale_queued.created_at)
         );
 
         let _ = fs::remove_file(store.database_path());
@@ -13082,7 +13092,7 @@ mod tests {
             manager: ManagerId::Rustup,
             task_type: TaskType::Refresh,
             status: TaskStatus::Running,
-            created_at: SystemTime::now(),
+            created_at: UNIX_EPOCH + Duration::from_secs(401),
         };
 
         store
@@ -13121,6 +13131,8 @@ mod tests {
             .find(|task| task.id == stale_running.id)
             .expect("task should exist");
         assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(task.created_at, stale_running.created_at);
+        assert_eq!(store.prune_completed_tasks(300).unwrap(), 0);
 
         let logs = store
             .list_task_logs(stale_running.id, 20)

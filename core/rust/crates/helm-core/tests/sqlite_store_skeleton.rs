@@ -1757,6 +1757,160 @@ fn create_update_and_list_recent_tasks_roundtrip() {
 }
 
 #[test]
+fn task_creation_time_survives_plain_and_logged_status_updates() {
+    let path = test_db_path("task-creation-history");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+    let original_time = UNIX_EPOCH + Duration::from_secs(777);
+    let transition_time = UNIX_EPOCH + Duration::from_secs(999);
+    let mut task = TaskRecord {
+        id: TaskId(42),
+        manager: ManagerId::Rustup,
+        task_type: TaskType::Refresh,
+        status: TaskStatus::Queued,
+        created_at: original_time,
+    };
+    store.create_task(&task).unwrap();
+    task.status = TaskStatus::Running;
+    task.created_at = transition_time;
+    store.update_task(&task).unwrap();
+    assert_eq!(
+        store.list_recent_tasks(1).unwrap()[0].created_at,
+        original_time
+    );
+
+    task.status = TaskStatus::Completed;
+    store
+        .update_task_with_log(
+            &task,
+            &NewTaskLogRecord {
+                task_id: task.id,
+                manager: task.manager,
+                task_type: task.task_type,
+                status: Some(task.status),
+                level: TaskLogLevel::Info,
+                message: "completed after restart".to_string(),
+                created_at: transition_time,
+            },
+        )
+        .unwrap();
+    let reopened = SqliteStore::new(&path);
+    let stored = &reopened.list_recent_tasks(1).unwrap()[0];
+    assert_eq!(stored.created_at, original_time);
+    assert_eq!(stored.status, TaskStatus::Completed);
+    assert_eq!(
+        reopened.list_task_logs(task.id, 1).unwrap()[0].created_at,
+        transition_time
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn task_retention_uses_terminal_event_time_without_rewriting_creation_history() {
+    let path = test_db_path("task-retention-history");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+    let old = UNIX_EPOCH + Duration::from_secs(5);
+    let recent = SystemTime::now();
+    for (id, status, created_at, terminal_time) in [
+        (1, TaskStatus::Completed, old, Some(recent)),
+        (2, TaskStatus::Cancelled, old, Some(recent)),
+        (3, TaskStatus::Completed, old, Some(old)),
+        (4, TaskStatus::Cancelled, old, None),
+        (5, TaskStatus::Completed, recent, Some(old)),
+        (6, TaskStatus::Failed, old, Some(old)),
+    ] {
+        let task = TaskRecord {
+            id: TaskId(id),
+            manager: ManagerId::Rustup,
+            task_type: TaskType::Refresh,
+            status,
+            created_at,
+        };
+        store.create_task(&task).unwrap();
+        if let Some(created_at) = terminal_time {
+            store
+                .append_task_log(&NewTaskLogRecord {
+                    task_id: task.id,
+                    manager: task.manager,
+                    task_type: task.task_type,
+                    status: Some(status),
+                    level: TaskLogLevel::Info,
+                    message: "terminal lifecycle event".to_string(),
+                    created_at,
+                })
+                .unwrap();
+        }
+    }
+    store
+        .append_task_log(&NewTaskLogRecord {
+            task_id: TaskId(3),
+            manager: ManagerId::Rustup,
+            task_type: TaskType::Refresh,
+            status: None,
+            level: TaskLogLevel::Info,
+            message: "a later diagnostic must not extend terminal retention".to_string(),
+            created_at: recent,
+        })
+        .unwrap();
+    assert_eq!(store.prune_completed_tasks(300).unwrap(), 2);
+    let remaining = store.list_recent_tasks(10).unwrap();
+    let ids = remaining
+        .iter()
+        .map(|task| task.id.0)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(ids, std::collections::BTreeSet::from([1, 2, 5, 6]));
+    assert_eq!(
+        remaining
+            .iter()
+            .find(|task| task.id == TaskId(1))
+            .unwrap()
+            .created_at,
+        old
+    );
+    assert_eq!(store.list_task_logs(TaskId(1), 10).unwrap().len(), 1);
+    assert!(store.list_task_logs(TaskId(3), 10).unwrap().is_empty());
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn task_retention_rolls_back_log_deletion_when_task_deletion_fails() {
+    let path = test_db_path("task-retention-rollback");
+    let store = SqliteStore::new(&path);
+    store.migrate_to_latest().unwrap();
+    let task = TaskRecord {
+        id: TaskId(42),
+        manager: ManagerId::Rustup,
+        task_type: TaskType::Refresh,
+        status: TaskStatus::Completed,
+        created_at: UNIX_EPOCH + Duration::from_secs(5),
+    };
+    store.create_task(&task).unwrap();
+    store
+        .append_task_log(&NewTaskLogRecord {
+            task_id: task.id,
+            manager: task.manager,
+            task_type: task.task_type,
+            status: Some(task.status),
+            level: TaskLogLevel::Info,
+            message: "completed".to_string(),
+            created_at: task.created_at,
+        })
+        .unwrap();
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER prevent_task_delete BEFORE DELETE ON task_records
+         BEGIN SELECT RAISE(ABORT, 'injected deletion failure'); END;",
+        )
+        .unwrap();
+    assert!(store.prune_completed_tasks(300).is_err());
+    assert_eq!(store.list_recent_tasks(10).unwrap().len(), 1);
+    assert_eq!(store.list_task_logs(task.id, 10).unwrap().len(), 1);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn prune_completed_tasks_removes_cancelled_and_keeps_running_records() {
     let path = test_db_path("tasks-prune-filter");
     let store = SqliteStore::new(&path);

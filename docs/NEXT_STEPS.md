@@ -2,6 +2,11 @@
 
 ## Immediate v0.20 Closeout
 
+Preserve the [task-history correction](validation/v0.20-task-creation-history.md)
+when integrating the first-run upgrade path. Recovery may change stale task
+status and append a log, but must retain its original creation time. Previously
+overwritten historical timestamps cannot be reconstructed by this fix.
+
 Use [v0.20 release readiness](validation/v0.20-release-readiness.md) as the current
 ordered checklist, superseding older per-PR pending instructions below. PRs
 #557/#558 and #568/#569 are reviewed and merged with passing head checks. Do not repeat their

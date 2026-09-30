@@ -1285,7 +1285,7 @@ VALUES (?1, ?2, ?3, ?4, ?5)
             let updated = connection.execute(
                 "
 UPDATE task_records
-SET manager_id = ?2, task_type = ?3, status = ?4, created_at_unix = ?5
+SET manager_id = ?2, task_type = ?3, status = ?4
 WHERE task_id = ?1
 ",
                 params![
@@ -1293,7 +1293,6 @@ WHERE task_id = ?1
                     task.manager.as_str(),
                     task_type_to_str(task.task_type),
                     task_status_to_str(task.status),
-                    to_unix_seconds(task.created_at)?,
                 ],
             )?;
 
@@ -1315,7 +1314,7 @@ WHERE task_id = ?1
             let updated = transaction.execute(
                 "
 UPDATE task_records
-SET manager_id = ?2, task_type = ?3, status = ?4, created_at_unix = ?5
+SET manager_id = ?2, task_type = ?3, status = ?4
 WHERE task_id = ?1
 ",
                 params![
@@ -1323,7 +1322,6 @@ WHERE task_id = ?1
                     task.manager.as_str(),
                     task_type_to_str(task.task_type),
                     task_status_to_str(task.status),
-                    to_unix_seconds(task.created_at)?,
                 ],
             )?;
 
@@ -1412,26 +1410,36 @@ LIMIT ?1
                 .as_secs() as i64
                 - max_age_secs;
             let transaction = connection.transaction()?;
-            transaction.execute(
-                "
-DELETE FROM task_log_records
-WHERE task_id IN (
-    SELECT task_id
-    FROM task_records
-    WHERE status IN ('completed', 'cancelled')
-      AND created_at_unix < ?1
-)
-",
-                params![cutoff],
-            )?;
-            let deleted = transaction.execute(
-                "
-DELETE FROM task_records
+            // Decide once, before deleting logs that provide the completion timestamp.
+            let expired_ids = {
+                let mut statement = transaction.prepare(
+                    "
+SELECT task_id
+FROM task_records
 WHERE status IN ('completed', 'cancelled')
-  AND created_at_unix < ?1
+  AND MAX(created_at_unix, COALESCE((
+      SELECT MAX(logs.created_at_unix)
+      FROM task_log_records AS logs
+      WHERE logs.task_id = task_records.task_id
+        AND logs.status = task_records.status
+  ), created_at_unix)) < ?1
 ",
-                params![cutoff],
-            )?;
+                )?;
+                statement
+                    .query_map(params![cutoff], |row| row.get::<_, i64>(0))?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let mut deleted = 0;
+            for task_id in expired_ids {
+                transaction.execute(
+                    "DELETE FROM task_log_records WHERE task_id = ?1",
+                    params![task_id],
+                )?;
+                deleted += transaction.execute(
+                    "DELETE FROM task_records WHERE task_id = ?1",
+                    params![task_id],
+                )?;
+            }
             transaction.commit()?;
             Ok(deleted)
         })
