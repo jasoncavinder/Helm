@@ -4,10 +4,20 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The [repeatable uv multi-package Plan check](validation/v0.20-uv-multi-package-plan.md)
+passes both bounded supported endpoints in the VM, including pin exclusion,
+receipt preservation and a second no-op run. This adds reusable CLI evidence,
+not a signed GUI or platform gate waiver.
+
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
+Task creation time is now immutable across status persistence and restart
+recovery. Completed/cancelled history retention uses terminal log time, with
+creation-time fallback for legacy logless records, so recently recovered or
+long-running tasks do not disappear immediately. See the
+[history preservation regression](validation/v0.20-task-creation-history.md).
 PRs #557/#558 and #568/#569 are reviewed and merged with passing head CI checks.
-PRs #570/#571 are also reviewed and merged; their Cargo persistence and
-authority-concurrency regressions are retained in the plan-binding follow-up.
+PRs #570/#571/#572 are also reviewed and merged; their Cargo persistence,
+candidate/retry binding and authority-concurrency regressions are retained.
 The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
@@ -37,6 +47,28 @@ loss or cancellation without reconnecting. Its protocol and native rejection
 tests pass; accepted signed peers and operational helper integration remain open.
 The current vendor-app handoff and Helm's sandbox are unchanged.
 
+The Dashboard now applies an explicit active-Space presentation policy before
+ordering/activating its retained window (#529). It does not join every Space,
+change window layout/level, or replace Settings behavior. Focused policy tests
+pass, but the [two-fullscreen-Space acceptance](validation/v0.20-dashboard-active-space.md)
+remains pending before this issue can close.
+
+The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
+now passes cargo-binstall install/detection, cancellation, controlled failure,
+recovery and cleanup through Cargo/Homebrew. Cargo's native offline cache-miss
+diagnostic now distinguishes local offline configuration from compiler failure;
+seven-locale guidance and durable logs are covered. Signed GUI progress/recovery
+and broader method/platform certification remain open.
+
+Environment priority reordering now uses a temporary moving insertion placeholder
+for detected managers. Native drag completion restores the uncommitted list after
+Escape or an invalid/outside drop. Valid commits revalidate installed membership,
+original order and authority; localized Move Up/Down menu actions use the same
+ordering contract. No manager enablement or backend authority policy changes.
+The [implementation record](validation/v0.20-environment-insertion-reordering.md)
+retains signed pointer/autoscroll/keyboard/VoiceOver QA as pending; #464 is not yet
+closed by automated tests alone.
+
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
 The shared Rust/FFI/XPC versioned acknowledgment foundation is implemented and
@@ -54,11 +86,24 @@ Shipping builds still request legacy compatibility. Debug-only
 `HELM_FIRST_RUN_PRODUCTION_QA=1` selects the real prepared startup, required legal
 acceptance with durable readback, local observation, explicit acknowledgment and
 activation sequence. It preserves the independent legacy CLI onboarding flag.
+First-run XPC reply validation and delivery are serialized on the main queue;
+connection invalidation and the controller generation fence reject stale replies.
 The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
 adds one finite shared-core/FFI stale-mise-override action with explicit review,
 atomic preference/receipt persistence and bounded post-change verification.
-It does not claim PATH readiness or general manager health. Full UI session
-consent/receipt wiring remains open; interrupted checks remain unverified.
+It does not claim PATH readiness or general manager health. The
+[guarded repair presentation](validation/v0.20-first-run-repair-presentation.md)
+now adds explicit review/consent and durable receipt readback to the Debug-only
+real entry. Failed replies never cause automatic reapplication; interrupted
+checks remain unverified. The
+[Wayfinder evidence presentation](validation/v0.20-first-run-wayfinder-evidence.md)
+now gives the real local evidence a fixed-action, source-list-only scrolling
+layout with explicit file-versus-readiness and saved-preference distinctions.
+All 410 Swift tests pass in the VM. Shipping activation and signed visual,
+consent/accessibility QA remain open.
+The [reply-order correction](validation/v0.20-first-run-reply-order.md) now places
+both JSON and Boolean first-run XPC connection checks on the main queue before
+controller delivery, preventing off-main reads during disconnect/reconnect.
 Production activation and signed upgrade-path QA remain pending; the research
 route stays development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected
@@ -90,9 +135,43 @@ submitted metadata, not a refreshed preview; unavailable older/service-restart
 metadata requires a new review. Unsigned UI/test compilation and 64
 focused/adjacent Swift tests in the VM pass, without claiming signed GUI QA.
 Changed reviewed candidates require review again; newer installed versions cannot
-be downgraded by an old target. General dependency resolution is unchanged:
-exact source/scope/receipt-feature preservation and lockfile handling
-still need work before #564 closes.
+be downgraded by an old target. The
+[native receipt guard](validation/v0.20-cargo-receipt-preservation.md) now
+preserves crates.io source, explicit install root, binaries, features, profile
+and target when an upgrade actually executes. Unsupported/ambiguous receipts
+fail closed; observed postconditions include unrelated receipt preservation.
+Native null historical version requirements are accepted without relaxing the
+exact upgrade target or source/build-option checks.
+The [published-lock upgrade preflight](validation/v0.20-cargo-published-lock.md)
+now validates exact packaged manifest/lock identities, rejects missing, stale-root,
+unsupported or changed cache metadata, and upgrades with `--locked` without an
+unlocked fallback. Native Helm CLI `sd` 0.7.6 to 1.0.0 and `slint-viewer` 1.18.0
+to 1.18.1 upgrades and VM regression checks pass. Cargo still owns
+dependency resolution; this is not a general resolver or supply-chain verifier.
+The [discovery-scope binding](validation/v0.20-cargo-reviewed-scope.md) now carries
+native receipt, root, executable/toolchain and candidate identity through cached
+plans and retries; changed or unavailable scope fails closed. Native Rustup-backed
+CLI stale-root/binary rejection and refreshed upgrade pass. Verified Cargo
+install/upgrade/removal results reconcile token-scoped cached updates while
+keeping installed identity unscoped; still-newer candidates retain the verified
+baseline without receiving a fresh review token. Unrelated identities are preserved.
+Explicit unbound
+low-level calls retain task-start semantics; there is no new durable CLI
+confirmation transaction. The [install/reinstall policy](validation/v0.20-cargo-install-policy.md)
+extends published-lock validation to fresh installs, pins task-start candidates,
+preserves existing receipt options on reinstall, and verifies unrelated state.
+Verified reinstalls replace the prior cached Cargo version without changing the
+Install action identity, retain pin/runtime flags and any newer cached candidate,
+and leave snapshots untouched on failed or unverified completion.
+The paired-empty native receipt case now has a narrow fresh-store contract.
+The [opt-in VM CLI lifecycle](validation/v0.20-cargo-cli-lifecycle.md) now makes
+two-package Plan, sibling-preserving removal, empty-store recovery and native
+option-preserving reinstall evidence repeatable without host package changes.
+Its timeout/interruption cleanup now covers all retained harness-owned sessions,
+including the earlier CLI coordinator and separately grouped Cargo children,
+without signaling unrelated sessions; targeted VM regressions cover this boundary.
+Full Rust VM regressions and real fresh install/reinstall pass; integrated-head
+validation and the remaining evidence are still required before #564 closes.
 Signed GUI review remains pending. The
 [original triage](validation/v0.19.1-rust-task-triage.md) remains historical evidence;
 production was not modified and no toolchain repair is performed automatically.
@@ -151,6 +230,11 @@ stable versions below 11 retain their existing path; bounded lifecycle evidence 
 for 10.16.1, not every older release. Both targeted and bulk legacy updates reject
 false success. #559 remains open for group-aware support and the native 12.6.0
 update no-op. No automatic downgrade, reinstall or policy bypass was introduced.
+The [version-aware preview](validation/v0.20-pnpm-mutation-availability.md) now
+surfaces this boundary before Plan execution: blocked updates remain visible but
+cannot be selected or run in the GUI; CLI previews expose the reason and blocked
+runs create no package task. Capability fields and inspector guidance use the
+same shared-core version rule while the live adapter retains its final recheck.
 Task diagnostics now provide translated pnpm-limit and developer-tools guidance
 from the core failure markers, including persisted task logs when process output
 is absent. The [remaining GUI checklist](validation/v0.20-adapter-gui-checklist.md)

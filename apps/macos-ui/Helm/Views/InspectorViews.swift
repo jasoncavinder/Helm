@@ -1255,6 +1255,13 @@ private struct InspectorPackageDetailView: View {
 
             packageActionRow
 
+            if let key = core.managerStatuses[activePackage.managerId]?.packageMutationServiceErrorKey {
+                Text(key.localized)
+                    .font(.caption)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if supportsKegPolicyOverride {
                 kegPolicyMenuField
             }
@@ -2223,6 +2230,8 @@ private struct InspectorPackageDetailView: View {
     }
 
     private func displayedPackageIdentifier(for package: PackageItem) -> String {
+        // Cargo's opaque update receipt is execution provenance, not a package name.
+        if package.managerId.lowercased() == "cargo" { return package.id }
         let trimmedIdentifier = package.packageIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !trimmedIdentifier.isEmpty {
             return trimmedIdentifier
@@ -3297,6 +3306,13 @@ private struct InspectorManagerDetailView: View {
                             ? HelmTheme.textSecondary
                             : HelmTheme.stateUpdatesReady
                     )
+            }
+
+            if let key = status?.packageMutationServiceErrorKey {
+                Text(key.localized)
+                    .font(.caption)
+                    .foregroundColor(HelmTheme.stateNeedsReview)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if multiInstanceAttentionNeeded {

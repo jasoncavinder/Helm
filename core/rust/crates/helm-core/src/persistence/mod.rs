@@ -95,8 +95,10 @@ pub trait TaskStore: Send + Sync {
 
     fn create_task(&self, task: &TaskRecord) -> PersistenceResult<()>;
 
+    /// Update an existing task while preserving its original creation timestamp.
     fn update_task(&self, task: &TaskRecord) -> PersistenceResult<()>;
 
+    /// Preserve task creation time; the log carries the transition timestamp.
     fn update_task_with_log(
         &self,
         task: &TaskRecord,
@@ -110,7 +112,9 @@ pub trait TaskStore: Send + Sync {
 
     fn next_task_id(&self) -> PersistenceResult<u64>;
 
-    /// Delete terminal tasks older than `max_age_secs` seconds.
+    /// Delete completed/cancelled tasks older than `max_age_secs` since their
+    /// latest matching terminal log, or creation for legacy logless records.
+    /// Never treat a task as older than its original creation timestamp.
     /// Returns the number of rows deleted.
     fn prune_completed_tasks(&self, max_age_secs: i64) -> PersistenceResult<usize>;
 

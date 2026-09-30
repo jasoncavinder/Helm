@@ -34,6 +34,8 @@ import Foundation
     func doctorScan(withReply reply: @escaping (String?) -> Void)
     func getFirstRunExperienceState(withReply reply: @escaping (String?) -> Void)
     func observeFirstRunEnvironment(withReply reply: @escaping (String?) -> Void)
+    func reviewFirstRunRepair(withReply reply: @escaping (String?) -> Void)
+    func applyFirstRunRepair(reviewToken: String, withReply reply: @escaping (String?) -> Void)
     func acknowledgeFirstRunExperience(experienceId: String, withReply reply: @escaping (Bool) -> Void)
     func acceptFirstRunLicenseTerms(version: String, withReply reply: @escaping (Bool) -> Void)
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void)

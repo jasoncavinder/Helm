@@ -29,6 +29,12 @@ jobs:
         run: |
           "$ACTIONLINT_BIN"
 
+      - name: Validate PR-only check concurrency
+        run: python3 scripts/ci/check_pr_check_concurrency.py
+
+      - name: Validate PR-only concurrency regression coverage
+        run: python3 -m unittest discover -s scripts/tests -p test_pr_check_concurrency.py
+
       - name: Validate unsigned build script safety contracts
         run: scripts/release/tests/build_unsigned_variant_contract.sh
 
