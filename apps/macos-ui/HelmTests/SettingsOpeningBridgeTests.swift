@@ -2,6 +2,52 @@ import SwiftUI
 import XCTest
 
 final class HelmSettingsOpenRouterTests: XCTestCase {
+    func testDashboardPresentationMovesToActiveSpaceWithoutJoiningEverySpace() {
+        let behavior = HelmDashboardWindowPresentationPolicy.collectionBehavior(preserving: [], isFullScreen: false)
+        XCTAssertEqual(behavior, [.moveToActiveSpace])
+        XCTAssertFalse(behavior.contains(.canJoinAllSpaces))
+        XCTAssertFalse(behavior.contains(.transient))
+        XCTAssertFalse(behavior.contains(.canJoinAllApplications))
+    }
+
+    func testDashboardPresentationPreservesUnrelatedCollectionPolicy() {
+        let original: NSWindow.CollectionBehavior = [.managed, .fullScreenAuxiliary, .canJoinAllSpaces]
+        let behavior = HelmDashboardWindowPresentationPolicy.collectionBehavior(preserving: original, isFullScreen: false)
+        XCTAssertEqual(behavior, [.managed, .fullScreenAuxiliary, .moveToActiveSpace])
+        XCTAssertEqual(HelmDashboardWindowPresentationPolicy.collectionBehavior(preserving: behavior, isFullScreen: false), behavior)
+    }
+
+    func testAlreadyFullScreenDashboardKeepsItsOwnSpacePolicy() {
+        let original: NSWindow.CollectionBehavior = [.fullScreenPrimary, .managed]
+        XCTAssertEqual(HelmDashboardWindowPresentationPolicy.collectionBehavior(preserving: original, isFullScreen: true), original)
+    }
+
+    func testRetainedDashboardPolicyIsAppliedBeforeOrderingAndActivationWithoutChangingFrame() {
+        let window = NSWindow(contentRect: NSRect(x: 120, y: 80, width: 1120, height: 740),
+                              styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let originalFrame = window.frame
+        let originalStyle = window.styleMask
+        let originalLevel = window.level
+        for _ in 0..<3 {
+            var calls: [String] = []
+            HelmDashboardWindowPresentationPolicy.present(window, orderFront: { actual in
+                XCTAssertTrue(actual === window)
+                XCTAssertTrue(actual.collectionBehavior.contains(.moveToActiveSpace))
+                calls.append("order")
+            }, activate: {
+                XCTAssertEqual(calls, ["order"])
+                calls.append("activate")
+            })
+            XCTAssertEqual(calls, ["order", "activate"])
+            XCTAssertEqual(window.frame, originalFrame)
+            XCTAssertEqual(window.styleMask, originalStyle)
+            XCTAssertEqual(window.level, originalLevel)
+            XCTAssertNil(window.parent)
+        }
+    }
+
     func testPopoverRemainsVisibleWhenHelmDeactivates() {
         XCTAssertFalse(HelmPanelDeactivationPolicy.popoverHidesOnDeactivate)
     }

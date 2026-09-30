@@ -10,7 +10,7 @@ use helm_core::adapters::{
 };
 use helm_core::models::{
     CoreError, CoreErrorKind, InstalledPackage, ManagerAction, ManagerId, OutdatedPackage,
-    PackageRef,
+    PackageRef, PackageRuntimeState,
 };
 use helm_core::orchestration::{AdapterRuntime, AdapterTaskTerminalState};
 use helm_core::persistence::{PackageStore, TaskStore};
@@ -30,6 +30,7 @@ struct Source {
     outdated_calls: Arc<AtomicUsize>,
     mutations: Arc<Mutex<Vec<MutationCall>>>,
     mutation_result: AdapterResult<String>,
+    accepted_review_scope: Option<String>,
 }
 
 impl Source {
@@ -42,6 +43,7 @@ impl Source {
             outdated_calls: Arc::new(AtomicUsize::new(0)),
             mutations: Default::default(),
             mutation_result: Ok(String::new()),
+            accepted_review_scope: None,
         }
     }
     fn mutate(
@@ -88,6 +90,18 @@ impl CargoSource for Source {
     }
     fn upgrade(&self, name: &str, version: &str) -> AdapterResult<String> {
         self.mutate(ManagerAction::Upgrade, name, Some(version))
+    }
+    fn validate_upgrade_scope(&self, _: &str, _: &str, binding: Option<&str>) -> AdapterResult<()> {
+        if binding.is_some() && binding != self.accepted_review_scope.as_deref() {
+            return Err(CoreError {
+                manager: Some(ManagerId::Cargo),
+                task: None,
+                action: Some(ManagerAction::Upgrade),
+                kind: CoreErrorKind::InvalidInput,
+                message: "Cargo test source cannot validate this reviewed scope".into(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -167,6 +181,21 @@ fn stale_candidates_cannot_downgrade_newer_installed_versions() {
             assert!(source.mutations.lock().unwrap().is_empty());
         }
     }
+}
+
+#[test]
+fn reviewed_scope_cannot_be_ignored_even_for_an_already_current_version() {
+    let source = Source::new(&[NEW, NEW]);
+    let error = CargoAdapter::new(source.clone())
+        .execute(AdapterRequest::Upgrade(UpgradeRequest {
+            package: Some(package()),
+            target_name: Some("cargo-review-v1:stale".into()),
+            version: Some("0.25.0".into()),
+        }))
+        .unwrap_err();
+    assert!(error.message.contains("reviewed scope"));
+    assert!(source.mutations.lock().unwrap().is_empty());
+    assert_eq!(source.inventories.lock().unwrap().len(), 2);
 }
 
 #[test]
@@ -479,6 +508,256 @@ async fn verified_explicit_upgrade_retains_a_newer_cached_candidate() {
     );
     cached_update.installed_version = Some("0.25.0".into());
     assert_eq!(store.list_outdated().unwrap(), vec![cached_update]);
+}
+
+#[tokio::test]
+async fn verified_reinstall_replaces_cached_version_and_retains_newer_candidate() {
+    for native_before in [OLD, NEW] {
+        for has_candidate in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let store = Arc::new(SqliteStore::new(root.path().join("reinstall.db")));
+            store.migrate_to_latest().unwrap();
+            let mut cached = InstalledPackage {
+                package: package(),
+                package_identifier: None,
+                installed_version: Some("0.24.0".into()),
+                pinned: true,
+                runtime_state: PackageRuntimeState {
+                    is_active: true,
+                    is_default: true,
+                    has_override: true,
+                },
+            };
+            let mut cached_update = OutdatedPackage {
+                package: package(),
+                package_identifier: None,
+                installed_version: Some("0.24.0".into()),
+                candidate_version: "0.26.0".into(),
+                pinned: cached.pinned,
+                restart_required: false,
+                runtime_state: cached.runtime_state.clone(),
+            };
+            store
+                .upsert_installed(std::slice::from_ref(&cached))
+                .unwrap();
+            if has_candidate {
+                store
+                    .upsert_outdated(std::slice::from_ref(&cached_update))
+                    .unwrap();
+            }
+            let source = Source::new(&[native_before, NEW]);
+            let runtime = AdapterRuntime::with_all_stores(
+                [Arc::new(CargoAdapter::new(source.clone())) as Arc<dyn ManagerAdapter>],
+                store.clone(),
+                store.clone(),
+                store.clone(),
+                store.clone(),
+            )
+            .unwrap();
+            let (task, receipt) = runtime
+                .submit_with_persistence(ManagerId::Cargo, install(Some("0.25.0")))
+                .await
+                .unwrap();
+            let terminal = runtime
+                .wait_for_terminal(task, Some(Duration::from_secs(5)))
+                .await
+                .unwrap();
+            let Some(AdapterTaskTerminalState::Succeeded(AdapterResponse::Mutation(result))) =
+                terminal.terminal_state
+            else {
+                panic!("expected verified install success");
+            };
+            assert_eq!(result.action, ManagerAction::Install);
+            tokio::time::timeout(Duration::from_secs(5), receipt.wait_for_completion())
+                .await
+                .unwrap();
+            assert_eq!(
+                *source.mutations.lock().unwrap(),
+                vec![(ManagerAction::Install, "bat".into(), Some("0.25.0".into()))]
+            );
+            cached.installed_version = Some("0.25.0".into());
+            cached_update.installed_version = Some("0.25.0".into());
+            assert_eq!(
+                (
+                    store.list_installed().unwrap(),
+                    store.list_outdated().unwrap()
+                ),
+                (
+                    vec![cached],
+                    if has_candidate {
+                        vec![cached_update]
+                    } else {
+                        vec![]
+                    }
+                )
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn failed_or_unverified_reinstall_leaves_cached_snapshots_untouched() {
+    for cancelled in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(SqliteStore::new(root.path().join("failed-reinstall.db")));
+        store.migrate_to_latest().unwrap();
+        let cached = InstalledPackage {
+            package: package(),
+            package_identifier: None,
+            installed_version: Some("0.24.0".into()),
+            pinned: false,
+            runtime_state: Default::default(),
+        };
+        let cached_update = OutdatedPackage {
+            package: package(),
+            package_identifier: None,
+            installed_version: cached.installed_version.clone(),
+            candidate_version: "0.26.0".into(),
+            pinned: false,
+            restart_required: false,
+            runtime_state: Default::default(),
+        };
+        store
+            .upsert_installed(std::slice::from_ref(&cached))
+            .unwrap();
+        store
+            .upsert_outdated(std::slice::from_ref(&cached_update))
+            .unwrap();
+        let mut source = Source::new(&[OLD, OLD]);
+        if cancelled {
+            source.mutation_result = Err(CoreError {
+                manager: Some(ManagerId::Cargo),
+                task: None,
+                action: Some(ManagerAction::Install),
+                kind: CoreErrorKind::Cancelled,
+                message: "cancelled reinstall".into(),
+            });
+        }
+        let runtime = AdapterRuntime::with_all_stores(
+            [Arc::new(CargoAdapter::new(source)) as Arc<dyn ManagerAdapter>],
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+        )
+        .unwrap();
+        let (task, receipt) = runtime
+            .submit_with_persistence(ManagerId::Cargo, install(Some("0.25.0")))
+            .await
+            .unwrap();
+        let terminal = runtime
+            .wait_for_terminal(task, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        assert!(!matches!(
+            terminal.terminal_state,
+            Some(AdapterTaskTerminalState::Succeeded(_))
+        ));
+        tokio::time::timeout(Duration::from_secs(5), receipt.wait_for_completion())
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                store.list_installed().unwrap(),
+                store.list_outdated().unwrap()
+            ),
+            (vec![cached], vec![cached_update])
+        );
+    }
+}
+
+#[tokio::test]
+async fn reviewed_upgrade_reconciles_token_scoped_outdated_snapshot() {
+    assert_verified_mutation_reconciles_reviewed_snapshot(false).await;
+}
+
+#[tokio::test]
+async fn verified_uninstall_clears_token_scoped_outdated_snapshot() {
+    assert_verified_mutation_reconciles_reviewed_snapshot(true).await;
+}
+
+async fn assert_verified_mutation_reconciles_reviewed_snapshot(uninstall: bool) {
+    let root = tempfile::tempdir().unwrap();
+    let store = Arc::new(SqliteStore::new(root.path().join("reviewed-snapshot.db")));
+    store.migrate_to_latest().unwrap();
+    let scope = format!("cargo-review-v1:{}", "a".repeat(64));
+    store
+        .upsert_installed(&[InstalledPackage {
+            package: package(),
+            package_identifier: None,
+            installed_version: Some("0.24.0".into()),
+            pinned: false,
+            runtime_state: Default::default(),
+        }])
+        .unwrap();
+    store
+        .replace_outdated_snapshot(
+            ManagerId::Cargo,
+            &[OutdatedPackage {
+                package: package(),
+                package_identifier: Some(scope.clone()),
+                installed_version: Some("0.24.0".into()),
+                candidate_version: "0.25.0".into(),
+                pinned: false,
+                restart_required: false,
+                runtime_state: Default::default(),
+            }],
+        )
+        .unwrap();
+    let mut source = if uninstall {
+        Source::new(&[OLD, ""])
+    } else {
+        Source::new(&[OLD, OLD, NEW])
+    };
+    source.accepted_review_scope = Some(scope.clone());
+    let request = if uninstall {
+        AdapterRequest::Uninstall(UninstallRequest {
+            package: package(),
+            target_name: None,
+            version: None,
+        })
+    } else {
+        AdapterRequest::Upgrade(UpgradeRequest {
+            package: Some(package()),
+            target_name: Some(scope),
+            version: Some("0.25.0".into()),
+        })
+    };
+    let runtime = AdapterRuntime::with_all_stores(
+        [Arc::new(CargoAdapter::new(source)) as Arc<dyn ManagerAdapter>],
+        store.clone(),
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    )
+    .unwrap();
+    let (task, receipt) = runtime
+        .submit_with_persistence(ManagerId::Cargo, request)
+        .await
+        .unwrap();
+    let terminal = runtime
+        .wait_for_terminal(task, Some(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert!(matches!(
+        terminal.terminal_state,
+        Some(AdapterTaskTerminalState::Succeeded(_))
+    ));
+    tokio::time::timeout(Duration::from_secs(5), receipt.wait_for_completion())
+        .await
+        .unwrap();
+    let installed = store.list_installed().unwrap();
+    if uninstall {
+        assert!(installed.is_empty());
+    } else {
+        assert_eq!(installed.len(), 1);
+        assert_eq!(installed[0].installed_version.as_deref(), Some("0.25.0"));
+        assert_eq!(installed[0].package_identifier, None);
+    }
+    assert!(
+        store.list_outdated().unwrap().is_empty(),
+        "verified mutation must retire the discovered outdated row, not leave its old review scope active"
+    );
 }
 
 #[tokio::test]

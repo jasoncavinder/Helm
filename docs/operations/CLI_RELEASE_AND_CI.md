@@ -2,7 +2,7 @@
 
 Status: Active operational guide  
 Owner: Helm Release Engineering  
-Last Updated: 2026-08-07
+Last Updated: 2026-09-28
 
 ---
 
@@ -106,6 +106,33 @@ Policy:
   `scripts/release/tests/ci_toolchain_contract.sh`; negative regression coverage
   rejects workflows that mix a correct pin with a stale or floating reference.
 - new workflows must use immutable SHA pins when introduced.
+
+### 1.3 Superseded PR Check Runs
+
+`CI Tests`, `SwiftLint`, and `CodeQL` use workflow-level concurrency for PRs.
+The group includes the workflow name and PR number, so a newer run can cancel
+obsolete work for that same workflow/PR without canceling another PR or another
+check. Required check names, triggers, job matrices and permissions are unchanged.
+
+Non-PR events use a unique run-ID group and disable in-progress cancellation.
+That uniqueness matters: disabling in-progress cancellation alone still permits
+replacement of queued runs sharing a group. Push, manual and future scheduled
+checks therefore do not cancel one another. Release/build/publication workflows
+are not included in this policy.
+
+Concurrency is not proof that a tested commit is current. GitHub does not promise
+dispatch ordering, and rerunning an older PR event can compete with current work.
+Before retrying, verify the PR's current head and rerun checks for that head only.
+A canceled historical run is not a failed current-head check or a reason to skip
+one. Always verify the complete required check set on the current reviewed head.
+See [GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+
+`scripts/ci/check_pr_check_concurrency.py` pins the narrowly supported group and
+cancellation expressions; eight regression tests cover missing/duplicate blocks,
+cross-workflow/PR collisions, non-PR queued-run collisions and unconditional
+cancellation. General YAML/expression validation remains actionlint's job. Both
+the contract and regression tests run in Release Contract Checks; they do not
+call GitHub or execute Helm.
 
 ---
 

@@ -38,43 +38,21 @@ extension HelmCore {
         }
     }
 
-    func moveManagerPriority(
-        authority: ManagerAuthority,
-        draggedManagerId: String,
-        targetManagerId: String
-    ) {
-        guard draggedManagerId != targetManagerId else { return }
-        guard let dragged = ManagerInfo.find(byId: draggedManagerId),
-              let target = ManagerInfo.find(byId: targetManagerId),
-              dragged.authority == authority,
-              target.authority == authority else { return }
+    func installedManagerPriorityOrder(for authority: ManagerAuthority) -> [String] {
+        priorityOrderedIds(for: authority, detected: true)
+    }
 
-        let draggedDetected = isManagerDetected(draggedManagerId)
-        let targetDetected = isManagerDetected(targetManagerId)
-        guard draggedDetected == targetDetected else { return }
-
-        var installedOrder = priorityOrderedIds(for: authority, detected: true)
-        var missingOrder = priorityOrderedIds(for: authority, detected: false)
-
-        if draggedDetected {
-            moveManagerId(
-                in: &installedOrder,
-                draggedManagerId: draggedManagerId,
-                targetManagerId: targetManagerId
-            )
-        } else {
-            moveManagerId(
-                in: &missingOrder,
-                draggedManagerId: draggedManagerId,
-                targetManagerId: targetManagerId
-            )
-        }
-
+    @discardableResult
+    func commitManagerPriorityMove(_ session: ManagerPriorityReorderSession, authority: ManagerAuthority) -> Bool {
+        let current = installedManagerPriorityOrder(for: authority)
+        guard let proposed = session.validatedOrder(currentInstalledOrder: current, authorityKey: authority.key) else { return false }
+        guard proposed != current else { return true }
         applyPriorityOrder(
             authority: authority,
-            installedOrder: installedOrder,
-            missingOrder: missingOrder
+            installedOrder: proposed,
+            missingOrder: priorityOrderedIds(for: authority, detected: false)
         )
+        return true
     }
 
     func restoreDefaultManagerPriorities() {
@@ -87,17 +65,6 @@ extension HelmCore {
             .filter { $0.authority == authority }
             .filter { isManagerDetected($0.id) == detected }
         return sortedManagersByPriority(managers).map(\.id)
-    }
-
-    private func moveManagerId(
-        in orderedIds: inout [String],
-        draggedManagerId: String,
-        targetManagerId: String
-    ) {
-        guard let sourceIndex = orderedIds.firstIndex(of: draggedManagerId),
-              let targetIndex = orderedIds.firstIndex(of: targetManagerId) else { return }
-        let moved = orderedIds.remove(at: sourceIndex)
-        orderedIds.insert(moved, at: targetIndex)
     }
 
     private func applyPriorityOrder(

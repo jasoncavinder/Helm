@@ -142,7 +142,7 @@ extension HelmCore {
             service.upgradePackage(
                 managerId: package.managerId,
                 packageName: package.name,
-                packageTargetName: package.mutationTargetPackageName,
+                packageTargetName: package.upgradeMutationTargetName,
                 version: package.upgradeMutationVersion
             ) { completion($0) }
         }, fallback: Int64(-1)) { [weak self] taskId in
@@ -459,6 +459,10 @@ extension HelmCore {
     }
 
     private func retryUpgradePlanStep(_ step: CoreUpgradePlanStep, completion: ((Bool) -> Void)? = nil) {
+        guard !step.isExecutionBlocked else {
+            completion?(false)
+            return
+        }
         let submittedTask = upgradePlanTaskProjectionByStepId[step.id]
         guard let target = ReviewedUpgradeRequestProjection.resolveRetry(
             stepId: step.id, managerId: step.managerId, task: submittedTask
