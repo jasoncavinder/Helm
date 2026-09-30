@@ -6,6 +6,7 @@ struct ControlCenterWindowView: View {
     @ObservedObject private var core = HelmCore.shared
     @ObservedObject private var localization = LocalizationManager.shared
     @ObservedObject private var walkthrough = WalkthroughManager.shared
+    @ObservedObject private var productionEntry = HelmCore.shared.productionFirstRun
     @Environment(\.colorScheme) private var colorScheme
     private let sidebarWidth: CGFloat = 232
     private let researchLibraryProjection = WholeWorkflowResearchDatasetProvider.activeLibraryProjection()
@@ -20,7 +21,8 @@ struct ControlCenterWindowView: View {
     }
 
     private var presentsFirstRun: Bool {
-        context.shouldPresentFirstRun(
+        if ProductionFirstRunGate.isEnabled { return productionEntry.isPresenting }
+        return context.shouldPresentFirstRun(
             mode: firstRunMode,
             hasCompletedOnboarding: core.hasCompletedOnboarding
         )
@@ -165,10 +167,17 @@ struct ControlCenterWindowView: View {
 
     var body: some View {
         Group {
-            if presentsFirstRun {
+            if ProductionFirstRunGate.isEnabled && presentsFirstRun {
+                ProductionFirstRunView(entry: productionEntry, onRetry: core.retryProductionFirstRun)
+            } else if presentsFirstRun {
                 EnvironmentBriefFirstRunView(onComplete: completeFirstRun)
             } else {
                 controlCenterContent
+            }
+        }
+        .onChange(of: productionEntry.phase) { phase in
+            if ProductionFirstRunGate.isEnabled && phase == .active {
+                onFirstRunComplete()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -332,7 +341,7 @@ struct ControlCenterWindowView: View {
                     isOfflineVariant: researchLibraryProjection.isOfflineVariant
                 )
             }
-            if core.hasCompletedOnboarding && !presentsFirstRun && !core.isRefreshing {
+            if core.hasCompletedGUIEntry && !presentsFirstRun && !core.isRefreshing {
                 core.triggerRefresh()
             }
             if !WholeWorkflowResearchDatasetProvider.isSelected(),

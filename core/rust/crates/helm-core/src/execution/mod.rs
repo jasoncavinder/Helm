@@ -201,6 +201,8 @@ pub struct ProcessSpawnRequest {
     pub task_type: TaskType,
     pub action: ManagerAction,
     pub command: CommandSpec,
+    /// A reviewed absolute executable must not be replaced by a later manager preference.
+    pub reviewed_program: Option<PathBuf>,
     pub requires_elevation: bool,
     pub privileged_operation: Option<PrivilegedOperation>,
     pub timeout: Option<Duration>,
@@ -224,6 +226,7 @@ impl ProcessSpawnRequest {
             task_type,
             action,
             command,
+            reviewed_program: None,
             requires_elevation: false,
             privileged_operation: None,
             timeout: None,
@@ -789,6 +792,16 @@ pub fn spawn_validated(
     }
     apply_manager_executable_override(&mut request);
     resolve_program_from_path_env(&mut request.command);
+    if let Some(reviewed) = &request.reviewed_program
+        && (!reviewed.is_absolute() || request.command.program != *reviewed)
+    {
+        return Err(invalid_input(
+            request.manager,
+            request.task_type,
+            request.action,
+            "The reviewed executable changed; refresh and review again",
+        ));
+    }
     apply_manager_timeout_profile(&mut request);
     request.validate()?;
     let process = executor.spawn(request.clone())?;
@@ -1073,6 +1086,37 @@ mod tests {
         clear_manager_selected_executables();
         clear_manager_timeout_profiles();
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn reviewed_program_rejects_late_selected_executable_override() {
+        let _lock = manager_execution_preferences_test_guard();
+        clear_manager_selected_executables();
+        let temp = test_temp_dir("reviewed-program");
+        let reviewed = temp.join("reviewed/cargo");
+        let changed = temp.join("changed/cargo");
+        create_placeholder_binary(&reviewed);
+        create_placeholder_binary(&changed);
+        let executor = CapturingExecutor::default();
+        let mut request = ProcessSpawnRequest::new(
+            ManagerId::Cargo,
+            TaskType::Upgrade,
+            ManagerAction::Upgrade,
+            CommandSpec::new(&reviewed).args(["install", "--list"]),
+        );
+        request.reviewed_program = Some(reviewed.clone());
+        spawn_validated(&executor, request.clone()).unwrap();
+        assert_eq!(executor.captured_program(), reviewed);
+        set_manager_selected_executable(ManagerId::Cargo, Some(changed));
+        assert!(
+            spawn_validated(&executor, request)
+                .err()
+                .expect("changed selection must fail")
+                .message
+                .contains("reviewed executable")
+        );
+        clear_manager_selected_executables();
+        std::fs::remove_dir_all(temp).unwrap();
     }
 
     #[test]
