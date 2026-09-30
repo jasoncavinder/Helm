@@ -388,6 +388,27 @@ class HelmService: NSObject, HelmServiceProtocol {
         reply(result)
     }
 
+    func reviewFirstRunRepair(withReply reply: @escaping (String?) -> Void) {
+        guard let result = helm_review_first_run_repair() else { reply(nil); return }
+        defer { helm_free_string(result) }
+        reply(String(cString: result))
+    }
+
+    func applyFirstRunRepair(reviewToken: String, withReply reply: @escaping (String?) -> Void) {
+        guard (70...128).contains(reviewToken.utf8.count), !reviewToken.utf8.contains(0),
+              let result = reviewToken.withCString({ helm_apply_first_run_repair($0) }) else {
+            reply(nil)
+            return
+        }
+        defer { helm_free_string(result) }
+        reply(String(cString: result))
+    }
+
+    func acceptFirstRunLicenseTerms(version: String, withReply reply: @escaping (Bool) -> Void) {
+        guard !version.utf8.contains(0) else { reply(false); return }
+        reply(version.withCString { helm_accept_first_run_license_terms($0) })
+    }
+
     func getSharedOnboardingState(withReply reply: @escaping (Bool, String?) -> Void) {
         let completed = helm_get_cli_onboarding_completed()
         guard let cString = helm_get_cli_accepted_license_terms_version() else {

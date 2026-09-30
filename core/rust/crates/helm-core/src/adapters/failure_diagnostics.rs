@@ -7,6 +7,8 @@ pub(crate) enum ProcessFailureDiagnostic {
     DnsResolutionFailed,
     EndpointUnreachable,
     CargoBuildFailed,
+    CargoReceiptUnsupported,
+    CargoPublishedLockUnavailable,
 }
 
 impl ProcessFailureDiagnostic {
@@ -17,6 +19,8 @@ impl ProcessFailureDiagnostic {
             Self::DnsResolutionFailed => "dns_resolution_failed",
             Self::EndpointUnreachable => "endpoint_unreachable",
             Self::CargoBuildFailed => "cargo_build_failed",
+            Self::CargoReceiptUnsupported => "cargo_receipt_unsupported",
+            Self::CargoPublishedLockUnavailable => "cargo_published_lock_unavailable",
         }
     }
 
@@ -27,13 +31,17 @@ impl ProcessFailureDiagnostic {
             Self::DnsResolutionFailed => "network.dns_resolution_failed",
             Self::EndpointUnreachable => "network.endpoint_unreachable",
             Self::CargoBuildFailed => "cargo.build_failed",
+            Self::CargoReceiptUnsupported => "cargo.receipt_unsupported",
+            Self::CargoPublishedLockUnavailable => "cargo.published_lock_unavailable",
         }
     }
 
     pub(crate) fn owner(self) -> &'static str {
         match self {
-            Self::CargoToolchainUnavailable | Self::CargoOfflineCacheMiss => "local_configuration",
-            Self::CargoBuildFailed => "package_build",
+            Self::CargoToolchainUnavailable
+            | Self::CargoOfflineCacheMiss
+            | Self::CargoReceiptUnsupported => "local_configuration",
+            Self::CargoBuildFailed | Self::CargoPublishedLockUnavailable => "package_build",
             Self::DnsResolutionFailed | Self::EndpointUnreachable => "undetermined",
         }
     }
@@ -54,6 +62,12 @@ impl ProcessFailureDiagnostic {
             }
             Self::CargoBuildFailed => {
                 "Cargo could not compile this package or one of its dependencies. Review the compiler error and the package's supported toolchain and dependency requirements. Helm has not retried with different dependencies or another installer."
+            }
+            Self::CargoReceiptUnsupported => {
+                "Helm could not safely preserve or verify this Cargo installation's source and build options. Inspect the installation receipt and task details before trying again. Git, path, private registries and unsupported metadata require manual handling."
+            }
+            Self::CargoPublishedLockUnavailable => {
+                "Helm could not verify a published lockfile for this exact Cargo upgrade. Review the package and task details. Missing, stale or unsupported lockfiles require manual handling; Helm has not retried with unlocked dependencies or another installer."
             }
         }
     }
@@ -79,6 +93,12 @@ pub(crate) fn classify_process_failure(
 ) -> Option<ProcessFailureDiagnostic> {
     let text = text.to_ascii_lowercase();
     if manager == ManagerId::Cargo {
+        if text.contains("[cargo_published_lock_unavailable]") {
+            return Some(ProcessFailureDiagnostic::CargoPublishedLockUnavailable);
+        }
+        if text.contains("[cargo_receipt_unsupported]") {
+            return Some(ProcessFailureDiagnostic::CargoReceiptUnsupported);
+        }
         let unavailable = text.contains("the 'cargo' binary")
             && text.contains("'cargo' component")
             && text.contains("is not applicable")

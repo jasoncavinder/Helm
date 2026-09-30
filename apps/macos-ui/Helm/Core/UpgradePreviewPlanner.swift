@@ -35,8 +35,9 @@ struct ReviewedUpgradeRequestProjection: Equatable {
         }
         switch managerId.lowercased() {
         case "cargo":
-            guard let version = value("cargo_candidate_version") else { return nil }
-            return Self(targetName: nil, version: version)
+            guard let version = value("cargo_candidate_version"),
+                  let scope = value("cargo_review_scope") else { return nil }
+            return Self(targetName: scope, version: version)
         case "uv":
             guard let version = value("uv_candidate_version"),
                   let target = value("uv_package_identifier") else { return nil }
@@ -244,8 +245,10 @@ struct UpgradePreviewPlanner {
     static func runsAutomatically(
         action: String,
         managerId: String,
-        includeHelmSelfUpdate: Bool
+        includeHelmSelfUpdate: Bool,
+        status: String = "queued"
     ) -> Bool {
+        guard isSelectable(status: status) else { return false }
         if action == externalSparkleAction {
             return false
         }
@@ -429,6 +432,7 @@ struct UpgradePreviewPlanner {
         safeModeEnabled: Bool
     ) -> Bool {
         let normalized = status.lowercased()
+        guard isSelectable(status: normalized) else { return false }
         if normalized == "completed" {
             return false
         }
@@ -450,6 +454,10 @@ struct UpgradePreviewPlanner {
             return true
         }
         return false
+    }
+
+    static func isSelectable(status: String) -> Bool {
+        status.lowercased() != "blocked"
     }
 
     static func planStepId(managerId: String?, labelArgs: [String: String]?) -> String? {

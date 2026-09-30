@@ -129,6 +129,13 @@ struct PackageItem: Identifiable {
         }
         return mutationVersion
     }
+
+    var upgradeMutationTargetName: String? {
+        if managerId.lowercased() == "cargo" {
+            return packageIdentifier ?? "cargo-review-unavailable"
+        }
+        return mutationTargetPackageName
+    }
 }
 
 enum PackageVersionPresentation {

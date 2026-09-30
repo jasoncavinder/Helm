@@ -2,6 +2,33 @@ import SwiftUI
 import XCTest
 
 final class UpgradePreviewPlannerTests: XCTestCase {
+    func testBlockedCapabilityCannotBeSelectedOrExecutedAutomatically() {
+        XCTAssertFalse(UpgradePreviewPlanner.isSelectable(status: "blocked"))
+        XCTAssertFalse(UpgradePreviewPlanner.runsAutomatically(
+            action: "upgrade", managerId: "pnpm", includeHelmSelfUpdate: true, status: "blocked"
+        ))
+        XCTAssertFalse(UpgradePreviewPlanner.shouldRunScopedStep(
+            status: "blocked", hasProjectedTask: false, managerId: "pnpm", safeModeEnabled: false
+        ))
+        XCTAssertTrue(UpgradePreviewPlanner.isSelectable(status: "queued"))
+        XCTAssertTrue(UpgradePreviewPlanner.runsAutomatically(
+            action: "upgrade", managerId: "pnpm", includeHelmSelfUpdate: false, status: "queued"
+        ))
+    }
+
+    func testBlockedPlanSelectionIsRemovedWhenFreshCapabilitiesArrive() {
+        let steps = [("pnpm:prettier", "blocked"), ("npm:other", "queued")]
+        let available = Set(steps.filter { UpgradePreviewPlanner.isSelectable(status: $0.1) }.map(\.0))
+        let selection = UpgradePreviewPlanner.reconcileSelection(
+            selectedStepIds: ["pnpm:prettier", "npm:other"],
+            knownStepIds: ["pnpm:prettier", "npm:other"], availableStepIds: available
+        )
+        XCTAssertEqual(selection.selectedStepIds, ["npm:other"])
+        XCTAssertEqual(UpgradePreviewPlanner.settingVisibleSelection(
+            selectedStepIds: [], visibleStepIds: available, included: true
+        ), ["npm:other"])
+    }
+
     func testConfirmationSequenceColumnFitsLargePlansWithoutWrapping() {
         for total in [1, 99, 101, 125, 1000, 10000] {
             let reference = NSHostingView(

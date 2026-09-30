@@ -793,6 +793,7 @@ extension HelmCore {
     }
 
     func projectedUpgradePlanStatus(for step: CoreUpgradePlanStep) -> String {
+        if step.isExecutionBlocked { return step.status }
         if Self.isExternalSparklePlanStep(step) {
             return "requires_interaction"
         }
@@ -826,6 +827,8 @@ extension HelmCore {
             return L10n.App.Updates.Status.runsLast.localized
         case "not_included":
             return L10n.App.Updates.Status.notIncluded.localized
+        case "blocked":
+            return L10n.App.Inspector.installMethodTagBlocked.localized
         default:
             return rawStatus.capitalized
         }
@@ -835,7 +838,8 @@ extension HelmCore {
         UpgradePreviewPlanner.runsAutomatically(
             action: step.action,
             managerId: step.managerId,
-            includeHelmSelfUpdate: AppUpdateCoordinator.shared.includeHelmInUpgradeAll
+            includeHelmSelfUpdate: AppUpdateCoordinator.shared.includeHelmInUpgradeAll,
+            status: step.status
         )
     }
 
@@ -877,6 +881,7 @@ extension HelmCore {
             if package.managerId == Self.helmSelfUpdateManagerId {
                 return AppUpdateCoordinator.shared.includeHelmInUpgradeAll
             }
+            if managerStatuses[package.managerId]?.packageMutationServiceErrorKey != nil { return false }
             return true
         }
     }

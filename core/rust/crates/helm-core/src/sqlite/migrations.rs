@@ -1075,7 +1075,23 @@ DROP TABLE task_id_sequence;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 21] = [
+const MIGRATION_0022: SqliteMigration = SqliteMigration {
+    version: 22,
+    name: "add_first_run_repair_receipts",
+    up_sql: r#"
+CREATE TABLE first_run_repair_receipts (
+    receipt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_fingerprint TEXT NOT NULL,
+    before_preference_json TEXT NOT NULL,
+    receipt_json TEXT NOT NULL
+);
+"#,
+    down_sql: r#"
+DROP TABLE first_run_repair_receipts;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 22] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -1097,6 +1113,7 @@ const MIGRATIONS: [SqliteMigration; 21] = [
     MIGRATION_0019,
     MIGRATION_0020,
     MIGRATION_0021,
+    MIGRATION_0022,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

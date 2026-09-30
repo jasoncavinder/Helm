@@ -353,7 +353,7 @@ struct RedesignUpdatesSectionView: View {
     }
 
     private var selectedScopedPlanSteps: [CoreUpgradePlanStep] {
-        scopedPlanSteps.filter { selectedPlanStepIds.contains($0.id) }
+        scopedPlanSteps.filter { !$0.isExecutionBlocked && selectedPlanStepIds.contains($0.id) }
     }
 
     private var selectedAutomaticStepIDs: Set<String> {
@@ -362,7 +362,7 @@ struct RedesignUpdatesSectionView: View {
 
     private var visiblePlanStepIds: Set<String> {
         Set(visiblePlanSteps.compactMap { step in
-            guard researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
+            guard !step.isExecutionBlocked, researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
                 return nil
             }
             return step.id
@@ -416,6 +416,7 @@ struct RedesignUpdatesSectionView: View {
     }
 
     private func setPlanStepIncluded(_ stepID: String, included: Bool) {
+        guard let step = planSteps.first(where: { $0.id == stepID }), !step.isExecutionBlocked else { return }
         guard researchPlanProjection?.isSelectable(stepID: stepID) ?? true else {
             return
         }
@@ -442,7 +443,7 @@ struct RedesignUpdatesSectionView: View {
         let selection = UpgradePreviewPlanner.reconcileSelection(
             selectedStepIds: selectedPlanStepIds,
             knownStepIds: knownPlanStepIds,
-            availableStepIds: Set(steps.map(\.id))
+            availableStepIds: Set(steps.filter { !$0.isExecutionBlocked }.map(\.id))
         )
         selectedPlanStepIds = selection.selectedStepIds
         knownPlanStepIds = selection.knownStepIds
@@ -500,7 +501,7 @@ struct RedesignUpdatesSectionView: View {
             "\($0.managerId)\u{0}\($0.name)"
         })
         return planSteps.filter { step in
-            guard researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
+            guard !step.isExecutionBlocked, researchPlanProjection?.isSelectable(stepID: step.id) ?? true else {
                 return false
             }
             let isPinned = pinnedPackageKeys.contains("\(step.managerId)\u{0}\(step.packageName)")
@@ -637,7 +638,8 @@ struct RedesignUpdatesSectionView: View {
                         title: step.map(planStepTitle) ?? plannerStep.packageName,
                         manager: localizedManagerDisplayName(plannerStep.managerId),
                         isIncluded: selectedPlanStepIds.contains(plannerStep.id),
-                        isSelectable: researchPlanProjection?.isSelectable(stepID: plannerStep.id) ?? true,
+                        isSelectable: !(step?.isExecutionBlocked ?? true)
+                            && (researchPlanProjection?.isSelectable(stepID: plannerStep.id) ?? true),
                         status: status,
                         statusTone: tone,
                         actionTitle: step.map(HelmCore.isExternalSparklePlanStep) == true
