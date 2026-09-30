@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		R57500000000000000000001 /* ManagerPriorityReordering.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000011 /* ManagerPriorityReordering.swift */; };
+		R57500000000000000000002 /* ManagerPriorityReordering.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000011 /* ManagerPriorityReordering.swift */; };
+		R57500000000000000000003 /* ManagerPriorityDragHandle.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000012 /* ManagerPriorityDragHandle.swift */; };
+		R57500000000000000000004 /* ManagerPriorityReorderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R57500000000000000000013 /* ManagerPriorityReorderingTests.swift */; };
         C58400000000000000000001 /* FirstRunEvidencePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58400000000000000000011 /* FirstRunEvidencePresentation.swift */; };
         C58400000000000000000002 /* FirstRunEvidencePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58400000000000000000011 /* FirstRunEvidencePresentation.swift */; };
         C58400000000000000000003 /* ProductionFirstRunEvidenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58400000000000000000012 /* ProductionFirstRunEvidenceView.swift */; };
@@ -234,6 +238,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		R57500000000000000000011 /* ManagerPriorityReordering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerPriorityReordering.swift; sourceTree = "<group>"; };
+		R57500000000000000000012 /* ManagerPriorityDragHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerPriorityDragHandle.swift; sourceTree = "<group>"; };
+		R57500000000000000000013 /* ManagerPriorityReorderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerPriorityReorderingTests.swift; sourceTree = "<group>"; };
         C58400000000000000000011 /* FirstRunEvidencePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunEvidencePresentation.swift; sourceTree = "<group>"; };
         C58400000000000000000012 /* ProductionFirstRunEvidenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionFirstRunEvidenceView.swift; sourceTree = "<group>"; };
         C58400000000000000000013 /* FirstRunEvidencePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunEvidencePresentationTests.swift; sourceTree = "<group>"; };
@@ -475,6 +482,7 @@
 				X100000000000000000000002 /* HelmOverviewState.swift */,
 				Z100000000000000000000001 /* FirstRunPresentationSupport.swift */,
 				C10000000000000000000003 /* UpgradePreviewPlanner.swift */,
+				R57500000000000000000011 /* ManagerPriorityReordering.swift */,
 				M100000000000000000000001 /* LocalizationPreference.swift */,
 				B10000000000000000000015 /* LocalizationManager.swift */,
 				B10000000000000000000016 /* String+Localization.swift */,
@@ -521,6 +529,7 @@
 				E10000000000000000000001 /* InspectorViews.swift */,
 				A46300000000000000000012 /* DashboardManagerInstallationView.swift */,
 					B10000000000000000000010 /* ManagersView.swift */,
+					R57500000000000000000012 /* ManagerPriorityDragHandle.swift */,
 					B10000000000000000000007 /* NavigationBarView.swift */,
 					8CFB6D4E2F3D1D1D002372B8 /* PackageListView.swift */,
 					V100000000000000000000001 /* SettingsPane.swift */,
@@ -684,6 +693,7 @@
 				C1000000000000000000001A /* LocalizationOverflowValidationTests.swift */,
 				K100000000000000000000002 /* SupportRedactorTests.swift */,
 				C10000000000000000000005 /* UpgradePreviewPlannerTests.swift */,
+				R57500000000000000000013 /* ManagerPriorityReorderingTests.swift */,
 				Q100000000000000000000002 /* WayfinderPresentationProjectionTests.swift */,
 				R492000000000000000000013 /* WholeWorkflowResearchDatasetTests.swift */,
 				R513000000000000000000012 /* LibraryResultProvenanceTests.swift */,
@@ -944,6 +954,8 @@
 				J200000000000000000000001 /* AppUpdateConfiguration.swift in Sources */,
 				8CFB6D572F3D1D1D002372B8 /* HelmCore.swift in Sources */,
 				C10000000000000000000001 /* UpgradePreviewPlanner.swift in Sources */,
+				R57500000000000000000001 /* ManagerPriorityReordering.swift in Sources */,
+				R57500000000000000000003 /* ManagerPriorityDragHandle.swift in Sources */,
 				K200000000000000000000001 /* SupportRedactor.swift in Sources */,
 				M200000000000000000000001 /* LocalizationPreference.swift in Sources */,
 				B20000000000000000000015 /* LocalizationManager.swift in Sources */,
@@ -1059,6 +1071,8 @@
 				M200000000000000000000002 /* LocalizationPreference.swift in Sources */,
 				C10000000000000000000019 /* LocalizationOverflowValidationTests.swift in Sources */,
 				C10000000000000000000018 /* UpgradePreviewPlanner.swift in Sources */,
+				R57500000000000000000002 /* ManagerPriorityReordering.swift in Sources */,
+				R57500000000000000000004 /* ManagerPriorityReorderingTests.swift in Sources */,
 				K200000000000000000000002 /* SupportRedactor.swift in Sources */,
 				K200000000000000000000003 /* SupportRedactorTests.swift in Sources */,
 				C10000000000000000000002 /* UpgradePreviewPlannerTests.swift in Sources */,

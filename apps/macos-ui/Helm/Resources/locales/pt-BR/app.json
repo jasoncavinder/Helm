@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Reordenar gerenciador",
+  "app.managers.reorder.move_up": "Mover para cima",
+  "app.managers.reorder.move_down": "Mover para baixo",
+  "app.managers.reorder.hint": "Arraste para alterar a prioridade neste grupo.",
+  "app.managers.reorder.place_here": "Colocar {{manager}} aqui",
   "app.first_run.evidence.title": "Seu ambiente, observado localmente",
   "app.first_run.evidence.summary": "Indícios de arquivos e ajustes salvos, não uma verificação atual de integridade.",
   "app.first_run.evidence.file_sources": "Fontes com arquivos",

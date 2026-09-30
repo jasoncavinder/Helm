@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Réorganiser le gestionnaire",
+  "app.managers.reorder.move_up": "Monter",
+  "app.managers.reorder.move_down": "Descendre",
+  "app.managers.reorder.hint": "Faites glisser pour changer la priorité dans ce groupe.",
+  "app.managers.reorder.place_here": "Placer {{manager}} ici",
   "app.first_run.evidence.title": "Votre environnement, observé localement",
   "app.first_run.evidence.summary": "Indices de fichiers et réglages enregistrés, pas un bilan actuel.",
   "app.first_run.evidence.file_sources": "Sources avec fichiers",

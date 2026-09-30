@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Reorder manager",
+  "app.managers.reorder.move_up": "Move up",
+  "app.managers.reorder.move_down": "Move down",
+  "app.managers.reorder.hint": "Drag to change priority within this group.",
+  "app.managers.reorder.place_here": "Place {{manager}} here",
   "app.first_run.evidence.title": "Your environment, locally observed",
   "app.first_run.evidence.summary": "File evidence and saved settings, not a live health check.",
   "app.first_run.evidence.file_sources": "Sources with files",

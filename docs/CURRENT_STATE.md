@@ -22,6 +22,15 @@ The next intended candidate is v0.20.0-rc.1, not yet prepared or approved for
 publication. Runtime implementation, certification dispositions and participant
 gates remain open as listed in that checklist.
 
+Environment priority reordering now uses a temporary moving insertion placeholder
+for detected managers. Native drag completion restores the uncommitted list after
+Escape or an invalid/outside drop. Valid commits revalidate installed membership,
+original order and authority; localized Move Up/Down menu actions use the same
+ordering contract. No manager enablement or backend authority policy changes.
+The [implementation record](validation/v0.20-environment-insertion-reordering.md)
+retains signed pointer/autoscroll/keyboard/VoiceOver QA as pending; #464 is not yet
+closed by automated tests alone.
+
 The owner requires the new first-run experience once for pre-v0.20 upgraders as
 well as fresh installs, preserving preferences, data and consent (#561).
 The shared Rust/FFI/XPC versioned acknowledgment foundation is implemented and

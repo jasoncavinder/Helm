@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "マネージャーの並べ替え",
+  "app.managers.reorder.move_up": "上へ移動",
+  "app.managers.reorder.move_down": "下へ移動",
+  "app.managers.reorder.hint": "ドラッグしてグループ内の優先順位を変更します。",
+  "app.managers.reorder.place_here": "{{manager}} をここに配置",
   "app.first_run.evidence.title": "ローカルで確認した環境",
   "app.first_run.evidence.summary": "ファイルの手がかりと保存済み設定です。現在の正常性の検査ではありません。",
   "app.first_run.evidence.file_sources": "ファイルがあるソース",

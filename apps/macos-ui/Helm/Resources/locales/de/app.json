@@ -1,4 +1,9 @@
 {
+  "app.managers.reorder.title": "Manager neu ordnen",
+  "app.managers.reorder.move_up": "Nach oben",
+  "app.managers.reorder.move_down": "Nach unten",
+  "app.managers.reorder.hint": "Ziehen, um die Priorität in dieser Gruppe zu ändern.",
+  "app.managers.reorder.place_here": "{{manager}} hier platzieren",
   "app.first_run.evidence.title": "Ihre Umgebung, lokal erfasst",
   "app.first_run.evidence.summary": "Dateihinweise und gespeicherte Einstellungen, keine aktuelle Zustandsprüfung.",
   "app.first_run.evidence.file_sources": "Quellen mit Dateien",
