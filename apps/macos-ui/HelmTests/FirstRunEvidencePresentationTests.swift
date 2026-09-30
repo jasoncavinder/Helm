@@ -1,6 +1,24 @@
 import XCTest
 
 final class FirstRunEvidencePresentationTests: XCTestCase {
+    func testRepairViewOwnsItsLocaleObservationWithoutResettingIdentity() throws {
+        let macOSRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: macOSRoot.appendingPathComponent("Helm/Views/Onboarding/ProductionFirstRunView.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "private struct ProductionFirstRunRepairView: View {"))
+        let repairView = String(source[start.upperBound...])
+        let body = try XCTUnwrap(repairView.range(of: "var body: some View"))
+        let properties = String(repairView[..<body.lowerBound])
+
+        // The parent already observes locale changes, but SwiftUI can retain an
+        // unchanged child. Protect the subscription at the view that reads copy.
+        XCTAssertTrue(properties.contains("@ObservedObject private var localization = LocalizationManager.shared"))
+        XCTAssertFalse(repairView.contains(".id(localization"), "Language changes must not reset repair presentation state")
+    }
+
     private func manager(
         _ id: String,
         paths: [String] = [],

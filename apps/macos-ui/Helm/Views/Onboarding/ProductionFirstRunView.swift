@@ -44,6 +44,7 @@ struct ProductionFirstRunView: View {
 
 private struct ProductionFirstRunRepairView: View {
     @ObservedObject var entry: FirstRunEntryController
+    @ObservedObject private var localization = LocalizationManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {

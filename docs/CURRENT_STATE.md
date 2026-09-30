@@ -13,9 +13,17 @@ Current closeout authority: [v0.20 release readiness](validation/v0.20-release-r
 The [unattended review index](validation/v0.20-unattended-review-index.md) records
 the now-merged implementation batch through #595, its historical combined VM
 evidence, and remaining owner gates. As of 2026-09-30, all 22 implementation PRs
-in that index are merged into `dev`; #589's documentation closeout and #596's
-CLT stale-receipt correction remain separate pending PRs. Historical integrated
-artifacts are not certification of the current merged source.
+in that index are merged into `dev`; #589's documentation closeout, #596's
+CLT stale-receipt correction and #597's path-alignment refinement are also merged.
+The [integrated owner QA record](validation/v0.20-integrated-owner-qa.md) now
+accepts fresh entry, path alignment, bounded signed legacy-profile upgrade/relaunch,
+repair review/cancellation, one explicit verified repair with saved-result
+readback, and the prior active-Space checks. Remaining presentation/accessibility
+and scenario checks are pending; shipping first-run activation remains gated.
+Live-language QA found a missing localization subscription on the repair view;
+the presentation-only correction now observes it directly without resetting
+receipt/review state. Its signed-VM visual recheck remains pending.
+Historical integrated artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with
 creation-time fallback for legacy logless records, so recently recovered or
