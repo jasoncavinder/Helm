@@ -10,6 +10,12 @@ receipt preservation and a second no-op run. This adds reusable CLI evidence,
 not a signed GUI or platform gate waiver.
 
 Current closeout authority: [v0.20 release readiness](validation/v0.20-release-readiness.md).
+The [unattended review index](validation/v0.20-unattended-review-index.md) records
+the now-merged implementation batch through #595, its historical combined VM
+evidence, and remaining owner gates. As of 2026-09-30, all 22 implementation PRs
+in that index are merged into `dev`; #589's documentation closeout and #596's
+CLT stale-receipt correction remain separate pending PRs. Historical integrated
+artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with
 creation-time fallback for legacy logless records, so recently recovered or
@@ -50,8 +56,11 @@ The current vendor-app handoff and Helm's sandbox are unchanged.
 The Dashboard now applies an explicit active-Space presentation policy before
 ordering/activating its retained window (#529). It does not join every Space,
 change window layout/level, or replace Settings behavior. Focused policy tests
-pass, but the [two-fullscreen-Space acceptance](validation/v0.20-dashboard-active-space.md)
-remains pending before this issue can close.
+pass, and the owner accepted the [two-fullscreen-Space checks](validation/v0.20-dashboard-active-space.md)
+on signed source `ec6cfba1` before merging #576. This includes desktop/fullscreen
+transitions, menu-bar routing and independent Settings behavior. #529 can be
+closed with that bounded evidence; do not repeat the accepted checks absent a
+relevant change.
 
 The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)
 now passes cargo-binstall install/detection, cancellation, controlled failure,

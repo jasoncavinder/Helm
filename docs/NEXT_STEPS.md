@@ -2,6 +2,15 @@
 
 ## Immediate v0.20 Closeout
 
+All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
+are now merged. Finish #596's reviewed CLT detection correction, then #589's
+documentation closeout. Prepare a fresh same-source signed VM QA build from the
+resulting merged source for the remaining [owner QA delta](validation/v0.20-integrated-owner-qa.md).
+Existing Developer ID use and disposable-VM development are authorized; do not
+change/export credentials. Preserve historical evidence without relabeling it
+as acceptance of the new integrated head. The owner already passed #576's
+fullscreen-window checks; close #529 with that record rather than repeat them.
+
 Preserve the [task-history correction](validation/v0.20-task-creation-history.md)
 when integrating the first-run upgrade path. Recovery may change stale task
 status and append a log, but must retain its original creation time. Previously
