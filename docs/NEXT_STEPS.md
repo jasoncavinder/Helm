@@ -2,6 +2,11 @@
 
 ## Immediate v0.20 Closeout
 
+Recheck the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
+with the same manager and expanded details retained while changing languages.
+Keep #601's accepted reorder behavior unchanged; no repair or uninstall is needed
+for this check. Startup discovery (#599) remains a separate pre-RC1 blocker.
+
 All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
 are now merged, as are #596's CLT detection correction, #589's documentation
 closeout and #597's path-alignment refinement. Fresh entry and the bounded
@@ -21,9 +26,11 @@ ordering QA (items 6-8), but does not fix or accept automatic discovery. Correct
 the existing verified receipt rather than applying another repair.
 The owner passed the focused signed recheck of the
 [edge-overlap and placeholder-text refinement](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)
-on source `655ac1f8`, including stable reversal and Escape cancellation. Continue
-with persistence/invalid-target boundaries, outside-drop/filter/autoscroll and
-non-pointer checks before recording all of items 6-8 as accepted.
+on source `655ac1f8`, including stable reversal and Escape cancellation. The owner
+subsequently passed the remaining interactive checks in items 6-8; agent readback
+after the localization-build relaunch preserved priority UserDefaults exactly.
+Do not repeat the accepted ordering matrix without a relevant code change.
+The newly found Inspector translation gaps have their own focused recheck above.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's

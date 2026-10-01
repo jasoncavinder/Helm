@@ -2,6 +2,72 @@ import XCTest
 import AppKit
 
 final class LocalizationOverflowValidationTests: XCTestCase {
+    func testInspectorManagerDiagnosticsAreTranslatedAndMirrored() throws {
+        let english = try localeAppStrings("en")
+        let keys = english.keys.filter {
+            $0.hasPrefix("app.inspector.package_state_issue.metadata_only.")
+                || $0.hasPrefix("app.inspector.detection_reason.")
+                || $0.hasPrefix("app.managers.category.")
+                || $0 == "app.managers.state.metadata_mismatch"
+        }
+        XCTAssertEqual(keys.count, 25)
+        let placeholderPattern = try NSRegularExpression(pattern: #"\{[^{}]+\}"#)
+        func placeholders(_ text: String) -> [String] {
+            let value = text as NSString
+            return placeholderPattern.matches(in: text, range: NSRange(location: 0, length: value.length))
+                .map { value.substring(with: $0.range) }.sorted()
+        }
+        for locale in ["en"] + locales {
+            let strings = try localeAppStrings(locale)
+            let bundledData = try Data(contentsOf: repoRootURL
+                .appendingPathComponent("apps/macos-ui/Helm/Resources/locales/\(locale)/app.json"))
+            let bundled = try JSONDecoder().decode([String: String].self, from: bundledData)
+            for key in keys {
+                let value = try XCTUnwrap(strings[key], "\(locale): \(key)")
+                let original = try XCTUnwrap(english[key])
+                XCTAssertFalse(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                XCTAssertEqual(value, bundled[key], "\(locale): \(key)")
+                XCTAssertEqual(placeholders(value), placeholders(original), "\(locale): \(key)")
+                // "Source" is also the French word; product names are not in this key set.
+                if locale != "en",
+                   !(locale == "fr" && key.hasSuffix(".details_source")) {
+                    XCTAssertNotEqual(value, original, "\(locale): \(key) still uses English")
+                }
+            }
+            let message = try XCTUnwrap(strings["app.inspector.package_state_issue.metadata_only.message"])
+                .replacingOccurrences(of: "{source_manager}", with: "Homebrew")
+                .replacingOccurrences(of: "{package}", with: "mise")
+            XCTAssertTrue(message.contains("Homebrew"))
+            XCTAssertTrue(message.contains("mise"))
+            XCTAssertFalse(message.contains("{"))
+            XCTAssertFalse(message.contains("}"))
+        }
+    }
+
+    func testBothManagerInspectorsLocalizeEveryDeclaredCategoryAtRenderTime() throws {
+        let mapping = [
+            "Toolchain": "toolchain", "System/OS": "systemOs", "Language": "language",
+            "App Store": "appStore", "Container/VM": "containerVM", "Security/Firmware": "securityFirmware"
+        ]
+        let managerSource = try String(contentsOf: repoRootURL
+            .appendingPathComponent("apps/macos-ui/Helm/Models/ManagerInfo.swift"), encoding: .utf8)
+        let pattern = try NSRegularExpression(pattern: #"category: "([^"]+)""#)
+        let source = managerSource as NSString
+        let categories = Set(pattern.matches(in: managerSource, range: NSRange(location: 0, length: source.length))
+            .map { source.substring(with: $0.range(at: 1)) })
+        XCTAssertEqual(categories, Set(mapping.keys), "New categories require an Inspector translation mapping")
+        let helpers = try String(contentsOf: repoRootURL
+            .appendingPathComponent("apps/macos-ui/Helm/Core/String+Localization.swift"), encoding: .utf8)
+        for (category, key) in mapping {
+            XCTAssertTrue(helpers.contains("case \"\(category)\": return L10n.App.Managers.Category.\(key).localized"))
+        }
+        let inspector = try String(contentsOf: repoRootURL
+            .appendingPathComponent("apps/macos-ui/Helm/Views/InspectorViews.swift"), encoding: .utf8)
+        XCTAssertTrue(inspector.contains("Text(localizedManagerCategoryName(managerInfo.category))"))
+        XCTAssertTrue(inspector.contains("Text(localizedManagerCategoryName(manager.category))"))
+        XCTAssertFalse(inspector.contains("private func localizedCategoryName"))
+    }
+
     func testManagerDropPlaceholderUsesSingleBraceInterpolationInEveryLocale() throws {
         let key = "app.managers.reorder.place_here"
         for locale in ["en"] + locales {
@@ -531,6 +597,8 @@ final class LocalizationOverflowValidationTests: XCTestCase {
             "app.managers.category.system_os",
             "app.managers.category.language",
             "app.managers.category.app_store",
+            "app.managers.category.container_vm",
+            "app.managers.category.security_firmware",
         ]
         let stateKeys = [
             "app.managers.state.enabled",

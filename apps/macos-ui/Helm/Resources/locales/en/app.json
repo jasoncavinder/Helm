@@ -260,6 +260,8 @@
   "app.managers.category.system_os": "System/OS",
   "app.managers.category.language": "Language",
   "app.managers.category.app_store": "App Store",
+  "app.managers.category.container_vm": "Container/VM",
+  "app.managers.category.security_firmware": "Security/Firmware",
   "app.managers.help.enable_disable": "Enable or disable this manager",
   "app.managers.tooltip.last_task_failed": "Last task failed",
   "app.managers.tooltip.outdated_with_unknown": "{count} outdated · Version unknown",

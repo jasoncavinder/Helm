@@ -4,14 +4,24 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+Owner QA found untranslated manager Inspector diagnostics/category values.
+The [localization correction](validation/v0.20-inspector-diagnostic-localization.md)
+fills the non-English catalog gaps and shares complete render-time category
+mapping between production/research Inspectors without resetting mounted state.
+All 443 Swift tests and locale/static gates pass; the corrected signed VM build
+preserves the populated profile and is ready for the owner live-language recheck.
+
 Environment ordering QA prompted a presentation refinement: insertion follows
 the native drag preview's top/bottom overlap with an eligible card, with a small
 reversal tolerance, instead of waiting for the cursor's midpoint crossing.
 The placeholder's extra braces are corrected in all seven locales. The owner passed signed
 [edge-overlap acceptance](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)
 on compiled source `655ac1f8`, including stationary stability, deliberate reversal,
-brace-free text and Escape cancellation. The remaining ordering checks are
-pending; authority/commit policy is unchanged.
+brace-free text and Escape cancellation. Subsequent owner checks passed
+invalid targets, outside drops, filtered ordering, stationary autoscroll,
+keyboard/VoiceOver, minimum-width/inspector-open layouts, Light/Dark and Reduce
+Motion. Agent relaunch readback on the localization build preserved priority
+UserDefaults exactly; authority/commit policy and ordering code are unchanged.
 
 The [repeatable uv multi-package Plan check](validation/v0.20-uv-multi-package-plan.md)
 passes both bounded supported endpoints in the VM, including pin exclusion,
