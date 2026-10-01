@@ -26,9 +26,11 @@ ordering QA (items 6-8), but does not fix or accept automatic discovery. Correct
 the existing verified receipt rather than applying another repair.
 The owner passed the focused signed recheck of the
 [edge-overlap and placeholder-text refinement](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)
-on source `655ac1f8`, including stable reversal and Escape cancellation. Continue
-with persistence/invalid-target boundaries, outside-drop/filter/autoscroll and
-non-pointer checks before recording all of items 6-8 as accepted.
+on source `655ac1f8`, including stable reversal and Escape cancellation. The owner
+subsequently passed the remaining interactive checks in items 6-8; agent readback
+after the localization-build relaunch preserved priority UserDefaults exactly.
+Do not repeat the accepted ordering matrix without a relevant code change.
+The newly found Inspector translation gaps have their own focused recheck above.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's
