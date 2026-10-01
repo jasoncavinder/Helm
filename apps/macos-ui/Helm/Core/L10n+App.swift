@@ -180,6 +180,8 @@ extension L10n {
                 static let systemOs = "app.managers.category.system_os"
                 static let language = "app.managers.category.language"
                 static let appStore = "app.managers.category.app_store"
+                static let containerVM = "app.managers.category.container_vm"
+                static let securityFirmware = "app.managers.category.security_firmware"
             }
             struct Help {
                 static let enableDisable = "app.managers.help.enable_disable"

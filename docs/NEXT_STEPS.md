@@ -2,6 +2,11 @@
 
 ## Immediate v0.20 Closeout
 
+Recheck the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
+with the same manager and expanded details retained while changing languages.
+Keep #601's accepted reorder behavior unchanged; no repair or uninstall is needed
+for this check. Startup discovery (#599) remains a separate pre-RC1 blocker.
+
 All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
 are now merged, as are #596's CLT detection correction, #589's documentation
 closeout and #597's path-alignment refinement. Fresh entry and the bounded

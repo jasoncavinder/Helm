@@ -4,6 +4,12 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+Owner QA found untranslated manager Inspector diagnostics/category values.
+The [localization correction](validation/v0.20-inspector-diagnostic-localization.md)
+fills the non-English catalog gaps and shares complete render-time category
+mapping between production/research Inspectors without resetting mounted state.
+Automated and signed owner validation are tracked separately in that record.
+
 Environment ordering QA prompted a presentation refinement: insertion follows
 the native drag preview's top/bottom overlap with an eligible card, with a small
 reversal tolerance, instead of waiting for the cursor's midpoint crossing.

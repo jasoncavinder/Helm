@@ -57,6 +57,19 @@ func localizedManagerDisplayName(_ managerId: String) -> String {
     return managerId.replacingOccurrences(of: "_", with: " ").capitalized
 }
 
+func localizedManagerCategoryName(_ category: String) -> String {
+    // Resolve on every render; never cache a translated category across locale changes.
+    switch category {
+    case "Toolchain": return L10n.App.Managers.Category.toolchain.localized
+    case "System/OS": return L10n.App.Managers.Category.systemOs.localized
+    case "Language": return L10n.App.Managers.Category.language.localized
+    case "App Store": return L10n.App.Managers.Category.appStore.localized
+    case "Container/VM": return L10n.App.Managers.Category.containerVM.localized
+    case "Security/Firmware": return L10n.App.Managers.Category.securityFirmware.localized
+    default: return category
+    }
+}
+
 extension ManagerDistributionMethod {
     var localizedName: String {
         switch self {

@@ -2489,7 +2489,7 @@ private struct ResearchEnvironmentManagerInspectorView: View {
             }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
-                Text(localizedCategoryName(managerInfo.category))
+                Text(localizedManagerCategoryName(managerInfo.category))
                     .font(.callout)
             }
 
@@ -2684,16 +2684,6 @@ private struct ResearchEnvironmentManagerInspectorView: View {
             return L10n.App.Managers.Research.provenanceSystem.localized
         default:
             return localizedManagerDisplayName(provenance)
-        }
-    }
-
-    private func localizedCategoryName(_ category: String) -> String {
-        switch category {
-        case "Toolchain": return L10n.App.Managers.Category.toolchain.localized
-        case "System/OS": return L10n.App.Managers.Category.systemOs.localized
-        case "Language": return L10n.App.Managers.Category.language.localized
-        case "App Store": return L10n.App.Managers.Category.appStore.localized
-        default: return category
         }
     }
 
@@ -3358,7 +3348,7 @@ private struct InspectorManagerDetailView: View {
             }
 
             InspectorField(label: L10n.App.Inspector.category.localized) {
-                Text(localizedCategoryName(manager.category))
+                Text(localizedManagerCategoryName(manager.category))
                     .font(.callout)
             }
 
@@ -4859,16 +4849,6 @@ extension InspectorManagerDetailView {
         .frame(minWidth: 460)
         .onAppear {
             showUninstallDetails = false
-        }
-    }
-
-    private func localizedCategoryName(_ category: String) -> String {
-        switch category {
-        case "Toolchain": return L10n.App.Managers.Category.toolchain.localized
-        case "System/OS": return L10n.App.Managers.Category.systemOs.localized
-        case "Language": return L10n.App.Managers.Category.language.localized
-        case "App Store": return L10n.App.Managers.Category.appStore.localized
-        default: return category
         }
     }
 
