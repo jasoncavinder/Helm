@@ -7,6 +7,32 @@ enum ManagerPriorityDragType {
     static var identifier: String { type.identifier }
 }
 
+/// Measures actual card bounds without adding another hit target or accessibility element.
+struct ManagerPriorityDropRegion: NSViewRepresentable {
+    let managerID: String
+    let authorityKey: String
+    let state: ManagerPriorityDragState
+
+    func makeNSView(context: Context) -> Region {
+        let view = Region()
+        view.setAccessibilityElement(false)
+        return view
+    }
+
+    func updateNSView(_ view: Region, context: Context) {
+        view.managerID = managerID
+        view.authorityKey = authorityKey
+        view.state = state
+    }
+
+    final class Region: NSView {
+        var managerID = ""
+        var authorityKey = ""
+        weak var state: ManagerPriorityDragState?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
 /// Native completion covers Escape and drops outside Helm, unlike a row-only DropDelegate.
 struct ManagerPriorityDragHandle: NSViewRepresentable {
     let title: String
@@ -74,6 +100,7 @@ struct ManagerPriorityDragHandle: NSViewRepresentable {
         weak var scrollView: NSScrollView?
         private var timer: Timer?
         private var screenPoint: NSPoint?
+        private weak var draggingSession: NSDraggingSession?
 
         init(state: ManagerPriorityDragState, token: UUID, scrollView: NSScrollView?) {
             self.state = state
@@ -87,19 +114,51 @@ struct ManagerPriorityDragHandle: NSViewRepresentable {
         }
 
         func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
-            self.screenPoint = screenPoint
+            draggingSession = session
+            self.screenPoint = session.draggingLocation
+            updatePreview()
             let timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] _ in self?.autoscroll() }
             self.timer = timer
             RunLoop.main.add(timer, forMode: .common)
         }
 
         func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
-            self.screenPoint = screenPoint
+            self.screenPoint = session.draggingLocation
+            updatePreview()
+        }
+
+        func updatePreview() {
+            guard let state, let reorder = state.session, reorder.id == token,
+                  let session = draggingSession, let scrollView, let window = scrollView.window,
+                  let document = scrollView.documentView else { return }
+            let point = window.convertPoint(fromScreen: session.draggingLocation)
+            let local = scrollView.convert(point, from: nil)
+            guard scrollView.bounds.contains(local) else { return }
+            let documentPoint = document.convert(point, from: nil)
+            let pointerY = document.isFlipped ? documentPoint.y : -documentPoint.y
+            func topDown(_ rect: CGRect) -> CGRect {
+                document.isFlipped ? rect : CGRect(x: rect.minX, y: -rect.maxY, width: rect.width, height: rect.height)
+            }
+            var frames: [String: CGRect] = [:]
+            func collect(_ view: NSView) {
+                if let region = view as? ManagerPriorityDropRegion.Region,
+                   region.state === state, region.authorityKey == reorder.authorityKey,
+                   !region.isHiddenOrHasHiddenAncestor, !region.visibleRect.isEmpty {
+                    frames[region.managerID] = topDown(region.convert(region.bounds, to: document))
+                }
+                for child in view.subviews { collect(child) }
+            }
+            collect(document)
+            session.enumerateDraggingItems(options: [], for: document, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+                state.proposeOverlap(dragFrame: topDown(item.draggingFrame), pointerY: pointerY,
+                                     targetFrames: frames, authorityKey: reorder.authorityKey, token: self.token)
+            }
         }
 
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
             timer?.invalidate()
             timer = nil
+            draggingSession = nil
             state?.cancel(id: token)
         }
 
@@ -116,6 +175,7 @@ struct ManagerPriorityDragHandle: NSViewRepresentable {
                                                 windowNumber: window.windowNumber, context: nil,
                                                 eventNumber: 0, clickCount: 1, pressure: 1) else { return }
             _ = document.autoscroll(with: event)
+            updatePreview()
         }
 
         deinit { timer?.invalidate() }

@@ -2,6 +2,21 @@ import XCTest
 import AppKit
 
 final class LocalizationOverflowValidationTests: XCTestCase {
+    func testManagerDropPlaceholderUsesSingleBraceInterpolationInEveryLocale() throws {
+        let key = "app.managers.reorder.place_here"
+        for locale in ["en"] + locales {
+            let strings = try localeAppStrings(locale)
+            let template = try XCTUnwrap(strings[key])
+            XCTAssertTrue(template.contains("{manager}"), locale)
+            let rendered = template.replacingOccurrences(of: "{manager}", with: "mise")
+            XCTAssertTrue(rendered.contains("mise"), locale)
+            XCTAssertFalse(rendered.contains("{"), locale)
+            XCTAssertFalse(rendered.contains("}"), locale)
+            let mirror = try Data(contentsOf: repoRootURL.appendingPathComponent("apps/macos-ui/Helm/Resources/locales/\(locale)/app.json"))
+            XCTAssertEqual(template, try JSONDecoder().decode([String: String].self, from: mirror)[key])
+        }
+    }
+
     func testPublishedLockGuidanceRequiresTrustedLeadingMarker() {
         let marker = "cargo_published_lock_unavailable"
         for code in ["unsupported_capability", "process_failure"] {

@@ -3,7 +3,7 @@
   "app.managers.reorder.move_up": "Mozgatás fel",
   "app.managers.reorder.move_down": "Mozgatás le",
   "app.managers.reorder.hint": "Húzással módosítható a csoporton belüli prioritás.",
-  "app.managers.reorder.place_here": "{{manager}} elhelyezése ide",
+  "app.managers.reorder.place_here": "{manager} elhelyezése ide",
   "app.first_run.evidence.title": "A környezet helyi megfigyelése",
   "app.first_run.evidence.summary": "Fájlnyomok és mentett beállítások, nem aktuális állapotellenőrzés.",
   "app.first_run.evidence.file_sources": "Fájllal rendelkező források",

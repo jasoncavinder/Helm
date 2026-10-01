@@ -324,7 +324,7 @@ struct ManagersSectionView: View {
             .padding(.horizontal, 20)
             .onDrop(of: [ManagerPriorityDragType.identifier], delegate: ManagerPriorityDropDelegate(
                 core: core, authority: authority, targetManagerId: manager.id,
-                rowHeight: priorityDrag.rowHeight, state: priorityDrag
+                state: priorityDrag
             ))
             .accessibilityHidden(true)
     }
@@ -413,13 +413,18 @@ struct ManagersSectionView: View {
         .background(GeometryReader { geometry in
             Color.clear.preference(key: ManagerRowHeightKey.self, value: [manager.id: geometry.size.height])
         })
+        .background {
+            if canReorder {
+                ManagerPriorityDropRegion(managerID: manager.id, authorityKey: authority.key, state: priorityDrag)
+                    .padding(.horizontal, 20)
+            }
+        }
         .onDrop(
             of: [ManagerPriorityDragType.identifier],
             delegate: ManagerPriorityDropDelegate(
                 core: core,
                 authority: authority,
                 targetManagerId: manager.id,
-                rowHeight: managerRowHeights[manager.id] ?? 100,
                 state: priorityDrag
             )
         )
@@ -906,7 +911,6 @@ private struct ManagerPriorityDropDelegate: DropDelegate {
     let core: HelmCore
     let authority: ManagerAuthority
     let targetManagerId: String
-    let rowHeight: CGFloat
     let state: ManagerPriorityDragState
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -919,21 +923,21 @@ private struct ManagerPriorityDropDelegate: DropDelegate {
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
-        updatePreview(info)
+        updatePreview()
         return DropProposal(operation: .move)
     }
 
     func dropEntered(info: DropInfo) {
-        if validateDrop(info: info) { updatePreview(info) }
+        if validateDrop(info: info) { updatePreview() }
     }
 
-    private func updatePreview(_ info: DropInfo) {
-        state.propose(targetID: targetManagerId, after: info.location.y >= rowHeight / 2, authorityKey: authority.key)
+    private func updatePreview() {
+        (state.nativeSource as? ManagerPriorityDragHandle.Source)?.updatePreview()
     }
 
     func performDrop(info: DropInfo) -> Bool {
         guard validateDrop(info: info) else { state.cancel(); return false }
-        updatePreview(info)
+        updatePreview()
         guard let session = state.session else { return false }
         let accepted = core.commitManagerPriorityMove(session, authority: authority)
         state.cancel(id: session.id)
