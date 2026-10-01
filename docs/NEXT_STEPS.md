@@ -14,9 +14,11 @@ The mounted repair/saved-results live-language recheck now passes after giving
 the child its own localization observation. Light/Dark and representative
 longer-label layout checks now also pass on the overview and saved results.
 Preserve that bounded evidence without inferring pre-apply review-stage
-accessibility. Next explicitly leave first-run, verify ordinary manager data
-loads, and prepare the Environment ordering scenarios (items 6-8). Preserve the
-existing verified receipt rather than applying another repair.
+accessibility. Use Helm Now exposed the missing startup-discovery handoff (#599).
+Explicit same-build CLI detection populated the isolated profile for Environment
+ordering QA (items 6-8), but does not fix or accept automatic discovery. Correct
+#599 and rerun sparse-profile activation before RC1/shipping activation. Preserve
+the existing verified receipt rather than applying another repair.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's

@@ -30,6 +30,11 @@ The owner also passed Light/Dark and representative longer-label layouts on the
 overview and saved receipt; post-check readback preserved the profile and sole
 receipt without acknowledgment or new tasks. Pre-apply review-stage accessibility
 and other scenario gates are not implied by these bounded passes.
+The subsequent Use Helm Now transition exposed a missing automatic discovery
+handoff (#599): the sparse legacy profile showed only cached Homebrew detections.
+An explicit same-build CLI discovery restored 21 real detections for separate
+Environment ordering QA, without package mutations. This is a controlled test
+recovery, not a startup fix; #599 remains a pre-RC1/activation blocker.
 Historical integrated artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with
