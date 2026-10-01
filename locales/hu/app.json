@@ -833,7 +833,7 @@
   "app.tasks.notification.timeout_prompt.message": "Choose within {grace_seconds}s: wait (+{extension_seconds}s) or stop this task.",
   "app.tasks.notification.timeout_prompt.action_wait": "Wait",
   "app.tasks.notification.timeout_prompt.action_stop": "Stop",
-  "app.managers.state.metadata_mismatch": "Metadata mismatch: {package}",
+  "app.managers.state.metadata_mismatch": "Metaadat-eltérés: {package}",
   "app.inspector.detection_reason.inconsistent": "A kezelő és a csomag állapota nincs összhangban.",
   "app.inspector.package_state_issue.metadata_only.title": "Eltérés észlelve a csomag metaadataiban",
   "app.inspector.package_state_issue.metadata_only.message": "A(z) {source_manager} szerint a(z) {package} telepítve van, de ehhez a telepítéshez nem található futtatható programfájl.",

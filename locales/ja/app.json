@@ -833,7 +833,7 @@
   "app.tasks.notification.timeout_prompt.message": "Choose within {grace_seconds}s: wait (+{extension_seconds}s) or stop this task.",
   "app.tasks.notification.timeout_prompt.action_wait": "Wait",
   "app.tasks.notification.timeout_prompt.action_stop": "Stop",
-  "app.managers.state.metadata_mismatch": "Metadata mismatch: {package}",
+  "app.managers.state.metadata_mismatch": "メタデータの不整合：{package}",
   "app.inspector.detection_reason.inconsistent": "マネージャーとパッケージの状態に不整合があります。",
   "app.inspector.package_state_issue.metadata_only.title": "パッケージのメタデータに不整合を検出",
   "app.inspector.package_state_issue.metadata_only.message": "{source_manager} は {package} をインストール済みと報告していますが、そのインストールに対応する実行可能なファイルが見つかりませんでした。",

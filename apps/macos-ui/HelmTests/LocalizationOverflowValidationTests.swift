@@ -8,8 +8,9 @@ final class LocalizationOverflowValidationTests: XCTestCase {
             $0.hasPrefix("app.inspector.package_state_issue.metadata_only.")
                 || $0.hasPrefix("app.inspector.detection_reason.")
                 || $0.hasPrefix("app.managers.category.")
+                || $0 == "app.managers.state.metadata_mismatch"
         }
-        XCTAssertEqual(keys.count, 24)
+        XCTAssertEqual(keys.count, 25)
         let placeholderPattern = try NSRegularExpression(pattern: #"\{[^{}]+\}"#)
         func placeholders(_ text: String) -> [String] {
             let value = text as NSString

@@ -833,7 +833,7 @@
   "app.tasks.notification.timeout_prompt.message": "Choose within {grace_seconds}s: wait (+{extension_seconds}s) or stop this task.",
   "app.tasks.notification.timeout_prompt.action_wait": "Wait",
   "app.tasks.notification.timeout_prompt.action_stop": "Stop",
-  "app.managers.state.metadata_mismatch": "Metadata mismatch: {package}",
+  "app.managers.state.metadata_mismatch": "Discrepancia de metadatos: {package}",
   "app.inspector.detection_reason.inconsistent": "El estado del gestor y del paquete es inconsistente.",
   "app.inspector.package_state_issue.metadata_only.title": "Se detectó una discrepancia en los metadatos del paquete",
   "app.inspector.package_state_issue.metadata_only.message": "{source_manager} indica que {package} está instalado, pero no se encontró ningún ejecutable utilizable para esa instalación.",
