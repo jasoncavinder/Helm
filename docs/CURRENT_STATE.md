@@ -7,9 +7,11 @@ It reflects reality, not intention.
 Environment ordering QA prompted a presentation refinement: insertion follows
 the native drag preview's top/bottom overlap with an eligible card, with a small
 reversal tolerance, instead of waiting for the cursor's midpoint crossing.
-The placeholder's extra braces are corrected in all seven locales. Signed
+The placeholder's extra braces are corrected in all seven locales. The owner passed signed
 [edge-overlap acceptance](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)
-and the remaining ordering checks are pending; authority/commit policy is unchanged.
+on compiled source `655ac1f8`, including stationary stability, deliberate reversal,
+brace-free text and Escape cancellation. The remaining ordering checks are
+pending; authority/commit policy is unchanged.
 
 The [repeatable uv multi-package Plan check](validation/v0.20-uv-multi-package-plan.md)
 passes both bounded supported endpoints in the VM, including pin exclusion,
