@@ -2,10 +2,11 @@
 
 ## Immediate v0.20 Closeout
 
-Accept the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
-on source `1bb4d0a6`, then resume uv removal/reinstall on the preserved isolated
-profile. All 240 CLI and 445 Swift tests pass; the GUI retry is pending. Its signed
-upgrade has passed; do not repeat it without a relevant change. Distinguish the
+Continue uv last-tool removal/reinstall on the preserved isolated profile.
+The owner accepted the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
+on `1bb4d0a6`: task 24 completed with native/database absence of smoke and an
+unchanged 1.0 peer receipt. All 240 CLI and 445 Swift tests pass. Its signed
+upgrade has also passed; do not repeat it without a relevant change. Distinguish the
 fixture's native `==1.0` requirement from a Helm pin in owner instructions.
 Keep executable lifecycle restrictions and runtime package safety checks intact.
 

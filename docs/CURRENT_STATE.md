@@ -12,12 +12,13 @@ GUI/TUI treated read-only manager-executable lifecycle metadata as a package
 removal ban. The correction uses existing package capabilities and effective
 enablement without granting manager-removal authority. All 240 CLI and 445 Swift
 tests pass in the VM, including negative-control confirmation regressions.
-Corrected signed source `1bb4d0a6` is running on the same isolated uv profile;
-versions, receipts and earlier accepted profiles are preserved, with no new
-package mutation. Owner uninstall acceptance remains pending.
+The owner accepted the corrected signed retry on `1bb4d0a6`: uninstall task 24
+completed, smoke's environment/receipt/both entrypoints are absent, and native
+uv plus Helm inventory agree that only the 1.0 peer remains. Its receipt and
+earlier accepted profiles are unchanged; no active task or update remains.
 The fixture named `helm-uv-pinned` has a native exact
 version requirement, not a Helm pin; no missing pin badge is claimed as a defect.
-Remaining uv removal/reinstall and Cargo parity checks stay open.
+Remaining uv last-tool removal/reinstall and Cargo parity checks stay open.
 
 The remaining first-run pre-apply review presentation/accessibility check now
 passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,
