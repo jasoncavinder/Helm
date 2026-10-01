@@ -328,11 +328,20 @@ fn parse_homebrew_cask_installed(output: &str) -> AdapterResult<bool> {
 }
 
 fn homebrew_cask_entry_is_installed(entry: &Value) -> bool {
-    entry.get("name").and_then(Value::as_str) == Some(DOCKER_DESKTOP_BREW_CASK)
-        && entry
-            .get("installed")
-            .and_then(Value::as_array)
-            .is_some_and(|installed| !installed.is_empty())
+    // Current cask info uses a token and installed version string, not the
+    // formula-style name/installed-array shape accepted by older fixtures.
+    let identity = entry.get("token").or_else(|| entry.get("name"));
+    identity.and_then(Value::as_str) == Some(DOCKER_DESKTOP_BREW_CASK)
+        && match entry.get("installed") {
+            Some(Value::String(version)) => !version.trim().is_empty(),
+            Some(Value::Array(installed)) => installed.iter().any(|receipt| {
+                receipt
+                    .get("version")
+                    .and_then(Value::as_str)
+                    .is_some_and(|version| !version.trim().is_empty())
+            }),
+            _ => false,
+        }
 }
 
 fn parse_brew_current_version(entry: &Value) -> Option<String> {
@@ -409,6 +418,38 @@ mod tests {
     }
   ]
 }"#;
+
+    #[test]
+    fn current_cask_info_requires_exact_token_and_installed_version() {
+        use super::homebrew_cask_entry_is_installed;
+        use serde_json::{Value, json};
+
+        let entry = json!({
+            "token": "docker-desktop", "name": ["Docker Desktop"],
+            "installed": "4.92.0,240144"
+        });
+        assert!(homebrew_cask_entry_is_installed(&entry));
+        for installed in [
+            Value::Null,
+            json!(""),
+            json!(" "),
+            json!([]),
+            json!([null]),
+            json!([{}]),
+            json!(false),
+        ] {
+            let mut invalid = entry.clone();
+            invalid["installed"] = installed;
+            assert!(!homebrew_cask_entry_is_installed(&invalid));
+        }
+        for token in [json!("unrelated"), json!(""), Value::Null] {
+            let mut invalid = entry.clone();
+            invalid["token"] = token;
+            invalid["name"] = json!("docker-desktop");
+            assert!(!homebrew_cask_entry_is_installed(&invalid));
+        }
+        assert!(super::parse_homebrew_cask_installed(INSTALLED_CASK_FIXTURE).unwrap());
+    }
 
     #[test]
     fn parses_docker_desktop_version_from_standard_output() {

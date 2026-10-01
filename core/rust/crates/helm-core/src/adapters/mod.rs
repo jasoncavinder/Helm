@@ -22,6 +22,7 @@ pub mod firmware_updates_process;
 pub mod homebrew;
 pub mod homebrew_cask;
 pub mod homebrew_cask_process;
+mod homebrew_named_outdated;
 pub mod homebrew_process;
 pub mod macports;
 pub mod macports_process;

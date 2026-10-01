@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::adapters::detect_utils::which_executable;
+use crate::adapters::homebrew_named_outdated::run_named_brew_outdated;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::podman::{
     PodmanDetectOutput, PodmanSource, podman_detect_request, podman_homebrew_info_request,
@@ -72,7 +73,7 @@ impl PodmanSource for ProcessPodmanSource {
             "brew",
             &["/opt/homebrew/bin", "/usr/local/bin"],
         );
-        run_and_collect_stdout(self.executor.as_ref(), request)
+        run_named_brew_outdated(self.executor.as_ref(), request)
     }
 
     fn homebrew_info(&self) -> AdapterResult<String> {
