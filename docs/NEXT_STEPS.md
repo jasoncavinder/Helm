@@ -3,9 +3,22 @@
 ## Immediate v0.20 Closeout
 
 All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
-are now merged. Finish #596's reviewed CLT detection correction, then #589's
-documentation closeout. Prepare a fresh same-source signed VM QA build from the
-resulting merged source for the remaining [owner QA delta](validation/v0.20-integrated-owner-qa.md).
+are now merged, as are #596's CLT detection correction, #589's documentation
+closeout and #597's path-alignment refinement. Fresh entry and the bounded
+signed legacy-profile upgrade/relaunch checks have passed, as have isolated
+repair review/cancellation and explicit verified repair with saved-result
+readback. Continue with presentation/accessibility and the remaining
+[owner QA delta](validation/v0.20-integrated-owner-qa.md) on the same-source
+signed VM build.
+The mounted repair/saved-results live-language recheck now passes after giving
+the child its own localization observation. Light/Dark and representative
+longer-label layout checks now also pass on the overview and saved results.
+Preserve that bounded evidence without inferring pre-apply review-stage
+accessibility. Use Helm Now exposed the missing startup-discovery handoff (#599).
+Explicit same-build CLI detection populated the isolated profile for Environment
+ordering QA (items 6-8), but does not fix or accept automatic discovery. Correct
+#599 and rerun sparse-profile activation before RC1/shipping activation. Preserve
+the existing verified receipt rather than applying another repair.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's
@@ -45,8 +58,11 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    readiness or cached status to live health. Complete signed visual and
    accessibility acceptance of this new presentation before activation,
    preserving settings/data/consent; keep synthetic research flows out of the
-   shipping path. Signed upgrade-path QA remains pending; broader persisted
-   setup parity remains v0.21 scope.
+   shipping path. The bounded signed legacy-profile upgrade/relaunch check has
+   passed, along with bounded repair consent and successful receipt readback.
+   Remaining presentation/accessibility checks and the shipping activation
+   decision remain open. This does not certify a
+   Sparkle binary replacement. Broader persisted setup parity remains v0.21 scope.
    Preserve the [main-queue first-run reply boundary](validation/v0.20-first-run-reply-order.md)
    and both connection/controller generation fences when extending this flow.
 2. Complete the production Rust-task follow-ups (#562-#564) in isolated VM scopes.
