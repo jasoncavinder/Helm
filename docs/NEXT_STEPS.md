@@ -2,6 +2,22 @@
 
 ## Immediate v0.20 Closeout
 
+First-run item 5's remaining pre-apply review check is now accepted on signed
+source `da59f589`, with no-mutation readback and 444 passing Swift tests in the VM.
+Preserve this [acceptance](validation/v0.20-integrated-owner-qa.md#pre-apply-review-acceptance)
+and the earlier overview/receipt passes. Item 10's blocked pnpm Plan matrix also
+passes with unchanged native packages and no mutation tasks. Item 11's Cargo
+installation progress/cancellation check now passes with native absence and
+task/process readback. Its controlled offline failure now also passes with the
+correct persisted local-configuration diagnostic and native absence. The test
+override is removed, but the owner-submitted recovery hit the short Cargo build
+timeout. Recheck the [30-minute source-build default correction](validation/v0.20-cargo-source-build-timeout.md)
+in a freshly signed build against the same isolated profile, with Use Default
+still selected. This is a warm recovery retry, not a cold-build claim. After
+verified installation, restore the temporary Homebrew fixture and continue
+item 12 on isolated signed VM profiles. Do not repeat the successful repair
+or activate shipping solely from this presentation pass.
+
 The owner accepted the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
 and merged #602. Preserve its accepted language checks and #601's accepted
 reordering; neither needs another pass without a relevant change.

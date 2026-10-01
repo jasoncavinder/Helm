@@ -34,7 +34,9 @@ const CARGO_COMMAND: &str = "cargo";
 const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
-const MUTATION_TIMEOUT: Duration = Duration::from_secs(300);
+// Cold source builds can exceed the ordinary five-minute mutation budget.
+const SOURCE_BUILD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const UNINSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CargoDetectOutput {
@@ -417,7 +419,7 @@ pub fn cargo_install_request(
         TaskType::Install,
         ManagerAction::Install,
         command,
-        MUTATION_TIMEOUT,
+        SOURCE_BUILD_TIMEOUT,
     )
 }
 
@@ -427,7 +429,7 @@ pub fn cargo_uninstall_request(task_id: Option<TaskId>, crate_name: &str) -> Pro
         TaskType::Uninstall,
         ManagerAction::Uninstall,
         CommandSpec::new(CARGO_COMMAND).args(["uninstall", crate_name]),
-        MUTATION_TIMEOUT,
+        UNINSTALL_TIMEOUT,
     )
 }
 
@@ -448,7 +450,7 @@ pub fn cargo_upgrade_request(
             version,
             "--locked",
         ]),
-        MUTATION_TIMEOUT,
+        SOURCE_BUILD_TIMEOUT,
     )
 }
 
@@ -870,6 +872,33 @@ mod tests {
         assert_eq!(outdated[0].package.name, "bat");
         assert_eq!(outdated[0].installed_version.as_deref(), Some("0.24.0"));
         assert_eq!(outdated[0].candidate_version, "0.25.0");
+    }
+
+    #[test]
+    fn source_build_requests_have_a_bounded_thirty_minute_timeout() {
+        for request in [
+            cargo_install_request(None, "cargo-binstall", None),
+            cargo_install_request(None, "ripgrep", Some("14.1.1")),
+            cargo_upgrade_request(None, "ripgrep", "14.1.1"),
+        ] {
+            assert_eq!(request.timeout, Some(std::time::Duration::from_secs(1800)));
+            assert_eq!(request.idle_timeout, None);
+        }
+    }
+
+    #[test]
+    fn non_build_requests_keep_their_short_timeouts() {
+        for (request, seconds) in [
+            (cargo_detect_request(None), 10),
+            (cargo_list_installed_request(None), 60),
+            (super::cargo_search_single_request(None, "ripgrep"), 30),
+            (cargo_uninstall_request(None, "ripgrep"), 300),
+        ] {
+            assert_eq!(
+                request.timeout,
+                Some(std::time::Duration::from_secs(seconds))
+            );
+        }
     }
 
     #[test]

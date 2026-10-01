@@ -1400,6 +1400,46 @@ mod tests {
     }
 
     #[test]
+    fn cargo_source_build_timeout_preserves_explicit_user_profiles() {
+        let _lock = manager_execution_preferences_test_guard();
+        clear_manager_selected_executables();
+        clear_manager_timeout_profiles();
+
+        for request in [
+            crate::adapters::cargo::cargo_install_request(None, "cargo-binstall", None),
+            crate::adapters::cargo::cargo_upgrade_request(None, "ripgrep", "14.1.1"),
+        ] {
+            let executor = CapturingExecutor::default();
+            clear_manager_timeout_profiles();
+            let _ = spawn_validated(&executor, request.clone()).unwrap();
+            assert_eq!(
+                executor.captured_timeouts(),
+                (Some(Duration::from_secs(1800)), None)
+            );
+            for seconds in [90, 3600] {
+                set_manager_timeout_profile(
+                    ManagerId::Cargo,
+                    ManagerTimeoutProfile {
+                        hard_timeout: Some(Duration::from_secs(seconds)),
+                        idle_timeout: Some(Duration::from_secs(30)),
+                    },
+                );
+                let _ = spawn_validated(&executor, request.clone()).unwrap();
+                assert_eq!(
+                    executor.captured_timeouts(),
+                    (
+                        Some(Duration::from_secs(seconds)),
+                        Some(Duration::from_secs(30))
+                    )
+                );
+            }
+        }
+
+        clear_manager_selected_executables();
+        clear_manager_timeout_profiles();
+    }
+
+    #[test]
     fn spawn_validated_applies_manager_timeout_profile_overrides() {
         let _lock = manager_execution_preferences_test_guard();
         clear_manager_selected_executables();
