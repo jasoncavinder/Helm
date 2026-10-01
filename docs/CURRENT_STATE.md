@@ -4,6 +4,30 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
+GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
+remains at 1.0. Package removal then exposed a
+[confirmation authority defect](validation/v0.20-package-uninstall-confirmation.md):
+GUI/TUI treated read-only manager-executable lifecycle metadata as a package
+removal ban. The correction uses existing package capabilities and effective
+enablement without granting manager-removal authority. All 240 CLI and 445 Swift
+tests pass in the VM, including negative-control confirmation regressions.
+The owner accepted the corrected signed retry on `1bb4d0a6`: uninstall task 24
+completed, smoke's environment/receipt/both entrypoints are absent, and native
+uv plus Helm inventory agree that only the 1.0 peer remains. Its receipt and
+earlier accepted profiles are unchanged; no active task or update remains.
+The fixture named `helm-uv-pinned` has a native exact
+version requirement, not a Helm pin; no missing pin badge is claimed as a defect.
+The next last-tool removal also completed (task 27), but automatic search task 28
+failed because uv had removed its empty store. The follow-up correction accepts
+only a scope-stable native `No tools installed` proof for read operations; it
+never treats missing storage alone as empty or recreates it. All 941 focused/core
+Rust tests and 445 Swift tests pass in the VM. Signed source `ef1e1eec` completed
+search/detection/refresh tasks 29-35 on the same empty profile without new failure,
+mutation or directory creation. Preferences and earlier accepted profiles are
+preserved. Historical failed search task 28 remains for owner dismissal; owner
+empty-state recheck, reinstall and Cargo parity checks stay open.
+
 The remaining first-run pre-apply review presentation/accessibility check now
 passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,
 live-language changes and Light/Dark. Readback confirmed no repair, task or

@@ -24,8 +24,12 @@ fixture tests and intermediate lifecycle operations passed.
   genuinely distinct installations require selection. An explicit choice never
   silently falls back. Retained Homebrew kegs remain excluded from enumeration.
 - Commands bind the executable and tool-store filesystem identity before and
-  after execution. Missing storage is not authoritative empty inventory; only an
-  explicit install may initialize a user-owned store. No elevation is used.
+  after execution. Missing storage alone is not authoritative empty inventory.
+  Read operations can accept uv's explicit `No tools installed` response only
+  with stable executable, absent-path and surviving-ancestor evidence; see the
+  [last-tool follow-up](v0.20-package-uninstall-confirmation.md#last-tool-follow-up).
+  Reads never recreate storage; only an explicit install may initialize a
+  user-owned store. No elevation is used.
 - Store/tool/bin directories must be user-owned and not group/world-writable.
   Receipt reads reject symlinks/nonregular files and are bounded; entrypoints
   must resolve into the selected tool environment. Receipt and interpreter

@@ -1308,7 +1308,8 @@ private struct InspectorPackageDetailView: View {
             switch action {
             case let .uninstall(targetPackage, preview):
                 let message = packageUninstallAlertMessage(preview, package: targetPackage)
-                if preview.managerAutomationLevel == "read_only" {
+                // Manager self-removal policy does not govern its managed packages.
+                if !core.canUninstallPackage(targetPackage) {
                     return Alert(
                         title: Text(
                             L10n.App.Packages.Alert.uninstallTitle.localized(

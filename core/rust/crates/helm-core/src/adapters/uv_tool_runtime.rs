@@ -542,10 +542,29 @@ impl ManagerAdapter for UvToolAdapter {
             }));
         }
         let scope = if let UvScopeDiscovery::ToolStoreMissing {
+            ref executable,
             ref reported_tool_dir,
             ..
         } = scope
         {
+            let empty_read = match &request {
+                AdapterRequest::Refresh(_) | AdapterRequest::ListOutdated(_) => {
+                    Some(AdapterResponse::SnapshotSync {
+                        installed: Some(Vec::new()),
+                        outdated: Some(Vec::new()),
+                    })
+                }
+                AdapterRequest::ListInstalled(_) => {
+                    Some(AdapterResponse::InstalledPackages(Vec::new()))
+                }
+                AdapterRequest::Search(_) => Some(AdapterResponse::SearchResults(Vec::new())),
+                _ => None,
+            };
+            if let Some(response) = empty_read {
+                UvToolDiscovery::new(self.executor.clone())
+                    .confirm_empty_store(executable, reported_tool_dir)?;
+                return Ok(response);
+            }
             if !matches!(request, AdapterRequest::Install(_)) {
                 return Err(unsupported());
             }

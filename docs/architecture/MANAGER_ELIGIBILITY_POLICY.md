@@ -76,6 +76,20 @@ See [lifecycle scope and certification](../validation/uv-global-tools-lifecycle.
 [installation policy](../validation/uv-installation-policy.md), and
 [candidate eligibility](../validation/uv-tool-eligibility.md).
 
+An absent uv tool store does not itself authorize empty inventory. Read-only
+search/inventory/refresh may reconcile an empty result only after bounded native
+uv confirmation with stable executable, absent-path and surviving-ancestor
+evidence. Failed or contradictory probes preserve cached state. Reads never
+initialize storage or gain mutation authority from this proof.
+
+Package uninstall confirmation must use per-package capabilities and effective
+manager enablement, not install-instance `automation_level` or manager-uninstall
+strategy. Those fields describe removal of the manager executable itself. In
+particular, read-only uv executable lifecycle metadata does not prohibit supported
+uv tool removal. GUI/TUI confirmation and execution retain their distinct checks;
+the adapter still validates live scope, receipts and supported versions. See the
+[confirmation correction](../validation/v0.20-package-uninstall-confirmation.md).
+
 Cargo upgrades additionally require a supported native installation receipt at
 execution time. Crates.io upgrades preserve the existing binary/features/profile/
 target choices and explicit root; Git/path/private registries, source overrides

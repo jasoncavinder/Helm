@@ -2768,9 +2768,13 @@ fn prepare_package_uninstall_confirm_action(
     let preview =
         build_package_uninstall_preview_for_package(store, &package, package_version.as_deref())?;
 
-    if preview.manager_automation_level.as_deref() == Some("read_only") {
+    // Executable lifecycle authority is separate from per-package capabilities.
+    let can_uninstall = list_managers(store)?.into_iter().any(|status| {
+        status.manager_id == manager.as_str() && status.enabled && status.supports_package_uninstall
+    });
+    if !can_uninstall {
         return Err(format!(
-            "package uninstall is blocked because manager '{}' automation is read-only",
+            "package uninstall is unavailable for manager '{}'",
             manager.as_str()
         ));
     }
@@ -4650,10 +4654,14 @@ mod tests {
     use super::{
         AppState, ConfirmAction, InputMode, apply_filter_backspace, execute_confirmed_action,
         manager_participates_in_package_search, next_choice_index, normalized_nonempty,
+        prepare_package_uninstall_confirm_action,
     };
     use crate::{ManagerId, PackageRef, PinKind, SqliteStore};
-    use helm_core::models::InstalledPackage;
-    use helm_core::persistence::{PackageStore, PinStore};
+    use helm_core::models::{
+        AutomationLevel, DetectionInfo, InstallInstanceIdentityKind, InstallProvenance,
+        InstalledPackage, ManagerInstallInstance, StrategyKind,
+    };
+    use helm_core::persistence::{DetectionStore, PackageStore, PinStore};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn test_store_path(test_name: &str) -> std::path::PathBuf {
@@ -4798,6 +4806,94 @@ mod tests {
         assert!(prompt.contains("Uninstall 'stable@rustup'?"));
         assert!(prompt.contains("manager_strategy=rustup_self"));
         assert!(prompt.contains("blast_radius=5"));
+    }
+
+    #[test]
+    fn package_uninstall_confirmation_allows_read_only_uv_executable() {
+        let store = SqliteStore::new(test_store_path("uv-package-uninstall"));
+        store.migrate_to_latest().unwrap();
+        store.set_manager_enabled(ManagerId::Uv, true).unwrap();
+        store
+            .replace_install_instances(
+                ManagerId::Uv,
+                &[ManagerInstallInstance {
+                    manager: ManagerId::Uv,
+                    instance_id: "isolated-uv".to_string(),
+                    identity_kind: InstallInstanceIdentityKind::CanonicalPath,
+                    identity_value: "/isolated/uv".to_string(),
+                    display_path: "/isolated/uv".into(),
+                    canonical_path: Some("/isolated/uv".into()),
+                    alias_paths: Vec::new(),
+                    is_active: true,
+                    version: Some("0.12.18".to_string()),
+                    provenance: InstallProvenance::Unknown,
+                    confidence: 0.0,
+                    decision_margin: None,
+                    automation_level: AutomationLevel::ReadOnly,
+                    uninstall_strategy: StrategyKind::ReadOnly,
+                    update_strategy: StrategyKind::ReadOnly,
+                    remediation_strategy: StrategyKind::ReadOnly,
+                    explanation_primary: None,
+                    explanation_secondary: None,
+                    competing_provenance: None,
+                    competing_confidence: None,
+                }],
+            )
+            .unwrap();
+
+        let action = prepare_package_uninstall_confirm_action(
+            &store,
+            ManagerId::Uv,
+            "helm-uv-smoke".to_string(),
+            None,
+        )
+        .expect("read-only manager executable must not block package confirmation");
+        assert!(matches!(
+            &action,
+            ConfirmAction::UninstallPackage {
+                manager: ManagerId::Uv,
+                ..
+            }
+        ));
+        assert!(action.prompt().contains("manager_strategy=read_only"));
+        store.set_manager_enabled(ManagerId::Uv, false).unwrap();
+        assert!(
+            prepare_package_uninstall_confirm_action(
+                &store,
+                ManagerId::Uv,
+                "helm-uv-smoke".to_string(),
+                None,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn package_uninstall_confirmation_rejects_unsupported_and_version_blocked_managers() {
+        let store = SqliteStore::new(test_store_path("blocked-package-uninstall"));
+        store.migrate_to_latest().unwrap();
+        for manager in [ManagerId::Setapp, ManagerId::Pnpm] {
+            store.set_manager_enabled(manager, true).unwrap();
+            store
+                .upsert_detection(
+                    manager,
+                    &DetectionInfo {
+                        installed: true,
+                        executable_path: Some("/isolated/manager".into()),
+                        version: Some("12.6.0".to_string()),
+                    },
+                )
+                .unwrap();
+            assert!(
+                prepare_package_uninstall_confirm_action(
+                    &store,
+                    manager,
+                    "example".to_string(),
+                    None,
+                )
+                .is_err()
+            );
+        }
     }
 
     #[test]

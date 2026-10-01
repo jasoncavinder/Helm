@@ -6,7 +6,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::adapters::manager::AdapterResult;
-use crate::adapters::uv_tool_process::{UvToolContext, checked_version, run_uv_request};
+use crate::adapters::uv_tool_process::{
+    ProcessUvToolSource, UvToolContext, checked_version, run_uv_request,
+};
 use crate::execution::{
     CommandSpec, ProcessExecutor, ProcessExitStatus, ProcessOutput, ProcessSpawnRequest,
 };
@@ -173,6 +175,28 @@ impl UvToolDiscovery {
             reported_tool_dir,
             context,
         }))
+    }
+
+    /// Absence alone is not inventory. Require uv's explicit empty response in
+    /// the same stable scope without creating storage or authorizing mutation.
+    pub(crate) fn confirm_empty_store(
+        &self,
+        executable: &UvExecutableCandidate,
+        tool_dir: &Path,
+    ) -> AdapterResult<()> {
+        let guard = MissingStoreReadGuard::capture(executable, tool_dir)?;
+        let context =
+            UvToolContext::new(executable.canonical_path.clone(), tool_dir.to_path_buf())?;
+        guard.validate()?;
+        let tools = ProcessUvToolSource::new(self.executor.clone(), context).list_installed();
+        guard.validate()?;
+        if !tools?.is_empty() {
+            return Err(scope_error(
+                CoreErrorKind::ParseFailure,
+                "uv reported tools in a missing store; inventory cannot be reconciled",
+            ));
+        }
+        Ok(())
     }
 
     fn run(
@@ -431,6 +455,63 @@ fn validate_executable_binding(
     Ok(())
 }
 
+struct MissingStoreReadGuard {
+    selected_executable: PathBuf,
+    canonical_executable: PathBuf,
+    executable_identity: FileIdentity,
+    missing_paths: Vec<PathBuf>,
+    anchor: PathBuf,
+    anchor_identity: FileIdentity,
+}
+
+impl MissingStoreReadGuard {
+    fn capture(executable: &UvExecutableCandidate, tool_dir: &Path) -> AdapterResult<Self> {
+        if !valid_path(tool_dir) || !path_is_absent(tool_dir) {
+            return Err(removal_error());
+        }
+        let mut missing_paths = Vec::new();
+        let mut anchor = tool_dir;
+        while path_is_absent(anchor) {
+            missing_paths.push(anchor.to_path_buf());
+            anchor = anchor.parent().ok_or_else(removal_error)?;
+        }
+        // Reject redirected/dangling ancestors rather than interpreting them as
+        // an empty store. Every absent component must remain absent after uv runs.
+        if canonical_path(anchor)? != anchor {
+            return Err(removal_error());
+        }
+        let guard = Self {
+            selected_executable: executable
+                .aliases
+                .first()
+                .ok_or_else(removal_error)?
+                .clone(),
+            canonical_executable: executable.canonical_path.clone(),
+            executable_identity: executable_identity(&executable.canonical_path)?,
+            missing_paths,
+            anchor: anchor.to_path_buf(),
+            anchor_identity: directory_identity(anchor)?,
+        };
+        guard.validate()?;
+        Ok(guard)
+    }
+
+    fn validate(&self) -> AdapterResult<()> {
+        validate_executable_binding(
+            &self.selected_executable,
+            &self.canonical_executable,
+            &self.executable_identity,
+        )?;
+        if self.missing_paths.iter().any(|path| !path_is_absent(path))
+            || canonical_path(&self.anchor)? != self.anchor
+            || directory_identity(&self.anchor)? != self.anchor_identity
+        {
+            return Err(removal_error());
+        }
+        Ok(())
+    }
+}
+
 /// Read-time evidence only. It never authorizes mutation or claims manager ownership.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct UvScopeBinding {
@@ -621,6 +702,40 @@ mod removal_tests {
         fs::rename(&root, base.join("old-anchor")).unwrap();
         fs::create_dir(&root).unwrap();
         assert!(guard.validate_removed().is_err());
+    }
+
+    #[test]
+    fn empty_read_guard_handles_missing_parents_but_rejects_redirected_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let binding = fixture(&root);
+        let executable = UvExecutableCandidate {
+            canonical_path: root.join("uv"),
+            aliases: vec![root.join("uv")],
+        };
+        fs::remove_dir(&binding.canonical_tool_dir).unwrap();
+        fs::remove_dir(root.join("data")).unwrap();
+        let guard =
+            MissingStoreReadGuard::capture(&executable, &binding.canonical_tool_dir).unwrap();
+        guard.validate().unwrap();
+        symlink(root.join("missing"), root.join("data")).unwrap();
+        assert!(guard.validate().is_err(), "dangling parent is not absence");
+        assert!(MissingStoreReadGuard::capture(&executable, &binding.canonical_tool_dir).is_err());
+        fs::remove_file(root.join("data")).unwrap();
+        fs::create_dir(root.join("data")).unwrap();
+        let guard =
+            MissingStoreReadGuard::capture(&executable, &binding.canonical_tool_dir).unwrap();
+        fs::rename(root.join("data"), root.join("old-data")).unwrap();
+        fs::create_dir(root.join("data")).unwrap();
+        assert!(
+            guard.validate().is_err(),
+            "replaced parent must fail closed"
+        );
+        let guard =
+            MissingStoreReadGuard::capture(&executable, &binding.canonical_tool_dir).unwrap();
+        symlink(root.join("missing"), &binding.canonical_tool_dir).unwrap();
+        assert!(guard.validate().is_err(), "dangling store is not absence");
+        assert!(MissingStoreReadGuard::capture(&executable, &binding.canonical_tool_dir).is_err());
     }
 }
 
