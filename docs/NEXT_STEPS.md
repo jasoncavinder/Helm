@@ -5,14 +5,17 @@
 The owner accepted the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
 and merged #602. Preserve its accepted language checks and #601's accepted
 reordering; neither needs another pass without a relevant change.
-Next, merge PR #604's independently reviewed [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
-for #599 after green head CI; its test-isolation findings are remediated.
+PR #604's independently reviewed [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
+is merged at `630e7617`; #599 is closed and its test-isolation findings are remediated.
 The owner accepted Use Helm Now on a separate sparse profile without CLI
 pre-detection; agent readback/relaunch preserved the
 acknowledgment, receipt and disabled preferences, with 24 successful detections
-per service. Shipping first-run activation remains a separate gate. Then address
-the independently reproduced Podman/Homebrew refresh false failure (#603),
-including an audit of equivalent named-formula/cask outdated collectors.
+per service. Shipping first-run activation remains a separate gate. Next, review
+and merge the [named Homebrew outdated correction](validation/v0.20-named-homebrew-outdated.md)
+for #603 after green head CI. Its audit also covers Colima and Docker Desktop,
+including current installed-cask metadata; all 865 core unit tests, five new
+process-source regressions and the three real CLI refreshes pass in the VM.
+Then resume the remaining owner QA delta and shipping first-run activation.
 
 All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
 are now merged, as are #596's CLT detection correction, #589's documentation
@@ -28,9 +31,9 @@ longer-label layout checks now also pass on the overview and saved results.
 Preserve that bounded evidence without inferring pre-apply review-stage
 accessibility. Use Helm Now exposed the missing startup-discovery handoff (#599).
 Explicit same-build CLI detection populated the isolated profile for Environment
-ordering QA (items 6-8), but does not fix or accept automatic discovery. Merge
-#604's reviewed correction for #599 before RC1/shipping activation; its separate
-sparse-profile activation/relaunch check now passes. Preserve
+ordering QA (items 6-8), but does not fix or accept automatic discovery. The later
+#604 correction is now reviewed and merged; its separate
+sparse-profile activation/relaunch check passes. Preserve
 the existing verified receipt rather than applying another repair.
 The owner passed the focused signed recheck of the
 [edge-overlap and placeholder-text refinement](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)

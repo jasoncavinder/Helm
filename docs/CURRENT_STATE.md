@@ -25,12 +25,20 @@ separate unacknowledged copy; agent readback and same-profile relaunch confirmed
 24 successful detections per service, persisted acknowledgment, unchanged
 disabled preferences and receipt. Cargo/npm remain disabled and unscanned;
 their Not Installed labels are not proof of absence. Existing completed-task
-retention still applies. PR #604's independent review is complete, with timeout
-fixture isolation and setup-wait findings remediated; merge still requires green
-head CI. These Rust test corrections do not change the accepted app binary.
+retention still applies. PR #604 is reviewed and merged at `630e7617`, with timeout
+fixture isolation and setup-wait findings remediated; #599 is closed.
+These Rust test corrections do not change the accepted app binary.
 The shipping first-run switch is unchanged.
 That real refresh exposed independent Podman/Homebrew exit-status handling
-[#603](https://github.com/jasoncavinder/Helm/issues/603), tracked separately.
+[#603](https://github.com/jasoncavinder/Helm/issues/603). The
+[named Homebrew outdated correction](validation/v0.20-named-homebrew-outdated.md)
+now accepts exit 1 only for a verified matching update payload without stderr
+diagnostics, in the Podman, Colima and Docker Desktop queries. The Docker Desktop
+installed-cask check also recognizes current Homebrew token/version receipts.
+All 865 core unit tests and five process-source regressions pass in the VM;
+isolated real CLI refreshes persist Podman and Docker Desktop updates, with
+Colima current and all nine tasks completed. Review/merge and head CI remain
+required. No package upgrades, signed GUI replacement or release occurred.
 
 Environment ordering QA prompted a presentation refinement: insertion follows
 the native drag preview's top/bottom overlap with an eligible card, with a small
@@ -74,9 +82,9 @@ The subsequent Use Helm Now transition exposed a missing automatic discovery
 handoff (#599): the sparse legacy profile showed only cached Homebrew detections.
 An explicit same-build CLI discovery restored 21 real detections for separate
 Environment ordering QA, without package mutations. This is a controlled test
-recovery, not a startup fix; #599 remains a pre-RC1/activation gate until the
-correction above passes independent review and head CI after its accepted
-sparse-profile signed check.
+recovery, not a startup fix; the later correction above is now reviewed, merged
+and accepted on a separate sparse profile. #599 is closed; shipping activation
+and the other release gates remain open.
 Historical integrated artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with
