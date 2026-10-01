@@ -37,6 +37,11 @@ preferences, or refresh catalogs. Ordinary detection/status APIs have additional
 effects and must not substitute for this boundary. The implemented
 [startup boundary](../validation/v0.20-first-run-startup-gate.md) prepares storage
 before explicit activation and can require the saved experience acknowledgment.
+The versioned route now uses a dedicated post-acknowledgment startup handoff:
+real detection runs once per service process, then refresh consumes its durable
+results. Unknown/offline path state defers network work until reconnection.
+This does not grant new network/install/update consent or change the shipping
+entry switch. See [startup discovery evidence](../validation/v0.20-first-run-startup-discovery.md).
 Shipping builds still select legacy compatibility. The
 [development-gated real entry integration](../validation/v0.20-first-run-entry-integration.md)
 selects guarded startup, persists and re-reads required legal acceptance before

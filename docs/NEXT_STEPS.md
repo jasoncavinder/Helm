@@ -7,8 +7,10 @@ and merged #602. Preserve its accepted language checks and #601's accepted
 reordering; neither needs another pass without a relevant change.
 Next, review and accept the [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
 for #599 on a separate sparse profile, without CLI pre-detection. Automated VM
-checks pass; signed owner acceptance and shipping first-run activation remain
-separate gates.
+checks and signed acknowledged-profile discovery pass; signed owner Use Helm Now
+acceptance and shipping first-run activation remain separate gates. Then address
+the independently reproduced Podman/Homebrew refresh false failure (#603),
+including an audit of equivalent named-formula/cask outdated collectors.
 
 All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
 are now merged, as are #596's CLT detection correction, #589's documentation

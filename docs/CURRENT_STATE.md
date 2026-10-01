@@ -17,8 +17,13 @@ now schedules real ordered discovery once per acknowledged service runtime,
 then refreshes durable results. Unknown/offline network state defers network
 follow-ups until reconnection. Shared request-response orchestration now waits
 for its existing persistence signal before releasing ordered callers. VM
-automated gates pass; signed sparse-profile owner acceptance remains pending.
-The shipping first-run switch is unchanged.
+automated gates pass, and the signed acknowledged sparse-profile launch discovered
+21 installed managers through 24 successful detection tasks without CLI
+pre-detection. Five explicit disabled preferences and the accepted original
+profile/receipt/history are preserved. Owner Use Helm Now acceptance on a separate
+unacknowledged copy remains pending. The shipping first-run switch is unchanged.
+That real refresh exposed independent Podman/Homebrew exit-status handling
+[#603](https://github.com/jasoncavinder/Helm/issues/603), tracked separately.
 
 Environment ordering QA prompted a presentation refinement: insertion follows
 the native drag preview's top/bottom overlap with an eligible card, with a small
