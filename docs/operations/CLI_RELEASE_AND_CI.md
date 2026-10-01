@@ -2,7 +2,7 @@
 
 Status: Active operational guide  
 Owner: Helm Release Engineering  
-Last Updated: 2026-09-28
+Last Updated: 2026-09-30
 
 ---
 
@@ -133,6 +133,49 @@ cross-workflow/PR collisions, non-PR queued-run collisions and unconditional
 cancellation. General YAML/expression validation remains actionlint's job. Both
 the contract and regression tests run in Release Contract Checks; they do not
 call GitHub or execute Helm.
+
+---
+
+### 1.4 Linux Runner Baseline and Compiled Cache Isolation
+
+Production Linux jobs use **`ubuntu-24.04`**, including all three Linux CodeQL
+matrix entries and scheduled/manual release controls. This pins the OS baseline,
+not an immutable image: GitHub still updates tools within that baseline. Keep
+job IDs, displayed check names and macOS runner selections unchanged. Apply the
+mitigation to both `main` and `dev`; do not promote unfinished app work to protect
+the default branch. See [#600](https://github.com/jasoncavinder/Helm/issues/600).
+
+Cargo's combined registry/git/`target` cache uses the `cargo-v2` namespace with
+the explicit Ubuntu baseline, `runner.arch`, installed exact Rust version and
+Cargo.lock hash. Its optional restore prefix must retain baseline, architecture
+and Rust version. Never add a broad `Linux-cargo-` fallback or reuse compiled
+artifacts across runner/toolchain baselines. No old-cache purge is necessary.
+When rotating Rust, update both the cache key and restore prefix in `ci-test.yml`.
+
+`scripts/ci/check_linux_runner_policy.py` parses all workflow YAML, validates
+direct and statically enumerable matrix selections, and checks compiled Cargo
+cache keys/restores against the installed toolchain. Ambiguous duplicate keys
+and unreviewed dynamic runner selectors fail closed. Release Contract Checks
+installs the pinned YAML parser in an isolated temporary virtual environment and
+runs the policy plus its negative regression suite. On a permitted test host:
+
+```bash
+python3 -m venv /tmp/helm-ci-policy-venv
+/tmp/helm-ci-policy-venv/bin/python -m pip install -r scripts/ci/requirements.txt
+/tmp/helm-ci-policy-venv/bin/python scripts/ci/check_linux_runner_policy.py
+/tmp/helm-ci-policy-venv/bin/python -m unittest discover -s scripts/ci/tests -p test_linux_runner_policy.py -v
+```
+
+The announced `ubuntu-latest` migration begins October 19, 2026. The separate
+[26.04 certification follow-up](https://github.com/jasoncavinder/Helm/issues/609)
+must not delay the baseline pin. Only the reserved `ubuntu-2604-canary.yml`
+filename may use a literal `ubuntu-26.04`; no canary is enabled by this change.
+Before introducing it, update the pinned actionlint or its narrow label config
+(v1.7.8 does not recognize 26.04), isolate any canary build cache, and use only
+read-only/fixture checks without publication or signing credentials. Record
+cold/warm-cache and runner/tool-version evidence across Linux CI and release
+controls before deliberately changing production pins. Retain 24.04 as the
+documented rollback while supported. This is CI maintenance, not a Helm release.
 
 ---
 
