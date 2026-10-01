@@ -11,7 +11,7 @@ on:
 jobs:
   release-contracts:
     name: Release Contract Checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -28,6 +28,14 @@ jobs:
       - name: Validate GitHub Actions workflows
         run: |
           "$ACTIONLINT_BIN"
+
+      - name: Validate Linux runner and Cargo cache policy
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ci-policy-venv"
+          POLICY_PYTHON="$RUNNER_TEMP/ci-policy-venv/bin/python"
+          "$POLICY_PYTHON" -m pip install --disable-pip-version-check -r scripts/ci/requirements.txt
+          "$POLICY_PYTHON" scripts/ci/check_linux_runner_policy.py
+          "$POLICY_PYTHON" -m unittest discover -s scripts/ci/tests -p 'test_linux_runner_policy.py' -v
 
       - name: Validate unsigned build script safety contracts
         run: scripts/release/tests/build_unsigned_variant_contract.sh

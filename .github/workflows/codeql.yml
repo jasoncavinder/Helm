@@ -22,13 +22,13 @@ jobs:
         include:
           - language: actions
             build-mode: none
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - language: javascript-typescript
             build-mode: none
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - language: rust
             build-mode: none
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - language: swift
             build-mode: manual
             os: macos-26

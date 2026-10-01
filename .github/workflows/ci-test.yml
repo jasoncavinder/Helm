@@ -12,7 +12,7 @@ on:
 jobs:
   rust-tests:
     name: Rust Core Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: core/rust
@@ -41,8 +41,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             core/rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('core/rust/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: cargo-v2-ubuntu-24.04-${{ runner.arch }}-rust-1.97.1-${{ hashFiles('core/rust/Cargo.lock') }}
+          restore-keys: cargo-v2-ubuntu-24.04-${{ runner.arch }}-rust-1.97.1-
 
       - name: Run SQLite migration compatibility gate
         working-directory: .
