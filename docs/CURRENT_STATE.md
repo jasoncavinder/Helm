@@ -21,8 +21,14 @@ a read-only registry query succeeds. The subsequent recovery failed at the
 five-minute Cargo build default plus its five-minute extension, with no native
 installation or lingering compiler. The [timeout correction](validation/v0.20-cargo-source-build-timeout.md)
 uses a 30-minute base for Cargo source installs/upgrades only; explicit timeout
-preferences still win. All 923 focused/core Rust tests pass in the VM. Successful
-signed GUI recovery and Cargo/uv reconciliation remain pending.
+preferences still win. All 923 focused/core Rust tests pass in the VM. The owner
+accepted warm signed GUI recovery on `41c01768` after a separate disk-full failure
+and approved cleanup. Native executable/receipt and Helm inventory/detection all
+agree on cargo-binstall 1.24.0, with no active task/compiler or timeout override.
+The temporary Homebrew fixture is restored; earlier accepted profiles and other
+formula versions are preserved. Completed task/log entries had already expired
+at readback, so no successful task ID, duration or cold-build result is claimed.
+Item 11's bounded lifecycle passes; Cargo/uv GUI reconciliation remains pending.
 Shipping activation remains unchanged and gated.
 
 The owner-authorized issue closeout on 2026-09-30 closed #464 (Environment

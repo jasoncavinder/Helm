@@ -10,13 +10,14 @@ passes with unchanged native packages and no mutation tasks. Item 11's Cargo
 installation progress/cancellation check now passes with native absence and
 task/process readback. Its controlled offline failure now also passes with the
 correct persisted local-configuration diagnostic and native absence. The test
-override is removed, but the owner-submitted recovery hit the short Cargo build
-timeout. Recheck the [30-minute source-build default correction](validation/v0.20-cargo-source-build-timeout.md)
-in a freshly signed build against the same isolated profile, with Use Default
-still selected. This is a warm recovery retry, not a cold-build claim. After
-verified installation, restore the temporary Homebrew fixture and continue
-item 12 on isolated signed VM profiles. Do not repeat the successful repair
-or activate shipping solely from this presentation pass.
+override is removed. After the short Cargo build timeout and a separate VM
+disk-full failure, the owner accepted the
+[30-minute default correction's warm recovery](validation/v0.20-cargo-source-build-timeout.md)
+on signed source `41c01768`, with native/receipt/Helm readback agreeing on 1.24.0
+and default timeout preferences intact. The temporary Homebrew fixture is restored.
+Preserve this bounded pass, including its completed-task-retention limit, and
+continue item 12 on isolated signed VM profiles. Do not repeat the successful
+repair or claim cold-build certification or shipping activation from this pass.
 
 The owner accepted the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
 and merged #602. Preserve its accepted language checks and #601's accepted
