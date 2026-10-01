@@ -2,6 +2,29 @@ import Foundation
 import XCTest
 
 final class LibraryResultProvenanceTests: XCTestCase {
+    func testPackageUninstallConfirmationUsesPackageCapabilityNotManagerLifecyclePolicy() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let inspector = try String(contentsOf: root.appendingPathComponent("Helm/Views/InspectorViews.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(inspector.range(of: "case let .uninstall(targetPackage, preview):"))
+        let end = try XCTUnwrap(inspector.range(of: "case let .uninstallFallback(targetPackage):", range: start.upperBound..<inspector.endIndex))
+        let confirmation = String(inspector[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(confirmation.contains("if !core.canUninstallPackage(targetPackage)"))
+        XCTAssertFalse(confirmation.contains("preview.managerAutomationLevel"))
+        XCTAssertTrue(confirmation.contains("primaryButton: .destructive"))
+        XCTAssertTrue(confirmation.contains("core.uninstallPackage(targetPackage)"))
+
+        let actions = try String(contentsOf: root.appendingPathComponent("Helm/Core/HelmCore+Actions.swift"), encoding: .utf8)
+        XCTAssertTrue(actions.contains("guard canUninstallPackage(package), !uninstallActionPackageIds.contains(package.id) else { return }"))
+        let capability = try String(contentsOf: root.appendingPathComponent("Helm/Core/HelmCore+Dashboard.swift"), encoding: .utf8)
+        let guardStart = try XCTUnwrap(capability.range(of: "func canUninstallPackage(_ package: PackageItem) -> Bool"))
+        let guardEnd = try XCTUnwrap(capability.range(of: "func canPinPackage", range: guardStart.upperBound..<capability.endIndex))
+        let guardSource = String(capability[guardStart.lowerBound..<guardEnd.lowerBound])
+        XCTAssertTrue(guardSource.contains("supportsPackageUninstall ?? false"))
+        XCTAssertTrue(guardSource.contains("isManagerEnabled(package.managerId)"))
+        XCTAssertTrue(guardSource.contains("!isManagerUninstalling(package.managerId)"))
+        XCTAssertTrue(guardSource.contains("package.status != .available"))
+    }
+
     func testRetryUsesFailedTaskBindingAfterPreviewRefresh() {
         for manager in ["cargo", "uv"] {
             let versionKey = manager == "cargo" ? "cargo_candidate_version" : "uv_candidate_version"

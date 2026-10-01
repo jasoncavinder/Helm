@@ -76,6 +76,14 @@ See [lifecycle scope and certification](../validation/uv-global-tools-lifecycle.
 [installation policy](../validation/uv-installation-policy.md), and
 [candidate eligibility](../validation/uv-tool-eligibility.md).
 
+Package uninstall confirmation must use per-package capabilities and effective
+manager enablement, not install-instance `automation_level` or manager-uninstall
+strategy. Those fields describe removal of the manager executable itself. In
+particular, read-only uv executable lifecycle metadata does not prohibit supported
+uv tool removal. GUI/TUI confirmation and execution retain their distinct checks;
+the adapter still validates live scope, receipts and supported versions. See the
+[confirmation correction](../validation/v0.20-package-uninstall-confirmation.md).
+
 Cargo upgrades additionally require a supported native installation receipt at
 execution time. Crates.io upgrades preserve the existing binary/features/profile/
 target choices and explicit root; Git/path/private registries, source overrides

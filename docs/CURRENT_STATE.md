@@ -4,6 +4,17 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
+GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
+remains at 1.0. Package removal then exposed a
+[confirmation authority defect](validation/v0.20-package-uninstall-confirmation.md):
+GUI/TUI treated read-only manager-executable lifecycle metadata as a package
+removal ban. The correction uses existing package capabilities and effective
+enablement without granting manager-removal authority. Automated and signed
+rechecks remain pending. The fixture named `helm-uv-pinned` has a native exact
+version requirement, not a Helm pin; no missing pin badge is claimed as a defect.
+Remaining uv removal/reinstall and Cargo parity checks stay open.
+
 The remaining first-run pre-apply review presentation/accessibility check now
 passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,
 live-language changes and Light/Dark. Readback confirmed no repair, task or

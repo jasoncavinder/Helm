@@ -2,6 +2,12 @@
 
 ## Immediate v0.20 Closeout
 
+Verify the [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
+and resume uv removal/reinstall on the preserved isolated profile. Its signed
+upgrade has passed; do not repeat it without a relevant change. Distinguish the
+fixture's native `==1.0` requirement from a Helm pin in owner instructions.
+Keep executable lifecycle restrictions and runtime package safety checks intact.
+
 First-run item 5's remaining pre-apply review check is now accepted on signed
 source `da59f589`, with no-mutation readback and 444 passing Swift tests in the VM.
 Preserve this [acceptance](validation/v0.20-integrated-owner-qa.md#pre-apply-review-acceptance)
