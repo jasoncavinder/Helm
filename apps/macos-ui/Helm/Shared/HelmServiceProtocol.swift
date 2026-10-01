@@ -3,6 +3,7 @@ import Foundation
 @objc public protocol HelmServiceProtocol {
     func prepareStartup(requireFirstRunAcknowledgment: Bool, withReply reply: @escaping (String?) -> Void)
     func startRuntime(withReply reply: @escaping (Bool) -> Void)
+    func startRuntimeWithDiscovery(networkAvailable: Bool, withReply reply: @escaping (Bool) -> Void)
     func listInstalledPackages(withReply reply: @escaping (String?) -> Void)
     func listOutdatedPackages(withReply reply: @escaping (String?) -> Void)
     func getRustupToolchainDetail(toolchain: String, withReply reply: @escaping (String?) -> Void)

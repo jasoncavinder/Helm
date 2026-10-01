@@ -79,7 +79,16 @@ extension HelmCore {
                     }, reply: reply)
                 },
                 activate: { reply in
-                    boolRequest("activate", operation: service.startRuntime, reply: reply)
+                    boolRequest("activate", operation: { [weak self] completion in
+                        guard let self, generation == self.connectionGeneration, self.connection != nil else {
+                            completion(false)
+                            return
+                        }
+                        service.startRuntimeWithDiscovery(
+                            networkAvailable: self.networkAvailability == .available,
+                            withReply: completion
+                        )
+                    }, reply: reply)
                 },
                 reviewRepair: { reply in
                     jsonRequest("reviewRepair", timeout: 30, operation: service.reviewFirstRunRepair, reply: reply)

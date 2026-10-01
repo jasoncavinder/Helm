@@ -197,10 +197,16 @@ use helm_core::uninstall_preview::{
 use helm_core::versioning::PackageCoordinate;
 use lazy_static::lazy_static;
 
+mod startup_discovery;
+#[cfg(test)]
+mod startup_discovery_tests;
+use startup_discovery::StartupDiscovery;
+
 struct HelmState {
     store: Arc<SqliteStore>,
     runtime: Arc<AdapterRuntime>,
     rt_handle: tokio::runtime::Handle,
+    startup_discovery: Arc<Mutex<StartupDiscovery>>,
     _tokio_rt: tokio::runtime::Runtime,
 }
 
@@ -4600,7 +4606,7 @@ fn initialize_coordinator_bridge(
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
-        start_local_auto_check_ticker(store.clone());
+        start_local_auto_check_ticker(store.clone(), runtime.clone());
     }
 
     *lock_or_recover(&COORDINATOR_BRIDGE, "coordinator_bridge") = CoordinatorBridge::Local;
@@ -4833,12 +4839,14 @@ fn run_due_auto_check_tick(store: &SqliteStore) {
     }
 }
 
-fn start_local_auto_check_ticker(store: Arc<SqliteStore>) {
+fn start_local_auto_check_ticker(store: Arc<SqliteStore>, runtime: Arc<AdapterRuntime>) {
     thread::spawn(move || {
         let mut next_auto_check_tick = Instant::now();
         loop {
             if Instant::now() >= next_auto_check_tick {
-                run_due_auto_check_tick(store.as_ref());
+                if runtime.network_work_allowed() {
+                    run_due_auto_check_tick(store.as_ref());
+                }
                 next_auto_check_tick = Instant::now() + Duration::from_secs(AUTO_CHECK_TICK_SECS);
             }
             thread::sleep(Duration::from_millis(COORDINATOR_POLL_SLEEP_MS));
@@ -4876,7 +4884,9 @@ fn start_local_coordinator_server(
         let mut next_auto_check_tick = Instant::now();
         loop {
             if Instant::now() >= next_auto_check_tick {
-                run_due_auto_check_tick(store.as_ref());
+                if runtime.network_work_allowed() {
+                    run_due_auto_check_tick(store.as_ref());
+                }
                 next_auto_check_tick = Instant::now() + Duration::from_secs(AUTO_CHECK_TICK_SECS);
             }
 
@@ -5803,6 +5813,44 @@ pub unsafe extern "C" fn helm_prepare_startup(
 /// normal APIs unavailable. Repeated successful activation is idempotent.
 #[unsafe(no_mangle)]
 pub extern "C" fn helm_start_runtime() -> bool {
+    start_prepared_runtime(None)
+}
+
+/// Activate the acknowledged first-run route and guarantee one real discovery
+/// per service process. Unknown network state must be passed as false.
+#[unsafe(no_mangle)]
+pub extern "C" fn helm_start_runtime_with_discovery(network_available: bool) -> bool {
+    clear_last_error_key();
+    {
+        let prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
+        let Some(prepared) = prepared.as_ref() else {
+            return return_error_bool(SERVICE_ERROR_INTERNAL);
+        };
+        if !prepared.require_first_run_acknowledgment
+            || should_use_external_file_coordinator(
+                coordinator_bridge_mode(),
+                &coordinator_socket_path_for_store(prepared.store.as_ref()),
+            )
+        {
+            return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
+        }
+    }
+    if !start_prepared_runtime(Some(network_available)) {
+        return false;
+    }
+    let guard = lock_or_recover(&STATE, "state");
+    let Some(state) = guard.as_ref() else {
+        return return_error_bool(SERVICE_ERROR_INTERNAL);
+    };
+    let mut discovery = lock_or_recover(&state.startup_discovery, "startup_discovery");
+    if discovery.start(network_available) {
+        state.runtime.set_network_available(network_available);
+        spawn_startup_discovery_refresh(state, true);
+    }
+    true
+}
+
+fn start_prepared_runtime(network_available: Option<bool>) -> bool {
     clear_last_error_key();
     let path = {
         let prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
@@ -5814,7 +5862,7 @@ pub extern "C" fn helm_start_runtime() -> bool {
     let Some(path) = path.to_str().and_then(|path| CString::new(path).ok()) else {
         return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
     };
-    unsafe { helm_init(path.as_ptr()) }
+    unsafe { init_runtime(path.as_ptr(), network_available) }
 }
 
 /// Only the bounded first-run APIs may use storage before runtime activation.
@@ -5834,6 +5882,10 @@ fn first_run_store() -> Option<Arc<SqliteStore>> {
 /// `db_path` must be a valid, non-null pointer to a NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
+    unsafe { init_runtime(db_path, None) }
+}
+
+unsafe fn init_runtime(db_path: *const c_char, network_available: Option<bool>) -> bool {
     clear_last_error_key();
     if db_path.is_null() {
         return return_error_bool(SERVICE_ERROR_INVALID_INPUT);
@@ -5846,7 +5898,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
     };
 
     let _startup = lock_or_recover(&STARTUP_LOCK, "startup");
-    {
+    let gated_startup = {
         let prepared = lock_or_recover(&PREPARED_STARTUP, "prepared_startup");
         if let Some(prepared) = prepared.as_ref() {
             if prepared.store.database_path() != std::path::Path::new(path_str) {
@@ -5863,7 +5915,10 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
                 }
             }
         }
-    }
+        prepared
+            .as_ref()
+            .is_some_and(|prepared| prepared.require_first_run_acknowledgment)
+    };
     if let Some(state) = lock_or_recover(&STATE, "state").as_ref() {
         return if state.store.database_path() == std::path::Path::new(path_str) {
             true
@@ -6014,6 +6069,11 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         }
     };
 
+    // Prepared first-run startup is network-closed until the GUI hands off its
+    // observed path state, before any coordinator timer can perform work.
+    if gated_startup {
+        runtime.set_network_available(network_available.unwrap_or(false));
+    }
     let rt_handle = rt.handle().clone();
 
     let detection_map: std::collections::HashMap<_, _> = store
@@ -6047,6 +6107,7 @@ pub unsafe extern "C" fn helm_init(db_path: *const c_char) -> bool {
         store: store.clone(),
         runtime: runtime.clone(),
         rt_handle,
+        startup_discovery: Arc::new(Mutex::new(StartupDiscovery::default())),
         _tokio_rt: rt,
     };
 
@@ -6629,8 +6690,59 @@ pub extern "C" fn helm_set_network_available(available: bool) -> bool {
     let Some(state) = guard.as_ref() else {
         return return_error_bool(SERVICE_ERROR_INTERNAL);
     };
+    let mut discovery = lock_or_recover(&state.startup_discovery, "startup_discovery");
     state.runtime.set_network_available(available);
+    if discovery.network_changed(available) {
+        spawn_startup_discovery_refresh(state, false);
+    }
     true
+}
+
+fn spawn_startup_discovery_refresh(state: &HelmState, detect: bool) {
+    let runtime = state.runtime.clone();
+    let store = state.store.clone();
+    let discovery = state.startup_discovery.clone();
+    let handle = state.rt_handle.clone();
+    state.rt_handle.spawn(async move {
+        if detect {
+            invalidate_executable_discovery_cache(None);
+            sync_manager_execution_preferences_from_store(store.as_ref());
+            // Unlike a manual refresh, startup discovery must not be coalesced
+            // away by another in-flight refresh. Runtime queues retain ordering.
+            for (manager, result) in runtime.detect_all_ordered().await {
+                if let Err(error) = result {
+                    log_manager_operation_failure("startup detection", manager, &error);
+                }
+            }
+        }
+        loop {
+            lock_or_recover(&discovery, "startup_discovery").begin_refresh();
+            for (manager, result) in runtime.refresh_all_ordered().await {
+                if let Err(error) = result {
+                    log_manager_operation_failure("startup refresh", manager, &error);
+                }
+            }
+            let catalog_store = store.clone();
+            let catalog_runtime = runtime.clone();
+            let catalog_handle = handle.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                let _ = schedule_catalog_sync_for_managers(
+                    catalog_store.as_ref(),
+                    catalog_runtime.as_ref(),
+                    &catalog_handle,
+                    remote_catalog_sync_target_managers(
+                        catalog_runtime.as_ref(),
+                        catalog_store.as_ref(),
+                    ),
+                    &std::collections::HashSet::new(),
+                );
+            })
+            .await;
+            if !lock_or_recover(&discovery, "startup_discovery").finish_refresh() {
+                break;
+            }
+        }
+    });
 }
 
 #[unsafe(no_mangle)]
@@ -14144,6 +14256,7 @@ mod tests {
         );
         let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
         *super::lock_or_recover(&super::STATE, "state") = Some(super::HelmState {
+            startup_discovery: Default::default(),
             store: store.clone(),
             runtime: runtime.clone(),
             rt_handle: tokio_runtime.handle().clone(),
@@ -14593,6 +14706,7 @@ mod tests {
                 .expect("tokio runtime should initialize");
             let rt_handle = tokio_runtime.handle().clone();
             *super::lock_or_recover(&super::STATE, "state") = Some(super::HelmState {
+                startup_discovery: Default::default(),
                 store: store.clone(),
                 runtime: runtime.clone(),
                 rt_handle,
@@ -16462,6 +16576,7 @@ mod tests {
             assert!(unsafe { super::helm_apply_first_run_repair(token.as_ptr()) }.is_null());
             assert_eq!(store.first_run_repair_receipts().unwrap().len(), 1);
             assert!(!super::helm_start_runtime());
+            assert!(!super::helm_start_runtime_with_discovery(false));
             assert!(!super::AUTO_CHECK_TICKER_STARTED.load(Ordering::Acquire));
             assert!(super::lock_or_recover(&super::STATE, "test").is_none());
             let recovery = json(super::helm_review_first_run_repair());
@@ -16619,6 +16734,7 @@ mod tests {
 
             if required && mode != "acknowledged" {
                 assert!(!super::helm_start_runtime());
+                assert!(!super::helm_start_runtime_with_discovery(true));
                 assert!(
                     !unsafe { super::helm_init(database.as_ptr()) },
                     "legacy initializer must not bypass the gate"
@@ -16635,6 +16751,7 @@ mod tests {
                         .unwrap();
                     assert!(!unsafe { super::helm_acknowledge_first_run_experience(id.as_ptr()) });
                     assert!(!super::helm_start_runtime());
+                    assert!(!super::helm_start_runtime_with_discovery(false));
                     assert!(!super::AUTO_CHECK_TICKER_STARTED.load(Ordering::Acquire));
                     connection.execute_batch("DROP TRIGGER reject_ack").unwrap();
                 }
@@ -16650,6 +16767,17 @@ mod tests {
             }
             assert!(super::helm_start_runtime());
             assert!(super::lock_or_recover(&super::STATE, "test-state").is_some());
+            if required {
+                assert!(
+                    !super::lock_or_recover(&super::STATE, "test-state")
+                        .as_ref()
+                        .unwrap()
+                        .runtime
+                        .network_work_allowed()
+                );
+            } else {
+                assert!(!super::helm_start_runtime_with_discovery(true));
+            }
             assert_eq!(auto_check, store.auto_check_for_updates().unwrap());
             assert_eq!(preferences, store.list_manager_preferences().unwrap());
             assert_eq!(store.cli_onboarding_completed().unwrap(), mode != "fresh");

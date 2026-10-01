@@ -1116,6 +1116,82 @@ async fn submit_with_persistence_waits_for_search_cache_after_task_terminal() {
     );
 }
 
+#[test]
+fn ordered_request_response_waits_for_its_durable_snapshot() {
+    // Another test temporarily shortens npm's process-wide timeout. Hold the
+    // shared guard before creating the runtime so it cannot expire this waiter.
+    let _guard = manager_execution_preferences_test_guard();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("test runtime should initialize")
+        .block_on(async {
+            let store = Arc::new(SqliteStore::new(test_db_path(
+                "ordered-response-persistence",
+            )));
+            store.migrate_to_latest().unwrap();
+            let package_store = Arc::new(BlockingInstalledSnapshotStore::new(store.clone()));
+            let adapter: Arc<dyn ManagerAdapter> = Arc::new(TestAdapter::with_capabilities(
+                ManagerId::Npm,
+                &[Capability::ListInstalled],
+                AdapterBehavior::Succeeds(AdapterResponse::InstalledPackages(vec![
+                    helm_core::models::InstalledPackage {
+                        package: PackageRef {
+                            manager: ManagerId::Npm,
+                            name: "fixture".into(),
+                        },
+                        package_identifier: None,
+                        installed_version: Some("1.0".into()),
+                        pinned: false,
+                        runtime_state: Default::default(),
+                    },
+                ])),
+            ));
+            let runtime = AdapterRuntime::with_all_stores(
+                [adapter],
+                store.clone(),
+                package_store.clone(),
+                store.clone(),
+                store.clone(),
+            )
+            .unwrap();
+            let mut waiter = tokio::spawn(async move {
+                runtime
+                    .submit_refresh_request_response(
+                        ManagerId::Npm,
+                        AdapterRequest::ListInstalled(ListInstalledRequest),
+                    )
+                    .await
+            });
+            let entered = wait_until_for(Duration::from_secs(5), Duration::from_millis(10), || {
+                package_store.snapshot_has_entered()
+            })
+            .await;
+            let completed_early =
+                tokio::time::timeout(Duration::from_millis(100), &mut waiter).await;
+            let blocked = completed_early.is_err();
+            let before = store.list_installed().unwrap();
+            package_store.release_snapshot();
+            if blocked {
+                tokio::time::timeout(Duration::from_secs(5), waiter)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+            }
+            assert!(
+                entered,
+                "fixture did not reach the domain write: {completed_early:?}"
+            );
+            assert!(
+                blocked,
+                "ordered response completed before domain write: {completed_early:?}"
+            );
+            assert!(before.is_empty());
+            assert_eq!(store.list_installed().unwrap()[0].package.name, "fixture");
+        });
+}
+
 #[tokio::test]
 async fn stale_installed_snapshot_cannot_overtake_later_uninstall_persistence() {
     let path = test_db_path("orchestration-runtime-snapshot-uninstall-order");
@@ -1305,6 +1381,27 @@ async fn submit_refresh_request_response_retries_once_on_timeout() {
 
 #[test]
 fn orchestration_timeout_cancels_queued_retry_before_return() {
+    const CHILD_MODE: &str = "HELM_TEST_ORCHESTRATION_TIMEOUT_CHILD";
+    if std::env::var_os(CHILD_MODE).as_deref() != Some(std::ffi::OsStr::new("1")) {
+        // Other tests read this process-global profile without changing it.
+        // A writer-only guard cannot protect those concurrent readers.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "orchestration_timeout_cancels_queued_retry_before_return",
+                "--nocapture",
+            ])
+            .env(CHILD_MODE, "1")
+            .output()
+            .expect("isolated timeout fixture should execute");
+        assert!(
+            output.status.success(),
+            "isolated timeout fixture failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
     let _guard = manager_execution_preferences_test_guard();
     tokio::runtime::Builder::new_current_thread()
         .enable_time()
