@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   verify-published-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       TAG_NAME: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}

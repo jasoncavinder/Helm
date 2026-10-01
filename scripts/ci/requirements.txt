@@ -1,0 +1,2 @@
+# YAML parsing for static workflow policy checks only; not a Helm dependency.
+PyYAML==6.0.3
