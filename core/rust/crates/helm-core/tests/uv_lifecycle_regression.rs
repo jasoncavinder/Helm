@@ -33,6 +33,12 @@ enum Behavior {
     Cancelled,
     InvalidResolution,
     ReceiptDrift,
+    EmptySilent,
+    EmptyWarning,
+    EmptyFailed,
+    EmptyContradiction,
+    EmptyStoreReappears,
+    EmptyExecutableReplaced,
 }
 
 struct FakeExecutor {
@@ -68,6 +74,29 @@ impl ProcessExecutor for FakeExecutor {
                 stdout = format!("black v{version}\n- black\n");
             } else {
                 stderr = "No tools installed\n".into();
+                match self.behavior {
+                    Behavior::EmptySilent => stderr.clear(),
+                    Behavior::EmptyWarning => stderr.push_str("warning: skipped broken tool\n"),
+                    Behavior::EmptyFailed => code = 1,
+                    Behavior::EmptyContradiction => {
+                        stdout = "black v1.0\n- black\n".into();
+                        stderr.clear();
+                    }
+                    Behavior::EmptyStoreReappears => {
+                        fs::create_dir(self.root.join("tools")).unwrap();
+                    }
+                    Behavior::EmptyExecutableReplaced => {
+                        use std::os::unix::fs::PermissionsExt;
+                        fs::rename(self.root.join("uv"), self.root.join("old-uv")).unwrap();
+                        fs::write(self.root.join("uv"), b"replacement").unwrap();
+                        fs::set_permissions(
+                            self.root.join("uv"),
+                            fs::Permissions::from_mode(0o700),
+                        )
+                        .unwrap();
+                    }
+                    _ => {}
+                }
             }
         } else if pair("pip", "compile") {
             stdout = if matches!(self.behavior, Behavior::InvalidResolution) {
@@ -113,6 +142,7 @@ impl ProcessExecutor for FakeExecutor {
         } else if pair("tool", "uninstall") {
             *version = None;
             fs::remove_file(self.root.join("bin/black")).unwrap();
+            fs::remove_dir_all(self.root.join("tools")).unwrap();
         } else {
             panic!("unexpected command: {args:?}");
         }
@@ -296,6 +326,153 @@ async fn untrusted_store_and_redirected_entrypoints_block_mutations() {
 }
 
 struct RecordingAdapter(Mutex<Vec<AdapterRequest>>);
+
+#[tokio::test]
+async fn last_tool_uninstall_allows_followup_search_inventory_and_refresh_without_recreating_store()
+{
+    tokio::task::spawn_blocking(|| {
+        let fixture = Fixture::new(Behavior::Normal);
+        fixture
+            .adapter
+            .execute(AdapterRequest::Uninstall(UninstallRequest {
+                package: PackageRef {
+                    manager: ManagerId::Uv,
+                    name: "black".into(),
+                },
+                target_name: None,
+                version: None,
+            }))
+            .unwrap();
+        assert!(!fixture.root.join("tools").exists());
+        for request in [
+            AdapterRequest::Search(SearchRequest {
+                query: SearchQuery {
+                    text: "black".into(),
+                    issued_at: SystemTime::now(),
+                },
+            }),
+            AdapterRequest::ListInstalled(ListInstalledRequest),
+            AdapterRequest::Refresh(RefreshRequest),
+            AdapterRequest::ListOutdated(ListOutdatedRequest),
+        ] {
+            match fixture.adapter.execute(request).unwrap() {
+                AdapterResponse::SearchResults(items) => assert!(items.is_empty()),
+                AdapterResponse::InstalledPackages(items) => assert!(items.is_empty()),
+                AdapterResponse::SnapshotSync {
+                    installed,
+                    outdated,
+                } => {
+                    assert_eq!(installed, Some(Vec::new()));
+                    assert_eq!(outdated, Some(Vec::new()));
+                }
+                other => panic!("unexpected response: {other:?}"),
+            }
+            assert!(!fixture.root.join("tools").exists());
+        }
+        let AdapterResponse::Detection(detection) = fixture
+            .adapter
+            .execute(AdapterRequest::Detect(DetectRequest))
+            .unwrap()
+        else {
+            panic!("detection")
+        };
+        assert!(detection.installed);
+        assert_eq!(detection.version.as_deref(), Some("0.12.18"));
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn missing_store_refresh_requires_confirmed_stable_empty_output_before_clearing_cache() {
+    for behavior in [
+        Behavior::Normal,
+        Behavior::EmptySilent,
+        Behavior::EmptyWarning,
+        Behavior::EmptyFailed,
+        Behavior::EmptyContradiction,
+        Behavior::EmptyStoreReappears,
+        Behavior::EmptyExecutableReplaced,
+    ] {
+        let fixture = Fixture::new(behavior);
+        let store = Arc::new(SqliteStore::new(fixture.root.join("empty-test.sqlite")));
+        store.migrate_to_latest().unwrap();
+        let runtime = AdapterRuntime::with_all_stores(
+            [Arc::new(fixture.adapter) as Arc<dyn ManagerAdapter>],
+            store.clone(),
+            store.clone(),
+            store.clone(),
+            store.clone(),
+        )
+        .unwrap();
+        let (task, persistence) = runtime
+            .submit_with_persistence(ManagerId::Uv, AdapterRequest::Refresh(RefreshRequest))
+            .await
+            .unwrap();
+        let terminal = runtime
+            .wait_for_terminal(task, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        persistence.wait_for_completion().await;
+        assert!(matches!(
+            terminal.terminal_state,
+            Some(AdapterTaskTerminalState::Succeeded(_))
+        ));
+        assert_eq!(store.list_installed().unwrap().len(), 1);
+        assert_eq!(store.list_outdated().unwrap().len(), 1);
+        fs::rename(fixture.root.join("tools"), fixture.root.join("old-tools")).unwrap();
+        *fixture.executor.version.lock().unwrap() = None;
+        fixture.executor.commands.lock().unwrap().clear();
+        let (task, persistence) = runtime
+            .submit_with_persistence(ManagerId::Uv, AdapterRequest::Refresh(RefreshRequest))
+            .await
+            .unwrap();
+        let terminal = runtime
+            .wait_for_terminal(task, Some(Duration::from_secs(5)))
+            .await
+            .unwrap();
+        persistence.wait_for_completion().await;
+        let success = matches!(behavior, Behavior::Normal);
+        assert_eq!(
+            matches!(
+                terminal.terminal_state,
+                Some(AdapterTaskTerminalState::Succeeded(_))
+            ),
+            success
+        );
+        assert_eq!(store.list_installed().unwrap().len(), usize::from(!success));
+        assert_eq!(store.list_outdated().unwrap().len(), usize::from(!success));
+        let commands = fixture.executor.commands.lock().unwrap();
+        assert!(
+            commands
+                .iter()
+                .any(|r| r.command.args.windows(2).any(|a| a == ["tool", "list"]))
+        );
+        for command in commands.iter() {
+            assert!(
+                !command.command.args.iter().any(|a| [
+                    "install",
+                    "upgrade",
+                    "uninstall",
+                    "compile"
+                ]
+                .contains(&a.as_str()))
+            );
+            assert!(
+                command.command.args.contains(&"--offline".into())
+                    || command
+                        .command
+                        .env
+                        .get("UV_OFFLINE")
+                        .is_some_and(|v| v == "true")
+            );
+            assert_eq!(
+                command.command.env.get("UV_TOOL_DIR"),
+                Some(&fixture.root.join("tools").to_str().unwrap().to_string())
+            );
+        }
+    }
+}
 
 #[tokio::test]
 async fn uninstall_accepts_equivalent_versions_but_rejects_different_or_invalid_versions() {

@@ -2,13 +2,17 @@
 
 ## Immediate v0.20 Closeout
 
-Continue uv last-tool removal/reinstall on the preserved isolated profile.
+Recheck uv's empty-store search/refresh correction on the preserved isolated
+profile, then continue reinstall. Last-tool uninstall task 27 succeeded, but its
+automatic search task 28 failed; do not repeat removal. The correction's 941
+focused/core Rust tests pass; signed recovery and owner UI acceptance are pending.
 The owner accepted the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
 on `1bb4d0a6`: task 24 completed with native/database absence of smoke and an
 unchanged 1.0 peer receipt. All 240 CLI and 445 Swift tests pass. Its signed
 upgrade has also passed; do not repeat it without a relevant change. Distinguish the
 fixture's native `==1.0` requirement from a Helm pin in owner instructions.
-Keep executable lifecycle restrictions and runtime package safety checks intact.
+Keep executable lifecycle restrictions and runtime package safety checks intact;
+never clear inventory merely because its store directory is missing.
 
 First-run item 5's remaining pre-apply review check is now accepted on signed
 source `da59f589`, with no-mutation readback and 444 passing Swift tests in the VM.

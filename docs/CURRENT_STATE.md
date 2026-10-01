@@ -18,7 +18,12 @@ uv plus Helm inventory agree that only the 1.0 peer remains. Its receipt and
 earlier accepted profiles are unchanged; no active task or update remains.
 The fixture named `helm-uv-pinned` has a native exact
 version requirement, not a Helm pin; no missing pin badge is claimed as a defect.
-Remaining uv last-tool removal/reinstall and Cargo parity checks stay open.
+The next last-tool removal also completed (task 27), but automatic search task 28
+failed because uv had removed its empty store. The follow-up correction accepts
+only a scope-stable native `No tools installed` proof for read operations; it
+never treats missing storage alone as empty or recreates it. All 941 focused/core
+Rust tests pass in the VM. Signed search/refresh recovery, reinstall and Cargo
+parity checks stay open.
 
 The remaining first-run pre-apply review presentation/accessibility check now
 passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,

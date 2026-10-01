@@ -1030,6 +1030,10 @@ through GUI and CLI execution, and verify installed state before reporting succe
   support does not authorize uv self-update or removal.
 - Failed or unverified operations retain previously committed inventory and
   require review, rather than claiming success from a process exit code.
+- Missing tool storage alone is not an empty snapshot. Subsequent read operations
+  may accept uv's explicit empty response only with stable executable, missing
+  path and surviving-ancestor evidence; this never creates a store or authorizes
+  mutation. This covers uv's normal cleanup after removing its last tool.
 - Bounded fixture and real-command evidence do not replace the owner's planned
   Parallels macOS VM certification for every supported manager.
 
