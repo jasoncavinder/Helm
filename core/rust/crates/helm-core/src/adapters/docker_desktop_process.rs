@@ -6,6 +6,7 @@ use crate::adapters::docker_desktop::{
     DockerDesktopDetectOutput, DockerDesktopSource, docker_desktop_detect_request_for_plist,
     docker_desktop_homebrew_info_request, docker_desktop_list_outdated_request,
 };
+use crate::adapters::homebrew_named_outdated::run_named_brew_outdated;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -90,7 +91,7 @@ impl DockerDesktopSource for ProcessDockerDesktopSource {
             "brew",
             &["/opt/homebrew/bin", "/usr/local/bin"],
         );
-        run_and_collect_stdout(self.executor.as_ref(), request)
+        run_named_brew_outdated(self.executor.as_ref(), request)
     }
 
     fn homebrew_info(&self) -> AdapterResult<String> {

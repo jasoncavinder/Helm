@@ -47,6 +47,18 @@ pub(crate) fn run_and_collect_stdout_accepting_exit_codes(
     request: ProcessSpawnRequest,
     allowed_exit_codes: &[i32],
 ) -> AdapterResult<String> {
+    run_and_collect_stdout_with_exit_policy(
+        executor,
+        request,
+        |output| matches!(output.status, ProcessExitStatus::ExitCode(code) if allowed_exit_codes.contains(&code)),
+    )
+}
+
+pub(crate) fn run_and_collect_stdout_with_exit_policy(
+    executor: &dyn ProcessExecutor,
+    request: ProcessSpawnRequest,
+    accepts_nonzero: impl FnOnce(&ProcessOutput) -> bool,
+) -> AdapterResult<String> {
     let manager = request.manager;
     let task_type = request.task_type;
     let action = request.action;
@@ -56,10 +68,14 @@ pub(crate) fn run_and_collect_stdout_accepting_exit_codes(
     let handle = tokio::runtime::Handle::current();
     let output: ProcessOutput = handle.block_on(process.wait())?;
 
+    if matches!(output.status, ProcessExitStatus::ExitCode(code) if code != 0)
+        && accepts_nonzero(&output)
+    {
+        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+    }
+
     match output.status {
-        ProcessExitStatus::ExitCode(code) if code == 0 || allowed_exit_codes.contains(&code) => {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        }
+        ProcessExitStatus::ExitCode(0) => Ok(String::from_utf8_lossy(&output.stdout).to_string()),
         ProcessExitStatus::ExitCode(code) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let diagnostic = super::failure_diagnostics::classify_process_failure(manager, &stderr);

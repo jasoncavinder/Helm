@@ -5,6 +5,7 @@ use crate::adapters::colima::{
     colima_list_outdated_request,
 };
 use crate::adapters::detect_utils::which_executable;
+use crate::adapters::homebrew_named_outdated::run_named_brew_outdated;
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -72,7 +73,7 @@ impl ColimaSource for ProcessColimaSource {
             "brew",
             &["/opt/homebrew/bin", "/usr/local/bin"],
         );
-        run_and_collect_stdout(self.executor.as_ref(), request)
+        run_named_brew_outdated(self.executor.as_ref(), request)
     }
 
     fn homebrew_info(&self) -> AdapterResult<String> {
