@@ -11,9 +11,12 @@ readback. Continue with presentation/accessibility and the remaining
 [owner QA delta](validation/v0.20-integrated-owner-qa.md) on the same-source
 signed VM build.
 The mounted repair/saved-results live-language recheck now passes after giving
-the child its own localization observation. Next finish Light/Dark and
-representative text-expansion layout checks on the overview and saved results.
-Preserve the existing verified receipt rather than applying another repair.
+the child its own localization observation. Light/Dark and representative
+longer-label layout checks now also pass on the overview and saved results.
+Preserve that bounded evidence without inferring pre-apply review-stage
+accessibility. Next explicitly leave first-run, verify ordinary manager data
+loads, and prepare the Environment ordering scenarios (items 6-8). Preserve the
+existing verified receipt rather than applying another repair.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's

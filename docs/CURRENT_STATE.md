@@ -26,7 +26,10 @@ receipt/review state. All 433 Swift tests passed in the VM, including a
 source-wiring regression with a failing pre-fix negative control. The corrected
 signed QA app preserves the existing receipt and profile; the owner passed its
 English/German/Hungarian live-language recheck with the receipt page kept open.
-Light/Dark and text-expansion layout acceptance remain separate pending checks.
+The owner also passed Light/Dark and representative longer-label layouts on the
+overview and saved receipt; post-check readback preserved the profile and sole
+receipt without acknowledgment or new tasks. Pre-apply review-stage accessibility
+and other scenario gates are not implied by these bounded passes.
 Historical integrated artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with
