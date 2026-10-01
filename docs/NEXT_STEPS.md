@@ -5,10 +5,11 @@
 The owner accepted the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
 and merged #602. Preserve its accepted language checks and #601's accepted
 reordering; neither needs another pass without a relevant change.
-Next, review and accept the [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
-for #599 on a separate sparse profile, without CLI pre-detection. Automated VM
-checks and signed acknowledged-profile discovery pass; signed owner Use Helm Now
-acceptance and shipping first-run activation remain separate gates. Then address
+Next, independently review PR #604's [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
+for #599 and require green head CI. The owner accepted Use Helm Now on a separate
+sparse profile without CLI pre-detection; agent readback/relaunch preserved the
+acknowledgment, receipt and disabled preferences, with 24 successful detections
+per service. Shipping first-run activation remains a separate gate. Then address
 the independently reproduced Podman/Homebrew refresh false failure (#603),
 including an audit of equivalent named-formula/cask outdated collectors.
 
@@ -26,8 +27,9 @@ longer-label layout checks now also pass on the overview and saved results.
 Preserve that bounded evidence without inferring pre-apply review-stage
 accessibility. Use Helm Now exposed the missing startup-discovery handoff (#599).
 Explicit same-build CLI detection populated the isolated profile for Environment
-ordering QA (items 6-8), but does not fix or accept automatic discovery. Correct
-#599 and rerun sparse-profile activation before RC1/shipping activation. Preserve
+ordering QA (items 6-8), but does not fix or accept automatic discovery. Merge
+#604's reviewed correction for #599 before RC1/shipping activation; its separate
+sparse-profile activation/relaunch check now passes. Preserve
 the existing verified receipt rather than applying another repair.
 The owner passed the focused signed recheck of the
 [edge-overlap and placeholder-text refinement](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)

@@ -20,8 +20,14 @@ for its existing persistence signal before releasing ordered callers. VM
 automated gates pass, and the signed acknowledged sparse-profile launch discovered
 21 installed managers through 24 successful detection tasks without CLI
 pre-detection. Five explicit disabled preferences and the accepted original
-profile/receipt/history are preserved. Owner Use Helm Now acceptance on a separate
-unacknowledged copy remains pending. The shipping first-run switch is unchanged.
+profile/receipt/history are preserved. The owner accepted Use Helm Now on a
+separate unacknowledged copy; agent readback and same-profile relaunch confirmed
+24 successful detections per service, persisted acknowledgment, unchanged
+disabled preferences and receipt. Cargo/npm remain disabled and unscanned;
+their Not Installed labels are not proof of absence. Existing completed-task
+retention still applies. PR #604 awaits independent review and green head CI;
+its Rust test isolation correction does not change the accepted app binary.
+The shipping first-run switch is unchanged.
 That real refresh exposed independent Podman/Homebrew exit-status handling
 [#603](https://github.com/jasoncavinder/Helm/issues/603), tracked separately.
 
@@ -68,7 +74,8 @@ handoff (#599): the sparse legacy profile showed only cached Homebrew detections
 An explicit same-build CLI discovery restored 21 real detections for separate
 Environment ordering QA, without package mutations. This is a controlled test
 recovery, not a startup fix; #599 remains a pre-RC1/activation gate until the
-correction above passes its separate sparse-profile signed check and review.
+correction above passes independent review and head CI after its accepted
+sparse-profile signed check.
 Historical integrated artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with
