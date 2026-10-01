@@ -4,6 +4,13 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+Environment ordering QA prompted a presentation refinement: insertion follows
+the native drag preview's top/bottom overlap with an eligible card, with a small
+reversal tolerance, instead of waiting for the cursor's midpoint crossing.
+The placeholder's extra braces are corrected in all seven locales. Signed
+[edge-overlap acceptance](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)
+and the remaining ordering checks are pending; authority/commit policy is unchanged.
+
 The [repeatable uv multi-package Plan check](validation/v0.20-uv-multi-package-plan.md)
 passes both bounded supported endpoints in the VM, including pin exclusion,
 receipt preservation and a second no-op run. This adds reusable CLI evidence,

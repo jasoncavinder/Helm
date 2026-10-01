@@ -41,6 +41,8 @@ final class ManagerPriorityDragState: ObservableObject {
     private(set) var rowHeight: CGFloat = 100
     // Keep the native source alive even while its SwiftUI row becomes a placeholder.
     var nativeSource: AnyObject?
+    private var motionExtreme: CGFloat?
+    private var movingDown: Bool?
 
     func begin(managerID: String, authorityKey: String, installedOrder: [String], rowHeight: CGFloat) -> UUID? {
         guard session == nil,
@@ -48,6 +50,8 @@ final class ManagerPriorityDragState: ObservableObject {
                 managerID: managerID, authorityKey: authorityKey, installedOrder: installedOrder
               ) else { return nil }
         self.rowHeight = rowHeight.isFinite ? max(60, rowHeight) : 100
+        motionExtreme = nil
+        movingDown = nil
         session = next
         return next.id
     }
@@ -59,9 +63,45 @@ final class ManagerPriorityDragState: ObservableObject {
         return true
     }
 
+    /// All geometry uses the scroll document's top-to-bottom coordinates.
+    @discardableResult
+    func proposeOverlap(dragFrame: CGRect, pointerY: CGFloat, targetFrames: [String: CGRect],
+                        authorityKey: String, token: UUID) -> Bool {
+        guard let session, session.id == token, session.authorityKey == authorityKey,
+              pointerY.isFinite, Self.validFrame(dragFrame),
+              let sourceIndex = session.proposedOrder.firstIndex(of: session.managerID) else { return false }
+        guard let extreme = motionExtreme else {
+            motionExtreme = pointerY
+            return false
+        }
+        let delta = pointerY - extreme
+        guard delta != 0 else { return false }
+        let down = delta > 0
+        // Reflow is not pointer motion. Ignore tiny reversals after a card moves under the drag.
+        guard movingDown == nil || movingDown == down || abs(delta) >= 4 else { return false }
+        movingDown = down
+        motionExtreme = pointerY
+
+        let candidates = session.proposedOrder.enumerated().filter { index, id in
+            guard down ? index > sourceIndex : index < sourceIndex,
+                  let frame = targetFrames[id], Self.validFrame(frame) else { return false }
+            return dragFrame.maxX >= frame.minX && dragFrame.minX <= frame.maxX
+                && dragFrame.maxY >= frame.minY && dragFrame.minY <= frame.maxY
+        }
+        guard let target = down ? candidates.last : candidates.first else { return false }
+        return propose(targetID: target.element, after: down, authorityKey: authorityKey)
+    }
+
+    private static func validFrame(_ frame: CGRect) -> Bool {
+        frame.origin.x.isFinite && frame.origin.y.isFinite
+            && frame.width.isFinite && frame.height.isFinite && frame.width > 0 && frame.height > 0
+    }
+
     func cancel(id: UUID? = nil) {
         guard id == nil || session?.id == id else { return }
         session = nil
         nativeSource = nil
+        motionExtreme = nil
+        movingDown = nil
     }
 }

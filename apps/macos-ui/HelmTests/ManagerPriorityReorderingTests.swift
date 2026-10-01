@@ -3,6 +3,94 @@ import XCTest
 final class ManagerPriorityReorderingTests: XCTestCase {
     private let order = ["alpha", "beta", "gamma", "delta"]
 
+    private var frames: [String: CGRect] {
+        Dictionary(uniqueKeysWithValues: order.enumerated().map { index, id in
+            (id, CGRect(x: 0, y: index * 108, width: 500, height: 100))
+        })
+    }
+
+    private func drag(_ state: ManagerPriorityDragState, to y: CGFloat,
+                      frames: [String: CGRect]? = nil, x: CGFloat = 20) throws -> Bool {
+        let session = try XCTUnwrap(state.session)
+        return state.proposeOverlap(dragFrame: CGRect(x: x, y: y - 22, width: 260, height: 44),
+                                    pointerY: y, targetFrames: frames ?? self.frames,
+                                    authorityKey: "standard", token: session.id)
+    }
+
+    private func activeDrag() throws -> ManagerPriorityDragState {
+        let state = ManagerPriorityDragState()
+        XCTAssertNotNil(state.begin(managerID: "beta", authorityKey: "standard", installedOrder: order, rowHeight: 100))
+        XCTAssertFalse(try drag(state, to: 150))
+        return state
+    }
+
+    func testDownwardPreviewMovesAtFirstTopEdgeOverlapBeforeCursorReachesCard() throws {
+        let state = try activeDrag()
+        XCTAssertFalse(try drag(state, to: 193)) // Image bottom 215, next card starts at 216.
+        XCTAssertEqual(state.session?.proposedOrder, order)
+        XCTAssertTrue(try drag(state, to: 194))
+        XCTAssertEqual(state.session?.proposedOrder, ["alpha", "gamma", "beta", "delta"])
+    }
+
+    func testUpwardPreviewMovesAtFirstBottomEdgeOverlapBeforeCursorReachesCard() throws {
+        let state = try activeDrag()
+        XCTAssertFalse(try drag(state, to: 123))
+        XCTAssertTrue(try drag(state, to: 122)) // Image top 100, previous card ends at 100.
+        XCTAssertEqual(state.session?.proposedOrder, ["beta", "alpha", "gamma", "delta"])
+    }
+
+    func testReflowStationaryPointerAndSmallJitterDoNotUndoButDeliberateReversalDoes() throws {
+        let state = try activeDrag()
+        XCTAssertTrue(try drag(state, to: 194))
+        var reflowed = frames
+        reflowed["gamma"] = frames["beta"]
+        reflowed["beta"] = frames["gamma"]
+        for _ in 0..<20 { XCTAssertFalse(try drag(state, to: 194, frames: reflowed)) }
+        XCTAssertFalse(try drag(state, to: 195, frames: reflowed))
+        XCTAssertFalse(try drag(state, to: 193, frames: reflowed))
+        XCTAssertEqual(state.session?.proposedOrder, ["alpha", "gamma", "beta", "delta"])
+        XCTAssertTrue(try drag(state, to: 191, frames: reflowed))
+        XCTAssertEqual(state.session?.proposedOrder, order)
+    }
+
+    func testFastMovementAndFilteredGeometryPreserveOtherManagers() throws {
+        let state = try activeDrag()
+        XCTAssertTrue(try drag(state, to: 400, frames: ["delta": try XCTUnwrap(frames["delta"])]))
+        XCTAssertEqual(state.session?.proposedOrder, ["alpha", "gamma", "delta", "beta"])
+        XCTAssertTrue(try drag(state, to: 60, frames: ["alpha": try XCTUnwrap(frames["alpha"])]))
+        XCTAssertEqual(state.session?.proposedOrder, ["beta", "alpha", "gamma", "delta"])
+    }
+
+    func testHorizontalMissMissingManagerAndInvalidGeometryDoNotMovePreview() throws {
+        let state = try activeDrag()
+        XCTAssertFalse(try drag(state, to: 194, x: 501))
+        XCTAssertFalse(try drag(state, to: 200, frames: ["not-installed": CGRect(x: 0, y: 108, width: 500, height: 100)]))
+        XCTAssertFalse(try drag(state, to: 210, frames: ["gamma": CGRect(x: 0, y: 216, width: CGFloat.infinity, height: 100)]))
+        XCTAssertEqual(state.session?.proposedOrder, order)
+    }
+
+    func testOverlapRejectsForeignAuthorityAndStaleSessionWithoutConsumingMovement() throws {
+        let state = try activeDrag()
+        let token = try XCTUnwrap(state.session?.id)
+        let frame = CGRect(x: 20, y: 172, width: 260, height: 44)
+        XCTAssertFalse(state.proposeOverlap(dragFrame: frame, pointerY: 194, targetFrames: frames,
+                                           authorityKey: "guarded", token: token))
+        XCTAssertFalse(state.proposeOverlap(dragFrame: frame, pointerY: 194, targetFrames: frames,
+                                           authorityKey: "standard", token: UUID()))
+        XCTAssertFalse(state.proposeOverlap(dragFrame: frame, pointerY: .nan, targetFrames: frames,
+                                           authorityKey: "standard", token: token))
+        XCTAssertTrue(try drag(state, to: 194))
+    }
+
+    func testCancellationResetsOverlapMotionForNextDrag() throws {
+        let state = try activeDrag()
+        XCTAssertTrue(try drag(state, to: 400))
+        state.cancel()
+        XCTAssertNotNil(state.begin(managerID: "beta", authorityKey: "standard", installedOrder: order, rowHeight: 100))
+        XCTAssertFalse(try drag(state, to: 150))
+        XCTAssertTrue(try drag(state, to: 122))
+    }
+
     private func session(_ manager: String = "beta") throws -> ManagerPriorityReorderSession {
         try XCTUnwrap(.init(managerID: manager, authorityKey: "standard", installedOrder: order))
     }

@@ -19,6 +19,9 @@ Explicit same-build CLI detection populated the isolated profile for Environment
 ordering QA (items 6-8), but does not fix or accept automatic discovery. Correct
 #599 and rerun sparse-profile activation before RC1/shipping activation. Preserve
 the existing verified receipt rather than applying another repair.
+The initial reorder interaction worked; recheck the owner-requested
+[edge-overlap and placeholder-text refinement](validation/v0.20-environment-insertion-reordering.md#owner-refinement-edge-overlap)
+before recording items 6-8 as accepted.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's
