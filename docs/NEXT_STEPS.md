@@ -2,20 +2,18 @@
 
 ## Immediate v0.20 Closeout
 
-Continue uv GUI reinstall on the preserved isolated profile. The owner accepted
-empty-state search/refresh and dismissed historical failed task 28; readback
-confirms no remaining task failure, empty inventory and an absent store with uv
-detected/enabled. PR #613 is merged at `8c524f4d`; compiled source `ef1e1eec` has
-identical product subtrees. Do not repeat accepted removal or empty-state QA.
-The updated certification script passes 42 real CLI checks in a separate offline
-scope, including exact-version reinstall and fresh unversioned installation.
-Search Library for the existing cached `helm-uv-smoke` result and use Install.
-Its cached 1.1 version is not an install pin: the GUI submits a fresh unversioned
-request, so the expected installed version is fixture 2.0. Verify GUI/Inspector
-reconciliation and leave the app running for receipt/task readback. No reinstall
-has been submitted on the owner's GUI profile. This does not add a PyPI catalog
-or prove GUI installation of a never-seen package by name. Separate Cargo parity
-remains pending.
+Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
+GUI sequence now passes, including last-tool removal, empty-state search/refresh
+and reinstall. The owner accepted fresh-install task 58 on signed `ef1e1eec`:
+Library/Inspector, native metadata, receipt and Helm inventory agree on smoke 2.0,
+both entrypoints are valid, and no pending update or failed/active task remains.
+Its fresh unversioned receipt is not restoration of the deleted `<2` requirement.
+Preferences and earlier accepted profiles are unchanged. Preserve this state;
+do not repeat accepted uv checks without a relevant change. PR #613 is merged
+at `8c524f4d`; the signed product subtrees match. PR #614 records the acceptance
+and updated real CLI harness with 42 passing isolated lifecycle checks. This is
+not a PyPI catalog or GUI installation of a never-seen package by name. Separate
+Cargo parity and the remaining release gates are still open.
 The owner accepted the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
 on `1bb4d0a6`: task 24 completed with native/database absence of smoke and an
 unchanged 1.0 peer receipt. All 240 CLI and 445 Swift tests pass. Its signed
