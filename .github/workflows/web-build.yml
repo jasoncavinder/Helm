@@ -18,7 +18,7 @@ on:
 jobs:
   web-build:
     name: Web Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: web

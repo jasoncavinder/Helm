@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   verify-release-publish-metadata:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       EXPECTED_TAG: ${{ github.event.inputs.tag || '' }}
       LANG: en_US.UTF-8

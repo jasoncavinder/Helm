@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   validate-release-publish-auth:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_PAT }}
       WRITE_PROBE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.write_probe == 'true' && 'true' || 'false' }}
