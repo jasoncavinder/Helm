@@ -10,8 +10,12 @@ remains at 1.0. Package removal then exposed a
 [confirmation authority defect](validation/v0.20-package-uninstall-confirmation.md):
 GUI/TUI treated read-only manager-executable lifecycle metadata as a package
 removal ban. The correction uses existing package capabilities and effective
-enablement without granting manager-removal authority. Automated and signed
-rechecks remain pending. The fixture named `helm-uv-pinned` has a native exact
+enablement without granting manager-removal authority. All 240 CLI and 445 Swift
+tests pass in the VM, including negative-control confirmation regressions.
+Corrected signed source `1bb4d0a6` is running on the same isolated uv profile;
+versions, receipts and earlier accepted profiles are preserved, with no new
+package mutation. Owner uninstall acceptance remains pending.
+The fixture named `helm-uv-pinned` has a native exact
 version requirement, not a Helm pin; no missing pin badge is claimed as a defect.
 Remaining uv removal/reinstall and Cargo parity checks stay open.
 

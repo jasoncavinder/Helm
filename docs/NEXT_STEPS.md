@@ -2,8 +2,9 @@
 
 ## Immediate v0.20 Closeout
 
-Verify the [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
-and resume uv removal/reinstall on the preserved isolated profile. Its signed
+Accept the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
+on source `1bb4d0a6`, then resume uv removal/reinstall on the preserved isolated
+profile. All 240 CLI and 445 Swift tests pass; the GUI retry is pending. Its signed
 upgrade has passed; do not repeat it without a relevant change. Distinguish the
 fixture's native `==1.0` requirement from a Helm pin in owner instructions.
 Keep executable lifecycle restrictions and runtime package safety checks intact.
