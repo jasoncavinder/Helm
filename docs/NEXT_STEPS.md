@@ -5,7 +5,10 @@
 Recheck uv's empty-store search/refresh correction on the preserved isolated
 profile, then continue reinstall. Last-tool uninstall task 27 succeeded, but its
 automatic search task 28 failed; do not repeat removal. The correction's 941
-focused/core Rust tests pass; signed recovery and owner UI acceptance are pending.
+focused/core Rust and 445 Swift tests pass. Signed source `ef1e1eec` passes CLI
+search/refresh and app startup (tasks 29-35), leaving the store absent and uv
+detected/enabled. The owner should dismiss historical task 28, then verify GUI
+search/refresh do not introduce a new failure. No reinstall has been submitted.
 The owner accepted the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
 on `1bb4d0a6`: task 24 completed with native/database absence of smoke and an
 unchanged 1.0 peer receipt. All 240 CLI and 445 Swift tests pass. Its signed

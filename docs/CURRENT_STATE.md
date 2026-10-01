@@ -22,8 +22,11 @@ The next last-tool removal also completed (task 27), but automatic search task 2
 failed because uv had removed its empty store. The follow-up correction accepts
 only a scope-stable native `No tools installed` proof for read operations; it
 never treats missing storage alone as empty or recreates it. All 941 focused/core
-Rust tests pass in the VM. Signed search/refresh recovery, reinstall and Cargo
-parity checks stay open.
+Rust tests and 445 Swift tests pass in the VM. Signed source `ef1e1eec` completed
+search/detection/refresh tasks 29-35 on the same empty profile without new failure,
+mutation or directory creation. Preferences and earlier accepted profiles are
+preserved. Historical failed search task 28 remains for owner dismissal; owner
+empty-state recheck, reinstall and Cargo parity checks stay open.
 
 The remaining first-run pre-apply review presentation/accessibility check now
 passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,
