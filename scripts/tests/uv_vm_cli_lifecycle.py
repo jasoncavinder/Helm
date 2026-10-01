@@ -154,16 +154,31 @@ def main():
         assert (root / "tools" / pinned / "uv-receipt.toml").read_bytes() == other_receipt
         cli("remove-smoke", "packages", "uninstall", smoke, "--manager", "uv", "--yes")
         cli("remove-pinned", "packages", "uninstall", pinned, "--manager", "uv", "--yes")
-        # Some uv versions remove the empty store. That must not become a general
-        # authorization to clear caches when an unrelated store disappears.
-        cli("empty-refresh", "refresh", "--manager", "uv", success=(root / "tools").exists())
+        # uv may remove its empty store. Reads must confirm native emptiness,
+        # succeed without recreating it, and leave initialization to installation.
+        empty_store_present = os.path.lexists(root / "tools")
+        cli("empty-refresh", "refresh", "--manager", "uv")
+        search = cli("empty-search", "search", "helm-uv", "--manager", "uv", "--remote")
+        assert not search["remote_errors"]
         assert not cli("empty-inventory", "packages", "list")["packages"]
         assert not cli("empty-updates", "updates", "list", "--manager", "uv")["updates"]
+        assert os.path.lexists(root / "tools") == empty_store_present
+        manager = cli("empty-manager", "managers", "show", "uv")
+        assert manager["detected"] and manager["enabled"]
+        report["last_tool_removed_store"] = not empty_store_present
         cli("reinstall-after-store-removal", "packages", "install", smoke, "--manager", "uv", "--version", "1.1")
         packages = cli("reinstall-persisted", "packages", "list")["packages"]
         assert len(packages) == 1 and packages[0]["installed_version"] == "1.1"
         cli("reinstalled-refresh", "refresh", "--manager", "uv")
         cli("remove-reinstalled-last-tool", "packages", "uninstall", smoke, "--manager", "uv", "--yes")
+        # GUI Install submits a fresh unversioned install, not the cached version
+        # or the requirement from the deleted receipt. Verify that distinction.
+        cli("fresh-unversioned-install", "packages", "install", smoke, "--manager", "uv")
+        packages = cli("fresh-unversioned-inventory", "packages", "list")["packages"]
+        assert len(packages) == 1 and packages[0]["installed_version"] == "2.0"
+        cli("fresh-unversioned-refresh", "refresh", "--manager", "uv")
+        assert not cli("fresh-unversioned-updates", "updates", "list", "--manager", "uv")["updates"]
+        cli("remove-fresh-last-tool", "packages", "uninstall", smoke, "--manager", "uv", "--yes")
         assert not cli("final-empty-inventory", "packages", "list")["packages"]
         tasks = cli("terminal-tasks", "tasks", "list")["tasks"]
         assert tasks and all(t["status"] in {"completed", "failed", "cancelled"} for t in tasks)

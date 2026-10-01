@@ -25,8 +25,17 @@ never treats missing storage alone as empty or recreates it. All 941 focused/cor
 Rust tests and 445 Swift tests pass in the VM. Signed source `ef1e1eec` completed
 search/detection/refresh tasks 29-35 on the same empty profile without new failure,
 mutation or directory creation. Preferences and earlier accepted profiles are
-preserved. Historical failed search task 28 remains for owner dismissal; owner
-empty-state recheck, reinstall and Cargo parity checks stay open.
+preserved. The owner accepted the empty-state GUI search/refresh recheck and
+dismissed historical failed search task 28. Readback confirms no failed/active
+tasks, empty inventory/updates, detected/enabled uv and an absent tool store;
+completed task IDs had already expired, so none are inferred for this recheck.
+PR #613 is merged at `8c524f4d`. The updated real CLI certification script passes
+42 checks on the same signed CLI in a separate offline scope, including empty
+reads without store recreation, exact-version reinstall and fresh unversioned
+installation. GUI reinstall and separate Cargo parity remain pending; the owner
+profile is preserved empty with its original cached smoke 1.1 result. GUI Install
+uses a fresh unversioned request, expected to select local fixture 2.0, not restore
+the removed tool's former `<2` requirement. No owner-profile reinstall is claimed.
 
 The remaining first-run pre-apply review presentation/accessibility check now
 passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,
