@@ -97,6 +97,7 @@ impl ProcessExecutor for CargoFakeExecutor {
                 {
                     assert_eq!(request.command.working_dir, Some(PathBuf::from("/")));
                     assert!(request.private_output_limit.is_some());
+                    assert_eq!(request.timeout, Some(Duration::from_secs(120)));
                     Vec::new()
                 }
                 [arg] if arg == "--version" => VERSION_FIXTURE.as_bytes().to_vec(),
@@ -155,6 +156,7 @@ impl ProcessExecutor for CargoFakeExecutor {
                     b"rargs = \"0.3.0\" # argument parser\n".to_vec()
                 }
                 [arg0, crate_name, ..] if arg0 == "install" && crate_name == "rargs" => {
+                    assert_eq!(request.timeout, Some(Duration::from_secs(1800)));
                     assert!(args.iter().any(|arg| arg == "--locked"));
                     assert!(!args.iter().any(|arg| arg == "--force"));
                     assert!(args.windows(2).any(|pair| pair == ["--version", "0.3.0"]));
@@ -180,6 +182,7 @@ impl ProcessExecutor for CargoFakeExecutor {
                     Vec::new()
                 }
                 [arg0, crate_name] if arg0 == "uninstall" && crate_name == "ripgrep" => {
+                    assert_eq!(request.timeout, Some(Duration::from_secs(300)));
                     self.ripgrep_removed.store(true, Ordering::SeqCst);
                     Vec::new()
                 }
@@ -191,6 +194,7 @@ impl ProcessExecutor for CargoFakeExecutor {
                         && version == "0.25.0" =>
                 {
                     let root = root.as_ref().expect("upgrade binds its installation root");
+                    assert_eq!(request.timeout, Some(Duration::from_secs(1800)));
                     let path = root.join(".crates2.json");
                     let receipt = std::fs::read_to_string(&path).unwrap();
                     std::fs::write(path, receipt.replace("0.24.0", "0.25.0")).unwrap();

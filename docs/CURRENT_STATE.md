@@ -4,6 +4,33 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The remaining first-run pre-apply review presentation/accessibility check now
+passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,
+live-language changes and Light/Dark. Readback confirmed no repair, task or
+acknowledgment and preservation of the earlier accepted profile. All 444 Swift
+tests passed in the VM. See the [bounded acceptance record](validation/v0.20-integrated-owner-qa.md#pre-apply-review-acceptance).
+The owner also passed blocked pnpm Plan behavior on the same compiled source:
+pnpm 12.6.0 updates remain visible but unselectable, while an eligible npm update
+is selectable; Inspector accessibility and live-language checks pass. Native
+inventory and task readback confirmed no mutation. Add manager's real Cargo
+progress/cancellation check also passes: task 20 was cancelled, with no installed
+binary/receipt, lingering compiler process or unrelated inventory change.
+The controlled offline failure also passes: task 22 persisted the correct
+Cargo-local diagnostic with no installation. The test override is removed and
+a read-only registry query succeeds. The subsequent recovery failed at the
+five-minute Cargo build default plus its five-minute extension, with no native
+installation or lingering compiler. The [timeout correction](validation/v0.20-cargo-source-build-timeout.md)
+uses a 30-minute base for Cargo source installs/upgrades only; explicit timeout
+preferences still win. All 923 focused/core Rust tests pass in the VM. The owner
+accepted warm signed GUI recovery on `41c01768` after a separate disk-full failure
+and approved cleanup. Native executable/receipt and Helm inventory/detection all
+agree on cargo-binstall 1.24.0, with no active task/compiler or timeout override.
+The temporary Homebrew fixture is restored; earlier accepted profiles and other
+formula versions are preserved. Completed task/log entries had already expired
+at readback, so no successful task ID, duration or cold-build result is claimed.
+Item 11's bounded lifecycle passes; Cargo/uv GUI reconciliation remains pending.
+Shipping activation remains unchanged and gated.
+
 The owner-authorized issue closeout on 2026-09-30 closed #464 (Environment
 insertion reordering) and #529 (active-Space reopening) with their signed-VM
 acceptance records. The remaining direct Sparkle release gate is now tracked by
