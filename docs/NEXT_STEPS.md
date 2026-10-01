@@ -2,10 +2,13 @@
 
 ## Immediate v0.20 Closeout
 
-Recheck the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
-with the same manager and expanded details retained while changing languages.
-Keep #601's accepted reorder behavior unchanged; no repair or uninstall is needed
-for this check. Startup discovery (#599) remains a separate pre-RC1 blocker.
+The owner accepted the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
+and merged #602. Preserve its accepted language checks and #601's accepted
+reordering; neither needs another pass without a relevant change.
+Next, review and accept the [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
+for #599 on a separate sparse profile, without CLI pre-detection. Automated VM
+checks pass; signed owner acceptance and shipping first-run activation remain
+separate gates.
 
 All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
 are now merged, as are #596's CLT detection correction, #589's documentation
@@ -30,7 +33,7 @@ on source `655ac1f8`, including stable reversal and Escape cancellation. The own
 subsequently passed the remaining interactive checks in items 6-8; agent readback
 after the localization-build relaunch preserved priority UserDefaults exactly.
 Do not repeat the accepted ordering matrix without a relevant code change.
-The newly found Inspector translation gaps have their own focused recheck above.
+The Inspector translation recheck above is now accepted.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's

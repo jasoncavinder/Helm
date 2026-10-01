@@ -107,6 +107,19 @@ class HelmService: NSObject, HelmServiceProtocol {
         logger.error("Service startup failed: \(self.initializationErrorKey ?? "unknown")")
     }
 
+    func startRuntimeWithDiscovery(networkAvailable: Bool, withReply reply: @escaping (Bool) -> Void) {
+        startupLock.lock()
+        defer { startupLock.unlock() }
+        let started = helm_start_runtime_with_discovery(networkAvailable)
+        if started {
+            runtimeStarted = true
+            initializationErrorKey = nil
+        } else {
+            captureInitializationError()
+        }
+        reply(started)
+    }
+
     func listInstalledPackages(withReply reply: @escaping (String?) -> Void) {
         guard let cString = helm_list_installed_packages() else {
             logger.warning("helm_list_installed_packages returned nil")

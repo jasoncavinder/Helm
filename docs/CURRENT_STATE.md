@@ -8,8 +8,17 @@ Owner QA found untranslated manager Inspector diagnostics/category values.
 The [localization correction](validation/v0.20-inspector-diagnostic-localization.md)
 fills the non-English catalog gaps and shares complete render-time category
 mapping between production/research Inspectors without resetting mounted state.
-All 443 Swift tests and locale/static gates pass; the corrected signed VM build
-preserves the populated profile and is ready for the owner live-language recheck.
+All 443 Swift tests and locale/static gates passed; the owner accepted the signed
+live-language recheck and merged #602. French/German `Standard` is an explicit,
+valid translation, not an English fallback. Preserve that accepted profile.
+
+The [post-entry discovery correction](validation/v0.20-first-run-startup-discovery.md)
+now schedules real ordered discovery once per acknowledged service runtime,
+then refreshes durable results. Unknown/offline network state defers network
+follow-ups until reconnection. Shared request-response orchestration now waits
+for its existing persistence signal before releasing ordered callers. VM
+automated gates pass; signed sparse-profile owner acceptance remains pending.
+The shipping first-run switch is unchanged.
 
 Environment ordering QA prompted a presentation refinement: insertion follows
 the native drag preview's top/bottom overlap with an eligible card, with a small
@@ -53,7 +62,8 @@ The subsequent Use Helm Now transition exposed a missing automatic discovery
 handoff (#599): the sparse legacy profile showed only cached Homebrew detections.
 An explicit same-build CLI discovery restored 21 real detections for separate
 Environment ordering QA, without package mutations. This is a controlled test
-recovery, not a startup fix; #599 remains a pre-RC1/activation blocker.
+recovery, not a startup fix; #599 remains a pre-RC1/activation gate until the
+correction above passes its separate sparse-profile signed check and review.
 Historical integrated artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with

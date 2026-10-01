@@ -640,11 +640,11 @@ impl AdapterRuntime {
                 "starting request-response orchestration attempt"
             );
 
-            let task_id = self
+            let submitted = self
                 .submit_with_enablement(manager, request.clone(), enablement_snapshot)
                 .await
-                .map(|submitted| submitted.task_id)
                 .map_err(|error| attribute_error(error, manager, task_type, action))?;
+            let task_id = submitted.task_id;
 
             let terminal_result = match self
                 .wait_for_terminal(task_id, Some(wait_budget.effective_timeout))
@@ -775,7 +775,26 @@ impl AdapterRuntime {
             };
 
             match terminal_result {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    // Ordered callers may immediately read this response from
+                    // storage (for example discovery followed by inventory).
+                    // Execution completion alone does not publish that snapshot.
+                    tokio::time::timeout(
+                        wait_budget
+                            .effective_timeout
+                            .saturating_sub(started_at.elapsed()),
+                        submitted.persistence.wait_for_completion(),
+                    )
+                    .await
+                    .map_err(|_| CoreError {
+                        manager: Some(manager),
+                        task: Some(task_type),
+                        action: Some(action),
+                        kind: CoreErrorKind::Timeout,
+                        message: "timed out waiting for response persistence".to_string(),
+                    })?;
+                    return Ok(response);
+                }
                 Err(error)
                     if attempt < 2
                         && self.network_work_allowed()

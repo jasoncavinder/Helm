@@ -23,6 +23,12 @@ char *helm_prepare_startup(const char *db_path, bool require_first_run_acknowled
 bool helm_start_runtime(void);
 
 /**
+ * Activate the acknowledged first-run route and guarantee one real discovery
+ * per service process. Unknown network state must be passed as false.
+ */
+bool helm_start_runtime_with_discovery(bool network_available);
+
+/**
  * Initialize the Helm core engine with the given SQLite database path.
  *
  * # Safety

@@ -1,6 +1,23 @@
 import XCTest
 
 final class FirstRunEntryControllerTests: XCTestCase {
+    func testOnlyVersionedActivationHandsNetworkStateToSharedStartupDiscovery() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("Helm/Core/HelmCore+Startup.swift"), encoding: .utf8)
+        let boundary = try XCTUnwrap(source.range(of: "private func activatePreparedRuntime("))
+        let versioned = String(source[..<boundary.lowerBound])
+        let legacy = String(source[boundary.lowerBound...])
+        XCTAssertTrue(versioned.contains("service.startRuntimeWithDiscovery("))
+        XCTAssertTrue(versioned.contains("networkAvailable: self.networkAvailability == .available"),
+                      "Unknown path state must fail closed before startup network work")
+        XCTAssertFalse(versioned.contains("operation: service.startRuntime,"))
+        XCTAssertFalse(versioned.contains("triggerDetection"), "A coalesced manual trigger cannot guarantee discovery")
+        XCTAssertTrue(legacy.contains("service.startRuntime(withReply: completion)"))
+        XCTAssertFalse(legacy.contains("startRuntimeWithDiscovery"))
+        let service = try String(contentsOf: root.appendingPathComponent("HelmService/Sources/HelmService.swift"), encoding: .utf8)
+        XCTAssertTrue(service.contains("helm_start_runtime_with_discovery(networkAvailable)"))
+    }
+
     func testReplyValidationAndDeliveryOccurOnMainQueue() {
         let delivered = expectation(description: "main-queue reply")
         DispatchQueue.global().async {
