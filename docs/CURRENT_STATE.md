@@ -24,8 +24,9 @@ Live-language QA found a missing localization subscription on the repair view;
 the presentation-only correction now observes it directly without resetting
 receipt/review state. All 433 Swift tests passed in the VM, including a
 source-wiring regression with a failing pre-fix negative control. The corrected
-signed QA app preserves the existing receipt and profile; its owner live-language
-visual recheck remains pending.
+signed QA app preserves the existing receipt and profile; the owner passed its
+English/German/Hungarian live-language recheck with the receipt page kept open.
+Light/Dark and text-expansion layout acceptance remain separate pending checks.
 Historical integrated artifacts are not certification of the current merged source.
 Task creation time is now immutable across status persistence and restart
 recovery. Completed/cancelled history retention uses terminal log time, with

@@ -10,8 +10,9 @@ repair review/cancellation and explicit verified repair with saved-result
 readback. Continue with presentation/accessibility and the remaining
 [owner QA delta](validation/v0.20-integrated-owner-qa.md) on the same-source
 signed VM build.
-First recheck live language changes on the mounted repair/saved-results page:
-the overview passed, but the repair child needed its own localization observation.
+The mounted repair/saved-results live-language recheck now passes after giving
+the child its own localization observation. Next finish Light/Dark and
+representative text-expansion layout checks on the overview and saved results.
 Preserve the existing verified receipt rather than applying another repair.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
