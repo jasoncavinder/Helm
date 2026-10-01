@@ -25,8 +25,9 @@ separate unacknowledged copy; agent readback and same-profile relaunch confirmed
 24 successful detections per service, persisted acknowledgment, unchanged
 disabled preferences and receipt. Cargo/npm remain disabled and unscanned;
 their Not Installed labels are not proof of absence. Existing completed-task
-retention still applies. PR #604 awaits independent review and green head CI;
-its Rust test isolation correction does not change the accepted app binary.
+retention still applies. PR #604's independent review is complete, with timeout
+fixture isolation and setup-wait findings remediated; merge still requires green
+head CI. These Rust test corrections do not change the accepted app binary.
 The shipping first-run switch is unchanged.
 That real refresh exposed independent Podman/Homebrew exit-status handling
 [#603](https://github.com/jasoncavinder/Helm/issues/603), tracked separately.

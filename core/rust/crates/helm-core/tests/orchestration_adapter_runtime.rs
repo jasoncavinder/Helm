@@ -1381,6 +1381,27 @@ async fn submit_refresh_request_response_retries_once_on_timeout() {
 
 #[test]
 fn orchestration_timeout_cancels_queued_retry_before_return() {
+    const CHILD_MODE: &str = "HELM_TEST_ORCHESTRATION_TIMEOUT_CHILD";
+    if std::env::var_os(CHILD_MODE).as_deref() != Some(std::ffi::OsStr::new("1")) {
+        // Other tests read this process-global profile without changing it.
+        // A writer-only guard cannot protect those concurrent readers.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "orchestration_timeout_cancels_queued_retry_before_return",
+                "--nocapture",
+            ])
+            .env(CHILD_MODE, "1")
+            .output()
+            .expect("isolated timeout fixture should execute");
+        assert!(
+            output.status.success(),
+            "isolated timeout fixture failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
     let _guard = manager_execution_preferences_test_guard();
     tokio::runtime::Builder::new_current_thread()
         .enable_time()

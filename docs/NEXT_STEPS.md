@@ -5,9 +5,10 @@
 The owner accepted the [Inspector diagnostic localization correction](validation/v0.20-inspector-diagnostic-localization.md)
 and merged #602. Preserve its accepted language checks and #601's accepted
 reordering; neither needs another pass without a relevant change.
-Next, independently review PR #604's [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
-for #599 and require green head CI. The owner accepted Use Helm Now on a separate
-sparse profile without CLI pre-detection; agent readback/relaunch preserved the
+Next, merge PR #604's independently reviewed [startup-discovery correction](validation/v0.20-first-run-startup-discovery.md)
+for #599 after green head CI; its test-isolation findings are remediated.
+The owner accepted Use Helm Now on a separate sparse profile without CLI
+pre-detection; agent readback/relaunch preserved the
 acknowledgment, receipt and disabled preferences, with 24 successful detections
 per service. Shipping first-run activation remains a separate gate. Then address
 the independently reproduced Podman/Homebrew refresh false failure (#603),
