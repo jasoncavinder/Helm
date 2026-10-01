@@ -753,6 +753,7 @@ Goal:
   in [#561](https://github.com/jasoncavinder/Helm/issues/561) and the
   [first-run contract](architecture/FIRST_RUN_EXPERIENCE_CONTRACTS.md#12-v020-upgrade-entry-and-acknowledgment).
 - Deliver true direct updating for eligible third-party Sparkle apps through a dedicated, uniquely identified, Developer ID-signed and notarized external-updater boundary (or an equivalently reviewed architecture) that preserves Helm's app sandbox, accepts only structured validated requests, and fails safely to Open App when compatibility cannot be established.
+- Track completion in [#606](https://github.com/jasoncavinder/Helm/issues/606): operational signed helper/authority integration (#607), then real execution, verified outcomes and recovery certification (#608). Merged policy/observation/handshake foundations and vendor-app handoff are not direct-install completion.
 - Add `uv` as a manager for globally installed Python tools, with the bounded scope and pre-RC certification requirements below.
 
 Exit Criteria:

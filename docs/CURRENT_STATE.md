@@ -4,6 +4,20 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The owner-authorized issue closeout on 2026-09-30 closed #464 (Environment
+insertion reordering) and #529 (active-Space reopening) with their signed-VM
+acceptance records. The remaining direct Sparkle release gate is now tracked by
+[#606](https://github.com/jasoncavinder/Helm/issues/606), with operational helper
+work in #607 followed by execution/verification/recovery integration in #608.
+No direct-update capability is activated by that tracking.
+
+The [Linux CI baseline mitigation](operations/CLI_RELEASE_AND_CI.md#14-linux-runner-baseline-and-compiled-cache-isolation)
+pins production Ubuntu selections to 24.04 and isolates Cargo compiled caches by
+baseline, architecture and Rust version. Separate main/dev PRs must land before
+the October 19 floating-label migration; #600 remains open for that landing.
+The deliberate 26.04 canary/migration scope is retained in #609, not silently
+treated as certified by the baseline pin. No macOS runner or app behavior changes.
+
 Owner QA found untranslated manager Inspector diagnostics/category values.
 The [localization correction](validation/v0.20-inspector-diagnostic-localization.md)
 fills the non-English catalog gaps and shares complete render-time category
@@ -37,8 +51,10 @@ diagnostics, in the Podman, Colima and Docker Desktop queries. The Docker Deskto
 installed-cask check also recognizes current Homebrew token/version receipts.
 All 865 core unit tests and five process-source regressions pass in the VM;
 isolated real CLI refreshes persist Podman and Docker Desktop updates, with
-Colima current and all nine tasks completed. Review/merge and head CI remain
-required. No package upgrades, signed GUI replacement or release occurred.
+Colima current and all nine tasks completed. PR #605 is reviewed and merged at
+`a7fbb5fb`, and all reported head checks passed. Final integrated-candidate
+validation remains separate. No package upgrades, signed GUI replacement or
+release occurred.
 
 Environment ordering QA prompted a presentation refinement: insertion follows
 the native drag preview's top/bottom overlap with an eligible card, with a small
@@ -128,8 +144,8 @@ ordering/activating its retained window (#529). It does not join every Space,
 change window layout/level, or replace Settings behavior. Focused policy tests
 pass, and the owner accepted the [two-fullscreen-Space checks](validation/v0.20-dashboard-active-space.md)
 on signed source `ec6cfba1` before merging #576. This includes desktop/fullscreen
-transitions, menu-bar routing and independent Settings behavior. #529 can be
-closed with that bounded evidence; do not repeat the accepted checks absent a
+transitions, menu-bar routing and independent Settings behavior. #529 is closed
+with that bounded evidence; do not repeat the accepted checks absent a
 relevant change.
 
 The [isolated Add manager CLI lifecycle](validation/v0.20-manager-install-cli.md)

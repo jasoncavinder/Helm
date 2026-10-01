@@ -10,12 +10,21 @@ is merged at `630e7617`; #599 is closed and its test-isolation findings are reme
 The owner accepted Use Helm Now on a separate sparse profile without CLI
 pre-detection; agent readback/relaunch preserved the
 acknowledgment, receipt and disabled preferences, with 24 successful detections
-per service. Shipping first-run activation remains a separate gate. Next, review
-and merge the [named Homebrew outdated correction](validation/v0.20-named-homebrew-outdated.md)
-for #603 after green head CI. Its audit also covers Colima and Docker Desktop,
+per service. Shipping first-run activation remains a separate gate. PR #605's
+[named Homebrew outdated correction](validation/v0.20-named-homebrew-outdated.md)
+for #603 is reviewed and merged at `a7fbb5fb`, with all reported head checks passed.
+Its audit also covers Colima and Docker Desktop,
 including current installed-cask metadata; all 865 core unit tests, five new
 process-source regressions and the three real CLI refreshes pass in the VM.
-Then resume the remaining owner QA delta and shipping first-run activation.
+Resume the remaining owner QA delta and shipping first-run activation.
+
+Before the October 19 runner-alias migration, review/merge the isolated main
+hotfix and dev counterpart for #600: all production Linux selectors must remain
+on Ubuntu 24.04 with OS/architecture/Rust-isolated Cargo build caches. The
+[CI policy](operations/CLI_RELEASE_AND_CI.md#14-linux-runner-baseline-and-compiled-cache-isolation)
+and regressions cover direct/matrix runners and unsafe restore prefixes. Do not
+wait for #609's separate deliberate 26.04 canary certification or promote
+unfinished dev features into main. No product release is required for this fix.
 
 All 22 implementation PRs in the [unattended batch](validation/v0.20-unattended-review-index.md)
 are now merged, as are #596's CLT detection correction, #589's documentation
@@ -45,7 +54,8 @@ The Inspector translation recheck above is now accepted.
 Existing Developer ID use and disposable-VM development are authorized; do not
 change/export credentials. Preserve historical evidence without relabeling it
 as acceptance of the new integrated head. The owner already passed #576's
-fullscreen-window checks; close #529 with that record rather than repeat them.
+fullscreen-window checks; #529 and the accepted reordering issue #464 are now
+closed with their evidence. Do not repeat those matrices without relevant changes.
 
 Preserve the [task-history correction](validation/v0.20-task-creation-history.md)
 when integrating the first-run upgrade path. Recovery may change stale task
@@ -126,8 +136,10 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    Finish integrated-head and remaining failure/cancellation/reconciliation evidence;
    retain signed GUI review. Do not modify the owner's Rust
    installation to clear historical failures.
-3. Finish remaining planned runtime work (direct third-party Sparkle updating),
-   signed QA of the [implemented insertion-placeholder reordering](validation/v0.20-environment-insertion-reordering.md), exact certification/issue dispositions,
+3. Finish remaining planned runtime work (direct third-party Sparkle updating,
+   tracked by [#606](https://github.com/jasoncavinder/Helm/issues/606): #607's
+   operational helper boundary, then #608's real execution/recovery integration),
+   exact certification/issue dispositions,
    participant and cross-workflow accessibility gates from the checklist.
    Build Sparkle integration on the [shared-core boundary contract](architecture/EXTERNAL_SPARKLE_BOUNDARY.md);
    its passing pure-policy tests are not a signed helper or live installation.
