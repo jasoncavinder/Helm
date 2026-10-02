@@ -2,6 +2,17 @@
 
 ## Immediate v0.20 Closeout
 
+Complete independent review, current-head CI and merge of #616's
+[shipping first-run activation](validation/v0.20-shipping-first-run.md).
+Ordinary Debug/Release launches now select real versioned entry without a QA
+flag. The signed Release upgrade/relaunch/preservation delta now passes; keep
+#561 open through review/merge. Preserve that acceptance without repeating it.
+Resolve #603's newly observed Homebrew auto-update lock/progress-output refresh
+failures separately; this entry pass is not all-green adapter certification.
+PR #615 is merged at `fa3b4f05` and integrated here. Preserve its Cargo/Plan
+acceptance; historical development-switch instructions below describe the
+earlier base, not a request to repeat accepted checks.
+
 The owner accepted the [Plan version-presentation correction](validation/v0.20-plan-version-presentation.md)
 and its selected-card contrast follow-up on the preserved signed Cargo profile.
 The real GUI upgrade on `52639a14` also passes: hyperfine is 1.20.0 and sd is
@@ -11,8 +22,8 @@ of sd also passes as completed task 22, with native/GUI/CLI absence and unchange
 hyperfine 1.20.0 receipt/binary. GUI reinstall also passes as completed task 24:
 sd 1.0.0 agrees across native executable/receipt, GUI and signed CLI, the fresh
 crates.io receipt has the exact version and expected build options, hyperfine
-is unchanged and no failed/active task or update remains. Review/merge PR #615,
-then continue the separately reviewed shipping first-run activation gate using
+is unchanged and no failed/active task or update remains. PR #615 is merged;
+continue the separately reviewed shipping first-run activation gate using
 the ordered release-readiness checklist below. Owner QA items 1-12 are accepted
 within their recorded scenarios, not a final integrated-release certification.
 Do not reseed the fixture or repeat the accepted presentation/VoiceOver matrix
@@ -129,26 +140,27 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    for initial evidence, not ordinary detection/status APIs that can schedule
    catalogs or repair preferences. The [two-step startup boundary](validation/v0.20-first-run-startup-gate.md)
    is implemented. The [real entry integration](validation/v0.20-first-run-entry-integration.md)
-   now selects its guarded policy under Debug-only `HELM_FIRST_RUN_PRODUCTION_QA=1`,
+   now selects its guarded policy by default in ordinary Debug/Release launches,
    verifies legal acceptance/acknowledgment readback, and keeps polling/updaters
-   behind activation. Shipping retains legacy compatibility. Candidate files
+   behind activation. Only Debug previews retain compatibility. Candidate files
    are not current readiness or action approval.
    Preserve main-queue first-run reply validation and both connection/controller
    generation fences when extending this flow.
    The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
    supplies the narrow stale-mise-override action and durable verified/unverified
-   outcomes through the prepared FFI boundary, not a shipping UI or general setup
+   outcomes through the prepared FFI boundary, not a general setup
    scheduler. The [guarded presentation](validation/v0.20-first-run-repair-presentation.md)
-   now wires explicit consent and durable receipt readback into the real Debug
+   now wires explicit consent and durable receipt readback into the real
    flow. The [Wayfinder evidence view](validation/v0.20-first-run-wayfinder-evidence.md)
    now groups real local observations without promoting candidate files to
-   readiness or cached status to live health. Complete signed visual and
-   accessibility acceptance of this new presentation before activation,
+   readiness or cached status to live health. Preserve bounded signed visual and
+   accessibility acceptance and the completed Release-path activation delta
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. The bounded signed legacy-profile upgrade/relaunch check has
    passed, along with bounded repair consent and successful receipt readback.
-   Remaining presentation/accessibility checks and the shipping activation
-   decision remain open. This does not certify a
+   Signed Release continuation/readback/relaunch now pass on `d07bdc37`;
+   independent activation review/merge and integrated-candidate checks remain open.
+   This does not certify a
    Sparkle binary replacement. Broader persisted setup parity remains v0.21 scope.
    Preserve the [main-queue first-run reply boundary](validation/v0.20-first-run-reply-order.md)
    and both connection/controller generation fences when extending this flow.

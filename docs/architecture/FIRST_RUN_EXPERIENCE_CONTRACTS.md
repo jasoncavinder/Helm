@@ -1,8 +1,10 @@
 # First-Run Experience Contracts
 
-Status: normative contract, extended for v0.20 upgrade entry; production setup
-activation remains pending. Debug-only research previews are not a shipping
-setup implementation.
+Status: normative contract, with the bounded v0.20 production entry enabled by
+default; bounded signed Release-path acceptance passes, while independent review
+and merge remain pending.
+Generalized persisted setup parity remains v0.21 scope. Debug-only research
+previews are not a shipping setup implementation.
 
 This document defines architecture, semantics, and boundaries for Helm's Project WOW first-run setup experience across GUI, CLI, and TUI presentation surfaces.
 
@@ -40,14 +42,16 @@ before explicit activation and can require the saved experience acknowledgment.
 The versioned route now uses a dedicated post-acknowledgment startup handoff:
 real detection runs once per service process, then refresh consumes its durable
 results. Unknown/offline path state defers network work until reconnection.
-This does not grant new network/install/update consent or change the shipping
-entry switch. See [startup discovery evidence](../validation/v0.20-first-run-startup-discovery.md).
-Shipping builds still select legacy compatibility. The
-[development-gated real entry integration](../validation/v0.20-first-run-entry-integration.md)
-selects guarded startup, persists and re-reads required legal acceptance before
-observation, and re-reads explicit acknowledgment before activation. It does not
-implement the full setup-session/action/receipt or network-consent contract below;
-those and signed upgrade-path QA remain prerequisites to shipping activation.
+This does not grant new network/install/update consent. See
+[startup discovery evidence](../validation/v0.20-first-run-startup-discovery.md).
+The [shipping activation](../validation/v0.20-shipping-first-run.md) makes the real
+entry the ordinary Debug/Release default. It persists and re-reads required legal
+acceptance before observation, and explicit acknowledgment before activation.
+Optional finite preference repair retains its separate review, consent,
+revalidation and durable receipt. Use Helm Now discloses resuming normal saved
+behavior; no package mutation or privilege consent is inferred. The generalized
+setup-session/action/receipt and session network-consent model below remains
+v0.21 scope, not a claim about this bounded implementation.
 
 ### 1.2 Network disclosure
 
@@ -200,6 +204,7 @@ Track production implementation and signed upgrade-path QA in
   acknowledged RC-to-stable/patch/relaunch, interruption, offline/partial state,
   accessibility/localization and preference preservation in isolated VM profiles.
 
-This contract does not turn on the current Debug route. Shipping activation
-requires the real production session/plan/verification path, never synthetic
-progress or receipts, and separate implementation review and candidate QA.
+Normal app launches now use the real versioned entry, never synthetic progress
+or receipts. The [activation evidence](../validation/v0.20-shipping-first-run.md)
+tracks separate implementation review and signed Release/candidate QA; enabling
+the default does not itself close #561 or authorize publication.

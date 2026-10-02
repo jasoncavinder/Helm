@@ -1,6 +1,36 @@
 import XCTest
 
 final class FirstRunEntryControllerTests: XCTestCase {
+    func testProductionEntryIsDefaultWithoutQAEnvironment() {
+        XCTAssertTrue(ProductionFirstRunGate.isEnabled(environment: [:]))
+    }
+
+    func testObsoleteQAFlagCannotOptOutOfProductionEntry() {
+        for value in ["0", "false", "", "1"] {
+            XCTAssertTrue(ProductionFirstRunGate.isEnabled(environment: ["HELM_FIRST_RUN_PRODUCTION_QA": value]))
+        }
+    }
+
+    func testPreviewIsolationIsDebugOnlyAndCannotDisableShippingEntry() {
+        let previews = [
+            [EnvironmentBriefFixtureProvider.environmentKey: "partial"],
+            [EnvironmentBriefFirstRunConfiguration.environmentKey: "preview"],
+            [EnvironmentBriefFirstRunConfiguration.environmentKey: "enabled"],
+            [WayfinderPopoverFixtureProvider.environmentKey: "healthy"],
+            [WholeWorkflowResearchDatasetProvider.environmentKey: "/missing/research-fixture.json"]
+        ]
+        for environment in previews {
+            #if DEBUG
+            XCTAssertFalse(ProductionFirstRunGate.isEnabled(environment: environment))
+            #else
+            XCTAssertTrue(ProductionFirstRunGate.isEnabled(environment: environment))
+            XCTAssertNil(EnvironmentBriefFixtureProvider.active(environment: environment))
+            XCTAssertEqual(EnvironmentBriefFirstRunConfiguration.mode(environment: environment), .disabled)
+            XCTAssertFalse(ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: environment))
+            #endif
+        }
+    }
+
     func testOnlyVersionedActivationHandsNetworkStateToSharedStartupDiscovery() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: root.appendingPathComponent("Helm/Core/HelmCore+Startup.swift"), encoding: .utf8)
