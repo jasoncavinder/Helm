@@ -1,8 +1,8 @@
 # First-Run Experience Contracts
 
 Status: normative contract, with the bounded v0.20 production entry enabled by
-default; bounded signed Release-path acceptance passes, while independent review
-and merge remain pending.
+default; bounded signed Release-path acceptance, independent review and merge are
+complete in #616. Final integrated-candidate certification remains separate.
 Generalized persisted setup parity remains v0.21 scope. Debug-only research
 previews are not a shipping setup implementation.
 

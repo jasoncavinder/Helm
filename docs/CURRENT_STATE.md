@@ -23,7 +23,8 @@ agrees on sd 1.0.0, and its fresh crates.io receipt records the exact version an
 expected source/build options. Hyperfine's receipt/binary and earlier profiles
 are unchanged, with no failed/active task or update. Item 12's bounded Cargo and
 uv GUI lifecycle checks now pass; preserve both profiles. PR #615 is merged at
-`fa3b4f05`; shipping first-run review and other release gates remain open.
+`fa3b4f05`; shipping first-run is now reviewed/merged via #616, while other release
+gates remain open.
 
 This document describes the current implementation status of Helm.
 
@@ -36,13 +37,19 @@ Legal/acknowledgment readback, finite reviewed repair and network-aware discover
 are unchanged. The owner accepted the signed Release continuation; agent readback
 and same-profile relaunch confirm durable acknowledgment, no repeated introduction,
 preserved settings/five disabled preferences, and 24 detections once per service.
-Earlier accepted profiles/receipts are unchanged. Independent review/merge of #616
-remain open for #561; historical development-gate records are not shipping evidence.
+Earlier accepted profiles/receipts are unchanged. Independent review and all head
+checks pass; #616 is merged at `63a210d4`, completing #561's bounded shipping-entry
+gate. Historical development-gate records are not shipping evidence.
 The branch now includes merged #615 and preserves its accepted Cargo/Plan work.
 This signed app remains attributed to `d07bdc37`, not the integrated candidate.
 The same run exposed Homebrew auto-update contention and named-outdated stderr
-failures for Docker Desktop/Podman, retained as a #603 follow-up rather than
-claiming all-green refresh certification. See the activation record for evidence.
+failures for Docker Desktop/Podman. The separate
+[delegated refresh correction](validation/v0.20-homebrew-refresh-policy.md) now
+prevents implicit Homebrew self-updates and accepts only complete successful API
+progress alongside an exactly validated named-update payload. Real diagnostics
+remain errors. All 871 core unit/eight process-source tests and two cold-cache
+concurrent CLI rounds (18 tasks) pass in the VM, preserving prior profiles and
+native receipts. Review/CI/merge for #603 and final candidate QA remain open.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
