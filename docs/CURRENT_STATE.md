@@ -25,8 +25,21 @@ never treats missing storage alone as empty or recreates it. All 941 focused/cor
 Rust tests and 445 Swift tests pass in the VM. Signed source `ef1e1eec` completed
 search/detection/refresh tasks 29-35 on the same empty profile without new failure,
 mutation or directory creation. Preferences and earlier accepted profiles are
-preserved. Historical failed search task 28 remains for owner dismissal; owner
-empty-state recheck, reinstall and Cargo parity checks stay open.
+preserved. The owner accepted the empty-state GUI search/refresh recheck and
+dismissed historical failed search task 28. Readback confirms no failed/active
+tasks, empty inventory/updates, detected/enabled uv and an absent tool store;
+completed task IDs had already expired, so none are inferred for this recheck.
+PR #613 is merged at `8c524f4d`. The updated real CLI certification script passes
+42 checks on the same signed CLI in a separate offline scope, including empty
+reads without store recreation, exact-version reinstall and fresh unversioned
+installation. The owner also accepted GUI reinstall: task 58 completed and
+Library/Inspector, native metadata and Helm inventory agree on smoke 2.0. Its
+fresh unversioned receipt retains the offline source and selected Python; both
+entrypoints are valid, the removed peer remains absent, and no update or failed/
+active task remains. Preferences and earlier accepted profiles are unchanged.
+The bounded uv GUI parity sequence now passes; separate Cargo parity remains
+pending. No PyPI catalog, never-seen-name GUI install or shipping activation is
+claimed. Preserve the installed uv profile rather than repeating the sequence.
 
 The remaining first-run pre-apply review presentation/accessibility check now
 passes on signed VM source `da59f589`: keyboard, VoiceOver, long paths,
@@ -52,7 +65,7 @@ agree on cargo-binstall 1.24.0, with no active task/compiler or timeout override
 The temporary Homebrew fixture is restored; earlier accepted profiles and other
 formula versions are preserved. Completed task/log entries had already expired
 at readback, so no successful task ID, duration or cold-build result is claimed.
-Item 11's bounded lifecycle passes; Cargo/uv GUI reconciliation remains pending.
+Item 11's bounded lifecycle passes; Cargo GUI reconciliation remains pending.
 Shipping activation remains unchanged and gated.
 
 The owner-authorized issue closeout on 2026-09-30 closed #464 (Environment

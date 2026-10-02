@@ -7,8 +7,11 @@ its read-only evidence.
 
 The [initial disposable-VM campaign](v0.20-adapter-vm-certification.md) exposed a
 CLI persistence-completion race and a separate last-tool uninstall reconciliation
-defect (#556). The latter remains a certification blocker even though the earlier
-fixture tests and intermediate lifecycle operations passed.
+defect (#556). Later corrections and signed owner checks now cover successful
+last-tool removal and subsequent empty-store reads; the separate real CLI
+campaign also passes reinstall. Signed GUI reinstall now passes as well, with
+native receipt/inventory readback. Broader certification scope stays open; see
+the [current acceptance record](v0.20-package-uninstall-confirmation.md#signed-gui-reinstall-acceptance).
 
 ## Implemented Scope
 

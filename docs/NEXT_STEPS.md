@@ -2,13 +2,18 @@
 
 ## Immediate v0.20 Closeout
 
-Recheck uv's empty-store search/refresh correction on the preserved isolated
-profile, then continue reinstall. Last-tool uninstall task 27 succeeded, but its
-automatic search task 28 failed; do not repeat removal. The correction's 941
-focused/core Rust and 445 Swift tests pass. Signed source `ef1e1eec` passes CLI
-search/refresh and app startup (tasks 29-35), leaving the store absent and uv
-detected/enabled. The owner should dismiss historical task 28, then verify GUI
-search/refresh do not introduce a new failure. No reinstall has been submitted.
+Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
+GUI sequence now passes, including last-tool removal, empty-state search/refresh
+and reinstall. The owner accepted fresh-install task 58 on signed `ef1e1eec`:
+Library/Inspector, native metadata, receipt and Helm inventory agree on smoke 2.0,
+both entrypoints are valid, and no pending update or failed/active task remains.
+Its fresh unversioned receipt is not restoration of the deleted `<2` requirement.
+Preferences and earlier accepted profiles are unchanged. Preserve this state;
+do not repeat accepted uv checks without a relevant change. PR #613 is merged
+at `8c524f4d`; the signed product subtrees match. PR #614 records the acceptance
+and updated real CLI harness with 42 passing isolated lifecycle checks. This is
+not a PyPI catalog or GUI installation of a never-seen package by name. Separate
+Cargo parity and the remaining release gates are still open.
 The owner accepted the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
 on `1bb4d0a6`: task 24 completed with native/database absence of smoke and an
 unchanged 1.0 peer receipt. All 240 CLI and 445 Swift tests pass. Its signed
