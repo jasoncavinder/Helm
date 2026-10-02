@@ -2,10 +2,13 @@
 
 ## Immediate v0.20 Closeout
 
-Complete independent review and signed Release-path acceptance of the
+Complete independent review, current-head CI and merge of #616's
 [shipping first-run activation](validation/v0.20-shipping-first-run.md).
 Ordinary Debug/Release launches now select real versioned entry without a QA
-flag. Keep #561 open until the upgrade/relaunch/preservation delta passes.
+flag. The signed Release upgrade/relaunch/preservation delta now passes; keep
+#561 open through review/merge. Preserve that acceptance without repeating it.
+Resolve #603's newly observed Homebrew auto-update lock/progress-output refresh
+failures separately; this entry pass is not all-green adapter certification.
 PR #615 is merged at `fa3b4f05` and integrated here. Preserve its Cargo/Plan
 acceptance; historical development-switch instructions below describe the
 earlier base, not a request to repeat accepted checks.
@@ -151,11 +154,12 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    flow. The [Wayfinder evidence view](validation/v0.20-first-run-wayfinder-evidence.md)
    now groups real local observations without promoting candidate files to
    readiness or cached status to live health. Preserve bounded signed visual and
-   accessibility acceptance, and complete the Release-path activation delta
+   accessibility acceptance and the completed Release-path activation delta
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. The bounded signed legacy-profile upgrade/relaunch check has
    passed, along with bounded repair consent and successful receipt readback.
-   Independent activation review and signed Release-path checks remain open.
+   Signed Release continuation/readback/relaunch now pass on `d07bdc37`;
+   independent activation review/merge and integrated-candidate checks remain open.
    This does not certify a
    Sparkle binary replacement. Broader persisted setup parity remains v0.21 scope.
    Preserve the [main-queue first-run reply boundary](validation/v0.20-first-run-reply-order.md)

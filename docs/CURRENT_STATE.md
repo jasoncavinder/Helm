@@ -23,7 +23,7 @@ agrees on sd 1.0.0, and its fresh crates.io receipt records the exact version an
 expected source/build options. Hyperfine's receipt/binary and earlier profiles
 are unchanged, with no failed/active task or update. Item 12's bounded Cargo and
 uv GUI lifecycle checks now pass; preserve both profiles. PR #615 is merged at
-`fa3b4f05`; shipping first-run acceptance and other release gates remain open.
+`fa3b4f05`; shipping first-run review and other release gates remain open.
 
 This document describes the current implementation status of Helm.
 
@@ -33,9 +33,16 @@ The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
 Research previews remain Debug-only and cannot acknowledge the real experience.
 Legal/acknowledgment readback, finite reviewed repair and network-aware discovery
-are unchanged. Independent review and signed Release-path acceptance remain open
-for #561; the historical development-gate records below are not shipping evidence.
+are unchanged. The owner accepted the signed Release continuation; agent readback
+and same-profile relaunch confirm durable acknowledgment, no repeated introduction,
+preserved settings/five disabled preferences, and 24 detections once per service.
+Earlier accepted profiles/receipts are unchanged. Independent review/merge of #616
+remain open for #561; historical development-gate records are not shipping evidence.
 The branch now includes merged #615 and preserves its accepted Cargo/Plan work.
+This signed app remains attributed to `d07bdc37`, not the integrated candidate.
+The same run exposed Homebrew auto-update contention and named-outdated stderr
+failures for Docker Desktop/Podman, retained as a #603 follow-up rather than
+claiming all-green refresh certification. See the activation record for evidence.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
