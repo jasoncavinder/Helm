@@ -4,6 +4,18 @@ Development foundation only. This package is not embedded in Helm and has no
 installer, network request, manager mutation, privileged operation or updater
 command transport. Its data-free XPC bootstrap does not enable direct updates.
 
+`NativeHelperObserver.observeSelf()` collects the current process through
+Security.framework, not a caller-supplied path or PID. It enforces the fixed
+notarized helper requirement, validates the running and fresh on-disk signatures,
+requires hardened runtime and the signed Developer ID channel, and rejects
+entitlement grants. Two observations must agree on bundle/code identity and
+account. The Encodable-only snapshot has no public initializer and grants no
+update authority. This is not proof of launch-time sandbox inheritance, installed
+helper packaging, accepted signed peers or authority over any target app. Native
+trust evaluation is left to macOS; no offline/trust fallback exists. Debug-only
+fixture capture is absent from Release builds. See the bounded
+[evidence and remaining gates](../../docs/validation/v0.20-sparkle-helper-identity.md).
+
 `NativeTargetObserver` reads a concrete application beneath `/Applications` or
 the current OS account's `Applications` directory. It rejects aliases, nested
 apps, paths outside those roots, escaping symlinks, special files, changed

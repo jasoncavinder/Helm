@@ -82,6 +82,18 @@ mutation approvals remain separate from implementing this contract.
 
 The release gate stays open until this integration and evidence are complete.
 
+### Helper Self-Observation
+
+The native package's [helper-identity observer](../validation/v0.20-sparkle-helper-identity.md)
+now obtains the live process from `SecCodeCopySelf`, validates the fixed notarized
+helper requirement and compares fresh native signing/bundle observations. It
+requires hardened runtime, signed Developer ID channel metadata and no helper
+entitlement grants. It does not accept a caller-selected path, PID or requirement.
+Its non-deserializable evidence is only one input to the future runtime boundary:
+it neither authenticates an XPC caller nor establishes target authority, sandbox
+inheritance, installer quiescence or permission to execute an update. No trusted
+`BoundaryObservation` is synthesized from this evidence alone.
+
 ## Verification
 
 Twelve new pure-policy tests cover strict requests, roots, helper/target/candidate
