@@ -16,6 +16,13 @@ public final class ExternalUpdaterBootstrapClient {
         try self.init(connection: authentication.makeConnection(to: endpoint), event: event)
     }
 
+    /// The named service is still untrusted until the data-free handshake and
+    /// native peer/account validation complete. No operational API is exposed.
+    public convenience init(event: @escaping (BootstrapEvent) -> Void) throws {
+        let authentication = try ExternalUpdaterPeerAuthentication()
+        try self.init(connection: authentication.makeBootstrapServiceConnection(), event: event)
+    }
+
     private init(connection: NSXPCConnection, event: @escaping (BootstrapEvent) -> Void) throws {
         self.connection = connection
         self.event = event
