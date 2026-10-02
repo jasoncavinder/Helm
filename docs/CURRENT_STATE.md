@@ -49,7 +49,19 @@ prevents implicit Homebrew self-updates and accepts only complete successful API
 progress alongside an exactly validated named-update payload. Real diagnostics
 remain errors. All 871 core unit/eight process-source tests and two cold-cache
 concurrent CLI rounds (18 tasks) pass in the VM, preserving prior profiles and
-native receipts. Review/CI/merge for #603 and final candidate QA remain open.
+native receipts. Independent review repeated the suite and a fresh concurrent
+CLI round; all head checks passed and #617 is merged at `223a22f6`. #603 is closed.
+Final integrated-candidate QA remains a separate gate.
+
+The external Sparkle package now has a
+[local helper-identity observer](validation/v0.20-sparkle-helper-identity.md).
+It validates its own running code and a fresh on-disk bundle against the fixed
+notarized helper requirement, hardened runtime and signed direct-channel metadata,
+rejects entitlement grants, and re-observes identity/account/filesystem facts.
+No caller-supplied path, PID, trust result or requirement is accepted. The package
+remains unembedded and does not grant installation authority. Signed/notarized
+positive acceptance, helper packaging, live native authority mapping and real
+update execution remain open under #607/#608; #606 is not closed by this slice.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

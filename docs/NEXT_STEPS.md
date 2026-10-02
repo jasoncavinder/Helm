@@ -2,10 +2,18 @@
 
 ## Immediate v0.20 Closeout
 
-Review and merge the [delegated Homebrew refresh correction](validation/v0.20-homebrew-refresh-policy.md)
-for #603 after current-head CI. Its process regressions and two cold-cache
-concurrent CLI rounds pass without package mutations or implicit brew updates;
-keep genuine diagnostics fail-closed. This is not final candidate certification.
+The [delegated Homebrew refresh correction](validation/v0.20-homebrew-refresh-policy.md)
+is reviewed and merged through #617 at `223a22f6`; all head checks passed and
+#603 is closed. Preserve its process/concurrent cold-cache acceptance without
+repeating package lifecycles. Final integrated-candidate QA remains separate.
+
+Continue #607's operational external Sparkle helper boundary. The
+[helper-identity observer](validation/v0.20-sparkle-helper-identity.md) supplies
+local fail-closed self-observation, not operational peer or installation proof.
+Next deliver the separately packaged helper with its own Sparkle framework and
+accepted signed/notarized peer evidence, then fresh native authority/candidate
+mapping and durable-session binding. Keep #606/#607 open and retain Open App;
+#608's real execution, verification and recovery follows that reviewed boundary.
 #616's [shipping first-run activation](validation/v0.20-shipping-first-run.md)
 is reviewed and merged at `63a210d4`, with all head checks passing. Ordinary
 Debug/Release launches select real versioned entry without a QA flag; the signed
