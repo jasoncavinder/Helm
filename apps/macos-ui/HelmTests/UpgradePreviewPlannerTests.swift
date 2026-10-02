@@ -2,6 +2,158 @@ import SwiftUI
 import XCTest
 
 final class UpgradePreviewPlannerTests: XCTestCase {
+    func testPlanCardSelectionKeepsAdaptiveTextInEveryAppearanceAndFocusState() throws {
+        let row = UpgradePlanOutlineRow(
+            id: "cargo:sd", sequence: 1, title: "sd", manager: "Cargo",
+            versions: UpgradePlanVersionPresentation(arguments: [:]),
+            isIncluded: true, isSelectable: true, status: "Pending", statusTone: .standard, actionTitle: nil
+        )
+        let parent = UpgradePlanOutlineView(
+            sections: [.init(id: "standard", title: "Standard", summary: "1", rows: [row])],
+            selectedStepID: nil,
+            columnLabels: .init(update: "Update", manager: "Manager", included: "Included", status: "Status", action: "Action"),
+            accessibilityLabel: "Plan", interactionsEnabled: true,
+            onSelectStep: { _ in }, onSetIncluded: { _, _ in }, onPerformAction: { _ in }
+        )
+        let coordinator = parent.makeCoordinator()
+        let outline = NSOutlineView()
+        outline.dataSource = coordinator
+        outline.delegate = coordinator
+        coordinator.installColumns(in: outline)
+        coordinator.attach(outline)
+        defer { coordinator.detach() }
+        coordinator.update(parent: parent)
+        let section = coordinator.outlineView(outline, child: 0, ofItem: nil)
+        let item = coordinator.outlineView(outline, child: 0, ofItem: section)
+        let card = try XCTUnwrap(coordinator.outlineView(outline, rowViewForItem: item))
+        let group = try XCTUnwrap(coordinator.outlineView(outline, rowViewForItem: section))
+        let nativeRow = NSTableRowView()
+        let appearances: [NSAppearance.Name] = [
+            .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua
+        ]
+        for name in appearances {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            for selected in [false, true] {
+                for emphasized in [false, true] {
+                    for view in [card, group, nativeRow] {
+                        view.appearance = appearance
+                        view.selectionHighlightStyle = .regular
+                        view.isSelected = selected
+                        view.isEmphasized = emphasized
+                    }
+                    let context = "\(name.rawValue), selected: \(selected), emphasized: \(emphasized)"
+                    XCTAssertEqual(card.interiorBackgroundStyle, .normal, context)
+                    XCTAssertEqual(group.interiorBackgroundStyle, nativeRow.interiorBackgroundStyle, context)
+                }
+            }
+        }
+    }
+
+    func testPlanNativeCardRendersVersionsAndNamesThemForAccessibility() throws {
+        class ReusingOutline: NSOutlineView {
+            var reusableView: NSView?
+            override func makeView(withIdentifier identifier: NSUserInterfaceItemIdentifier, owner: Any?) -> NSView? {
+                if reusableView?.identifier == identifier { return reusableView }
+                return super.makeView(withIdentifier: identifier, owner: owner)
+            }
+        }
+        let versions = UpgradePlanVersionPresentation(arguments: [
+            "plan_installed_version": "0.7.6", "plan_candidate_version": "1.0.0"
+        ])
+        let row = UpgradePlanOutlineRow(
+            id: "cargo:sd", sequence: 1, title: "sd", manager: "Cargo", versions: versions,
+            isIncluded: true, isSelectable: true, status: "Pending", statusTone: .standard, actionTitle: nil
+        )
+        let parent = UpgradePlanOutlineView(
+            sections: [.init(id: "standard", title: "Standard", summary: "1", rows: [row])],
+            selectedStepID: nil,
+            columnLabels: .init(update: "Update", manager: "Manager", included: "Included", status: "Status", action: "Action"),
+            accessibilityLabel: "Plan", interactionsEnabled: true,
+            onSelectStep: { _ in }, onSetIncluded: { _, _ in }, onPerformAction: { _ in }
+        )
+        let coordinator = parent.makeCoordinator()
+        let outline = ReusingOutline()
+        outline.dataSource = coordinator
+        outline.delegate = coordinator
+        coordinator.installColumns(in: outline)
+        coordinator.attach(outline)
+        defer { coordinator.detach() }
+        coordinator.update(parent: parent)
+        let section = coordinator.outlineView(outline, child: 0, ofItem: nil)
+        let item = coordinator.outlineView(outline, child: 0, ofItem: section)
+        let cell = try XCTUnwrap(coordinator.outlineView(outline, viewFor: outline.tableColumns[0], item: item))
+        func fields(in view: NSView) -> [NSTextField] {
+            (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap { fields(in: $0) }
+        }
+        XCTAssertTrue(fields(in: cell).contains { !$0.isHidden && $0.stringValue == "0.7.6 → 1.0.0" })
+        XCTAssertTrue(cell.accessibilityLabel()?.contains(versions.accessibilitySummary) == true)
+        XCTAssertEqual(coordinator.outlineView(outline, heightOfRowByItem: item), 66)
+        outline.reusableView = cell
+        var unversionedRow = row
+        unversionedRow.versions = UpgradePlanVersionPresentation(arguments: [:])
+        coordinator.update(parent: UpgradePlanOutlineView(
+            sections: [.init(id: "standard", title: "Standard", summary: "1", rows: [unversionedRow])],
+            selectedStepID: nil, columnLabels: parent.columnLabels, accessibilityLabel: "Plan",
+            interactionsEnabled: true, onSelectStep: { _ in }, onSetIncluded: { _, _ in }, onPerformAction: { _ in }
+        ))
+        let nextSection = coordinator.outlineView(outline, child: 0, ofItem: nil)
+        let nextItem = coordinator.outlineView(outline, child: 0, ofItem: nextSection)
+        let reused = try XCTUnwrap(coordinator.outlineView(outline, viewFor: outline.tableColumns[0], item: nextItem))
+        XCTAssertTrue(reused === cell)
+        XCTAssertFalse(fields(in: reused).contains { $0.stringValue.contains("0.7.6") })
+        XCTAssertFalse(reused.accessibilityLabel()?.contains("0.7.6") == true)
+        XCTAssertEqual(coordinator.outlineView(outline, heightOfRowByItem: nextItem), 50)
+    }
+
+    func testPlanVersionPresentationUsesCapturedVersionsAndNormalizesUnknowns() {
+        let versions = UpgradePlanVersionPresentation(arguments: [
+            "plan_installed_version": " 1.18.0 ", "plan_candidate_version": "1.20.0"
+        ])
+        XCTAssertTrue(versions.isVisible)
+        XCTAssertEqual(versions.summary, "1.18.0 → 1.20.0")
+        XCTAssertTrue(versions.accessibilitySummary.contains(L10n.App.Inspector.installed.localized))
+        XCTAssertTrue(versions.accessibilitySummary.contains(L10n.App.Inspector.targetVersion.localized))
+        let unknown = UpgradePlanVersionPresentation(arguments: [
+            "plan_installed_version": "unknown", "plan_candidate_version": "2.0"
+        ])
+        XCTAssertNil(unknown.installed)
+        XCTAssertEqual(unknown.installedText, L10n.Common.unknown.localized)
+        XCTAssertEqual(unknown.target, "2.0")
+        XCTAssertFalse(UpgradePlanVersionPresentation(arguments: [:]).isVisible)
+        XCTAssertFalse(UpgradePlanVersionPresentation(arguments: [
+            "plan_installed_version": " ", "plan_candidate_version": "unknown"
+        ]).isVisible)
+    }
+
+    func testInteractivePlansCaptureVersionsWithoutChangingUpdateAuthority() throws {
+        let steps = UpgradePreviewPlanner.addingInteractiveUpdates(
+            to: [],
+            externalSparkleUpdates: [.init(
+                id: "app", packageName: "Example", installedVersion: "1.0", targetVersion: "2.0"
+            )],
+            helmUpdateVersion: "0.20.0", helmInstalledVersion: "0.19.1",
+            externalSparkleReasonLabelKey: "external", helmSelfUpdateReasonLabelKey: "self"
+        )
+        let app = try XCTUnwrap(steps.first { $0.managerId == "sparkle" })
+        XCTAssertEqual(UpgradePlanVersionPresentation(arguments: app.reasonLabelArgs).summary, "1.0 → 2.0")
+        XCTAssertEqual(app.status, "requires_interaction")
+        let helm = try XCTUnwrap(steps.first { $0.managerId == UpgradePreviewPlanner.helmSelfUpdateManagerId })
+        XCTAssertEqual(UpgradePlanVersionPresentation(arguments: helm.reasonLabelArgs).summary, "0.19.1 → 0.20.0")
+        XCTAssertEqual(helm.status, "not_included")
+    }
+
+    func testReviewedPlanRoundTripPreservesDisplayedVersions() throws {
+        let original = ReviewedUpgradePlanStep(
+            id: "cargo:sd", orderIndex: 0, managerID: "cargo", authority: "standard",
+            action: "upgrade", packageName: "sd", reasonLabelKey: "service.task.label.upgrade.package",
+            reasonLabelArgs: ["plan_installed_version": "0.7.6", "plan_candidate_version": "1.0.0"],
+            status: "queued"
+        )
+        let decoded = try JSONDecoder().decode(ReviewedUpgradePlanStep.self, from: JSONEncoder().encode(original))
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(UpgradePlanVersionPresentation(arguments: decoded.reasonLabelArgs).summary, "0.7.6 → 1.0.0")
+    }
+
     func testBlockedCapabilityCannotBeSelectedOrExecutedAutomatically() {
         XCTAssertFalse(UpgradePreviewPlanner.isSelectable(status: "blocked"))
         XCTAssertFalse(UpgradePreviewPlanner.runsAutomatically(

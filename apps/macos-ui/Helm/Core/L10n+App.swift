@@ -686,6 +686,7 @@ extension L10n {
             static let message = "app.dry_run.message"
         }
         struct Inspector {
+            static let targetVersion = "app.inspector.target_version"
             static let title = "app.inspector.title"
             static let empty = "app.inspector.empty"
             static let manager = "app.inspector.manager"

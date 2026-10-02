@@ -29,6 +29,7 @@ struct UpgradePlanOutlineRow: Equatable, Identifiable {
     let sequence: Int
     let title: String
     let manager: String
+    var versions = UpgradePlanVersionPresentation(arguments: [:])
     let isIncluded: Bool
     let isSelectable: Bool
     let status: String
@@ -153,6 +154,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             )
             let titleLabel = NSTextField(labelWithString: "")
             let managerLabel = NSTextField(labelWithString: "")
+            let versionLabel = NSTextField(labelWithString: "")
 
             override init(frame frameRect: NSRect) {
                 super.init(frame: frameRect)
@@ -165,11 +167,16 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 managerLabel.textColor = .secondaryLabelColor
                 managerLabel.lineBreakMode = .byTruncatingTail
                 managerLabel.maximumNumberOfLines = 1
+                versionLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+                versionLabel.textColor = .secondaryLabelColor
+                versionLabel.lineBreakMode = .byTruncatingTail
+                versionLabel.maximumNumberOfLines = 1
+                versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
                 inclusionCheckbox.controlSize = .small
                 inclusionCheckbox.setContentHuggingPriority(.required, for: .horizontal)
 
-                let textStack = NSStackView(views: [titleLabel, managerLabel])
+                let textStack = NSStackView(views: [titleLabel, versionLabel, managerLabel])
                 textStack.orientation = .vertical
                 textStack.alignment = .leading
                 textStack.spacing = 1
@@ -239,7 +246,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             }
         }
 
-        private weak var outlineView: UpgradePlanNativeOutlineView?
+        private weak var outlineView: NSOutlineView?
         private var parent: UpgradePlanOutlineView
         private var sectionModels: [UpgradePlanOutlineSection] = []
         private var sectionNodes: [SectionNode] = []
@@ -254,7 +261,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             self.parent = parent
         }
 
-        fileprivate func attach(_ outlineView: UpgradePlanNativeOutlineView) {
+        func attach(_ outlineView: NSOutlineView) {
             self.outlineView = outlineView
         }
 
@@ -285,13 +292,15 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             self.parent = parent
             outlineView?.setAccessibilityLabel(parent.accessibilityLabel)
 
-            if columnLabels != parent.columnLabels {
+            let labelsChanged = columnLabels != parent.columnLabels
+            if labelsChanged {
                 columnLabels = parent.columnLabels
                 updateColumnLabels()
             }
 
             let modelChanged = sectionModels != parent.sections
                 || interactionsEnabled != parent.interactionsEnabled
+                || labelsChanged
             if modelChanged {
                 rebuildNodes(
                     from: parent.sections,
@@ -339,7 +348,8 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
         }
 
         func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-            item is SectionNode ? 28 : 50
+            if item is SectionNode { return 28 }
+            return (item as? RowNode)?.row.versions.isVisible == true ? 66 : 50
         }
 
         func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
@@ -485,6 +495,7 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
                 sequence: rowNode.row.sequence,
                 title: rowNode.row.title,
                 manager: rowNode.row.manager,
+                versions: rowNode.row.versions,
                 isIncluded: included,
                 isSelectable: rowNode.row.isSelectable,
                 status: rowNode.row.status,
@@ -533,6 +544,10 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             cell.titleLabel.toolTip = title
             cell.managerLabel.stringValue = row.manager
             cell.managerLabel.toolTip = row.manager
+            cell.versionLabel.stringValue = row.versions.isVisible ? row.versions.summary : ""
+            cell.versionLabel.isHidden = !row.versions.isVisible
+            cell.versionLabel.toolTip = row.versions.isVisible ? row.versions.accessibilitySummary : nil
+            cell.versionLabel.setAccessibilityLabel(cell.versionLabel.toolTip)
             cell.inclusionCheckbox.identifier = ColumnID.included
             cell.inclusionCheckbox.target = self
             cell.inclusionCheckbox.action = #selector(checkboxChanged(_:))
@@ -542,7 +557,8 @@ struct UpgradePlanOutlineView: NSViewRepresentable {
             cell.inclusionCheckbox.setAccessibilityLabel(
                 "\(columnLabels?.included ?? ""), \(row.title)"
             )
-            cell.setAccessibilityLabel("\(title), \(columnLabels?.manager ?? ""), \(row.manager)")
+            let versionSummary = row.versions.isVisible ? ", \(row.versions.accessibilitySummary)" : ""
+            cell.setAccessibilityLabel("\(title)\(versionSummary), \(columnLabels?.manager ?? ""), \(row.manager)")
             return cell
         }
 
@@ -604,6 +620,11 @@ private final class UpgradePlanOutlineRowView: NSTableRowView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override var interiorBackgroundStyle: NSView.BackgroundStyle {
+        // Our tinted card is not AppKit's emphasized fill; keep adaptive label colors.
+        drawsCard ? .normal : super.interiorBackgroundStyle
     }
 
     override func drawBackground(in dirtyRect: NSRect) {

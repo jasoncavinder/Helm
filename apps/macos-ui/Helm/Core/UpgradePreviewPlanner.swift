@@ -1,5 +1,24 @@
 import Foundation
 
+struct UpgradePlanVersionPresentation: Equatable {
+    let installed: String?
+    let target: String?
+
+    init(arguments: [String: String]) {
+        installed = PackageIdentity.normalizedKnownVersion(arguments["plan_installed_version"])
+        target = PackageIdentity.normalizedKnownVersion(arguments["plan_candidate_version"])
+    }
+
+    var isVisible: Bool { installed != nil || target != nil }
+    var installedText: String { installed ?? L10n.Common.unknown.localized }
+    var targetText: String { target ?? L10n.Common.unknown.localized }
+    var summary: String { "\(installedText) → \(targetText)" }
+    var accessibilitySummary: String {
+        "\(L10n.App.Inspector.installed.localized): \(installedText), "
+            + "\(L10n.App.Inspector.targetVersion.localized): \(targetText)"
+    }
+}
+
 struct UpgradePlanTaskProjection {
     let stepId: String
     let taskId: UInt64
@@ -132,6 +151,8 @@ struct UpgradePreviewPlanner {
     struct ExternalSparkleUpdate: Equatable {
         let id: String
         let packageName: String
+        var installedVersion: String?
+        var targetVersion: String?
     }
 
     static func externalSparklePackageId(stepId: String) -> String? {
@@ -293,6 +314,7 @@ struct UpgradePreviewPlanner {
         to backendSteps: [PlanStep],
         externalSparkleUpdates: [ExternalSparkleUpdate],
         helmUpdateVersion: String?,
+        helmInstalledVersion: String? = nil,
         externalSparkleReasonLabelKey: String,
         helmSelfUpdateReasonLabelKey: String
     ) -> [PlanStep] {
@@ -313,7 +335,11 @@ struct UpgradePreviewPlanner {
                     action: externalSparkleAction,
                     packageName: update.packageName,
                     reasonLabelKey: externalSparkleReasonLabelKey,
-                    reasonLabelArgs: ["package": update.packageName],
+                    reasonLabelArgs: [
+                        "package": update.packageName,
+                        "plan_installed_version": update.installedVersion,
+                        "plan_candidate_version": update.targetVersion,
+                    ].compactMapValues { $0 },
                     status: "requires_interaction"
                 )
             )
@@ -330,7 +356,11 @@ struct UpgradePreviewPlanner {
                     action: helmSelfUpdateAction,
                     packageName: "Helm",
                     reasonLabelKey: helmSelfUpdateReasonLabelKey,
-                    reasonLabelArgs: ["version": helmUpdateVersion],
+                    reasonLabelArgs: [
+                        "version": helmUpdateVersion,
+                        "plan_installed_version": helmInstalledVersion,
+                        "plan_candidate_version": helmUpdateVersion,
+                    ].compactMapValues { $0 },
                     status: "not_included"
                 )
             )

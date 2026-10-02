@@ -1,4 +1,5 @@
 {
+  "app.inspector.target_version": "Version cible",
   "app.managers.reorder.title": "Réorganiser le gestionnaire",
   "app.managers.reorder.move_up": "Monter",
   "app.managers.reorder.move_down": "Descendre",

@@ -3725,6 +3725,30 @@ fn apply_package_mutation_preview_policy(steps: &mut [FfiUpgradePlanStep], store
     }
 }
 
+// Capture display evidence in the reviewed plan, not from a later inventory refresh.
+fn capture_upgrade_plan_versions(steps: &mut [FfiUpgradePlanStep], outdated: &[OutdatedPackage]) {
+    for step in steps {
+        if step.package_name.starts_with("__") {
+            continue;
+        }
+        let mut matches = outdated.iter().filter(|row| {
+            row.package.manager.as_str() == step.manager_id && row.package.name == step.package_name
+        });
+        let Some(row) = matches.next() else { continue };
+        if matches.next().is_some() {
+            continue;
+        }
+        if let Some(installed) = &row.installed_version {
+            step.reason_label_args
+                .insert("plan_installed_version".into(), installed.clone());
+        }
+        step.reason_label_args.insert(
+            "plan_candidate_version".into(),
+            row.candidate_version.clone(),
+        );
+    }
+}
+
 fn manager_authority_key(id: ManagerId) -> &'static str {
     match helm_core::registry::manager(id).map(|descriptor| descriptor.authority) {
         Some(ManagerAuthority::Authoritative) => "authoritative",
@@ -8295,6 +8319,7 @@ pub extern "C" fn helm_preview_upgrade_plan(
         );
     }
 
+    capture_upgrade_plan_versions(&mut steps, &outdated);
     apply_package_mutation_preview_policy(&mut steps, &state.store);
     let json = match serde_json::to_string(&steps) {
         Ok(json) => json,
@@ -14149,6 +14174,76 @@ mod tests {
     }
 
     #[test]
+    fn plan_versions_capture_manager_scoped_snapshot_and_reject_review_drift() {
+        for manager in [
+            ManagerId::Cargo,
+            ManagerId::Uv,
+            ManagerId::HomebrewFormula,
+            ManagerId::Mas,
+        ] {
+            let mut steps = Vec::new();
+            push_upgrade_plan_step(&mut steps, manager, "demo".into(), false, &mut 0);
+            let mut row = outdated_pkg(manager, "demo", false);
+            row.installed_version = Some("1.0".into());
+            row.candidate_version = "2.0".into();
+            let other = outdated_pkg(ManagerId::Npm, "demo", false);
+            super::capture_upgrade_plan_versions(&mut steps, &[other, row.clone()]);
+            assert_eq!(steps[0].reason_label_args["plan_installed_version"], "1.0");
+            assert_eq!(steps[0].reason_label_args["plan_candidate_version"], "2.0");
+            let reviewed = steps.clone();
+            row.candidate_version = "3.0".into();
+            super::capture_upgrade_plan_versions(&mut steps, &[row]);
+            assert_eq!(
+                reviewed[0].reason_label_args["plan_candidate_version"],
+                "2.0"
+            );
+            assert!(retain_reviewed_upgrade_workflow_steps(&mut steps, &reviewed).is_err());
+        }
+    }
+
+    #[test]
+    fn plan_versions_omit_ambiguous_and_bulk_rows_but_keep_known_target() {
+        let mut steps = Vec::new();
+        let mut order = 0;
+        for name in ["duplicate", "missing", "target-only", "__all__"] {
+            push_upgrade_plan_step(&mut steps, ManagerId::Mas, name.into(), false, &mut order);
+        }
+        let duplicate = outdated_pkg(ManagerId::Mas, "duplicate", false);
+        let mut target_only = outdated_pkg(ManagerId::Mas, "target-only", false);
+        target_only.installed_version = None;
+        super::capture_upgrade_plan_versions(
+            &mut steps,
+            &[
+                duplicate.clone(),
+                duplicate,
+                target_only,
+                outdated_pkg(ManagerId::Mas, "__all__", false),
+            ],
+        );
+        for index in [0, 1, 3] {
+            assert!(
+                !steps[index]
+                    .reason_label_args
+                    .contains_key("plan_installed_version")
+            );
+            assert!(
+                !steps[index]
+                    .reason_label_args
+                    .contains_key("plan_candidate_version")
+            );
+        }
+        assert!(
+            !steps[2]
+                .reason_label_args
+                .contains_key("plan_installed_version")
+        );
+        assert_eq!(
+            steps[2].reason_label_args["plan_candidate_version"],
+            "1.1.0"
+        );
+    }
+
+    #[test]
     fn uv_plan_preserves_reviewed_store_and_version_and_rejects_drift() {
         let mut steps = Vec::new();
         let mut order = 0;
@@ -14268,6 +14363,14 @@ mod tests {
         };
         let reviewed = preview();
         assert_eq!(reviewed.len(), 1);
+        assert_eq!(
+            reviewed[0].reason_label_args["plan_installed_version"],
+            "1.0.0"
+        );
+        assert_eq!(
+            reviewed[0].reason_label_args["plan_candidate_version"],
+            "1.1.0"
+        );
         assert_eq!(
             reviewed[0]
                 .reason_label_args

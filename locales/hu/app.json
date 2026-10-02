@@ -1,4 +1,5 @@
 {
+  "app.inspector.target_version": "Célverzió",
   "app.managers.reorder.title": "Kezelő átrendezése",
   "app.managers.reorder.move_up": "Mozgatás fel",
   "app.managers.reorder.move_down": "Mozgatás le",
