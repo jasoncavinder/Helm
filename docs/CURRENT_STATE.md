@@ -8,8 +8,10 @@ The owner accepted the signed version-presentation checks, but reported poor
 selected-card contrast. Custom tinted Plan rows now retain adaptive label colors
 instead of AppKit's emphasized white text. All 450 Swift tests pass in the VM,
 including a negative-control selection regression; the unchanged Rust subtree
-retains its 118 passing FFI tests. Signed contrast recheck remains pending and
-the two prepared Cargo updates remain unexecuted.
+retains its 118 passing FFI tests. The owner accepted the signed contrast recheck
+on `52639a14`. Readback confirms the two prepared Cargo updates remain unexecuted,
+native receipts/binaries and earlier profiles are unchanged, and no failed or
+active task remains. Continue with the real Cargo GUI upgrade check.
 
 This document describes the current implementation status of Helm.
 

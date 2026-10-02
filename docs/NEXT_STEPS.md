@@ -3,10 +3,12 @@
 ## Immediate v0.20 Closeout
 
 The owner accepted the [Plan version-presentation correction](validation/v0.20-plan-version-presentation.md)
-on the preserved signed Cargo profile. Recheck only the selected-card contrast
-follow-up in Light/Dark, including focus changes, without executing the pending
-upgrades; then resume Cargo GUI parity. Do not reseed the fixture or repeat the
-accepted version/VoiceOver matrix or already accepted uv checks.
+and its selected-card contrast follow-up on the preserved signed Cargo profile.
+Continue on `52639a14`: review and run exactly hyperfine `1.18.0 -> 1.20.0` and
+sd `0.7.6 -> 1.0.0`, verify GUI completion/Library/Inspector reconciliation, then
+read back native versions, receipts/options, task outcomes and preserved profiles.
+Do not reseed the fixture or repeat the accepted presentation/VoiceOver matrix
+or already accepted uv checks. Cargo execution is still pending, not certified.
 
 Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
 GUI sequence now passes, including last-tool removal, empty-state search/refresh
