@@ -637,6 +637,7 @@ struct RedesignUpdatesSectionView: View {
                         sequence: sequence,
                         title: step.map(planStepTitle) ?? plannerStep.packageName,
                         manager: localizedManagerDisplayName(plannerStep.managerId),
+                        versions: UpgradePlanVersionPresentation(arguments: plannerStep.reasonLabelArgs),
                         isIncluded: selectedPlanStepIds.contains(plannerStep.id),
                         isSelectable: !(step?.isExecutionBlocked ?? true)
                             && (researchPlanProjection?.isSelectable(stepID: plannerStep.id) ?? true),
@@ -1230,6 +1231,13 @@ struct ReviewedUpgradeConfirmationSheet: View {
                                         Text(stepTitle(row.step))
                                             .font(.callout.weight(.medium))
                                             .lineLimit(2)
+                                        let versions = UpgradePlanVersionPresentation(arguments: row.step.reasonLabelArgs)
+                                        if versions.isVisible {
+                                            Text(versions.summary)
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundColor(.secondary)
+                                                .accessibilityLabel(versions.accessibilitySummary)
+                                        }
                                         Text(localizedManagerDisplayName(row.step.managerID))
                                             .font(.caption)
                                             .foregroundColor(.secondary)

@@ -2,6 +2,11 @@
 
 ## Immediate v0.20 Closeout
 
+First validate the [Plan version-presentation correction](validation/v0.20-plan-version-presentation.md)
+on the preserved signed Cargo profile. Confirm both transitions and localized
+Inspector fields without executing the pending upgrades; then resume Cargo GUI
+parity. Do not reseed the fixture or repeat already accepted uv checks.
+
 Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
 GUI sequence now passes, including last-tool removal, empty-state search/refresh
 and reinstall. The owner accepted fresh-install task 58 on signed `ef1e1eec`:

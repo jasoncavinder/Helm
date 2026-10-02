@@ -957,6 +957,8 @@ enum WholeWorkflowResearchPlanProjector {
         var arguments = [
             "manager": update.managerID,
             "package": update.packageName,
+            "plan_installed_version": update.installedVersion,
+            "plan_candidate_version": update.candidateVersion,
         ]
         if update.managerID == "rustup" {
             arguments["toolchain"] = update.packageName

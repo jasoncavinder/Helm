@@ -902,10 +902,15 @@ extension HelmCore {
             externalSparkleUpdates: externalSparklePackages.map {
                 UpgradePreviewPlanner.ExternalSparkleUpdate(
                     id: $0.id,
-                    packageName: $0.displayName
+                    packageName: $0.displayName,
+                    installedVersion: $0.version,
+                    targetVersion: $0.latestVersion
                 )
             },
             helmUpdateVersion: AppUpdateCoordinator.shared.availableUpdate?.displayVersion,
+            helmInstalledVersion: outdatedPackages.first {
+                $0.managerId == Self.helmSelfUpdateManagerId
+            }?.version,
             externalSparkleReasonLabelKey: L10n.App.Updates.Plan.externalSparkle,
             helmSelfUpdateReasonLabelKey: L10n.App.Updates.Plan.helmSelfUpdate
         )

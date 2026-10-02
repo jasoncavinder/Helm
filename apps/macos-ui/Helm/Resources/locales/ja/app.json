@@ -1,4 +1,5 @@
 {
+  "app.inspector.target_version": "更新先のバージョン",
   "app.managers.reorder.title": "マネージャーの並べ替え",
   "app.managers.reorder.move_up": "上へ移動",
   "app.managers.reorder.move_down": "下へ移動",

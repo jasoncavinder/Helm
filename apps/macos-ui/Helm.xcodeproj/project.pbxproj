@@ -150,6 +150,7 @@
 		R494000000000000000000001 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R494000000000000000000002 /* UpgradeSheetPresentationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = R494000000000000000000011 /* UpgradeSheetPresentationSupport.swift */; };
 		R495000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R495000000000000000000011 /* UpgradePlanOutlineView.swift */; };
+		R615000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = R495000000000000000000011 /* UpgradePlanOutlineView.swift */; };
 		W200000000000000000000001 /* EnvironmentBriefProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000001 /* EnvironmentBriefProjection.swift */; };
 		W200000000000000000000002 /* EnvironmentBriefProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000001 /* EnvironmentBriefProjection.swift */; };
 		W200000000000000000000003 /* EnvironmentBriefProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = W100000000000000000000002 /* EnvironmentBriefProjectionTests.swift */; };
@@ -1029,6 +1030,7 @@
 		C10000000000000000000008 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				R615000000000000000000001 /* UpgradePlanOutlineView.swift in Sources */,
 				R519000000000000000000001 /* Package.swift in Sources */,
 				R519000000000000000000002 /* LibraryPackageIndex.swift in Sources */,
 				R519000000000000000000003 /* LibraryPackageIndexTestSupport.swift in Sources */,

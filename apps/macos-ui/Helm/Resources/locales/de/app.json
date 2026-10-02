@@ -1,4 +1,5 @@
 {
+  "app.inspector.target_version": "Zielversion",
   "app.managers.reorder.title": "Manager neu ordnen",
   "app.managers.reorder.move_up": "Nach oben",
   "app.managers.reorder.move_down": "Nach unten",

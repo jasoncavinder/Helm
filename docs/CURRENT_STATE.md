@@ -1,5 +1,12 @@
 # Current State
 
+The signed Cargo GUI parity lane exposed missing Plan version transitions.
+The [version-presentation correction](validation/v0.20-plan-version-presentation.md)
+captures installed/candidate evidence in the reviewed plan and displays it in
+cards, confirmation and Inspector, without changing update execution policy.
+All 118 FFI and 449 Swift tests pass in the VM. Signed owner validation is pending;
+the two prepared Cargo updates remain unexecuted.
+
 This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.

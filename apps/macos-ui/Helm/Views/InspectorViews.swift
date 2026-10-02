@@ -103,7 +103,7 @@ struct ControlCenterInspectorView: View {
                         InspectorTaskDetailView(task: task)
                     } else if let step = selectedUpgradePlanStep {
                         if let task = selectedUpgradePlanTask {
-                            InspectorTaskDetailView(task: task)
+                            InspectorTaskDetailView(task: task, planVersionArguments: step.reasonLabelArgs)
                         } else {
                             InspectorUpgradePlanDetailView(
                                 step: step,
@@ -256,15 +256,7 @@ private struct InspectorUpgradePlanDetailView: View {
             }
 
             if let researchUpdate {
-                InspectorField(label: L10n.App.Inspector.installed.localized) {
-                    Text(researchUpdate.installedVersion)
-                        .font(.callout.monospacedDigit())
-                }
-
-                InspectorField(label: L10n.App.Inspector.latest.localized) {
-                    Text(researchUpdate.candidateVersion)
-                        .font(.callout.monospacedDigit())
-                }
+                InspectorPlanVersionFields(arguments: step.reasonLabelArgs)
 
                 if researchUpdate.pinned {
                     Label(L10n.App.Packages.Label.pinned.localized, systemImage: "pin.fill")
@@ -311,6 +303,22 @@ private struct InspectorUpgradePlanDetailView: View {
 
 // MARK: - Task Inspector
 
+private struct InspectorPlanVersionFields: View {
+    let arguments: [String: String]
+
+    var body: some View {
+        let versions = UpgradePlanVersionPresentation(arguments: arguments)
+        if versions.isVisible {
+            InspectorField(label: L10n.App.Inspector.installed.localized) {
+                Text(versions.installedText).font(.callout.monospacedDigit())
+            }
+            InspectorField(label: L10n.App.Inspector.targetVersion.localized) {
+                Text(versions.targetText).font(.callout.monospacedDigit())
+            }
+        }
+    }
+}
+
 private struct InspectorTaskDetailView: View {
     @ObservedObject private var core = HelmCore.shared
     @Environment(\.controlCenterLocaleRevision) private var localeRevision
@@ -325,6 +333,7 @@ private struct InspectorTaskDetailView: View {
     @State private var failedExternalSparkleStep: CoreUpgradePlanStep?
     private static let taskLogPageSize = 50
     let task: TaskItem
+    var planVersionArguments: [String: String]?
 
     var body: some View {
         content(forLocaleRevision: localeRevision)
@@ -346,6 +355,10 @@ private struct InspectorTaskDetailView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(L10n.App.Inspector.taskStatus.localized)
             .accessibilityValue(task.localizedStatus)
+
+            if let planVersionArguments {
+                InspectorPlanVersionFields(arguments: planVersionArguments)
+            }
 
             if let step = externalSparkleStep {
                 Button(L10n.App.Updates.openAppToUpdate.localized) {
