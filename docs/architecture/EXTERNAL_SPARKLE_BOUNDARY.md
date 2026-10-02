@@ -1,6 +1,6 @@
 # External Sparkle Update Boundary
 
-Status: shared-core policy and state-machine foundation only, 2026-09-28.
+Status: shared-core policy and native/helper-packaging foundations, 2026-10-02.
 This is not a working external updater, a security attestation, or permission to
 relax Helm's sandbox. The existing vendor-app handoff remains unchanged.
 
@@ -19,7 +19,8 @@ must validate its live caller using a system-enforced code-signing requirement,
 not trust a PID lookup or a client assertion. The selected helper identifier is
 `com.jasoncavinder.Helm.SparkleExternalUpdater`; the policy requires Helm's exact
 direct-consumer identity and team, a separately signed/notarized helper, and an
-unchanged sandbox on Helm itself. No helper target or executable is added here.
+unchanged sandbox on Helm itself. The standalone development helper target is
+not embedded in Helm, registered by the product, or permitted to install updates.
 
 Initial eligibility is intentionally narrow: standalone, signed Sparkle 2 app
 bundles in locally authorized `/Applications` or the current user's
@@ -93,6 +94,26 @@ Its non-deserializable evidence is only one input to the future runtime boundary
 it neither authenticates an XPC caller nor establishes target authority, sandbox
 inheritance, installer quiescence or permission to execute an update. No trusted
 `BoundaryObservation` is synthesized from this evidence alone.
+
+### Standalone Package And Bootstrap
+
+The [helper package](../validation/v0.20-sparkle-helper-package.md) links its own
+exact Sparkle 2.9.5 framework and checks the actual loaded framework path against
+its signed bundle. Staging validates Ventura slices, framework completeness,
+bounded/contained filesystem entries and fixed metadata, then removes developer
+loader paths from the copied executable before separately authorized signing.
+Structural validation does not substitute for upstream artifact checksums,
+codesign or notarization. `SPUUpdater` is never initialized in this foundation.
+
+The fixed per-user bootstrap Mach service has no caller-selected name or trust
+override. Both endpoints use the existing exact requirements and account checks.
+The helper re-observes itself, admits at most one connection, and bounds lifetime
+to 120 seconds; the existing five-second handshake deadline still applies.
+Only protocol version/random challenge exchange and cancellation exist. Temporary
+VM-only launch registration and the sandboxed test-host wrapper are QA fixtures,
+not a product launch strategy or shipping entitlement change. Successful native
+peer acceptance is a separate gate and cannot be inferred from compilation,
+unsigned tests or successful structural packaging.
 
 ## Verification
 
