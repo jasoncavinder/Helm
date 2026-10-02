@@ -9,9 +9,12 @@ selected-card contrast. Custom tinted Plan rows now retain adaptive label colors
 instead of AppKit's emphasized white text. All 450 Swift tests pass in the VM,
 including a negative-control selection regression; the unchanged Rust subtree
 retains its 118 passing FFI tests. The owner accepted the signed contrast recheck
-on `52639a14`. Readback confirms the two prepared Cargo updates remain unexecuted,
-native receipts/binaries and earlier profiles are unchanged, and no failed or
-active task remains. Continue with the real Cargo GUI upgrade check.
+on `52639a14`, followed by the real two-item Cargo GUI upgrade. Native binaries,
+receipts, GUI and same-build CLI agree on hyperfine 1.20.0 and sd 1.0.0; the Plan
+is empty. Native source/build options, manager preferences, pins and earlier
+profiles are preserved, with no failed or active task. Completed upgrade task 20
+was retained at readback; the other completed task was no longer retained, so no ID is
+inferred. Continue with bounded sd removal/reinstall while preserving hyperfine.
 
 This document describes the current implementation status of Helm.
 

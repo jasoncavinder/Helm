@@ -4,11 +4,14 @@
 
 The owner accepted the [Plan version-presentation correction](validation/v0.20-plan-version-presentation.md)
 and its selected-card contrast follow-up on the preserved signed Cargo profile.
-Continue on `52639a14`: review and run exactly hyperfine `1.18.0 -> 1.20.0` and
-sd `0.7.6 -> 1.0.0`, verify GUI completion/Library/Inspector reconciliation, then
-read back native versions, receipts/options, task outcomes and preserved profiles.
+The real GUI upgrade on `52639a14` also passes: hyperfine is 1.20.0 and sd is
+1.0.0, matching native receipts/binaries and the signed CLI, with an empty Plan
+and preserved source/build options, preferences and earlier profiles. Continue
+with GUI removal of sd only, confirm its native receipt/binary and installed
+inventory are absent while hyperfine remains unchanged, then prepare GUI reinstall.
 Do not reseed the fixture or repeat the accepted presentation/VoiceOver matrix
-or already accepted uv checks. Cargo execution is still pending, not certified.
+or already accepted uv checks. The bounded Cargo upgrade passes; removal/reinstall
+and separate release gates remain open.
 
 Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
 GUI sequence now passes, including last-tool removal, empty-state search/refresh
