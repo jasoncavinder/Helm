@@ -2,13 +2,16 @@
 
 ## Immediate v0.20 Closeout
 
-Complete independent review, current-head CI and merge of #616's
-[shipping first-run activation](validation/v0.20-shipping-first-run.md).
-Ordinary Debug/Release launches now select real versioned entry without a QA
-flag. The signed Release upgrade/relaunch/preservation delta now passes; keep
-#561 open through review/merge. Preserve that acceptance without repeating it.
-Resolve #603's newly observed Homebrew auto-update lock/progress-output refresh
-failures separately; this entry pass is not all-green adapter certification.
+Review and merge the [delegated Homebrew refresh correction](validation/v0.20-homebrew-refresh-policy.md)
+for #603 after current-head CI. Its process regressions and two cold-cache
+concurrent CLI rounds pass without package mutations or implicit brew updates;
+keep genuine diagnostics fail-closed. This is not final candidate certification.
+#616's [shipping first-run activation](validation/v0.20-shipping-first-run.md)
+is reviewed and merged at `63a210d4`, with all head checks passing. Ordinary
+Debug/Release launches select real versioned entry without a QA flag; the signed
+Release upgrade/relaunch/preservation delta passes. Preserve #561's bounded
+acceptance without repeating it, then continue the remaining Sparkle/certification
+and final integrated-candidate gates below.
 PR #615 is merged at `fa3b4f05` and integrated here. Preserve its Cargo/Plan
 acceptance; historical development-switch instructions below describe the
 earlier base, not a request to repeat accepted checks.
@@ -134,7 +137,7 @@ accepted owner checks without a relevant change.
 PRs #570/#571/#572 are also reviewed and merged. Preserve their verified-result
 persistence, candidate/retry binding and bounded authority-overlap coverage.
 
-1. Complete upgrade-first-run production entry (#561), using the implemented
+1. Preserve the completed upgrade-first-run production entry (#561), using the
    [shared acknowledgment foundation](validation/v0.20-first-run-acknowledgment.md).
    Use the [non-executing local observer](validation/v0.20-first-run-local-observation.md)
    for initial evidence, not ordinary detection/status APIs that can schedule
@@ -159,7 +162,8 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    shipping path. The bounded signed legacy-profile upgrade/relaunch check has
    passed, along with bounded repair consent and successful receipt readback.
    Signed Release continuation/readback/relaunch now pass on `d07bdc37`;
-   independent activation review/merge and integrated-candidate checks remain open.
+   independent activation review/merge are complete in #616. Integrated-candidate
+   checks remain open.
    This does not certify a
    Sparkle binary replacement. Broader persisted setup parity remains v0.21 scope.
    Preserve the [main-queue first-run reply boundary](validation/v0.20-first-run-reply-order.md)

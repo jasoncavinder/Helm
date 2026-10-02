@@ -5,7 +5,7 @@ use crate::adapters::colima::{
     colima_list_outdated_request,
 };
 use crate::adapters::detect_utils::which_executable;
-use crate::adapters::homebrew_named_outdated::run_named_brew_outdated;
+use crate::adapters::homebrew_named_outdated::{configure_brew_read, run_named_brew_outdated};
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::{run_and_collect_stdout, run_and_collect_version_output};
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -29,6 +29,9 @@ impl ProcessColimaSource {
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("{}:{path}", extra_paths.join(":"));
         request.command = request.command.env("PATH", new_path);
+        if program_name == "brew" {
+            request = configure_brew_read(request);
+        }
 
         if request.command.program.to_str() == Some(program_name)
             && let Some(exe) = which_executable(

@@ -370,3 +370,122 @@ fn brew_info_failure_is_not_relaxed_by_the_outdated_exception() {
         );
     }
 }
+
+#[test]
+fn delegated_brew_reads_disable_implicit_updates_without_changing_native_probes() {
+    let runtime = runtime();
+    let _guard = runtime.enter();
+    for manager in MANAGERS {
+        let executor = Arc::new(Executor::new(
+            ProcessExitStatus::ExitCode(1),
+            &payload(manager).to_string(),
+            "",
+        ));
+        adapter(manager, executor.clone())
+            .execute(AdapterRequest::Refresh(RefreshRequest))
+            .unwrap();
+        let requests = executor.requests.lock().unwrap();
+        let mut reads = 0;
+        for request in requests.iter() {
+            let is_brew = request.command.program.file_name().unwrap() == "brew";
+            for key in [
+                "HOMEBREW_NO_AUTO_UPDATE",
+                "HOMEBREW_NO_INSTALL_CLEANUP",
+                "HOMEBREW_NO_ENV_HINTS",
+            ] {
+                assert_eq!(
+                    request.command.env.get(key).map(String::as_str),
+                    is_brew.then_some("1"),
+                    "{manager:?} {key}: {request:?}"
+                );
+            }
+            if is_brew {
+                reads += 1;
+                assert!(!request.requires_elevation);
+                assert!(request.timeout.is_some());
+                assert!(!request.command.args.iter().any(|arg| arg == "--quiet"));
+            }
+        }
+        assert_eq!(reads, 2);
+    }
+}
+
+#[test]
+fn exact_successful_api_progress_allows_only_valid_named_update_results() {
+    let runtime = runtime();
+    let _guard = runtime.enter();
+    let progress = "==> Downloading Homebrew API data\n\u{2714}\u{fe0e} JSON API packages.arm64_golden_gate.jws.json\n";
+    for manager in MANAGERS {
+        let executor = Arc::new(Executor::new(
+            ProcessExitStatus::ExitCode(1),
+            &payload(manager).to_string(),
+            progress,
+        ));
+        let response = adapter(manager, executor)
+            .execute(AdapterRequest::Refresh(RefreshRequest))
+            .unwrap();
+        assert!(
+            matches!(response, AdapterResponse::SnapshotSync { outdated: Some(p), .. } if p.len() == 1)
+        );
+        for stdout in ["", "{}", r#"{"formulae":[],"casks":[]}"#, "invalid"] {
+            assert!(
+                collect(
+                    manager,
+                    Arc::new(Executor::new(
+                        ProcessExitStatus::ExitCode(1),
+                        stdout,
+                        progress,
+                    ))
+                )
+                .is_err()
+            );
+        }
+        for code in [2, 127] {
+            assert!(
+                collect(
+                    manager,
+                    Arc::new(Executor::new(
+                        ProcessExitStatus::ExitCode(code),
+                        &payload(manager).to_string(),
+                        progress,
+                    ))
+                )
+                .is_err()
+            );
+        }
+    }
+}
+
+#[test]
+fn api_progress_does_not_hide_locks_warnings_or_failed_downloads() {
+    let runtime = runtime();
+    let _guard = runtime.enter();
+    let progress = "==> Downloading Homebrew API data\n\u{2714}\u{fe0e} JSON API packages.arm64_golden_gate.jws.json\n";
+    for manager in MANAGERS {
+        for diagnostic in [
+            "lockf: 200: already locked\nError: Another `brew update` process is already running.",
+            "Warning: API download failed; using cached data.",
+            "Error: curl: (6) Could not resolve host",
+            "Error: Invalid usage: Options --quiet and --json are mutually exclusive.",
+            "\u{2718} JSON API packages.arm64_golden_gate.jws.json",
+            "unrecognized diagnostic",
+        ] {
+            for stderr in [
+                format!("{progress}{diagnostic}"),
+                format!("{diagnostic}\n{progress}"),
+            ] {
+                let error = collect(
+                    manager,
+                    Arc::new(Executor::new(
+                        ProcessExitStatus::ExitCode(1),
+                        &payload(manager).to_string(),
+                        &stderr,
+                    )),
+                )
+                .unwrap_err();
+                assert_eq!(error.kind, CoreErrorKind::ProcessFailure);
+                assert!(error.message.contains(diagnostic));
+            }
+        }
+    }
+}
