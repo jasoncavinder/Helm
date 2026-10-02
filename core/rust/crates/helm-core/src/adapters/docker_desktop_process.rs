@@ -6,7 +6,7 @@ use crate::adapters::docker_desktop::{
     DockerDesktopDetectOutput, DockerDesktopSource, docker_desktop_detect_request_for_plist,
     docker_desktop_homebrew_info_request, docker_desktop_list_outdated_request,
 };
-use crate::adapters::homebrew_named_outdated::run_named_brew_outdated;
+use crate::adapters::homebrew_named_outdated::{configure_brew_read, run_named_brew_outdated};
 use crate::adapters::manager::AdapterResult;
 use crate::adapters::process_utils::run_and_collect_stdout;
 use crate::execution::{ProcessExecutor, ProcessSpawnRequest};
@@ -30,6 +30,9 @@ impl ProcessDockerDesktopSource {
         let path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("{}:{path}", extra_paths.join(":"));
         request.command = request.command.env("PATH", new_path);
+        if program_name == "brew" {
+            request = configure_brew_read(request);
+        }
 
         if request.command.program.to_str() == Some(program_name)
             && let Some(exe) = which_executable(
