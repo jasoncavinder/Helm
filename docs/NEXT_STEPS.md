@@ -6,11 +6,13 @@ The owner accepted the [Plan version-presentation correction](validation/v0.20-p
 and its selected-card contrast follow-up on the preserved signed Cargo profile.
 The real GUI upgrade on `52639a14` also passes: hyperfine is 1.20.0 and sd is
 1.0.0, matching native receipts/binaries and the signed CLI, with an empty Plan
-and preserved source/build options, preferences and earlier profiles. Continue
-with GUI removal of sd only, confirm its native receipt/binary and installed
-inventory are absent while hyperfine remains unchanged, then prepare GUI reinstall.
+and preserved source/build options, preferences and earlier profiles. GUI removal
+of sd also passes as completed task 22, with native/GUI/CLI absence and unchanged
+hyperfine 1.20.0 receipt/binary. Continue with GUI installation of the exact Cargo
+result named sd (1.0.0) from genuine search task 21, then verify installed state,
+receipt/source/build policy, peer preservation and no failed/active task or update.
 Do not reseed the fixture or repeat the accepted presentation/VoiceOver matrix
-or already accepted uv checks. The bounded Cargo upgrade passes; removal/reinstall
+or already accepted uv checks. The bounded Cargo upgrade/removal pass; reinstall
 and separate release gates remain open.
 
 Continue item 12 with a separate isolated signed Cargo profile. The bounded uv

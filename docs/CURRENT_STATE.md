@@ -13,8 +13,12 @@ on `52639a14`, followed by the real two-item Cargo GUI upgrade. Native binaries,
 receipts, GUI and same-build CLI agree on hyperfine 1.20.0 and sd 1.0.0; the Plan
 is empty. Native source/build options, manager preferences, pins and earlier
 profiles are preserved, with no failed or active task. Completed upgrade task 20
-was retained at readback; the other completed task was no longer retained, so no ID is
-inferred. Continue with bounded sd removal/reinstall while preserving hyperfine.
+was retained at readback; the other completed task was no longer retained, so no
+ID is inferred. The subsequent GUI removal of sd completed as task 22: native
+receipt/executable and installed GUI/CLI inventory are absent, while hyperfine's
+1.20.0 receipt/binary are unchanged. No failed/active task or update remains,
+and preferences/earlier profiles are preserved. Genuine Cargo search task 21
+retains sd 1.0.0 for the remaining GUI reinstall check; do not reseed the profile.
 
 This document describes the current implementation status of Helm.
 
