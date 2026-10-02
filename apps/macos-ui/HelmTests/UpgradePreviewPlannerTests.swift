@@ -2,6 +2,53 @@ import SwiftUI
 import XCTest
 
 final class UpgradePreviewPlannerTests: XCTestCase {
+    func testPlanCardSelectionKeepsAdaptiveTextInEveryAppearanceAndFocusState() throws {
+        let row = UpgradePlanOutlineRow(
+            id: "cargo:sd", sequence: 1, title: "sd", manager: "Cargo",
+            versions: UpgradePlanVersionPresentation(arguments: [:]),
+            isIncluded: true, isSelectable: true, status: "Pending", statusTone: .standard, actionTitle: nil
+        )
+        let parent = UpgradePlanOutlineView(
+            sections: [.init(id: "standard", title: "Standard", summary: "1", rows: [row])],
+            selectedStepID: nil,
+            columnLabels: .init(update: "Update", manager: "Manager", included: "Included", status: "Status", action: "Action"),
+            accessibilityLabel: "Plan", interactionsEnabled: true,
+            onSelectStep: { _ in }, onSetIncluded: { _, _ in }, onPerformAction: { _ in }
+        )
+        let coordinator = parent.makeCoordinator()
+        let outline = NSOutlineView()
+        outline.dataSource = coordinator
+        outline.delegate = coordinator
+        coordinator.installColumns(in: outline)
+        coordinator.attach(outline)
+        defer { coordinator.detach() }
+        coordinator.update(parent: parent)
+        let section = coordinator.outlineView(outline, child: 0, ofItem: nil)
+        let item = coordinator.outlineView(outline, child: 0, ofItem: section)
+        let card = try XCTUnwrap(coordinator.outlineView(outline, rowViewForItem: item))
+        let group = try XCTUnwrap(coordinator.outlineView(outline, rowViewForItem: section))
+        let nativeRow = NSTableRowView()
+        let appearances: [NSAppearance.Name] = [
+            .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua
+        ]
+        for name in appearances {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            for selected in [false, true] {
+                for emphasized in [false, true] {
+                    for view in [card, group, nativeRow] {
+                        view.appearance = appearance
+                        view.selectionHighlightStyle = .regular
+                        view.isSelected = selected
+                        view.isEmphasized = emphasized
+                    }
+                    let context = "\(name.rawValue), selected: \(selected), emphasized: \(emphasized)"
+                    XCTAssertEqual(card.interiorBackgroundStyle, .normal, context)
+                    XCTAssertEqual(group.interiorBackgroundStyle, nativeRow.interiorBackgroundStyle, context)
+                }
+            }
+        }
+    }
+
     func testPlanNativeCardRendersVersionsAndNamesThemForAccessibility() throws {
         class ReusingOutline: NSOutlineView {
             var reusableView: NSView?

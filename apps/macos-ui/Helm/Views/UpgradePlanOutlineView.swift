@@ -622,6 +622,11 @@ private final class UpgradePlanOutlineRowView: NSTableRowView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var interiorBackgroundStyle: NSView.BackgroundStyle {
+        // Our tinted card is not AppKit's emphasized fill; keep adaptive label colors.
+        drawsCard ? .normal : super.interiorBackgroundStyle
+    }
+
     override func drawBackground(in dirtyRect: NSRect) {
         guard drawsCard else { return }
         let path = cardPath

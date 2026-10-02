@@ -4,7 +4,11 @@ The signed Cargo GUI parity lane exposed missing Plan version transitions.
 The [version-presentation correction](validation/v0.20-plan-version-presentation.md)
 captures installed/candidate evidence in the reviewed plan and displays it in
 cards, confirmation and Inspector, without changing update execution policy.
-All 118 FFI and 449 Swift tests pass in the VM. Signed owner validation is pending;
+The owner accepted the signed version-presentation checks, but reported poor
+selected-card contrast. Custom tinted Plan rows now retain adaptive label colors
+instead of AppKit's emphasized white text. All 450 Swift tests pass in the VM,
+including a negative-control selection regression; the unchanged Rust subtree
+retains its 118 passing FFI tests. Signed contrast recheck remains pending and
 the two prepared Cargo updates remain unexecuted.
 
 This document describes the current implementation status of Helm.

@@ -2,10 +2,11 @@
 
 ## Immediate v0.20 Closeout
 
-First validate the [Plan version-presentation correction](validation/v0.20-plan-version-presentation.md)
-on the preserved signed Cargo profile. Confirm both transitions and localized
-Inspector fields without executing the pending upgrades; then resume Cargo GUI
-parity. Do not reseed the fixture or repeat already accepted uv checks.
+The owner accepted the [Plan version-presentation correction](validation/v0.20-plan-version-presentation.md)
+on the preserved signed Cargo profile. Recheck only the selected-card contrast
+follow-up in Light/Dark, including focus changes, without executing the pending
+upgrades; then resume Cargo GUI parity. Do not reseed the fixture or repeat the
+accepted version/VoiceOver matrix or already accepted uv checks.
 
 Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
 GUI sequence now passes, including last-tool removal, empty-state search/refresh
