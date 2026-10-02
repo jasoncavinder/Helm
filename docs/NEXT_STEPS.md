@@ -6,12 +6,28 @@ Complete independent review and signed Release-path acceptance of the
 [shipping first-run activation](validation/v0.20-shipping-first-run.md).
 Ordinary Debug/Release launches now select real versioned entry without a QA
 flag. Keep #561 open until the upgrade/relaunch/preservation delta passes.
-PR #615 is independently under review; preserve its Cargo/Plan acceptance and
-integrate both heads before final candidate QA. Historical pending Cargo and
-development-switch instructions below describe the earlier base, not a request
-to repeat accepted checks.
+PR #615 is merged at `fa3b4f05` and integrated here. Preserve its Cargo/Plan
+acceptance; historical development-switch instructions below describe the
+earlier base, not a request to repeat accepted checks.
 
-Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
+The owner accepted the [Plan version-presentation correction](validation/v0.20-plan-version-presentation.md)
+and its selected-card contrast follow-up on the preserved signed Cargo profile.
+The real GUI upgrade on `52639a14` also passes: hyperfine is 1.20.0 and sd is
+1.0.0, matching native receipts/binaries and the signed CLI, with an empty Plan
+and preserved source/build options, preferences and earlier profiles. GUI removal
+of sd also passes as completed task 22, with native/GUI/CLI absence and unchanged
+hyperfine 1.20.0 receipt/binary. GUI reinstall also passes as completed task 24:
+sd 1.0.0 agrees across native executable/receipt, GUI and signed CLI, the fresh
+crates.io receipt has the exact version and expected build options, hyperfine
+is unchanged and no failed/active task or update remains. PR #615 is merged;
+continue the separately reviewed shipping first-run activation gate using
+the ordered release-readiness checklist below. Owner QA items 1-12 are accepted
+within their recorded scenarios, not a final integrated-release certification.
+Do not reseed the fixture or repeat the accepted presentation/VoiceOver matrix
+or already accepted Cargo/uv checks. Preserve the installed profiles and receipts;
+separate release gates remain open.
+
+Item 12's separate signed Cargo and uv scopes now pass. The bounded uv
 GUI sequence now passes, including last-tool removal, empty-state search/refresh
 and reinstall. The owner accepted fresh-install task 58 on signed `ef1e1eec`:
 Library/Inspector, native metadata, receipt and Helm inventory agree on smoke 2.0,
@@ -21,8 +37,8 @@ Preferences and earlier accepted profiles are unchanged. Preserve this state;
 do not repeat accepted uv checks without a relevant change. PR #613 is merged
 at `8c524f4d`; the signed product subtrees match. PR #614 records the acceptance
 and updated real CLI harness with 42 passing isolated lifecycle checks. This is
-not a PyPI catalog or GUI installation of a never-seen package by name. Separate
-Cargo parity and the remaining release gates are still open.
+not a PyPI catalog or GUI installation of a never-seen uv package by name. The
+remaining release gates are still open.
 The owner accepted the signed [package-uninstall confirmation correction](validation/v0.20-package-uninstall-confirmation.md)
 on `1bb4d0a6`: task 24 completed with native/database absence of smoke and an
 unchanged 1.0 peer receipt. All 240 CLI and 445 Swift tests pass. Its signed

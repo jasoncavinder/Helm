@@ -1,4 +1,5 @@
 {
+  "app.inspector.target_version": "Target Version",
   "app.managers.reorder.title": "Reorder manager",
   "app.managers.reorder.move_up": "Move up",
   "app.managers.reorder.move_down": "Move down",

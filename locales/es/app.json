@@ -1,4 +1,5 @@
 {
+  "app.inspector.target_version": "Versión de destino",
   "app.managers.reorder.title": "Reordenar gestor",
   "app.managers.reorder.move_up": "Subir",
   "app.managers.reorder.move_down": "Bajar",

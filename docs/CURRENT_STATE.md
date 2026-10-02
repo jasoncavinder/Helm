@@ -1,5 +1,30 @@
 # Current State
 
+The signed Cargo GUI parity lane exposed missing Plan version transitions.
+The [version-presentation correction](validation/v0.20-plan-version-presentation.md)
+captures installed/candidate evidence in the reviewed plan and displays it in
+cards, confirmation and Inspector, without changing update execution policy.
+The owner accepted the signed version-presentation checks, but reported poor
+selected-card contrast. Custom tinted Plan rows now retain adaptive label colors
+instead of AppKit's emphasized white text. All 450 Swift tests pass in the VM,
+including a negative-control selection regression; the unchanged Rust subtree
+retains its 118 passing FFI tests. The owner accepted the signed contrast recheck
+on `52639a14`, followed by the real two-item Cargo GUI upgrade. Native binaries,
+receipts, GUI and same-build CLI agree on hyperfine 1.20.0 and sd 1.0.0; the Plan
+is empty. Native source/build options, manager preferences, pins and earlier
+profiles are preserved, with no failed or active task. Completed upgrade task 20
+was retained at readback; the other completed task was no longer retained, so no
+ID is inferred. The subsequent GUI removal of sd completed as task 22: native
+receipt/executable and installed GUI/CLI inventory are absent, while hyperfine's
+1.20.0 receipt/binary are unchanged. No failed/active task or update remains,
+and preferences/earlier profiles are preserved. The owner then completed GUI
+reinstall from the genuine Cargo result: task 24 completed, native/GUI/CLI state
+agrees on sd 1.0.0, and its fresh crates.io receipt records the exact version and
+expected source/build options. Hyperfine's receipt/binary and earlier profiles
+are unchanged, with no failed/active task or update. Item 12's bounded Cargo and
+uv GUI lifecycle checks now pass; preserve both profiles. PR #615 is merged at
+`fa3b4f05`; shipping first-run acceptance and other release gates remain open.
+
 This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
@@ -10,7 +35,7 @@ Research previews remain Debug-only and cannot acknowledge the real experience.
 Legal/acknowledgment readback, finite reviewed repair and network-aware discovery
 are unchanged. Independent review and signed Release-path acceptance remain open
 for #561; the historical development-gate records below are not shipping evidence.
-This branch is independent of #615, whose accepted Cargo/Plan work is under review.
+The branch now includes merged #615 and preserves its accepted Cargo/Plan work.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
@@ -45,8 +70,8 @@ Library/Inspector, native metadata and Helm inventory agree on smoke 2.0. Its
 fresh unversioned receipt retains the offline source and selected Python; both
 entrypoints are valid, the removed peer remains absent, and no update or failed/
 active task remains. Preferences and earlier accepted profiles are unchanged.
-The bounded uv GUI parity sequence now passes; separate Cargo parity remains
-pending. No PyPI catalog, never-seen-name GUI install or shipping activation is
+The bounded uv GUI parity sequence now passes, as does the separate Cargo
+sequence recorded above. No PyPI catalog, never-seen-name uv GUI install or shipping activation is
 claimed. Preserve the installed uv profile rather than repeating the sequence.
 
 The remaining first-run pre-apply review presentation/accessibility check now
