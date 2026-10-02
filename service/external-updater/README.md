@@ -46,14 +46,17 @@ bidirectional code requirements as the anonymous transport. A manually prepared,
 temporary VM-only LaunchAgent is test infrastructure, **not** shipped service
 registration. The host accepts at most one admitted connection, re-observes its
 own identity before admission and exits within 120 seconds. It exports only the
-version/nonce handshake and cancellation, never paths, update requests or tokens.
+version/nonce handshake, never paths, update requests or authorization tokens.
+Cancellation is local connection invalidation, not an exported update command.
 
 `helm-external-bootstrap-probe` is a data-free QA test host. Testing real
 acceptance requires a separately signed/notarized sandboxed app wrapper with the
 exact caller identity/channel and only the named Mach-lookup sandbox exception.
 Never install or launch that identity-matching test app on the production host.
-Do not ship the probe, fixture wrapper or launch registration. A successful
-handshake would prove bounded transport acceptance, not permission to update.
+Do not ship the probe, fixture wrapper or launch registration. The signed VM
+handshake now passes, as do notarized wrong-identity/channel/unsandboxed-caller
+and impostor-helper rejection controls. This proves bounded transport acceptance,
+not permission to update or a shipping sandbox/launch strategy.
 See [package evidence and remaining gates](../../docs/validation/v0.20-sparkle-helper-package.md).
 
 ## Native Observation And Authentication
@@ -107,7 +110,7 @@ observation. Native message delivery enforces the live requirement.
 
 Incoming peers require the exact sandboxed Developer ID consumer Helm identity,
 team and signed distribution field; responses require the exact separate helper
-identity/team without sandbox inheritance. Both require notarization and exclude
+identity/team without a sandbox entitlement. Both require notarization and exclude
 debug injection entitlements. There is no environment/preference override, PID
 lookup, developer-build allowlist or weaker fallback. Same-account incoming
 connections are required and root/setuid process initialization is rejected.
@@ -121,9 +124,12 @@ cancellation or connection loss, with no reconnect. Readiness is not update
 consent, and the session nonce is not an authorization token. Response
 authentication alone does
 not prove that an outgoing request was never observed by an impostor endpoint.
-This package deliberately has no such operation request yet. Real accepted-peer,
-entitlement/notarization, service packaging and sandbox-access tests are still
-required; unsigned negative/control tests do not substitute for them.
+This package deliberately has no such operation request yet. The notarized VM
+impostor control demonstrates this distinction: it receives the data-free hello,
+but the real client rejects its reply. The accepted/rejected peer tests use a
+temporary per-user service and isolated QA app wrappers, not shipping service
+registration or a complete inherited-sandbox proof. Unsigned negative/control
+tests remain separate evidence.
 
 Compile on the host if needed; execute only in the designated VM or CI:
 

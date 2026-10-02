@@ -109,11 +109,17 @@ The fixed per-user bootstrap Mach service has no caller-selected name or trust
 override. Both endpoints use the existing exact requirements and account checks.
 The helper re-observes itself, admits at most one connection, and bounds lifetime
 to 120 seconds; the existing five-second handshake deadline still applies.
-Only protocol version/random challenge exchange and cancellation exist. Temporary
+Only protocol version/random challenge exchange is exported; cancellation is
+local connection invalidation, not an operational wire request. Temporary
 VM-only launch registration and the sandboxed test-host wrapper are QA fixtures,
 not a product launch strategy or shipping entitlement change. Successful native
-peer acceptance is a separate gate and cannot be inferred from compilation,
-unsigned tests or successful structural packaging.
+peer acceptance cannot be inferred from compilation, unsigned tests or successful
+structural packaging. The separately notarized arm64 VM test now passes actual
+helper self-observation and valid peer acceptance, plus notarized wrong-caller
+identity/channel/sandbox and impostor-helper rejection. The impostor receives
+the non-sensitive hello but cannot return a trusted reply. Do not send operational
+data before authenticated readiness. These bounded tests do not establish a
+shipping launch strategy, target authority or inherited-sandbox proof.
 
 ## Verification
 

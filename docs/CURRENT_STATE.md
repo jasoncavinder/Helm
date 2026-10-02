@@ -64,8 +64,14 @@ and merged at `47527960`. A [standalone helper package](validation/v0.20-sparkle
 now stages its own Sparkle 2.9.5 framework, confines loader paths and supplies a
 bounded data-free fixed-service bootstrap. Its 17 packaging regressions and all
 49 native package tests pass in the VM; a Developer ID signed but unnotarized
-helper correctly rejects startup. QA-only notarization is authorized, but local
-authentication/submission and positive signed-peer acceptance remain pending.
+helper correctly rejected startup before notarization. Apple has now accepted
+the QA helper, sandboxed test host and four negative controls. Stapled-ticket,
+strict-signature, Gatekeeper and actual helper self/framework checks pass in the
+VM. The real signed connection succeeds in both directions; notarized callers
+with the wrong identity/channel or without sandboxing are rejected, as is an
+impostor helper's reply. A fresh valid connection passes afterward. The helper's
+requirements and shipped app entitlements are unchanged; this is bounded
+transport evidence, not installation authority or complete sandbox-inheritance proof.
 Shipping helper integration, live native authority mapping and real update
 execution remain open under #607/#608; #606 is not closed by this slice.
 

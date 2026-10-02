@@ -12,11 +12,12 @@ Continue #607's operational external Sparkle helper boundary. The
 local fail-closed self-observation, not operational peer or installation proof.
 The [standalone helper package](validation/v0.20-sparkle-helper-package.md)
 now stages its own pinned framework and a bounded fixed-service bootstrap;
-it is not embedded in Helm. The owner authorized QA-only notarization, but
-submission and accepted signed/notarized peer evidence remain pending local
-notarization authentication. Complete that evidence, then fresh native
-authority/candidate mapping and durable-session binding. Do not relax the native
-requirements or use CI secrets outside their existing boundary. Keep #606/#607 open and retain Open App;
+it is not embedded in Helm. Authorized QA-only notarization and signed-peer
+acceptance/rejection now pass in the VM, with unchanged native trust requirements
+and a fresh positive control after four rejected peer variants. Independently
+review #619, then continue fresh native authority/candidate mapping and
+durable-session binding. Do not infer installation authority from the successful
+handshake or change shipping entitlements based on the QA fixture. Keep #606/#607 open and retain Open App;
 #608's real execution, verification and recovery follows that reviewed boundary.
 #616's [shipping first-run activation](validation/v0.20-shipping-first-run.md)
 is reviewed and merged at `63a210d4`, with all head checks passing. Ordinary
