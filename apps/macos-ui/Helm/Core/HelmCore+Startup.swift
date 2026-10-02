@@ -12,8 +12,8 @@ extension HelmCore {
             action: "connectionHandshake",
             taskType: "connection",
             operation: { completion in
-                // Keep legacy entry until the real first-run value flow is ready.
-                // Research previews must not persist product acknowledgment.
+                // Debug research/preview compatibility only. Normal builds use
+                // versioned entry; previews must not persist its acknowledgment.
                 service.prepareStartup(requireFirstRunAcknowledgment: false, withReply: completion)
             }
         ) { [weak self] json in

@@ -2,6 +2,15 @@
 
 ## Immediate v0.20 Closeout
 
+Complete independent review and signed Release-path acceptance of the
+[shipping first-run activation](validation/v0.20-shipping-first-run.md).
+Ordinary Debug/Release launches now select real versioned entry without a QA
+flag. Keep #561 open until the upgrade/relaunch/preservation delta passes.
+PR #615 is independently under review; preserve its Cargo/Plan acceptance and
+integrate both heads before final candidate QA. Historical pending Cargo and
+development-switch instructions below describe the earlier base, not a request
+to repeat accepted checks.
+
 Continue item 12 with a separate isolated signed Cargo profile. The bounded uv
 GUI sequence now passes, including last-tool removal, empty-state search/refresh
 and reinstall. The owner accepted fresh-install task 58 on signed `ef1e1eec`:
@@ -112,26 +121,26 @@ persistence, candidate/retry binding and bounded authority-overlap coverage.
    for initial evidence, not ordinary detection/status APIs that can schedule
    catalogs or repair preferences. The [two-step startup boundary](validation/v0.20-first-run-startup-gate.md)
    is implemented. The [real entry integration](validation/v0.20-first-run-entry-integration.md)
-   now selects its guarded policy under Debug-only `HELM_FIRST_RUN_PRODUCTION_QA=1`,
+   now selects its guarded policy by default in ordinary Debug/Release launches,
    verifies legal acceptance/acknowledgment readback, and keeps polling/updaters
-   behind activation. Shipping retains legacy compatibility. Candidate files
+   behind activation. Only Debug previews retain compatibility. Candidate files
    are not current readiness or action approval.
    Preserve main-queue first-run reply validation and both connection/controller
    generation fences when extending this flow.
    The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
    supplies the narrow stale-mise-override action and durable verified/unverified
-   outcomes through the prepared FFI boundary, not a shipping UI or general setup
+   outcomes through the prepared FFI boundary, not a general setup
    scheduler. The [guarded presentation](validation/v0.20-first-run-repair-presentation.md)
-   now wires explicit consent and durable receipt readback into the real Debug
+   now wires explicit consent and durable receipt readback into the real
    flow. The [Wayfinder evidence view](validation/v0.20-first-run-wayfinder-evidence.md)
    now groups real local observations without promoting candidate files to
-   readiness or cached status to live health. Complete signed visual and
-   accessibility acceptance of this new presentation before activation,
+   readiness or cached status to live health. Preserve bounded signed visual and
+   accessibility acceptance, and complete the Release-path activation delta
    preserving settings/data/consent; keep synthetic research flows out of the
    shipping path. The bounded signed legacy-profile upgrade/relaunch check has
    passed, along with bounded repair consent and successful receipt readback.
-   Remaining presentation/accessibility checks and the shipping activation
-   decision remain open. This does not certify a
+   Independent activation review and signed Release-path checks remain open.
+   This does not certify a
    Sparkle binary replacement. Broader persisted setup parity remains v0.21 scope.
    Preserve the [main-queue first-run reply boundary](validation/v0.20-first-run-reply-order.md)
    and both connection/controller generation fences when extending this flow.

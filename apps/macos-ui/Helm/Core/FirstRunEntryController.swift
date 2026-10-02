@@ -326,12 +326,18 @@ struct FirstRunLocalEvidence: Decodable {
 
 enum ProductionFirstRunGate {
     static var isEnabled: Bool {
+        isEnabled(environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func isEnabled(environment: [String: String]) -> Bool {
         #if DEBUG
-        return ProcessInfo.processInfo.environment["HELM_FIRST_RUN_PRODUCTION_QA"] == "1"
-            && !ResearchFixtureSafetyPolicy.blocksLiveOperations()
-            && EnvironmentBriefFixtureProvider.active() == nil
+        // Research/preview sessions must never acknowledge the shipping experience.
+        return !ResearchFixtureSafetyPolicy.blocksLiveOperations(environment: environment)
+            && EnvironmentBriefFixtureProvider.active(environment: environment) == nil
+            && EnvironmentBriefFirstRunConfiguration.mode(environment: environment) == .disabled
         #else
-        return false
+        // Shipping entry is not an environment opt-in (or opt-out).
+        return true
         #endif
     }
 }

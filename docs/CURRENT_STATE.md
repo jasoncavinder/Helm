@@ -4,6 +4,14 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
+selects the real versioned entry by default in ordinary Debug and Release builds.
+Research previews remain Debug-only and cannot acknowledge the real experience.
+Legal/acknowledgment readback, finite reviewed repair and network-aware discovery
+are unchanged. Independent review and signed Release-path acceptance remain open
+for #561; the historical development-gate records below are not shipping evidence.
+This branch is independent of #615, whose accepted Cargo/Plan work is under review.
+
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
 remains at 1.0. Package removal then exposed a
@@ -66,7 +74,8 @@ The temporary Homebrew fixture is restored; earlier accepted profiles and other
 formula versions are preserved. Completed task/log entries had already expired
 at readback, so no successful task ID, duration or cold-build result is claimed.
 Item 11's bounded lifecycle passes; Cargo GUI reconciliation remains pending.
-Shipping activation remains unchanged and gated.
+That owner QA used the guarded route; shipping activation has a separate
+[current evidence record](validation/v0.20-shipping-first-run.md).
 
 The owner-authorized issue closeout on 2026-09-30 closed #464 (Environment
 insertion reordering) and #529 (active-Space reopening) with their signed-VM
@@ -241,10 +250,11 @@ now consumes this evidence without synthetic progress or receipts. The
 [startup boundary](validation/v0.20-first-run-startup-gate.md)
 now separates storage preparation from runtime activation, enforces an optional
 saved-acknowledgment gate, and defers UI polling/updater checks until activation.
-Shipping builds still request legacy compatibility. Debug-only
-`HELM_FIRST_RUN_PRODUCTION_QA=1` selects the real prepared startup, required legal
-acceptance with durable readback, local observation, explicit acknowledgment and
-activation sequence. It preserves the independent legacy CLI onboarding flag.
+Normal builds now select real prepared startup, required legal acceptance with
+durable readback, local observation, explicit acknowledgment and activation.
+No QA environment switch is required. Debug research previews alone retain
+compatibility entry; Release ignores their selectors. The independent legacy
+CLI onboarding flag is preserved.
 First-run XPC reply validation and delivery are serialized on the main queue;
 connection invalidation and the controller generation fence reject stale replies.
 The [reviewed repair foundation](validation/v0.20-first-run-reviewed-repair.md)
@@ -252,19 +262,19 @@ adds one finite shared-core/FFI stale-mise-override action with explicit review,
 atomic preference/receipt persistence and bounded post-change verification.
 It does not claim PATH readiness or general manager health. The
 [guarded repair presentation](validation/v0.20-first-run-repair-presentation.md)
-now adds explicit review/consent and durable receipt readback to the Debug-only
-real entry. Failed replies never cause automatic reapplication; interrupted
+adds explicit review/consent and durable receipt readback to the real entry.
+Failed replies never cause automatic reapplication; interrupted
 checks remain unverified. The
 [Wayfinder evidence presentation](validation/v0.20-first-run-wayfinder-evidence.md)
 now gives the real local evidence a fixed-action, source-list-only scrolling
 layout with explicit file-versus-readiness and saved-preference distinctions.
-All 410 Swift tests pass in the VM. Shipping activation and signed visual,
-consent/accessibility QA remain open.
+Its original 410-test VM pass and later bounded signed owner acceptance are
+recorded separately from the shipping activation's Release-path verification.
 The [reply-order correction](validation/v0.20-first-run-reply-order.md) now places
 both JSON and Boolean first-run XPC connection checks on the main queue before
 controller delivery, preventing off-main reads during disconnect/reconnect.
-Production activation and signed upgrade-path QA remain pending; the research
-route stays development-gated. Read-only
+Signed Release-path acceptance remains pending; the research route stays
+development-gated. Read-only
 production task investigation identified three cause groups: unavailable selected
 rustup Cargo component (84), DNS resolution during rustup check (124), and
 slint-viewer/rustix dependency compilation (229/326). The
