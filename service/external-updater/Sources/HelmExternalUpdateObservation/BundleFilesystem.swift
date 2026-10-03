@@ -71,7 +71,7 @@ struct BundleFilesystem {
         return TreeSnapshot(entries: entries, unsafePermissions: unsafe)
     }
 
-    func unsafePermissions(_ url: URL, identity: FileIdentity, allowAdminGroup: Bool = false) throws -> Bool {
+    func unsafePermissions(_ url: URL, identity: FileIdentity, allowAdminGroup: Bool = false, rejectAllowACL: Bool = false) throws -> Bool {
         // O_NOFOLLOW protects only the final component. Refuse aliases anywhere
         // in the path when opening the object whose permissions were inspected.
         let descriptor = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW_ANY | O_NONBLOCK)
@@ -103,6 +103,7 @@ struct BundleFilesystem {
             var tag = ACL_UNDEFINED_TAG
             guard acl_get_tag_type(entry, &tag) == 0 else { throw ObservationFailure.unreadablePermissions }
             if tag == ACL_EXTENDED_ALLOW {
+                if rejectAllowACL { unsafe = true }
                 var permissions: acl_permset_t?
                 guard acl_get_permset(entry, &permissions) == 0, let permissions else { throw ObservationFailure.unreadablePermissions }
                 for permission in [ACL_WRITE_DATA, ACL_APPEND_DATA, ACL_DELETE, ACL_DELETE_CHILD,

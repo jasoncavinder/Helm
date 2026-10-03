@@ -6,7 +6,7 @@
 
 /* Private in-process ABI. NEVER accept these facts from XPC/JSON clients.
  * All pointers are borrowed, immutable and readable for the synchronous call.
- * No pointer/string is retained, and no database or installation is touched. */
+ * No pointer/string is retained. Preflight never touches a database/install. */
 typedef struct {
     const uint8_t *data;
     size_t length;
@@ -46,5 +46,10 @@ uint32_t helm_external_target_preflight(const HelmExternalNativeTarget *input);
 /* Request bytes are untrusted JSON; the root and target are local native facts. */
 uint32_t helm_external_preflight_request(HelmExternalBytes request, HelmExternalBytes user_root);
 uint32_t helm_external_requested_preflight(const HelmExternalNativeTarget *input, HelmExternalBytes request);
+
+/* Separate native-only initializer. The caller MUST hold its private path lease.
+ * No DB override may come from XPC/HOME/preferences. Returns 1 on preparation,
+ * 0 on rejection; neither grants adoption, update consent or install authority. */
+uint32_t helm_external_ledger_prepare(HelmExternalBytes path, uint8_t fresh);
 
 #endif

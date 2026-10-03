@@ -181,6 +181,18 @@ grant or trust an output receipt supplied by the client.
 
 ### Standalone Package And Bootstrap
 
+The [private ledger boundary](../validation/v0.20-sparkle-private-ledger.md) adds
+an explicit native helper preparation command, not an XPC mutation. Its fixed
+OS-account namespace is separate from Helm's app/development databases. Native
+owner-only storage, descriptor revalidation and a cooperative exclusive lock
+surround strict core initialization/reopen. Missing or incomplete existing
+storage, unsafe sidecars and drift fail closed; no automatic reset, consent
+import or authority grant occurs. Bootstrap/preflight remain database-free.
+This is not tamper-proof storage against the same account/root or historical
+backup restoration, nor an atomic exclusion of unrelated processes. Native
+session integration must retain the lease around every future ledger operation,
+not cache a path or expose a bare store after validation.
+
 The [helper package](../validation/v0.20-sparkle-helper-package.md) links its own
 exact Sparkle 2.9.5 framework and checks the actual loaded framework path against
 its signed bundle. Staging validates Ventura slices, framework completeness,

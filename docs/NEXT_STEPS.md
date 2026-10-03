@@ -34,15 +34,18 @@ for known manager ownership. The [core adoption foundation](validation/v0.20-spa
 is reviewed and merged through #622 at `68363740`. The bounded
 [native-to-core preflight bridge](validation/v0.20-sparkle-native-core-bridge.md)
 is reviewed and merged through #623 at `6b5bb757`, with all checks passing.
-Review the [authenticated read-only app request](validation/v0.20-sparkle-authenticated-preflight.md)
-next; it remains read-only, does not resolve saved consent and never promotes
+The [authenticated read-only app request](validation/v0.20-sparkle-authenticated-preflight.md)
+is reviewed and merged through #624 at `41024989`; it remains read-only, does not resolve saved consent and never promotes
 unknown origin. Preserve exact request/native identity binding, per-connection
 replay/size/work limits, deadline checks independent of timer delivery and
 loss-driven result suppression. Fresh current-source signed/notarized request
 acceptance and peer-negative controls now pass in the VM; preserve that bounded
-evidence without relabeling it as install authority. Complete #624's review and
-head CI before integration.
-Continue with helper-owned ledger/native-session integration,
+evidence without relabeling it as install authority. All #624 head checks passed.
+Review the [private helper ledger boundary](validation/v0.20-sparkle-private-ledger.md)
+next. Explicit preparation is separate from read-only preflight; missing or unsafe
+existing stores are not automatically repaired or recreated. Keep normal app data
+and helper consent/session storage separate, and never accept a client DB path.
+Continue with authenticated ledger/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
 until the operational boundary and real lifecycle/recovery gates pass.

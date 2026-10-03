@@ -147,7 +147,19 @@ PR #624's current-source QA helper/test host are now notarized and pass real
 authenticated VM preflight, changed-build/missing-target diagnostics, out-of-root
 request rejection, all four signed peer-negative controls and fresh positive
 controls afterward. No update permission or database is created; the temporary
-test service is removed. Independent review and head CI remain required.
+test service is removed. PR #624 is reviewed and merged at `41024989`, with all
+head checks passing.
+
+The [native helper ledger boundary](validation/v0.20-sparkle-private-ledger.md)
+adds explicit preparation of a separate OS-account-derived private store. Native
+descriptor/permission/ACL/sidecar checks and an exclusive cooperative lock surround
+core initialization; SQLite opens refuse missing-file recreation and aliases.
+Existing incomplete stores fail before normal WAL setup, preserving empty-file
+evidence. Existing migration identities and ordinary app database behavior are
+unchanged. Only the explicit helper command prepares storage; authenticated app
+preflight remains read-only. This does not grant adoption, resolve manager
+authority, add a wire mutation or enable installation. Review/CI and the remaining
+ownership, authenticated session and real Sparkle lifecycle gates remain separate.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

@@ -2,11 +2,11 @@ import Foundation
 import HelmExternalUpdateObservation
 import Sparkle
 
-// Inspection and authenticated read-only app preflight only. Never initialize
+// Inspection, read-only app preflight and private storage preparation. Never initialize
 // SPUUpdater or accept a feed, install command or authorization grant.
 guard CommandLine.arguments.count == 2,
-      ["--preflight", "--serve-bootstrap"].contains(CommandLine.arguments[1]) else {
-    FileHandle.standardError.write(Data("Use --preflight or --serve-bootstrap; direct updates are disabled.\n".utf8))
+      ["--preflight", "--serve-bootstrap", "--prepare-ledger"].contains(CommandLine.arguments[1]) else {
+    FileHandle.standardError.write(Data("Use --preflight, --serve-bootstrap or --prepare-ledger; direct updates are disabled.\n".utf8))
     exit(64)
 }
 
@@ -29,7 +29,10 @@ do {
           framework.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "2.9.5" else {
         throw HelperObservationFailure.invalidMetadata
     }
-    if CommandLine.arguments[1] == "--preflight" {
+    if CommandLine.arguments[1] == "--prepare-ledger" {
+        try NativeHelperLedger(identity: helper).prepare()
+        FileHandle.standardOutput.write(Data("{\"ledgerReady\":true,\"directUpdatesEnabled\":false}\n".utf8))
+    } else if CommandLine.arguments[1] == "--preflight" {
         let report = PreflightReport(helper: helper, frameworkPath: frameworkPath, frameworkVersion: "2.9.5")
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

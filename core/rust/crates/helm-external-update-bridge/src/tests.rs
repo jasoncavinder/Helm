@@ -11,6 +11,102 @@ fn b(value: &[u8]) -> Bytes {
     }
 }
 
+fn prepare_ledger(path: &std::path::Path, fresh: u8) -> u32 {
+    unsafe { helm_external_ledger_prepare(b(path.to_str().unwrap().as_bytes()), fresh) }
+}
+
+#[test]
+fn helper_ledger_initialization_reopen_and_no_implicit_authority() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ledger.sqlite");
+    std::fs::File::create(&path).unwrap();
+    assert_eq!(prepare_ledger(&path, 1), 1);
+    assert_eq!(prepare_ledger(&path, 0), 1);
+    let store = SqliteStore::new(&path);
+    let target = std::path::Path::new("/Applications/Example.app");
+    assert!(store.external_update_adoption(target).unwrap().is_none());
+    let revocation = store.revoke_external_update_adoption(target).unwrap();
+    assert_eq!(prepare_ledger(&path, 0), 1);
+    assert_eq!(
+        store.external_update_adoption(target).unwrap().unwrap(),
+        revocation
+    );
+    assert_eq!(preflight(&fixture()), UNRESOLVED);
+}
+
+#[test]
+fn helper_ledger_never_creates_missing_file_or_parent() {
+    let temp = tempfile::tempdir().unwrap();
+    for path in [
+        temp.path().join("ledger.sqlite"),
+        temp.path().join("missing/ledger.sqlite"),
+    ] {
+        for fresh in [0, 1] {
+            assert_eq!(prepare_ledger(&path, fresh), 0);
+        }
+        assert!(!path.exists());
+    }
+    assert!(!temp.path().join("missing").exists());
+}
+
+#[test]
+fn helper_ledger_rejects_existing_empty_corrupt_or_wrong_freshness() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ledger.sqlite");
+    std::fs::write(&path, []).unwrap();
+    assert_eq!(prepare_ledger(&path, 0), 0);
+    assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+    std::fs::write(&path, b"corrupt").unwrap();
+    assert_eq!(prepare_ledger(&path, 0), 0);
+    assert_eq!(std::fs::read(&path).unwrap(), b"corrupt");
+    std::fs::write(&path, []).unwrap();
+    assert_eq!(prepare_ledger(&path, 1), 1);
+    assert_eq!(prepare_ledger(&path, 1), 0);
+    assert_eq!(prepare_ledger(&path, 2), 0);
+    assert_eq!(prepare_ledger(&path, 0), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn helper_ledger_sqlite_nofollow_refuses_final_alias() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("target");
+    std::fs::write(&target, []).unwrap();
+    let path = temp.path().join("ledger.sqlite");
+    std::os::unix::fs::symlink(&target, &path).unwrap();
+    assert_eq!(prepare_ledger(&path, 1), 0);
+    assert_eq!(std::fs::read(&target).unwrap(), b"");
+}
+
+#[test]
+fn helper_ledger_rejects_invalid_abi_input() {
+    for path in [
+        b"".as_slice(),
+        b"ledger.sqlite",
+        b"/tmp/helm.db",
+        b"/tmp/ledger.sqlite\0",
+        b"\xff",
+    ] {
+        assert_eq!(unsafe { helm_external_ledger_prepare(b(path), 0) }, 0);
+    }
+    assert_eq!(
+        unsafe {
+            helm_external_ledger_prepare(
+                Bytes {
+                    data: std::ptr::null(),
+                    length: 1,
+                },
+                0,
+            )
+        },
+        0
+    );
+    assert_eq!(
+        unsafe { helm_external_ledger_prepare(b(&[b'a'; 4097]), 0) },
+        0
+    );
+}
+
 fn fixture() -> NativeTarget {
     NativeTarget {
         abi_version: 1,
