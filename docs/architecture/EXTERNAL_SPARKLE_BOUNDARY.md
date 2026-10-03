@@ -95,6 +95,17 @@ it neither authenticates an XPC caller nor establishes target authority, sandbox
 inheritance, installer quiescence or permission to execute an update. No trusted
 `BoundaryObservation` is synthesized from this evidence alone.
 
+The [helper filesystem boundary](../validation/v0.20-sparkle-path-authority.md)
+also checks the helper's complete bounded bundle tree and every parent through
+the filesystem root. Only root/current-account ownership is accepted; mutation
+grants in mode bits or ACLs fail closed, apart from `/Applications`' existing
+root-owned admin-group mode allowance. Full filesystem snapshots must agree
+around signing validation and across the two self-observations. Contained,
+resolvable framework symlinks remain supported; permission/metadata descriptor
+opens refuse aliases in any component. This is a read-only observation, not an
+atomic lease, a shipping installation-root policy or proof of manager provenance.
+Re-observation at future review/confirmation/handoff boundaries remains required.
+
 ### Standalone Package And Bootstrap
 
 The [helper package](../validation/v0.20-sparkle-helper-package.md) links its own

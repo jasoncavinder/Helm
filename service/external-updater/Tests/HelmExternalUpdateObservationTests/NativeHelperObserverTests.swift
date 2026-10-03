@@ -20,9 +20,14 @@ final class NativeHelperObserverTests: XCTestCase {
 
     private func snapshot(path: String = "/Applications/HelmSparkleExternalUpdater.app",
                           inode: ino_t = 123, changed: Int = 10, values: [String: Any]? = nil) throws -> HelperSnapshot {
-        HelperSnapshot(path: path,
-                       file: HelperFileIdentity(device: 1, inode: inode, changedSeconds: changed, changedNanoseconds: 0),
-                       signature: try HelperSignature(values: values ?? metadata()))
+        var file = stat()
+        file.st_dev = 1
+        file.st_ino = inode
+        file.st_ctimespec.tv_sec = changed
+        return HelperSnapshot(path: path,
+                              filesystem: HelperFilesystemSnapshot(ancestors: [:], tree: .init(
+                                entries: [path: FileIdentity(file)], unsafePermissions: false)),
+                              signature: try HelperSignature(values: values ?? metadata()))
     }
 
     private func replacingInfo(_ key: String, _ value: Any?) -> [String: Any] {
@@ -125,6 +130,31 @@ final class NativeHelperObserverTests: XCTestCase {
         _ = try observer.observeSelf()
         XCTAssertThrowsError(try observer.observeSelf())
         XCTAssertEqual(calls, 3)
+    }
+
+    func testAncestorAndDescendantDriftRejectsUnchangedCodeIdentity() throws {
+        let original = try snapshot()
+        var status = stat()
+        status.st_ino = 456
+        let identity = FileIdentity(status)
+        var entries = original.filesystem.tree.entries
+        entries[original.path + "/Contents/MacOS/Updater"] = identity
+        let changedFilesystems = [
+            HelperFilesystemSnapshot(ancestors: ["/Applications": identity], tree: original.filesystem.tree),
+            HelperFilesystemSnapshot(ancestors: original.filesystem.ancestors,
+                                     tree: .init(entries: entries, unsafePermissions: false))
+        ]
+        for filesystem in changedFilesystems {
+            var captures = 0
+            let observer = NativeHelperObserver(testingCapture: {
+                captures += 1
+                return captures == 1 ? original : HelperSnapshot(
+                    path: original.path, filesystem: filesystem, signature: original.signature)
+            })
+            XCTAssertThrowsError(try observer.observeSelf()) { error in
+                XCTAssertEqual(error as? HelperObservationFailure, .changedDuringObservation)
+            }
+        }
     }
 
     func testExactHelperAndTeamIdentityRequired() {

@@ -38,7 +38,7 @@ struct NativeSigningEvidence {
 public struct NativeTargetObserver {
     private let roots: [URL]
     private let signer: (URL) throws -> NativeSigningEvidence
-    private let entryLimit: Int
+    private let filesystem: BundleFilesystem
 
     public init() {
         // Resolve the account through the OS, not a caller-controlled HOME value.
@@ -53,7 +53,7 @@ public struct NativeTargetObserver {
 
     init(roots: [URL], entryLimit: Int = 100_000, signer: @escaping (URL) throws -> NativeSigningEvidence) {
         self.roots = roots
-        self.entryLimit = entryLimit
+        self.filesystem = BundleFilesystem(entryLimit: entryLimit)
         self.signer = signer
     }
 
@@ -62,8 +62,8 @@ public struct NativeTargetObserver {
         let before = try FileIdentity.read(target)
         guard before.isDirectory else { throw ObservationFailure.unsupportedFile }
         guard roots.contains(where: { Self.contains($0, target) }) else { throw ObservationFailure.outsideRoots }
-        let ancestors = try checkAncestors(target)
-        let permissions = try inspectTree(target)
+        let ancestors = try filesystem.ancestors(of: target)
+        let permissions = try filesystem.tree(at: target)
         let infoURL = target.appendingPathComponent("Contents/Info.plist")
         let infoBytes = try boundedRead(infoURL)
         let frameworkURL = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources/Info.plist")
@@ -100,9 +100,9 @@ public struct NativeTargetObserver {
               target.path == target.resolvingSymlinksInPath().path else {
             throw ObservationFailure.changedDuringObservation
         }
-        let afterPermissions = try inspectTree(target)
+        let afterPermissions = try filesystem.tree(at: target)
         guard permissions == afterPermissions,
-              ancestors == (try checkAncestors(target)) else {
+              ancestors == (try filesystem.ancestors(of: target)) else {
             throw ObservationFailure.changedDuringObservation
         }
         return NativeTargetEvidence(
@@ -133,114 +133,8 @@ public struct NativeTargetObserver {
         return target
     }
 
-    private func checkAncestors(_ target: URL) throws -> [String: FileIdentity] {
-        var parent = target.deletingLastPathComponent()
-        var identities: [String: FileIdentity] = [:]
-        // An OS-account Applications path is not a trust boundary for its
-        // parents: a writable home directory could replace that entire root.
-        while true {
-            let info = try FileIdentity.read(parent)
-            guard info.isDirectory, info.owner == 0 || info.owner == geteuid(), info.mode & 0o002 == 0 else {
-                throw ObservationFailure.unsafeOwnership
-            }
-            // /Applications may be group-admin writable. Nested directories do
-            // not inherit that exception and must not grant mutation via ACLs.
-            let allowAdminGroup = parent.path == "/Applications" && info.owner == 0
-                && getgrnam("admin").map({ $0.pointee.gr_gid == info.group }) == true
-            if try unsafePermissions(parent, identity: info, allowAdminGroup: allowAdminGroup) {
-                throw ObservationFailure.unsafeOwnership
-            }
-            identities[parent.path] = info
-            if parent.path == "/" { break }
-            parent.deleteLastPathComponent()
-        }
-        return identities
-    }
-
-    private struct TreeSnapshot: Equatable {
-        let entries: [String: FileIdentity]
-        let unsafePermissions: Bool
-    }
-
-    private func inspectTree(_ target: URL) throws -> TreeSnapshot {
-        var failed = false
-        guard let enumerator = FileManager.default.enumerator(at: target, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in
-            failed = true
-            return false
-        }) else { throw ObservationFailure.unsupportedFile }
-        var entries: [String: FileIdentity] = [:]
-        var unsafe = false
-        func inspect(_ url: URL) throws {
-            guard entries.count < entryLimit else { throw ObservationFailure.limitExceeded }
-            let info = try FileIdentity.read(url)
-            guard info.owner == 0 || info.owner == geteuid() else { throw ObservationFailure.unsafeOwnership }
-            entries[url.path] = info
-            if info.isSymlink {
-                guard Self.contains(target, url.resolvingSymlinksInPath()) else { throw ObservationFailure.outsideRoots }
-                return
-            }
-            guard info.isRegular || info.isDirectory else { throw ObservationFailure.unsupportedFile }
-            unsafe = try unsafePermissions(url, identity: info) || unsafe
-        }
-        try inspect(target)
-        while let object = enumerator.nextObject() {
-            guard let url = object as? URL else { throw ObservationFailure.unsupportedFile }
-            try inspect(url)
-        }
-        guard !failed else { throw ObservationFailure.unsupportedFile }
-        return TreeSnapshot(entries: entries, unsafePermissions: unsafe)
-    }
-
-    private func unsafePermissions(_ url: URL, identity: FileIdentity, allowAdminGroup: Bool = false) throws -> Bool {
-        let descriptor = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
-        guard descriptor >= 0 else { throw ObservationFailure.unreadablePermissions }
-        defer { close(descriptor) }
-        guard identity == (try FileIdentity.read(descriptor: descriptor)) else { throw ObservationFailure.changedDuringObservation }
-        // acl_get_fd_np reports ENOENT when no ACL is attached. Query the
-        // successfully fetched security descriptor instead of treating every
-        // ENOENT as safe (or rejecting ordinary files with no ACL).
-        guard let security = filesec_init() else { throw ObservationFailure.unreadablePermissions }
-        defer { filesec_free(security) }
-        var status = stat()
-        guard fstatx_np(descriptor, &status, security) == 0,
-              identity == FileIdentity(status) else { throw ObservationFailure.unreadablePermissions }
-        var present: Int32 = 0
-        guard filesec_query_property(security, FILESEC_ACL, &present) == 0 else { throw ObservationFailure.unreadablePermissions }
-        var unsafe = identity.mode & (allowAdminGroup ? 0o002 : 0o022) != 0
-        guard present != 0 else { return unsafe }
-        var value: acl_t?
-        guard filesec_get_property(security, FILESEC_ACL, &value) == 0, let acl = value else {
-            throw ObservationFailure.unreadablePermissions
-        }
-        defer { acl_free(UnsafeMutableRawPointer(acl)) }
-        guard acl_valid(acl) == 0 else { throw ObservationFailure.unreadablePermissions }
-        var entry: acl_entry_t?
-        var position = ACL_FIRST_ENTRY
-        while true {
-            let result = acl_get_entry(acl, Int32(position.rawValue), &entry)
-            if result == -1, errno == EINVAL { break }
-            guard result == 0, let entry else { throw ObservationFailure.unreadablePermissions }
-            position = ACL_NEXT_ENTRY
-            var tag = ACL_UNDEFINED_TAG
-            guard acl_get_tag_type(entry, &tag) == 0 else { throw ObservationFailure.unreadablePermissions }
-            if tag == ACL_EXTENDED_ALLOW {
-                var permissions: acl_permset_t?
-                guard acl_get_permset(entry, &permissions) == 0, let permissions else { throw ObservationFailure.unreadablePermissions }
-                for permission in [ACL_WRITE_DATA, ACL_APPEND_DATA, ACL_DELETE, ACL_DELETE_CHILD,
-                                   ACL_WRITE_ATTRIBUTES, ACL_WRITE_EXTATTRIBUTES, ACL_WRITE_SECURITY, ACL_CHANGE_OWNER] {
-                    let value = acl_get_perm_np(permissions, permission)
-                    guard value >= 0 else { throw ObservationFailure.unreadablePermissions }
-                    // Conservative even for an owner-only grant: resolving all
-                    // group membership and deny precedence is not this slice.
-                    unsafe = unsafe || value == 1
-                }
-            }
-        }
-        return unsafe
-    }
-
     private func boundedRead(_ url: URL) throws -> Data {
-        let descriptor = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
+        let descriptor = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW_ANY | O_NONBLOCK)
         guard descriptor >= 0 else { throw ObservationFailure.invalidMetadata }
         defer { close(descriptor) }
         let before = try FileIdentity.read(descriptor: descriptor)
@@ -290,38 +184,5 @@ public struct NativeTargetObserver {
               let url = URLComponents(string: value) else { return false }
         return url.scheme == "https" && url.host?.isEmpty == false && url.user == nil && url.password == nil
             && url.fragment == nil && (url.port == nil || url.port == 443)
-    }
-}
-
-private struct FileIdentity: Equatable {
-    let device: UInt64
-    let inode: UInt64
-    let owner: uid_t
-    let group: gid_t
-    let mode: mode_t
-    let size: off_t
-    let modifiedSeconds: Int
-    let modifiedNanoseconds: Int
-    let changedSeconds: Int
-    let changedNanoseconds: Int
-    var isDirectory: Bool { mode & S_IFMT == S_IFDIR }
-    var isRegular: Bool { mode & S_IFMT == S_IFREG }
-    var isSymlink: Bool { mode & S_IFMT == S_IFLNK }
-
-    static func read(_ url: URL) throws -> Self {
-        var value = stat()
-        guard lstat(url.path, &value) == 0 else { throw ObservationFailure.unsupportedFile }
-        return Self(value)
-    }
-    static func read(descriptor: Int32) throws -> Self {
-        var value = stat()
-        guard fstat(descriptor, &value) == 0 else { throw ObservationFailure.unsupportedFile }
-        return Self(value)
-    }
-    init(_ value: stat) {
-        device = UInt64(bitPattern: Int64(value.st_dev)); inode = UInt64(value.st_ino)
-        owner = value.st_uid; group = value.st_gid; mode = value.st_mode; size = value.st_size
-        modifiedSeconds = value.st_mtimespec.tv_sec; modifiedNanoseconds = value.st_mtimespec.tv_nsec
-        changedSeconds = value.st_ctimespec.tv_sec; changedNanoseconds = value.st_ctimespec.tv_nsec
     }
 }
