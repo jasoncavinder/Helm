@@ -168,7 +168,11 @@ protection against restoring a historical database backup. A handoff committed
 before revocation still requires normal installer completion/recovery handling.
 
 This core slice exposes no helper wire method, GUI/CLI command or automatic
-capability. The native-to-core mapping, completeness policy for additional manager
+capability. A [private native-to-core preflight bridge](../validation/v0.20-sparkle-native-core-bridge.md)
+now maps successful local observations into the exact shared adoption target gate.
+It accepts neither wire evidence nor a client authority override; its diagnostic
+`unresolved` result grants no permission and does not consult saved consent.
+Authenticated ledger/session integration, completeness policy for additional manager
 claims, adoption/revocation UX, actual accepted candidate and shipping-helper
 integration remain open under #607. Do not turn `unresolved` into an adoption
 grant or trust an output receipt supplied by the client.

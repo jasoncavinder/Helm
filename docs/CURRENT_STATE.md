@@ -118,6 +118,19 @@ and reset epoch. Atomic checks fence stale reviews, revoked update claims and
 install handoffs, including independent store handles. Active recovery reservations
 also protect the adoption ledger during downgrade/reset. This is not a shipping
 adoption UI or operational helper integration; no direct update is enabled.
+PR #622 is reviewed and merged at `68363740`.
+
+The next [native-to-core bridge](validation/v0.20-sparkle-native-core-bridge.md)
+feeds fresh native target facts directly into the shared Rust adoption preflight
+through a private in-process C ABI. Known exclusions remain `OtherManager`;
+an empty scan remains `Unknown`, never `Standalone` or `UserAdopted`. The new
+read-only policy probe reports `canUpdate: false`, never accepts JSON evidence
+and does not read/write an adoption database. A mapped-evidence SQLite regression
+checks saved adoption cannot override a new competing claim. No operational XPC
+method, GUI/CLI adoption control, shipping helper registration or update action
+is added. Build integration uses content-addressed Rust archives to prevent
+stale SwiftPM links while preserving the Ventura target. Authenticated ledger
+integration and complete exclusion scope remain open under #607.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

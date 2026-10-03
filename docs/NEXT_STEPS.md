@@ -30,9 +30,12 @@ or reserve the path against later changes. Do not infer installation authority f
 handshake or change shipping entitlements based on the QA fixture. Keep #606/#607 open and retain Open App;
 #608's real execution, verification and recovery follows that reviewed boundary.
 The owner approved explicit adoption for unknown-origin apps, never an override
-for known manager ownership. Review the [core adoption foundation](validation/v0.20-sparkle-adoption.md)
-next. Continue with native-to-core authority mapping, complete supported exclusion
-scope, accepted Sparkle candidates and authenticated adoption/revocation UX shared
+for known manager ownership. The [core adoption foundation](validation/v0.20-sparkle-adoption.md)
+is reviewed and merged through #622 at `68363740`. Review the bounded
+[native-to-core preflight bridge](validation/v0.20-sparkle-native-core-bridge.md)
+next; it remains read-only, does not resolve saved consent and never promotes
+unknown origin. Continue with authenticated ledger/native-session integration,
+complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
 until the operational boundary and real lifecycle/recovery gates pass.
 #616's [shipping first-run activation](validation/v0.20-shipping-first-run.md)

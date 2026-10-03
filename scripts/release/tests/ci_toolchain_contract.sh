@@ -127,4 +127,16 @@ has_pattern 'swift test --package-path service/external-updater --arch arm64' \
   exit 1
 }
 
+for workflow in codeql ci-test; do
+  has_pattern 'library_dir=.*bash scripts/build_external_update_bridge.sh arm64 debug' \
+    "${WORKFLOWS_DIR}/${workflow}.yml" || {
+    echo "error: ${workflow} must build the private external updater Rust bridge before Swift." >&2
+    exit 1
+  }
+  has_pattern 'HELM_EXTERNAL_POLICY_LIB_DIR=\$library_dir.*GITHUB_ENV' "${WORKFLOWS_DIR}/${workflow}.yml" || {
+    echo "error: ${workflow} must export the private external updater Rust bridge directory to Swift." >&2
+    exit 1
+  }
+done
+
 echo "CI toolchain contracts validated."

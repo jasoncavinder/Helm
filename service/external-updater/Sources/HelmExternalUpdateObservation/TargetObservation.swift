@@ -37,6 +37,15 @@ struct NativeSigningEvidence {
     let info: [String: Any]
 }
 
+enum NativeApplicationRoots {
+    static var userApplications: String? {
+        getpwuid(geteuid()).map {
+            URL(fileURLWithPath: String(cString: $0.pointee.pw_dir), isDirectory: true)
+                .appendingPathComponent("Applications", isDirectory: true).path
+        }
+    }
+}
+
 public struct NativeTargetObserver {
     private let roots: [URL]
     private let signer: (URL) throws -> NativeSigningEvidence
@@ -45,10 +54,9 @@ public struct NativeTargetObserver {
 
     public init() {
         // Resolve the account through the OS, not a caller-controlled HOME value.
-        let home = getpwuid(geteuid()).map { String(cString: $0.pointee.pw_dir) }
         self.init(
-            roots: [URL(fileURLWithPath: "/Applications")] + (home.map {
-                [URL(fileURLWithPath: $0).appendingPathComponent("Applications")]
+            roots: [URL(fileURLWithPath: "/Applications")] + (NativeApplicationRoots.userApplications.map {
+                [URL(fileURLWithPath: $0, isDirectory: true)]
             } ?? []),
             signer: Self.signingEvidence
         )

@@ -142,10 +142,7 @@ impl ReviewedAdoption {
     ) -> Result<(), Rejection> {
         request.validate()?;
         validate_boundary(boundary)?;
-        validate_target(target, roots)?;
-        if target.authority != Authority::Unknown {
-            return Err(Rejection::UnsupportedAuthority);
-        }
+        validate_unresolved_target(target, roots)?;
         if target.canonical_path != request.target_path
             || target.bundle_identifier != request.expected_bundle_identifier
             || target.build != request.expected_installed_build
@@ -174,10 +171,7 @@ pub fn resolve(
     mut target: TargetObservation,
     roots: &[PathBuf],
 ) -> Result<TargetObservation, Error> {
-    validate_target(&target, roots).map_err(Error::Policy)?;
-    if target.authority != Authority::Unknown {
-        return Err(Error::Policy(Rejection::UnsupportedAuthority));
-    }
+    validate_unresolved_target(&target, roots).map_err(Error::Policy)?;
     if let Some(receipt) = store.external_update_adoption(&target.canonical_path)?
         && !receipt.is_revoked()
         && receipt.identity_fingerprint.as_deref() == Some(&identity_fingerprint(&target))
@@ -185,6 +179,20 @@ pub fn resolve(
         target.authority = Authority::UserAdopted(receipt.token);
     }
     Ok(target)
+}
+
+/// Read-only preflight for freshly collected local evidence. Success is NOT
+/// provenance, complete exclusion coverage, adoption consent or update consent.
+/// No database, boundary observation or candidate is consulted here.
+pub fn validate_unresolved_target(
+    target: &TargetObservation,
+    roots: &[PathBuf],
+) -> Result<(), Rejection> {
+    validate_target(target, roots)?;
+    if target.authority != Authority::Unknown {
+        return Err(Rejection::UnsupportedAuthority);
+    }
+    Ok(())
 }
 
 /// Version/inode/cdhash are deliberately omitted from ongoing per-app consent:

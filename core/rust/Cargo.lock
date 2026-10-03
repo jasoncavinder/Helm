@@ -754,6 +754,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "helm-external-update-bridge"
+version = "0.19.1"
+dependencies = [
+ "helm-core",
+ "tempfile",
+]
+
+[[package]]
 name = "helm-ffi"
 version = "0.19.1"
 dependencies = [

@@ -27,12 +27,25 @@ checks do not authenticate an arbitrary supplied framework.
 Host compilation/staging, without runtime execution:
 
 ```sh
+HELM_EXTERNAL_POLICY_LIB_DIR="$(bash scripts/build_external_update_bridge.sh arm64 release)"
+export HELM_EXTERNAL_POLICY_LIB_DIR
 swift build --package-path service/external-updater --arch arm64 -c release
 python3 scripts/package_external_updater.py stage \
   --binary service/external-updater/.build/arm64-apple-macosx/release/HelmSparkleExternalUpdater \
   --framework service/external-updater/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework \
   --output /existing/private/qa/HelmSparkleExternalUpdater.app --build 1
 ```
+
+The package links the private Rust static library, not the application FFI
+runtime. Run the build helper again after every Rust change and use its printed
+absolute directory for every Swift invocation. It pins macOS 13 for Rust and its
+bundled C dependencies, matches the requested architecture/profile and copies
+the archive to a content-hashed directory: a changed Rust archive therefore
+invalidates SwiftPM's link command instead of silently reusing old executables.
+Use `arm64 debug` for the tests below, or `x86_64 release` with Swift `--arch x86_64`.
+The corresponding Rust target must be installed. This override is only a build
+input, never accepted from an updater client at runtime. CI sets it before both
+package tests and the unsigned packaging check; CodeQL uses the same build path.
 
 Signing and Apple submission are separately authorized steps. Sign nested
 Sparkle code inside-out with hardened runtime, preserving the downloader's
@@ -60,6 +73,24 @@ not permission to update or a shipping sandbox/launch strategy.
 See [package evidence and remaining gates](../../docs/validation/v0.20-sparkle-helper-package.md).
 
 ## Native Observation And Authentication
+
+`NativeTargetObserver.observeForPolicy(path:)` now sends a successful fresh
+native observation directly through a private, synchronous C ABI to the same
+Rust gate used by adoption review/resolution. It maps known exclusions to
+`OtherManager` and absent markers to `Unknown`, never `Standalone` or
+`UserAdopted`. The read-only `helm-external-policy-probe` exposes the diagnostic
+with `canUpdate: false`; the original observation probe's output is unchanged.
+No JSON/XPC parser can construct trusted observations, roots, signing results or
+authority. No caller can set a boundary or candidate through this bridge. A
+rejected native observation never becomes an empty successful scan. The native
+entrypoint uses OS-account roots, not `HOME`; Rust also validates root shape.
+
+This preflight does not read saved adoption or assert complete manager-exclusion
+coverage. Authenticated ledger resolution/revocation, explicit consent UI and
+Sparkle-accepted candidates remain separate integration work. A test fixture
+exercises mapped evidence against real SQLite adoption, but is not a shipping
+database or authorization endpoint. See the
+[integration evidence](../../docs/validation/v0.20-sparkle-native-core-bridge.md).
 
 `NativeHelperObserver.observeSelf()` collects the current process through
 Security.framework, not a caller-supplied path or PID. It enforces the fixed

@@ -1,0 +1,15 @@
+[package]
+name = "helm-external-update-bridge"
+version.workspace = true
+edition = "2024"
+license = "UNLICENSED"
+description = "Private in-process native evidence bridge for Helm's external updater"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+helm-core = { path = "../helm-core" }
+
+[dev-dependencies]
+tempfile = "3"
