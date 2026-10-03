@@ -33,7 +33,9 @@ public struct NativeManagerEvidence: Encodable {
 /// Reads Homebrew's moved-app references without executing brew, evaluating
 /// cask Ruby/JSON, following their destinations or consulting Helm's inventory.
 struct NativeManagerObserver {
-    static let defaultCaskrooms = ["/opt/homebrew/Caskroom", "/usr/local/Caskroom"].map { URL(fileURLWithPath: $0) }
+    static let defaultCaskrooms = ["/opt/homebrew/Caskroom", "/usr/local/Caskroom"].map {
+        URL(fileURLWithPath: $0, isDirectory: true)
+    }
     let caskrooms: [URL]
     let entryLimit: Int
 
@@ -53,7 +55,7 @@ struct NativeManagerObserver {
             var exclusions: [NativeManagerEvidence.Exclusion] = []
             if hasStoreReceipt { exclusions.append(.appStoreReceipt) }
             if !references.isEmpty { exclusions.append(.homebrewCaskReference) }
-            if applicationRoots.contains(where: { target.path.hasPrefix($0.appendingPathComponent("Setapp").path + "/") }) {
+            if applicationRoots.contains(where: { target.path.hasPrefix($0.appendingPathComponent("Setapp", isDirectory: true).path + "/") }) {
                 exclusions.append(.setappLocation)
             }
             return NativeManagerEvidence(exclusions: exclusions, homebrewReferences: references,
@@ -68,6 +70,23 @@ struct NativeManagerObserver {
         }
         snapshot.references.sort()
         return snapshot
+    }
+
+    static func lexicalReferenceURL(_ destination: String, relativeTo directory: URL) -> URL {
+        // Foundation's inferred file-URL directory status can probe arbitrary
+        // destinations. Normalize components in memory, without stat, realpath,
+        // tilde expansion or symlink resolution, then supply an explicit hint.
+        let path = destination.hasPrefix("/") ? destination : directory.path + "/" + destination
+        var components: [Substring] = []
+        for component in path.split(separator: "/") {
+            if component == "." { continue }
+            if component == ".." {
+                if !components.isEmpty { components.removeLast() }
+            } else {
+                components.append(component)
+            }
+        }
+        return URL(fileURLWithPath: "/" + components.joined(separator: "/"), isDirectory: false)
     }
 
     private func scan(_ directory: URL, depth: Int, target: URL, snapshot: inout Snapshot) throws {
@@ -98,7 +117,7 @@ struct NativeManagerObserver {
             if name == "." || name == ".." { continue }
             guard snapshot.entryCount < entryLimit else { throw ObservationFailure.limitExceeded }
             snapshot.entryCount += 1
-            let child = directory.appendingPathComponent(name)
+            let child = directory.appendingPathComponent(name, isDirectory: false)
             guard child.path.utf8.count <= 4096 else { throw ObservationFailure.limitExceeded }
             var status = stat()
             guard fstatat(descriptor, name, &status, AT_SYMLINK_NOFOLLOW) == 0 else {
@@ -111,9 +130,7 @@ struct NativeManagerObserver {
                 snapshot.links[child.path] = destination
                 // Compare the lexical absolute destination, not a basename or
                 // bundle ID. Relative links are resolved only against this directory.
-                let resolved = destination.hasPrefix("/") ? URL(fileURLWithPath: destination)
-                    : directory.appendingPathComponent(destination)
-                if resolved.standardizedFileURL.path == target.path {
+                if Self.lexicalReferenceURL(destination, relativeTo: directory).path == target.path {
                     snapshot.references.append(child.path)
                 }
                 var after = stat()

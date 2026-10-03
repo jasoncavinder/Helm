@@ -90,6 +90,49 @@ final class ManagerObservationTests: XCTestCase {
         XCTAssertEqual(try observe().managerEvidence.disposition, .unresolved)
     }
 
+    func testLexicalReferenceNormalization() {
+        let directory = URL(fileURLWithPath: "/prefix/Caskroom/example/100", isDirectory: true)
+        let cases = [
+            ("/Applications/./Nested/../Example.app/", "/Applications/Example.app"),
+            ("../../../../Applications//Example.app", "/Applications/Example.app"),
+            ("../../../../../../Applications/Example.app", "/Applications/Example.app"),
+            ("./Example.app", "/prefix/Caskroom/example/100/Example.app"),
+            ("/../Applications/Example.app", "/Applications/Example.app"),
+            ("/Volumes/offline/../Example.app", "/Volumes/Example.app"),
+            ("~/Example.app", "/prefix/Caskroom/example/100/~/Example.app"),
+            ("/Applications/100%20日本.app", "/Applications/100%20日本.app")
+        ]
+        for (destination, expected) in cases {
+            XCTAssertEqual(NativeManagerObserver.lexicalReferenceURL(destination, relativeTo: directory).path, expected)
+        }
+    }
+
+    func testReferenceURLNeverInfersDestinationDirectoryStatus() throws {
+        let destination = root.appendingPathComponent("destination", isDirectory: false)
+        for exists in [false, true] {
+            if exists { try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true) }
+            for text in [destination.path, "destination"] {
+                let resolved = NativeManagerObserver.lexicalReferenceURL(text, relativeTo: root)
+                XCTAssertEqual(resolved.path, destination.path)
+                // The directory flag must be an explicit inert hint, not a
+                // fact inferred by probing the destination's filesystem.
+                XCTAssertFalse(resolved.hasDirectoryPath, "Destination exists: \(exists), link text: \(text)")
+            }
+        }
+    }
+
+    func testAbsoluteReferenceWithDotComponentsStillMatches() throws {
+        try link(apps.path + "/./Unrelated/../Example.app")
+        XCTAssertEqual(try observe().managerEvidence.homebrewReferences, [reference.path])
+    }
+
+    func testRelativeDestinationAliasRemainsUnresolved() throws {
+        let alias = root.appendingPathComponent("Alias.app", isDirectory: false)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: target)
+        try link("../../../Alias.app")
+        XCTAssertEqual(try observe().managerEvidence.disposition, .unresolved)
+    }
+
     func testMultiplePrefixesAndClaimsAreRetainedInSortedOrder() throws {
         try link()
         let second = root.appendingPathComponent("other/Caskroom")
