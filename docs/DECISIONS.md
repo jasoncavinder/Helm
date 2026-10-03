@@ -1080,6 +1080,9 @@ standalone installation history or infer it from an empty manager scan.
 - Fresh native identity, signature, location, permissions and competing-manager
   observations remain required. Known manager ownership, App Store markers,
   unreadable evidence and unsupported targets cannot be overridden by adoption.
+  [Native installer receipts and known Setapp resources](validation/v0.20-sparkle-receipt-exclusions.md)
+  are conservative denial signals too; missing markers never prove complete
+  ownership coverage or make an app adoptable on their own.
 - Persist consent separately from the exact candidate's update review. Adoption
   does not start an update, enable background installation, or grant elevation.
 - Bind ongoing consent to canonical path, bundle ID, signing team, Sparkle key,

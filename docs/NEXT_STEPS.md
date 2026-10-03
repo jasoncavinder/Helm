@@ -41,10 +41,15 @@ replay/size/work limits, deadline checks independent of timer delivery and
 loss-driven result suppression. Fresh current-source signed/notarized request
 acceptance and peer-negative controls now pass in the VM; preserve that bounded
 evidence without relabeling it as install authority. All #624 head checks passed.
-Review the [private helper ledger boundary](validation/v0.20-sparkle-private-ledger.md)
-next. Explicit preparation is separate from read-only preflight; missing or unsafe
+The [private helper ledger boundary](validation/v0.20-sparkle-private-ledger.md)
+is reviewed and merged through #625 at `6dd4ff03`. Explicit preparation is separate from read-only preflight; missing or unsafe
 existing stores are not automatically repaired or recreated. Keep normal app data
 and helper consent/session storage separate, and never accept a client DB path.
+Review the [native receipt/Setapp exclusions](validation/v0.20-sparkle-receipt-exclusions.md)
+next. Bounded system queries and revalidated resource markers deny known claims;
+their absence is not complete manager coverage or adoption eligibility. Preserve
+the VM's real receipt-positive/unclaimed-negative controls without modifying
+the original installed app or repeating accepted package lifecycles.
 Continue with authenticated ledger/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App

@@ -20,6 +20,8 @@ final class ManagerObservationTests: XCTestCase {
         let resources = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources")
         try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
         XCTAssertEqual(chmod(root.path, 0o700), 0)
+        try FileManager.default.createDirectory(at: target.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
+        try Data("fixture executable, never launched".utf8).write(to: target.appendingPathComponent("Contents/MacOS/Example"))
         try plist(signature().info).write(to: target.appendingPathComponent("Contents/Info.plist"))
         try plist(["CFBundleIdentifier": "org.sparkle-project.Sparkle", "CFBundleShortVersionString": "2.9.5"])
             .write(to: resources.appendingPathComponent("Info.plist"))
@@ -35,7 +37,7 @@ final class ManagerObservationTests: XCTestCase {
 
     private func signature() -> NativeSigningEvidence {
         NativeSigningEvidence(identifier: "org.example.App", team: "ABCDE12345", hash: Data(repeating: 1, count: 20), info: [
-            "CFBundleIdentifier": "org.example.App", "CFBundleVersion": "100", "SUFeedURL": "https://example.org/feed",
+            "CFBundleIdentifier": "org.example.App", "CFBundleVersion": "100", "CFBundleExecutable": "Example", "SUFeedURL": "https://example.org/feed",
             "SUPublicEDKey": Data(repeating: 7, count: 32).base64EncodedString()
         ])
     }
@@ -50,8 +52,9 @@ final class ManagerObservationTests: XCTestCase {
         NativeManagerObserver(caskrooms: [caskroom], entryLimit: limit)
     }
 
-    private func observe(_ mutation: (() throws -> Void)? = nil) throws -> NativeTargetEvidence {
-        try NativeTargetObserver(roots: [apps], managers: scanner()) { _ in
+    private func observe(receipts: NativeInstallerReceiptObserver = ReceiptFixtures.empty,
+                         _ mutation: (() throws -> Void)? = nil) throws -> NativeTargetEvidence {
+        try NativeTargetObserver(roots: [apps], managers: scanner(), receipts: receipts) { _ in
             try mutation?()
             return self.signature()
         }.observe(path: target.path)
@@ -293,5 +296,102 @@ final class ManagerObservationTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(json["disposition"] as? String, "unresolved")
         XCTAssertEqual(NativeManagerObserver.defaultCaskrooms.map(\.path), ["/opt/homebrew/Caskroom", "/usr/local/Caskroom"])
+    }
+
+    func testMovedSetappAppsAreExcludedByBundleMarkers() throws {
+        for path in ["Contents/Frameworks/Setapp.framework", "Contents/Resources/setappPublicKey.pem",
+                     "Contents/Resources/SetappFramework-Resources.bundle", "Contents/Resources/SetappPublicKey.pem"] {
+            let marker = target.appendingPathComponent(path, isDirectory: false)
+            try FileManager.default.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: marker)
+            let evidence = try observe()
+            XCTAssertEqual(evidence.managerEvidence.exclusions, [.setappBundleMarker])
+            XCTAssertTrue(evidence.requiresAuthorityResolution)
+            try FileManager.default.removeItem(at: marker)
+        }
+    }
+
+    func testLookalikeResourcesDoNotInventASetappClaim() throws {
+        for path in ["Contents/Resources/setappPublicKey.pem.txt", "Contents/Resources/Docs/setappPublicKey.pem",
+                     "Contents/Frameworks/Setapp-like.framework"] {
+            let marker = target.appendingPathComponent(path, isDirectory: false)
+            try FileManager.default.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: marker)
+        }
+        XCTAssertTrue(try observe().managerEvidence.exclusions.isEmpty)
+    }
+
+    func testNewSetappMarkerDuringSigningInvalidatesObservation() throws {
+        XCTAssertThrowsError(try observe {
+            let marker = self.target.appendingPathComponent("Contents/Resources/setappPublicKey.pem", isDirectory: false)
+            try FileManager.default.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: marker)
+        }) { XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation) }
+    }
+
+    func testInstallerClaimAndCaskClaimAreBothRetained() throws {
+        try link()
+        let receipts = NativeInstallerReceiptObserver { path in
+            try ReceiptFixtures.reply(path: path, identifiers: path.hasSuffix("/Example") ? ["org.example.pkg"] : [])
+        }
+        let evidence = try observe(receipts: receipts)
+        XCTAssertEqual(evidence.managerEvidence.exclusions, [.homebrewCaskReference, .installerReceipt])
+        XCTAssertEqual(evidence.managerEvidence.installerPackageIdentifiers, ["org.example.pkg"])
+        XCTAssertEqual(NativePolicyAssessment.assess(evidence, userApplications: apps.path), .outsideRoots)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(evidence.managerEvidence)) as? [String: Any])
+        XCTAssertEqual(json["installerPackageIdentifiers"] as? [String], ["org.example.pkg"])
+    }
+
+    func testReceiptAppearingOrDisappearingDuringSigningFailsClosed() throws {
+        for initiallyPresent in [false, true] {
+            var present = initiallyPresent
+            let receipts = NativeInstallerReceiptObserver { path in
+                try ReceiptFixtures.reply(path: path, identifiers: present ? ["org.example.pkg"] : [])
+            }
+            XCTAssertThrowsError(try observe(receipts: receipts) { present.toggle() }) {
+                XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+            }
+        }
+    }
+
+    func testReceiptReadFailureIsNotUnresolvedSuccess() {
+        let receipts = NativeInstallerReceiptObserver { _ in throw ObservationFailure.unreadableManagerEvidence }
+        XCTAssertThrowsError(try observe(receipts: receipts))
+    }
+
+    func testTargetChangeDuringFinalReceiptQueryIsRejected() throws {
+        var calls = 0
+        let receipts = NativeInstallerReceiptObserver { path in
+            calls += 1
+            if calls == 6 {
+                try Data("changed during receipt query".utf8)
+                    .write(to: self.target.appendingPathComponent("Contents/MacOS/Example"))
+            }
+            return try ReceiptFixtures.reply(path: path)
+        }
+        XCTAssertThrowsError(try observe(receipts: receipts)) {
+            XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+        }
+        XCTAssertEqual(calls, 6)
+    }
+
+    func testUnsignedExecutableNameMustMatchSignedMetadata() throws {
+        try Data("never executed".utf8).write(to: target.appendingPathComponent("Contents/MacOS/Other"))
+        var info = signature().info
+        info["CFBundleExecutable"] = "Other"
+        try plist(info).write(to: target.appendingPathComponent("Contents/Info.plist"))
+        XCTAssertThrowsError(try observe()) { XCTAssertEqual($0 as? ObservationFailure, .invalidMetadata) }
+    }
+
+    func testInvalidExecutableMetadataNeverReachesReceiptQuery() throws {
+        var calls = 0
+        let receipts = NativeInstallerReceiptObserver { _ in calls += 1; return Data() }
+        for name in ["../Example", "/bin/sh", "Missing", "", "Example\n"] {
+            var info = signature().info
+            info["CFBundleExecutable"] = name
+            try plist(info).write(to: target.appendingPathComponent("Contents/Info.plist"))
+            XCTAssertThrowsError(try observe(receipts: receipts))
+        }
+        XCTAssertEqual(calls, 0)
     }
 }

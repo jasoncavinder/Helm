@@ -51,6 +51,7 @@ public struct NativeTargetObserver {
     private let signer: (URL) throws -> NativeSigningEvidence
     private let filesystem: BundleFilesystem
     private let managers: NativeManagerObserver
+    private let receipts: NativeInstallerReceiptObserver
 
     public init() {
         // Resolve the account through the OS, not a caller-controlled HOME value.
@@ -58,16 +59,18 @@ public struct NativeTargetObserver {
             roots: [URL(fileURLWithPath: "/Applications")] + (NativeApplicationRoots.userApplications.map {
                 [URL(fileURLWithPath: $0, isDirectory: true)]
             } ?? []),
-            signer: Self.signingEvidence
+            receipts: NativeInstallerReceiptObserver(), signer: Self.signingEvidence
         )
     }
 
     init(roots: [URL], entryLimit: Int = 100_000, managers: NativeManagerObserver = NativeManagerObserver(),
+         receipts: NativeInstallerReceiptObserver,
          signer: @escaping (URL) throws -> NativeSigningEvidence) {
         self.roots = roots
         self.filesystem = BundleFilesystem(entryLimit: entryLimit)
         self.signer = signer
         self.managers = managers
+        self.receipts = receipts
     }
 
     public func observe(path: String) throws -> NativeTargetEvidence {
@@ -80,6 +83,14 @@ public struct NativeTargetObserver {
         let managerSnapshot = try managers.snapshot(target: target)
         let infoURL = target.appendingPathComponent("Contents/Info.plist")
         let infoBytes = try boundedRead(infoURL)
+        guard let rawInfo = try PropertyListSerialization.propertyList(from: infoBytes, format: nil) as? [String: Any],
+              let executable = rawInfo["CFBundleExecutable"] as? String,
+              Self.bounded(executable, 255), executable != ".", executable != "..", !executable.contains("/"),
+              permissions.entries[target.appendingPathComponent("Contents/MacOS", isDirectory: true)
+                .appendingPathComponent(executable, isDirectory: false).path]?.isRegular == true else {
+            throw ObservationFailure.invalidMetadata
+        }
+        let receiptSnapshot = try receipts.snapshot(target: target, executable: executable)
         let frameworkURL = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources/Info.plist")
             .resolvingSymlinksInPath()
         guard Self.contains(target, frameworkURL) else { throw ObservationFailure.unsupportedSparkle }
@@ -87,6 +98,7 @@ public struct NativeTargetObserver {
         let signing = try signer(target)
         let info = signing.info
         guard let identifier = info["CFBundleIdentifier"] as? String,
+              info["CFBundleExecutable"] as? String == executable,
               Self.bounded(identifier, 255), identifier == signing.identifier,
               let build = info["CFBundleVersion"] as? String, Self.bounded(build, 128),
               let feed = info["SUFeedURL"] as? String, Self.httpsURL(feed),
@@ -106,6 +118,12 @@ public struct NativeTargetObserver {
               version.split(separator: ".").first == "2" else {
             throw ObservationFailure.unsupportedSparkle
         }
+        // Finish external evidence queries before the final bundle snapshot so
+        // target changes during a slow receipt query cannot escape revalidation.
+        guard receiptSnapshot == (try receipts.snapshot(target: target, executable: executable)),
+              managerSnapshot == (try managers.snapshot(target: target)) else {
+            throw ObservationFailure.changedDuringObservation
+        }
         // The signed Info.plist comes from Security.framework, not CFBundle's
         // mutable/cached dictionary. Re-observe after signature validation.
         guard before == (try FileIdentity.read(target)),
@@ -116,8 +134,7 @@ public struct NativeTargetObserver {
         }
         let afterPermissions = try filesystem.tree(at: target)
         guard permissions == afterPermissions,
-              ancestors == (try filesystem.ancestors(of: target)),
-              managerSnapshot == (try managers.snapshot(target: target)) else {
+              ancestors == (try filesystem.ancestors(of: target)) else {
             throw ObservationFailure.changedDuringObservation
         }
         // Even an empty or aliased receipt container is an exclusion marker,
@@ -130,7 +147,8 @@ public struct NativeTargetObserver {
             feedURL: feed, frameworkMajor: 2,
             hasStoreReceipt: hasStoreReceipt,
             writableByOthers: permissions.unsafePermissions, inspectedEntries: permissions.entries.count,
-            managerEvidence: managerSnapshot.evidence(target: target, applicationRoots: roots, hasStoreReceipt: hasStoreReceipt)
+            managerEvidence: managerSnapshot.evidence(target: target, applicationRoots: roots, hasStoreReceipt: hasStoreReceipt,
+                                                     entries: permissions.entries, installerPackages: receiptSnapshot.identifiers)
         )
     }
 
