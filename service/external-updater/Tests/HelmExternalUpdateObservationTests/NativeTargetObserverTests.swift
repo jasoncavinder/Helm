@@ -6,6 +6,9 @@ import XCTest
 final class NativeTargetObserverTests: XCTestCase {
     private var root: URL!
     private var target: URL!
+    private var managers: NativeManagerObserver {
+        NativeManagerObserver(caskrooms: [root.appendingPathComponent("Caskroom")])
+    }
 
     override func setUpWithError() throws {
         // Shared temporary roots can contain aliases or writable ancestors;
@@ -43,7 +46,7 @@ final class NativeTargetObserverTests: XCTestCase {
     }
 
     private func observer(_ overrides: [String: Any] = [:], limit: Int = 100_000) -> NativeTargetObserver {
-        NativeTargetObserver(roots: [root], entryLimit: limit) { _ in self.signature(overrides) }
+        NativeTargetObserver(roots: [root], entryLimit: limit, managers: managers) { _ in self.signature(overrides) }
     }
 
     func testLocalEvidenceKeepsAuthorityUnresolved() throws {
@@ -61,7 +64,7 @@ final class NativeTargetObserverTests: XCTestCase {
 
     func testInvalidPathsNeverReachCodeValidator() throws {
         var calls = 0
-        let observer = NativeTargetObserver(roots: [root]) { _ in calls += 1; return self.signature() }
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in calls += 1; return self.signature() }
         for path in ["relative.app", target.path + "/", root.path + "/./Example.app",
                      root.path + "//Example.app", root.path + "/../Example.app", target.path + "\n", "/tmp/Unknown.app"] {
             XCTAssertThrowsError(try observer.observe(path: path), path)
@@ -117,7 +120,7 @@ final class NativeTargetObserverTests: XCTestCase {
     }
 
     func testMutationDuringValidationIsRejected() throws {
-        let observer = NativeTargetObserver(roots: [root]) { _ in
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in
             try Data("changed".utf8).write(to: self.target.appendingPathComponent("Contents/new-file"))
             return self.signature()
         }
@@ -157,7 +160,7 @@ final class NativeTargetObserverTests: XCTestCase {
     func testUnsafeAncestorIsRejectedBeforeSignatureValidation() throws {
         XCTAssertEqual(chmod(root.path, 0o777), 0)
         var calls = 0
-        let observer = NativeTargetObserver(roots: [root]) { _ in calls += 1; return self.signature() }
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in calls += 1; return self.signature() }
         XCTAssertThrowsError(try observer.observe(path: target.path)) { error in
             XCTAssertEqual(error as? ObservationFailure, .unsafeOwnership)
         }
@@ -177,7 +180,7 @@ final class NativeTargetObserverTests: XCTestCase {
     }
 
     func testPermissionMutationDuringValidationIsRejected() throws {
-        let observer = NativeTargetObserver(roots: [root]) { _ in
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in
             XCTAssertEqual(chmod(self.target.path, 0o777), 0)
             return self.signature()
         }
@@ -208,7 +211,7 @@ final class NativeTargetObserverTests: XCTestCase {
     }
 
     func testAncestorPermissionsChangingDuringSignatureValidationFailClosed() throws {
-        let observer = NativeTargetObserver(roots: [root]) { _ in
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in
             XCTAssertEqual(chmod(self.root.path, 0o777), 0)
             return self.signature()
         }
@@ -218,7 +221,7 @@ final class NativeTargetObserverTests: XCTestCase {
     }
 
     func testAncestorACLChangingDuringSignatureValidationFailsClosed() throws {
-        let observer = NativeTargetObserver(roots: [root]) { _ in
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in
             guard let acl = acl_from_text("!#acl 1\nuser:\(UUID().uuidString):::allow:write\n") else {
                 throw ObservationFailure.unreadablePermissions
             }
@@ -233,7 +236,7 @@ final class NativeTargetObserverTests: XCTestCase {
 
     func testSafeAncestorModeDriftRequiresFreshObservation() throws {
         XCTAssertEqual(chmod(root.path, 0o755), 0)
-        let observer = NativeTargetObserver(roots: [root]) { _ in
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in
             XCTAssertEqual(chmod(self.root.path, 0o700), 0)
             return self.signature()
         }
@@ -250,7 +253,7 @@ final class NativeTargetObserverTests: XCTestCase {
         target = moved
         XCTAssertEqual(chmod(root.path, 0o777), 0)
         var calls = 0
-        let observer = NativeTargetObserver(roots: [applicationRoot]) { _ in
+        let observer = NativeTargetObserver(roots: [applicationRoot], managers: managers) { _ in
             calls += 1
             return self.signature()
         }
@@ -263,7 +266,7 @@ final class NativeTargetObserverTests: XCTestCase {
     func testOversizedBundleInfoIsRejectedBeforeNativeValidation() throws {
         try Data(repeating: 0, count: 2 * 1024 * 1024 + 1).write(to: target.appendingPathComponent("Contents/Info.plist"))
         var calls = 0
-        let observer = NativeTargetObserver(roots: [root]) { _ in calls += 1; return self.signature() }
+        let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in calls += 1; return self.signature() }
         XCTAssertThrowsError(try observer.observe(path: target.path)) { error in
             XCTAssertEqual(error as? ObservationFailure, .invalidMetadata)
         }

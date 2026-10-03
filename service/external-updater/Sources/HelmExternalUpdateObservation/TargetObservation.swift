@@ -6,6 +6,7 @@ public enum ObservationFailure: String, Error {
     case invalidPath, outsideRoots, unsupportedFile, changedDuringObservation
     case unsafeOwnership, unreadablePermissions, limitExceeded, invalidMetadata
     case invalidSignature, unsupportedSparkle, helmSelfUpdate
+    case unreadableManagerEvidence
 }
 
 /// Locally collected facts, not installation authority. No Decodable initializer
@@ -24,6 +25,7 @@ public struct NativeTargetEvidence: Encodable {
     public let hasStoreReceipt: Bool
     public let writableByOthers: Bool
     public let inspectedEntries: Int
+    public let managerEvidence: NativeManagerEvidence
     // File metadata and valid signatures do not establish manager ownership.
     public let requiresAuthorityResolution = true
 }
@@ -39,6 +41,7 @@ public struct NativeTargetObserver {
     private let roots: [URL]
     private let signer: (URL) throws -> NativeSigningEvidence
     private let filesystem: BundleFilesystem
+    private let managers: NativeManagerObserver
 
     public init() {
         // Resolve the account through the OS, not a caller-controlled HOME value.
@@ -51,10 +54,12 @@ public struct NativeTargetObserver {
         )
     }
 
-    init(roots: [URL], entryLimit: Int = 100_000, signer: @escaping (URL) throws -> NativeSigningEvidence) {
+    init(roots: [URL], entryLimit: Int = 100_000, managers: NativeManagerObserver = NativeManagerObserver(),
+         signer: @escaping (URL) throws -> NativeSigningEvidence) {
         self.roots = roots
         self.filesystem = BundleFilesystem(entryLimit: entryLimit)
         self.signer = signer
+        self.managers = managers
     }
 
     public func observe(path: String) throws -> NativeTargetEvidence {
@@ -64,6 +69,7 @@ public struct NativeTargetObserver {
         guard roots.contains(where: { Self.contains($0, target) }) else { throw ObservationFailure.outsideRoots }
         let ancestors = try filesystem.ancestors(of: target)
         let permissions = try filesystem.tree(at: target)
+        let managerSnapshot = try managers.snapshot(target: target)
         let infoURL = target.appendingPathComponent("Contents/Info.plist")
         let infoBytes = try boundedRead(infoURL)
         let frameworkURL = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources/Info.plist")
@@ -102,16 +108,21 @@ public struct NativeTargetObserver {
         }
         let afterPermissions = try filesystem.tree(at: target)
         guard permissions == afterPermissions,
-              ancestors == (try filesystem.ancestors(of: target)) else {
+              ancestors == (try filesystem.ancestors(of: target)),
+              managerSnapshot == (try managers.snapshot(target: target)) else {
             throw ObservationFailure.changedDuringObservation
         }
+        // Even an empty or aliased receipt container is an exclusion marker,
+        // not proof that this app is standalone or that its receipt is valid.
+        let hasStoreReceipt = permissions.entries[target.appendingPathComponent("Contents/_MASReceipt").path] != nil
         return NativeTargetEvidence(
             canonicalPath: target.path, device: before.device, inode: before.inode,
             bundleIdentifier: identifier, build: build, teamIdentifier: signing.team,
             codeDirectoryHash: Array(signing.hash), ed25519PublicKey: Array(keyData),
             feedURL: feed, frameworkMajor: 2,
-            hasStoreReceipt: FileManager.default.fileExists(atPath: target.appendingPathComponent("Contents/_MASReceipt/receipt").path),
-            writableByOthers: permissions.unsafePermissions, inspectedEntries: permissions.entries.count
+            hasStoreReceipt: hasStoreReceipt,
+            writableByOthers: permissions.unsafePermissions, inspectedEntries: permissions.entries.count,
+            managerEvidence: managerSnapshot.evidence(target: target, applicationRoots: roots, hasStoreReceipt: hasStoreReceipt)
         )
     }
 

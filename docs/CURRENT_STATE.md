@@ -89,6 +89,24 @@ and an authenticated VM session. Four permission-unsafe copies retain valid
 signatures but are rejected by the filesystem guard; a fresh safe preflight
 passes afterward. The temporary test service is removed. No host production app,
 shipping entitlements or accepted owner-QA profiles were changed.
+PR #620 is reviewed and merged at `0722b00d`. The next
+[native manager-exclusion observation](validation/v0.20-sparkle-manager-authority.md)
+reads bounded Homebrew cask references at the two standard prefixes, App Store
+receipt-container markers and component-bounded Setapp application locations.
+It rejects unreadable/aliased scan paths and compares fresh manager snapshots
+around target validation. Matching competing-manager claims exclude a target;
+missing markers remain unresolved, never standalone. Independent review removed
+Foundation directory-status inference from reference normalization; link text is
+now normalized entirely in memory with explicit URL directory hints. All 100
+native tests pass in the VM, including 28 new regressions. The directory-inference
+regression fails against the old normalization in a VM negative control.
+A separate read-only probe matches three
+existing Homebrew casks, while native Rectangle validation retains unresolved
+authority. No manager command, app update, helper registration or host runtime
+was used. Positive standalone provenance, nonstandard-prefix/other-manager
+coverage, accepted Sparkle candidates and durable-session binding remain open
+under #607. This is not complete native authority resolution or signed operational
+updater evidence; #606/#608 remain open and Open App is unchanged.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
