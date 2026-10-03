@@ -89,11 +89,15 @@ fn all_exclusion_combinations_remain_other_manager() {
 }
 
 #[test]
-fn malformed_abi_is_not_a_successful_zero_result() {
+fn null_input_is_rejected_before_target_access() {
     assert_eq!(
         unsafe { helm_external_target_preflight(std::ptr::null()) },
         INVALID
     );
+}
+
+#[test]
+fn malformed_abi_is_not_a_successful_zero_result() {
     for change in 0..9 {
         let mut input = fixture();
         match change {

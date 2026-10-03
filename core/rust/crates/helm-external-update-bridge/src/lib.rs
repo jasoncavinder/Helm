@@ -112,17 +112,20 @@ unsafe fn map_target(input: &NativeTarget) -> Result<(TargetObservation, Vec<Pat
 /// UNRESOLVED requires further authority work; it NEVER means "can update".
 ///
 /// # Safety
-/// `input` must be aligned/readable, with each nonempty byte slice readable and
-/// immutable for the entire call. Only successful local native observations are
+/// `input` may be null (rejected); otherwise it must be aligned/readable, with
+/// each nonempty byte slice readable and immutable for the entire call.
+/// Only successful local native observations are
 /// permitted. Never construct this input from requests, cached JSON or IPC facts.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn helm_external_target_preflight(input: *const NativeTarget) -> u32 {
-    if input.is_null() {
+    // SAFETY: a non-null pointer satisfies the ABI lifetime/alignment contract.
+    // Convert before the closure so only a checked reference crosses that boundary.
+    let Some(input) = (unsafe { input.as_ref() }) else {
         return INVALID;
-    }
+    };
     std::panic::catch_unwind(|| {
-        // SAFETY: the ABI caller guarantees the lifetime/alignment above.
-        let result = unsafe { map_target(&*input) }
+        // SAFETY: the ABI caller guarantees the byte-slice lifetimes above.
+        let result = unsafe { map_target(input) }
             .and_then(|(target, roots)| adoption::validate_unresolved_target(&target, &roots));
         match result {
             Ok(()) => UNRESOLVED,

@@ -40,6 +40,7 @@ enum {
     HELM_EXTERNAL_INTERNAL_FAILURE = 6
 };
 
+/* A NULL input is rejected with HELM_EXTERNAL_INVALID without reading a target. */
 uint32_t helm_external_target_preflight(const HelmExternalNativeTarget *input);
 
 #endif
