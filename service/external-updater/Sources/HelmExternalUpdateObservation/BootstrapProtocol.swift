@@ -7,6 +7,8 @@ import Security
 public protocol ExternalUpdaterBootstrapProtocol {
     func hello(version: UInt32, challenge: Data,
                reply: @escaping (UInt32, Data?, Data?) -> Void)
+    func preflight(session: Data, sequence: UInt64, request: Data,
+                   reply: @escaping (UInt64, UInt32) -> Void)
 }
 
 public enum BootstrapFailure: String, Error {
@@ -21,7 +23,7 @@ public enum BootstrapFailure: String, Error {
 }
 
 /// Ready means this bounded transport handshake completed, not that an app or
-/// update is authorized. No operational request API is exposed by this package.
+/// update is authorized. Only read-only preflight may follow readiness.
 public enum BootstrapEvent {
     case ready
     case closed(BootstrapFailure)

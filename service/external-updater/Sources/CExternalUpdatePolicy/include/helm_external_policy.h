@@ -37,10 +37,14 @@ enum {
     HELM_EXTERNAL_OUTSIDE_ROOTS = 3,
     HELM_EXTERNAL_SELF_UPDATE = 4,
     HELM_EXTERNAL_UNSUPPORTED_TARGET = 5,
-    HELM_EXTERNAL_INTERNAL_FAILURE = 6
+    HELM_EXTERNAL_INTERNAL_FAILURE = 6,
+    HELM_EXTERNAL_TARGET_CHANGED = 7
 };
 
 /* A NULL input is rejected with HELM_EXTERNAL_INVALID without reading a target. */
 uint32_t helm_external_target_preflight(const HelmExternalNativeTarget *input);
+/* Request bytes are untrusted JSON; the root and target are local native facts. */
+uint32_t helm_external_preflight_request(HelmExternalBytes request, HelmExternalBytes user_root);
+uint32_t helm_external_requested_preflight(const HelmExternalNativeTarget *input, HelmExternalBytes request);
 
 #endif

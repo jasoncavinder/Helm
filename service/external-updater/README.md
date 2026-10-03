@@ -2,8 +2,9 @@
 
 Development foundation only. This package is not embedded in Helm and exposes no
 installer operation, feed request, manager mutation, privileged operation or
-updater command transport. Its data-free XPC bootstrap does not enable direct
-updates. Native signing/notarization trust evaluation remains under macOS control.
+updater command transport. Its data-free XPC bootstrap and authenticated read-only
+app preflight do not enable direct updates. Native signing/notarization trust
+evaluation remains under macOS control.
 
 ## Standalone Helper Package
 
@@ -58,18 +59,28 @@ The bootstrap uses the fixed per-user Mach service
 bidirectional code requirements as the anonymous transport. A manually prepared,
 temporary VM-only LaunchAgent is test infrastructure, **not** shipped service
 registration. The host accepts at most one admitted connection, re-observes its
-own identity before admission and exits within 120 seconds. It exports only the
-version/nonce handshake, never paths, update requests or authorization tokens.
+own identity before admission and exits within 120 seconds. After the
+version/nonce handshake, it accepts at most eight sequential read-only app checks
+on the same connection. Each has an 8 KiB strict request and a 15-second deadline.
+No feeds, database paths, trusted observations or authorization grants are accepted.
 Cancellation is local connection invalidation, not an exported update command.
 
-`helm-external-bootstrap-probe` is a data-free QA test host. Testing real
+`helm-external-bootstrap-probe` is a QA test host. Without arguments it tests only
+the data-free hello; `--preflight PATH BUNDLE_ID INSTALLED_BUILD` sends bounded
+intent only after authenticated readiness and prints a read-only assessment.
+Testing real
 acceptance requires a separately signed/notarized sandboxed app wrapper with the
 exact caller identity/channel and only the named Mach-lookup sandbox exception.
 Never install or launch that identity-matching test app on the production host.
 Do not ship the probe, fixture wrapper or launch registration. The signed VM
 handshake now passes, as do notarized wrong-identity/channel/unsandboxed-caller
 and impostor-helper rejection controls. This proves bounded transport acceptance,
-not permission to update or a shipping sandbox/launch strategy.
+not permission to update or a shipping sandbox/launch strategy. Separately
+notarized current-source helper/test-host binaries now also pass the
+[app request checks](../../docs/validation/v0.20-sparkle-authenticated-preflight.md),
+including changed/missing targets, out-of-root rejection and fresh positive
+controls after the signed peer-negative matrix. Older handshake evidence and
+unchanged negative fixtures are not substituted for current request acceptance.
 See [package evidence and remaining gates](../../docs/validation/v0.20-sparkle-helper-package.md).
 
 ## Native Observation And Authentication
@@ -158,18 +169,25 @@ Interruption invalidates the connection instead of silently reconnecting. A
 future runtime must quarantine its durable operation on connection loss.
 
 A client uses `ExternalUpdaterBootstrapClient` to complete the authenticated,
-data-free nonce/version handshake and validate the peer account before any future
-operation could be sent. It fails closed on malformed replies, timeout,
+data-free nonce/version handshake and validate the peer account before a
+read-only app request can be sent. It fails closed on malformed replies, timeout,
 cancellation or connection loss, with no reconnect. Readiness is not update
 consent, and the session nonce is not an authorization token. Response
 authentication alone does
 not prove that an outgoing request was never observed by an impostor endpoint.
-This package deliberately has no such operation request yet. The notarized VM
+The preflight API therefore waits for authenticated readiness; it never sends
+app intent with the hello or retries it on a new connection. The notarized VM
 impostor control demonstrates this distinction: it receives the data-free hello,
 but the real client rejects its reply. The accepted/rejected peer tests use a
 temporary per-user service and isolated QA app wrappers, not shipping service
 registration or a complete inherited-sandbox proof. Unsigned negative/control
 tests remain separate evidence.
+
+The new [request contract and evidence](../../docs/validation/v0.20-sparkle-authenticated-preflight.md)
+describe the native self/target re-observation and Rust-owned validation. An
+`unresolved` result never grants adoption or an update. Inspection results after
+cancellation, session loss or either monotonic deadline are discarded; no ledger
+or installer is involved in this API.
 
 Compile on the host if needed; execute only in the designated VM or CI:
 

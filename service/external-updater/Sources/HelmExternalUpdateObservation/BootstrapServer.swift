@@ -1,29 +1,39 @@
 import Darwin
 import Foundation
 
-/// Per-connection, data-free bootstrap only. The future signed helper must use
-/// the gated listener and retain this object for each newly accepted connection.
-/// No listener, helper process, filesystem observation or installer is launched.
+/// Per-connection handshake and bounded read-only preflight. No adoption grant,
+/// database access, candidate download or installer operation is exposed.
 public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBootstrapProtocol {
     private let connection: NSXPCConnection
     private let queue = DispatchQueue(label: "com.jasoncavinder.Helm.external-bootstrap-server")
     private let notifications = DispatchQueue(label: "com.jasoncavinder.Helm.external-bootstrap-server-events")
     private let event: (BootstrapEvent) -> Void
+    private let worker = DispatchQueue(label: "com.jasoncavinder.Helm.external-preflight-worker")
+    private let assess: ((Data) throws -> NativePolicyAssessment)?
     private let started = DispatchTime.now().uptimeNanoseconds
+    private var operations = PreflightGate(started: DispatchTime.now().uptimeNanoseconds)
+    private var pendingReply: ((UInt64, UInt32) -> Void)?
+    private var pendingSequence: UInt64 = 0
     private var established = false
     private var closed = false
 
     /// `connection` must be newly accepted and inactive. Do not call admit first:
     /// Foundation permits configuring a connection requirement only once.
-    public convenience init(connection: NSXPCConnection, event: @escaping (BootstrapEvent) -> Void) throws {
+    public convenience init(connection: NSXPCConnection, helperIdentity: NativeHelperEvidence? = nil,
+                            event: @escaping (BootstrapEvent) -> Void) throws {
         let authentication = try ExternalUpdaterPeerAuthentication()
         guard authentication.admit(connection) else { throw BootstrapFailure.invalidAccount }
-        self.init(configuredConnection: connection, event: event)
+        let processor = helperIdentity.map { NativePreflightProcessor(identity: $0) }
+        self.init(configuredConnection: connection, assess: processor.map { processor in
+            { try processor.assess($0) }
+        }, event: event)
     }
 
-    private init(configuredConnection: NSXPCConnection, event: @escaping (BootstrapEvent) -> Void) {
+    private init(configuredConnection: NSXPCConnection, assess: ((Data) throws -> NativePolicyAssessment)?,
+                 event: @escaping (BootstrapEvent) -> Void) {
         connection = configuredConnection
         self.event = event
+        self.assess = assess
         super.init()
         connection.exportedInterface = NSXPCInterface(with: ExternalUpdaterBootstrapProtocol.self)
         connection.exportedObject = self
@@ -38,8 +48,10 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     }
 
     #if DEBUG
-    convenience init(testingConnection: NSXPCConnection, event: @escaping (BootstrapEvent) -> Void) {
-        self.init(configuredConnection: testingConnection, event: event)
+    convenience init(testingConnection: NSXPCConnection,
+                     assess: ((Data) throws -> NativePolicyAssessment)? = nil,
+                     event: @escaping (BootstrapEvent) -> Void) {
+        self.init(configuredConnection: testingConnection, assess: assess, event: event)
     }
     #endif
 
@@ -60,6 +72,7 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
             }
             do {
                 let session = try BootstrapWire.nonce()
+                self.operations.establish(session)
                 self.established = true
                 reply(BootstrapWire.version, challenge, session)
                 self.emit(.ready)
@@ -72,6 +85,51 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
 
     public func cancel() { close(.cancelled) }
 
+    public func preflight(session: Data, sequence: UInt64, request: Data,
+                          reply: @escaping (UInt64, UInt32) -> Void) {
+        queue.async { [weak self] in
+            guard let self else { reply(sequence, 0); return }
+            do {
+                guard !self.closed, self.established, let assess = self.assess,
+                      self.connection.effectiveUserIdentifier == geteuid() else {
+                    throw BootstrapFailure.invalidMessage
+                }
+                try self.operations.begin(token: session, sequence: sequence, bytes: request.count,
+                                          now: DispatchTime.now().uptimeNanoseconds)
+                self.pendingReply = reply
+                self.pendingSequence = sequence
+                // Native signing/filesystem inspection must not block the queue
+                // handling expiry or loss. Late work can never publish a result.
+                self.worker.async { [weak self] in
+                    let result = Result { try assess(request) }
+                    self?.queue.async { [weak self] in self?.complete(sequence: sequence, result: result) }
+                }
+                self.queue.asyncAfter(deadline: .now() + .seconds(15)) { [weak self] in
+                    guard let self, self.operations.isPending(sequence) else { return }
+                    self.finish(.expired)
+                }
+            } catch {
+                reply(sequence, 0)
+                self.finish((error as? BootstrapFailure) ?? .invalidMessage)
+            }
+        }
+    }
+
+    private func complete(sequence: UInt64, result: Result<NativePolicyAssessment, Error>) {
+        guard !closed else { return }
+        guard operations.complete(sequence: sequence, now: DispatchTime.now().uptimeNanoseconds) else {
+            finish(.expired)
+            return
+        }
+        switch result {
+        case .success(let assessment):
+            let reply = pendingReply
+            pendingReply = nil
+            reply?(sequence, assessment.code)
+        case .failure(let error): finish((error as? BootstrapFailure) ?? .invalidated)
+        }
+    }
+
     private func close(_ failure: BootstrapFailure) {
         queue.async { [weak self] in self?.finish(failure) }
     }
@@ -79,6 +137,10 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     private func finish(_ failure: BootstrapFailure) {
         guard !closed else { return }
         closed = true
+        operations.close()
+        let reply = pendingReply
+        pendingReply = nil
+        reply?(pendingSequence, 0)
         connection.invalidate()
         connection.exportedObject = nil
         emit(.closed(failure))

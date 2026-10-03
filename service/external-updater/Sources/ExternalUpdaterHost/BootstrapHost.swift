@@ -1,8 +1,8 @@
 import Foundation
 import HelmExternalUpdateObservation
 
-/// One accepted connection per process, at most 120 seconds. No operational
-/// requests, persistent registration, retry or installer are introduced here.
+/// One accepted connection per process, at most 120 seconds. App preflight is
+/// read-only; no persistent registration, retry, grant or installer is exposed.
 final class BootstrapHost: NSObject, NSXPCListenerDelegate {
     private let identity: NativeHelperEvidence
     private let authentication: ExternalUpdaterPeerAuthentication
@@ -39,7 +39,7 @@ final class BootstrapHost: NSObject, NSXPCListenerDelegate {
                 connection.invalidate()
                 return false
             }
-            let server = try ExternalUpdaterBootstrapServer(connection: connection) { event in
+            let server = try ExternalUpdaterBootstrapServer(connection: connection, helperIdentity: current) { event in
                 switch event {
                 case .ready:
                     FileHandle.standardOutput.write(Data("{\"event\":\"authenticated_caller_ready\"}\n".utf8))

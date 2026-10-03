@@ -11,10 +11,10 @@ public struct NativePolicyReport: Encodable {
 
 public enum NativePolicyAssessment: String, Encodable {
     case unresolved, otherManager, outsideRoots, helmSelfUpdate, unsupportedTarget
-    case invalidEvidence, internalFailure
+    case invalidEvidence, internalFailure, targetChanged, observationFailed
 
     // Internal on purpose: public callers must perform a fresh native observation.
-    static func assess(_ evidence: NativeTargetEvidence, userApplications: String?) -> Self {
+    static func assess(_ evidence: NativeTargetEvidence, userApplications: String?, request: Data? = nil) -> Self {
         let slices: [[UInt8]] = [
             Array(evidence.canonicalPath.utf8), Array(evidence.bundleIdentifier.utf8),
             Array(evidence.build.utf8), Array(evidence.teamIdentifier.utf8),
@@ -49,16 +49,43 @@ public enum NativePolicyAssessment: String, Encodable {
                 writable_by_others: evidence.writableByOthers ? 1 : 0, manager_exclusions: exclusions,
                 user_applications_root: slice(7)
             )
+            if let request {
+                return request.withUnsafeBytes { raw in
+                    helm_external_requested_preflight(&input, HelmExternalBytes(
+                        data: raw.bindMemory(to: UInt8.self).baseAddress, length: raw.count
+                    ))
+                }
+            }
             return helm_external_target_preflight(&input)
         }
+        return Self(code: code)
+    }
+
+    init(code: UInt32) {
         switch code {
-        case UInt32(HELM_EXTERNAL_UNRESOLVED): return .unresolved
-        case UInt32(HELM_EXTERNAL_OTHER_MANAGER): return .otherManager
-        case UInt32(HELM_EXTERNAL_OUTSIDE_ROOTS): return .outsideRoots
-        case UInt32(HELM_EXTERNAL_SELF_UPDATE): return .helmSelfUpdate
-        case UInt32(HELM_EXTERNAL_UNSUPPORTED_TARGET): return .unsupportedTarget
-        case UInt32(HELM_EXTERNAL_INVALID): return .invalidEvidence
-        default: return .internalFailure
+        case UInt32(HELM_EXTERNAL_UNRESOLVED): self = .unresolved
+        case UInt32(HELM_EXTERNAL_OTHER_MANAGER): self = .otherManager
+        case UInt32(HELM_EXTERNAL_OUTSIDE_ROOTS): self = .outsideRoots
+        case UInt32(HELM_EXTERNAL_SELF_UPDATE): self = .helmSelfUpdate
+        case UInt32(HELM_EXTERNAL_UNSUPPORTED_TARGET): self = .unsupportedTarget
+        case UInt32(HELM_EXTERNAL_INVALID): self = .invalidEvidence
+        case UInt32(HELM_EXTERNAL_TARGET_CHANGED): self = .targetChanged
+        case 8: self = .observationFailed
+        default: self = .internalFailure
+        }
+    }
+
+    var code: UInt32 {
+        switch self {
+        case .unresolved: return 1
+        case .otherManager: return 2
+        case .outsideRoots: return 3
+        case .helmSelfUpdate: return 4
+        case .unsupportedTarget: return 5
+        case .internalFailure: return 6
+        case .targetChanged: return 7
+        case .observationFailed: return 8
+        case .invalidEvidence: return 0
         }
     }
 }

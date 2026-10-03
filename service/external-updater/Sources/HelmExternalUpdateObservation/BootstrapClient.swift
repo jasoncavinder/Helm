@@ -8,6 +8,9 @@ public final class ExternalUpdaterBootstrapClient {
     private let event: (BootstrapEvent) -> Void
     private var gate: BootstrapReplyGate
     private var started = false
+    private var session: Data?
+    private var nextSequence: UInt64 = 1
+    private var pending: (sequence: UInt64, started: UInt64, reply: (Result<NativePolicyAssessment, BootstrapFailure>) -> Void)?
 
     /// Retain until finished; release/cancel closes the connection. The endpoint
     /// alone is untrusted. Production always installs the fixed helper requirement.
@@ -17,7 +20,7 @@ public final class ExternalUpdaterBootstrapClient {
     }
 
     /// The named service is still untrusted until the data-free handshake and
-    /// native peer/account validation complete. No operational API is exposed.
+    /// native peer/account validation complete. App requests wait for readiness.
     public convenience init(event: @escaping (BootstrapEvent) -> Void) throws {
         let authentication = try ExternalUpdaterPeerAuthentication()
         try self.init(connection: authentication.makeBootstrapServiceConnection(), event: event)
@@ -76,6 +79,7 @@ public final class ExternalUpdaterBootstrapClient {
                 try self.gate.accept(version: version, echo: echo, session: session,
                                      peerAccount: self.connection.effectiveUserIdentifier,
                                      now: DispatchTime.now().uptimeNanoseconds)
+                self.session = session
                 self.emit(.ready)
             } catch let error as BootstrapFailure {
                 self.finish(error)
@@ -89,9 +93,71 @@ public final class ExternalUpdaterBootstrapClient {
         queue.async { [weak self] in self?.finish(failure) }
     }
 
+    /// Diagnostic only; an unresolved response never permits adoption or updates.
+    /// No app data is sent until the helper has authenticated its hello reply.
+    public func preflight(_ request: ExternalPreflightRequest,
+                          reply: @escaping (Result<NativePolicyAssessment, BootstrapFailure>) -> Void) {
+        queue.async { [weak self] in
+            guard let self else { reply(.failure(.invalidated)); return }
+            guard self.gate.established, !self.gate.closed, let session = self.session,
+                  self.pending == nil, self.nextSequence <= PreflightGate.maximumRequests else {
+                self.notifications.async { reply(.failure(.invalidMessage)) }
+                return
+            }
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now >= self.gate.started, now - self.gate.started < BootstrapWire.lifetimeNanoseconds else {
+                self.notifications.async { reply(.failure(.expired)) }
+                self.finish(.expired)
+                return
+            }
+            do {
+                let data = try JSONEncoder().encode(request)
+                _ = try ExternalPreflightRequest.decode(data, userApplications: NativeApplicationRoots.userApplications)
+                let sequence = self.nextSequence
+                self.nextSequence += 1
+                self.pending = (sequence, DispatchTime.now().uptimeNanoseconds, reply)
+                guard let proxy = self.connection.remoteObjectProxyWithErrorHandler({ [weak self] _ in
+                    self?.close(.transport)
+                }) as? ExternalUpdaterBootstrapProtocol else {
+                    self.finish(.transport)
+                    return
+                }
+                proxy.preflight(session: session, sequence: sequence, request: data) { [weak self] echo, code in
+                    self?.receivePreflight(sequence: sequence, echo: echo, code: code)
+                }
+                self.queue.asyncAfter(deadline: .now() + .seconds(15)) { [weak self] in
+                    guard let self, self.pending?.sequence == sequence else { return }
+                    self.finish(.expired)
+                }
+            } catch {
+                self.notifications.async { reply(.failure(.invalidMessage)) }
+            }
+        }
+    }
+
+    private func receivePreflight(sequence: UInt64, echo: UInt64, code: UInt32) {
+        queue.async { [weak self] in
+            guard let self, !self.gate.closed, let pending = self.pending else { return }
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard sequence == pending.sequence, echo == sequence, (1...8).contains(code), code != 6,
+                  self.connection.effectiveUserIdentifier == self.gate.account,
+                  now >= pending.started, now - pending.started < PreflightGate.requestNanoseconds,
+                  now >= self.gate.started, now - self.gate.started < BootstrapWire.lifetimeNanoseconds else {
+                self.finish(.invalidMessage)
+                return
+            }
+            self.pending = nil
+            self.notifications.async { pending.reply(.success(NativePolicyAssessment(code: code))) }
+        }
+    }
+
     private func finish(_ failure: BootstrapFailure) {
         guard gate.close() else { return }
+        session = nil
+        let pending = pending
+        self.pending = nil
         connection.invalidate()
+        if let pending { notifications.async { pending.reply(.failure(failure)) } }
         emit(.closed(failure))
     }
 

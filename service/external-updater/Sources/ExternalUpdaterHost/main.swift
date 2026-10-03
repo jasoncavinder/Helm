@@ -2,8 +2,8 @@ import Foundation
 import HelmExternalUpdateObservation
 import Sparkle
 
-// Only inspection or a bounded data-free handshake. Never initialize SPUUpdater
-// or accept a target app, URL, install command or authorization token.
+// Inspection and authenticated read-only app preflight only. Never initialize
+// SPUUpdater or accept a feed, install command or authorization grant.
 guard CommandLine.arguments.count == 2,
       ["--preflight", "--serve-bootstrap"].contains(CommandLine.arguments[1]) else {
     FileHandle.standardError.write(Data("Use --preflight or --serve-bootstrap; direct updates are disabled.\n".utf8))

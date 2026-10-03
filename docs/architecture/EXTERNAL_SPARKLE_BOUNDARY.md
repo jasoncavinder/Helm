@@ -7,8 +7,8 @@ relax Helm's sandbox. The existing vendor-app handoff remains unchanged.
 ## Authority and Scope
 
 `helm_core::external_update` defines a deterministic review/confirmation contract.
-Only the versioned `ReviewRequest` and separate `AdoptionRequest` accept client
-data. Each is bounded to 8 KiB,
+The versioned `ReviewRequest`, separate `AdoptionRequest` and read-only
+`PreflightRequest` accept client intent. Each is bounded to 8 KiB,
 rejects unknown fields, and accepts operation identity, target path, bundle ID,
 and expected installed/candidate builds, not commands, environment, feed URLs,
 signing requirements, roots, or caller-supplied trust decisions.
@@ -172,7 +172,9 @@ capability. A [private native-to-core preflight bridge](../validation/v0.20-spar
 now maps successful local observations into the exact shared adoption target gate.
 It accepts neither wire evidence nor a client authority override; its diagnostic
 `unresolved` result grants no permission and does not consult saved consent.
-Authenticated ledger/session integration, completeness policy for additional manager
+The [authenticated preflight request](../validation/v0.20-sparkle-authenticated-preflight.md)
+now delivers that diagnostic after native peer readiness, without opening a ledger
+or accepting serialized observations. Authenticated ledger/session integration, completeness policy for additional manager
 claims, adoption/revocation UX, actual accepted candidate and shipping-helper
 integration remain open under #607. Do not turn `unresolved` into an adoption
 grant or trust an output receipt supplied by the client.
@@ -191,8 +193,10 @@ The fixed per-user bootstrap Mach service has no caller-selected name or trust
 override. Both endpoints use the existing exact requirements and account checks.
 The helper re-observes itself, admits at most one connection, and bounds lifetime
 to 120 seconds; the existing five-second handshake deadline still applies.
-Only protocol version/random challenge exchange is exported; cancellation is
-local connection invalidation, not an operational wire request. Temporary
+The first exchange contains only protocol version/random challenges. The current
+helper additionally accepts a bounded read-only preflight on that same connection
+after readiness; no target data is sent before an authenticated helper reply.
+Cancellation is local connection invalidation, not installer cancellation. Temporary
 VM-only launch registration and the sandboxed test-host wrapper are QA fixtures,
 not a product launch strategy or shipping entitlement change. Successful native
 peer acceptance cannot be inferred from compilation, unsigned tests or successful

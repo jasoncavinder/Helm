@@ -31,10 +31,18 @@ handshake or change shipping entitlements based on the QA fixture. Keep #606/#60
 #608's real execution, verification and recovery follows that reviewed boundary.
 The owner approved explicit adoption for unknown-origin apps, never an override
 for known manager ownership. The [core adoption foundation](validation/v0.20-sparkle-adoption.md)
-is reviewed and merged through #622 at `68363740`. Review the bounded
+is reviewed and merged through #622 at `68363740`. The bounded
 [native-to-core preflight bridge](validation/v0.20-sparkle-native-core-bridge.md)
+is reviewed and merged through #623 at `6b5bb757`, with all checks passing.
+Review the [authenticated read-only app request](validation/v0.20-sparkle-authenticated-preflight.md)
 next; it remains read-only, does not resolve saved consent and never promotes
-unknown origin. Continue with authenticated ledger/native-session integration,
+unknown origin. Preserve exact request/native identity binding, per-connection
+replay/size/work limits, deadline checks independent of timer delivery and
+loss-driven result suppression. Fresh current-source signed/notarized request
+acceptance and peer-negative controls now pass in the VM; preserve that bounded
+evidence without relabeling it as install authority. Complete #624's review and
+head CI before integration.
+Continue with helper-owned ledger/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
 until the operational boundary and real lifecycle/recovery gates pass.

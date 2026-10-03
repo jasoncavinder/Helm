@@ -131,6 +131,23 @@ method, GUI/CLI adoption control, shipping helper registration or update action
 is added. Build integration uses content-addressed Rust archives to prevent
 stale SwiftPM links while preserving the Ventura target. Authenticated ledger
 integration and complete exclusion scope remain open under #607.
+PR #623 is reviewed and merged at `6b5bb757`, with all head checks passing and
+the independent review's CodeQL alert fixed. The next
+[authenticated app preflight](validation/v0.20-sparkle-authenticated-preflight.md)
+adds the first target-specific request after native peer readiness. The helper
+accepts only bounded app identity intent, independently re-observes itself and
+the target, and returns the shared core's read-only assessment. Connection-bound
+nonces, sequential single-flight requests, an eight-request ceiling and explicit
+inspection/session deadlines reject replay and late results. This does not open
+the consent ledger or construct an authenticated install boundary from a hello.
+Manager exclusion completeness, helper-owned ledger integration, adoption UX,
+accepted candidates and actual installation/recovery remain open. Open App,
+shipping registration/entitlements and direct-update capabilities are unchanged.
+PR #624's current-source QA helper/test host are now notarized and pass real
+authenticated VM preflight, changed-build/missing-target diagnostics, out-of-root
+request rejection, all four signed peer-negative controls and fresh positive
+controls afterward. No update permission or database is created; the temporary
+test service is removed. Independent review and head CI remain required.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
