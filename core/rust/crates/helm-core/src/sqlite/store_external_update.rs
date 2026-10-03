@@ -1,10 +1,10 @@
 use super::*;
-use crate::external_update::UpdateState;
 use crate::external_update::durable::{
     ExternalUpdateReceipt, holds_target, parse_state, state_name,
 };
+use crate::external_update::{TargetObservation, UpdateState};
 
-fn prepare(connection: &Connection) -> rusqlite::Result<()> {
+pub(super) fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     ensure_schema_ready(connection)?;
     // External side effects cannot be rolled back with SQLite. Unlike ordinary
     // cache writes, every acknowledged authorization/state commit must sync.
@@ -13,7 +13,7 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn mutation_allowed(connection: &Connection) -> rusqlite::Result<bool> {
+pub(super) fn mutation_allowed(connection: &Connection) -> rusqlite::Result<bool> {
     let value: Option<String> = connection
         .query_row(
             "SELECT value FROM app_settings WHERE key = 'safe_mode'",
@@ -49,11 +49,13 @@ impl SqliteStore {
     pub(crate) fn claim_external_update(
         &self,
         record: &ExternalUpdateReceipt,
+        target: &TargetObservation,
     ) -> PersistenceResult<bool> {
         self.with_connection("claim_external_update", |connection| {
             prepare(connection)?;
             let transaction = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             if !mutation_allowed(&transaction)? { return Ok(false); }
+            if !external_adoption::authority_is_current(&transaction, target)? { return Ok(false); }
             let conflict: bool = transaction.query_row(
                 "SELECT EXISTS(SELECT 1 FROM external_update_sessions WHERE operation_id = ?1
                  OR (holds_target = 1 AND (target_path = ?2 OR (target_device = ?3 AND target_inode = ?4))))",
@@ -80,11 +82,16 @@ impl SqliteStore {
         before: &ExternalUpdateReceipt,
         after: UpdateState,
         check_safe_mode: bool,
+        authority: Option<&TargetObservation>,
     ) -> PersistenceResult<bool> {
         self.with_connection("transition_external_update", |connection| {
             prepare(connection)?;
             let transaction = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             if check_safe_mode && !mutation_allowed(&transaction)? { return Ok(false); }
+            if let Some(target) = authority
+                && !external_adoption::authority_is_current(&transaction, target)? {
+                return Ok(false);
+            }
             let changed = transaction.execute(
                 "UPDATE external_update_sessions SET state = ?1, revision = revision + 1, holds_target = ?2
                  WHERE operation_id = ?3 AND fingerprint = ?4 AND revision = ?5 AND state = ?6",

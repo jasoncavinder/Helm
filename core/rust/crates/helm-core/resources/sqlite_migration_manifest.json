@@ -116,6 +116,11 @@
       "version": 23,
       "name": "add_external_update_sessions",
       "definition_sha256": "dfa1a4db8ae8bec9249c96878d28739cf94562a32d82e6ce50e92cb4280074d1"
+    },
+    {
+      "version": 24,
+      "name": "add_external_update_adoptions",
+      "definition_sha256": "bc02f6f5f91e41e85b787ebc7ee8c73babc5d7a1019571ac779abf1e786a88cd"
     }
   ]
 }

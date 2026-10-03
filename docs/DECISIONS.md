@@ -1067,6 +1067,44 @@ See [validation and limits](validation/v0.20-task-creation-history.md).
 
 ---
 
+## Decision 049 - Explicit Per-App Sparkle Adoption Is Not Provenance
+
+**Decision:**
+Allow an explicit per-app "Let Helm manage updates" adoption review for existing
+Sparkle apps whose installation history cannot be positively established. The
+owner approved this policy on 2026-10-02. Never label that permission as proven
+standalone installation history or infer it from an empty manager scan.
+
+**Consequences:**
+
+- Fresh native identity, signature, location, permissions and competing-manager
+  observations remain required. Known manager ownership, App Store markers,
+  unreadable evidence and unsupported targets cannot be overridden by adoption.
+- Persist consent separately from the exact candidate's update review. Adoption
+  does not start an update, enable background installation, or grant elevation.
+- Bind ongoing consent to canonical path, bundle ID, signing team, Sparkle key,
+  feed and supported framework. A version/inode/cdhash change alone is normal for
+  updates, but must still pass fresh native checks and individual update consent.
+- Revocation fences outstanding adoption reviews and update claims/handoffs.
+  It cannot undo an installer handoff that already committed. Uncertain active
+  work retains its recovery reservation rather than claiming cancellation.
+- Preserve explicit revocation and consumed consent IDs until a permitted local
+  reset. Reset/downgrade creates a new epoch, so old in-memory tokens cannot be
+  reinterpreted as fresh authority when sequence numbers restart.
+
+**Rationale:**
+Manually copied applications often have no reliable positive installation record.
+A signature and absence of manager markers identify neither installation history
+nor user intent. Explicit scoped permission makes the limitation visible while
+keeping manager precedence and per-update review intact.
+
+The [core adoption contract](validation/v0.20-sparkle-adoption.md) implements the
+policy/persistence foundation only. Native/helper integration, localized GUI/CLI
+review and revocation, accepted candidates, real execution and recovery remain
+required before activation. Open App is unchanged.
+
+---
+
 ## Summary
 
 Helm prioritizes:

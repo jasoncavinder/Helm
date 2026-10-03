@@ -17,10 +17,11 @@ acceptance/rejection now pass in the VM, with unchanged native trust requirement
 and a fresh positive control after four rejected peer variants. PR #619 is
 reviewed and merged at `23133525`. The bounded
 [helper filesystem boundary](validation/v0.20-sparkle-path-authority.md) is
-reviewed and merged through #620 at `0722b00d`. Review the next
+reviewed and merged through #620 at `0722b00d`. PR #621's
 [native competing-manager observation](validation/v0.20-sparkle-manager-authority.md)
-before binding these exclusions to positive standalone provenance and fresh
-candidate/durable-session evidence. The standard-prefix cask scan is not complete
+is reviewed and merged at `c04f024e`, with all head checks passing. Bind these
+exclusions to positive standalone provenance or explicitly reviewed per-app
+adoption, then fresh candidate/durable-session evidence. The standard-prefix cask scan is not complete
 manager coverage, and absent markers never grant standalone authority.
 Preserve the independently corrected filesystem-free reference normalization;
 directory-status inference must not probe untrusted artifact destinations.
@@ -28,6 +29,12 @@ The filesystem checks do not establish standalone manager provenance
 or reserve the path against later changes. Do not infer installation authority from the successful
 handshake or change shipping entitlements based on the QA fixture. Keep #606/#607 open and retain Open App;
 #608's real execution, verification and recovery follows that reviewed boundary.
+The owner approved explicit adoption for unknown-origin apps, never an override
+for known manager ownership. Review the [core adoption foundation](validation/v0.20-sparkle-adoption.md)
+next. Continue with native-to-core authority mapping, complete supported exclusion
+scope, accepted Sparkle candidates and authenticated adoption/revocation UX shared
+by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
+until the operational boundary and real lifecycle/recovery gates pass.
 #616's [shipping first-run activation](validation/v0.20-shipping-first-run.md)
 is reviewed and merged at `63a210d4`, with all head checks passing. Ordinary
 Debug/Release launches select real versioned entry without a QA flag; the signed

@@ -104,9 +104,20 @@ A separate read-only probe matches three
 existing Homebrew casks, while native Rectangle validation retains unresolved
 authority. No manager command, app update, helper registration or host runtime
 was used. Positive standalone provenance, nonstandard-prefix/other-manager
-coverage, accepted Sparkle candidates and durable-session binding remain open
-under #607. This is not complete native authority resolution or signed operational
-updater evidence; #606/#608 remain open and Open App is unchanged.
+coverage, accepted Sparkle candidates and native durable-session binding remain
+open under #607. This is not complete native authority resolution or signed
+operational updater evidence; #606/#608 remain open and Open App is unchanged.
+PR #621 is reviewed and merged at `c04f024e`, with all head checks passing.
+
+The owner approved explicit per-app adoption for unknown-origin Sparkle apps,
+without overriding known manager ownership. The [core adoption foundation](validation/v0.20-sparkle-adoption.md)
+now distinguishes `UserAdopted` permission from `Standalone` provenance. A
+separate fresh review persists revocable, path/vendor/update-configuration-bound
+consent, not update approval. Migration 24 adds an append-only permission ledger
+and reset epoch. Atomic checks fence stale reviews, revoked update claims and
+install handoffs, including independent store handles. Active recovery reservations
+also protect the adoption ledger during downgrade/reset. This is not a shipping
+adoption UI or operational helper integration; no direct update is enabled.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

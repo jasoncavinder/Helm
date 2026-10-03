@@ -110,6 +110,18 @@ Policy checks are applied in these places:
 - runtime submission gate (ineligible treated as disabled)
 - startup/status self-heal (persist auto-disable for stale invalid states)
 
+## External App Adoption
+
+External Sparkle adoption is separate from manager enablement and executable
+lifecycle authority. The owner-approved per-app policy permits an explicit
+"Let Helm manage updates" review when fresh native checks succeed but historical
+standalone provenance cannot be proved. It never overrides a known competing
+manager claim or unreadable evidence. Migration 24 records revocable consent;
+core reports `UserAdopted`, not `Standalone`, and still requires a separate exact
+candidate review and durable install handoff. No shipping capability is enabled
+by this core foundation. See the [adoption contract](../validation/v0.20-sparkle-adoption.md)
+and [external boundary](EXTERNAL_SPARKLE_BOUNDARY.md).
+
 ## Adding A New Rule
 
 1. Add rule and constants in `manager_policy.rs`.
