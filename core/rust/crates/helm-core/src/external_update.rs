@@ -10,6 +10,7 @@ use url::Url;
 
 pub mod adoption;
 pub mod durable;
+pub mod preflight;
 
 pub const HELPER_IDENTIFIER: &str = "com.jasoncavinder.Helm.SparkleExternalUpdater";
 const HELM_IDENTIFIER: &str = "com.jasoncavinder.Helm";

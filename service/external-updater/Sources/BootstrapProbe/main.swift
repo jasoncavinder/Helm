@@ -1,23 +1,51 @@
 import Foundation
 import HelmExternalUpdateObservation
 
-// QA-only host, never embedded in Helm. No database, target path, update request,
-// process arguments or persisted authority is exchanged with the helper.
-guard CommandLine.arguments.count == 1 else { exit(64) }
-do {
-    let client = try ExternalUpdaterBootstrapClient { event in
-        switch event {
-        case .ready:
-            FileHandle.standardOutput.write(Data("{\"event\":\"authenticated_bootstrap_ready\"}\n".utf8))
-            exit(0)
-        case .closed(let failure):
-            FileHandle.standardError.write(Data("Bootstrap rejected: \(failure.rawValue)\n".utf8))
-            exit(1)
+// VM-only QA host. Intent is sent only after authenticated readiness. No database,
+// native trust assertion, saved permission or installer request is accepted.
+let arguments = CommandLine.arguments
+guard arguments.count == 1 || (arguments.count == 5 && arguments[1] == "--preflight") else { exit(64) }
+let request = arguments.count == 5 ? ExternalPreflightRequest(
+    targetPath: arguments[2], bundleIdentifier: arguments[3], installedBuild: arguments[4]
+) : nil
+
+final class Probe {
+    var client: ExternalUpdaterBootstrapClient?
+
+    func run() throws {
+        client = try ExternalUpdaterBootstrapClient { [weak self] event in
+            switch event {
+            case .ready:
+                FileHandle.standardOutput.write(Data("{\"event\":\"authenticated_bootstrap_ready\"}\n".utf8))
+                guard let request else { exit(0) }
+                self?.client?.preflight(request) { result in
+                    switch result {
+                    case .success(let assessment):
+                        let report: [String: Any] = ["event": "preflight_completed", "assessment": assessment.rawValue, "canUpdate": false]
+                        if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]) {
+                            FileHandle.standardOutput.write(data)
+                            FileHandle.standardOutput.write(Data("\n".utf8))
+                            exit(0)
+                        }
+                        exit(1)
+                    case .failure(let failure): self?.fail(failure)
+                    }
+                }
+            case .closed(let failure): self?.fail(failure)
+            }
         }
+        client?.begin()
+        withExtendedLifetime(self) { RunLoop.main.run() }
     }
-    client.begin()
-    withExtendedLifetime(client) { RunLoop.main.run() }
-} catch {
+
+    private func fail(_ failure: BootstrapFailure) {
+        FileHandle.standardError.write(Data("Bootstrap rejected: \(failure.rawValue)\n".utf8))
+        exit(1)
+    }
+}
+
+let probe = Probe()
+do { try probe.run() } catch {
     FileHandle.standardError.write(Data("Bootstrap initialization rejected: \(error)\n".utf8))
     exit(1)
 }

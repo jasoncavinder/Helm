@@ -35,6 +35,109 @@ fn preflight(input: &NativeTarget) -> u32 {
     unsafe { helm_external_target_preflight(input) }
 }
 
+fn request() -> Vec<u8> {
+    br#"{"schemaVersion":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","targetPath":"/Applications/Example.app","expectedBundleIdentifier":"org.example.App","expectedInstalledBuild":"100"}"#.to_vec()
+}
+
+#[test]
+fn strict_request_contract_rejects_authority_paths_and_unknown_fields() {
+    let valid = request();
+    let validate = |data: &[u8]| unsafe {
+        helm_external_preflight_request(b(data), b(b"/Users/agent/Applications"))
+    };
+    assert_eq!(validate(&valid), UNRESOLVED);
+    let text = String::from_utf8(valid).unwrap();
+    for (from, to) in [
+        ("\"schemaVersion\":1", "\"schemaVersion\":2"),
+        (
+            "\"schemaVersion\":1",
+            "\"schemaVersion\":1,\"schemaVersion\":1",
+        ),
+        (
+            "\"schemaVersion\":1",
+            "\"schemaVersion\":1,\"authority\":\"Standalone\"",
+        ),
+        (
+            "\"schemaVersion\":1",
+            "\"schemaVersion\":1,\"databasePath\":\"/tmp/user.db\"",
+        ),
+        (
+            "\"schemaVersion\":1",
+            "\"schemaVersion\":1,\"feedURL\":\"https://example.org\"",
+        ),
+        ("/Applications/Example.app", "/tmp/Example.app"),
+        (
+            "/Applications/Example.app",
+            "/Users/other/Applications/Example.app",
+        ),
+        (
+            "/Applications/Example.app",
+            "/Applications/Host.app/Nested.app",
+        ),
+        ("/Applications/Example.app", "/Applications/../Example.app"),
+        ("/Applications/Example.app", "/Applications//Example.app"),
+        ("org.example.App", "COM.JASONCAVINDER.HELM.QA"),
+        ("446655440000", "44665544000Z"),
+        ("\"100\"", "\"\""),
+    ] {
+        assert_ne!(
+            validate(text.replace(from, to).as_bytes()),
+            UNRESOLVED,
+            "{to}"
+        );
+    }
+    assert_eq!(validate(&[b' '; 8193]), INVALID);
+    assert_eq!(validate(b"\xff"), INVALID);
+    assert_eq!(validate(b""), INVALID);
+}
+
+#[test]
+fn requested_native_target_requires_exact_path_identifier_and_build() {
+    let request = request();
+    let check =
+        |input: &NativeTarget| unsafe { helm_external_requested_preflight(input, b(&request)) };
+    assert_eq!(check(&fixture()), UNRESOLVED);
+    for change in 0..3 {
+        let mut input = fixture();
+        match change {
+            0 => input.canonical_path = b(b"/Applications/Other.app"),
+            1 => input.bundle_identifier = b(b"org.example.Other"),
+            _ => input.build = b(b"101"),
+        }
+        assert_eq!(check(&input), TARGET_CHANGED);
+    }
+    let mut input = fixture();
+    input.manager_exclusions = 2;
+    assert_eq!(check(&input), OTHER_MANAGER);
+    input.manager_exclusions = 0;
+    input.writable_by_others = 1;
+    assert_eq!(check(&input), UNSUPPORTED_TARGET);
+}
+
+#[test]
+fn requested_preflight_null_and_oversized_buffers_fail_closed() {
+    let invalid = Bytes {
+        data: std::ptr::null(),
+        length: usize::MAX,
+    };
+    assert_eq!(
+        unsafe { helm_external_requested_preflight(std::ptr::null(), b(&request())) },
+        INVALID
+    );
+    assert_eq!(
+        unsafe { helm_external_requested_preflight(&fixture(), invalid) },
+        INVALID
+    );
+    assert_eq!(
+        unsafe { helm_external_preflight_request(invalid, b(b"")) },
+        INVALID
+    );
+    assert_eq!(
+        unsafe { helm_external_preflight_request(b(&request()), invalid) },
+        INVALID
+    );
+}
+
 #[test]
 fn abi_v1_layout_matches_the_native_64_bit_contract() {
     assert_eq!(std::mem::size_of::<NativeTarget>(), 168);

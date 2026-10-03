@@ -4,6 +4,7 @@
 
 use std::{path::PathBuf, slice, str};
 
+use helm_core::external_update::preflight::PreflightRequest;
 use helm_core::external_update::{Authority, Rejection, TargetObservation, adoption};
 
 #[repr(C)]
@@ -46,6 +47,28 @@ const OUTSIDE_ROOTS: u32 = 3;
 const HELM_SELF_UPDATE: u32 = 4;
 const UNSUPPORTED_TARGET: u32 = 5;
 const INTERNAL_FAILURE: u32 = 6;
+const TARGET_CHANGED: u32 = 7;
+
+fn assessment(result: Result<(), Rejection>) -> u32 {
+    match result {
+        Ok(()) => UNRESOLVED,
+        Err(Rejection::MalformedRequest) => INVALID,
+        Err(Rejection::UnsupportedAuthority) => OTHER_MANAGER,
+        Err(Rejection::TargetOutsideRoots) => OUTSIDE_ROOTS,
+        Err(Rejection::HelmSelfUpdate) => HELM_SELF_UPDATE,
+        Err(Rejection::TargetChanged) => TARGET_CHANGED,
+        Err(_) => UNSUPPORTED_TARGET,
+    }
+}
+
+unsafe fn application_roots(user_root: Bytes) -> Result<Vec<PathBuf>, Rejection> {
+    let user_root = unsafe { text(user_root, 4096)? };
+    let mut roots = vec![PathBuf::from("/Applications")];
+    if !user_root.is_empty() {
+        roots.push(PathBuf::from(user_root));
+    }
+    Ok(roots)
+}
 
 unsafe fn bytes(value: Bytes, maximum: usize) -> Result<Vec<u8>, Rejection> {
     if value.length > maximum || (value.length != 0 && value.data.is_null()) {
@@ -77,11 +100,7 @@ unsafe fn map_target(input: &NativeTarget) -> Result<(TargetObservation, Vec<Pat
     {
         return Err(Rejection::MalformedRequest);
     }
-    let user_root = unsafe { text(input.user_applications_root, 4096)? };
-    let mut roots = vec![PathBuf::from("/Applications")];
-    if !user_root.is_empty() {
-        roots.push(PathBuf::from(user_root));
-    }
+    let roots = unsafe { application_roots(input.user_applications_root)? };
     let target = TargetObservation {
         canonical_path: unsafe { text(input.canonical_path, 4096)? }.into(),
         device: input.device,
@@ -127,14 +146,45 @@ pub unsafe extern "C" fn helm_external_target_preflight(input: *const NativeTarg
         // SAFETY: the ABI caller guarantees the byte-slice lifetimes above.
         let result = unsafe { map_target(input) }
             .and_then(|(target, roots)| adoption::validate_unresolved_target(&target, &roots));
-        match result {
-            Ok(()) => UNRESOLVED,
-            Err(Rejection::MalformedRequest) => INVALID,
-            Err(Rejection::UnsupportedAuthority) => OTHER_MANAGER,
-            Err(Rejection::TargetOutsideRoots) => OUTSIDE_ROOTS,
-            Err(Rejection::HelmSelfUpdate) => HELM_SELF_UPDATE,
-            Err(_) => UNSUPPORTED_TARGET,
-        }
+        assessment(result)
+    })
+    .unwrap_or(INTERNAL_FAILURE)
+}
+
+/// Validate the bounded, untrusted request before any native target read.
+/// # Safety
+/// Nonempty slices must be readable and immutable for the call. `user_root`
+/// comes from the helper's OS account, never a wire parameter or environment.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_preflight_request(request: Bytes, user_root: Bytes) -> u32 {
+    std::panic::catch_unwind(|| {
+        assessment((|| {
+            let roots = unsafe { application_roots(user_root)? };
+            let bytes = unsafe { bytes(request, 8192)? };
+            PreflightRequest::decode(&bytes, &roots).map(|_| ())
+        })())
+    })
+    .unwrap_or(INTERNAL_FAILURE)
+}
+
+/// Bind successful native evidence to the exact requested app identity/build.
+/// # Safety
+/// `input` has the same contract as `helm_external_target_preflight`; `request`
+/// is a readable, immutable slice. It contains untrusted intent, not evidence.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_requested_preflight(
+    input: *const NativeTarget,
+    request: Bytes,
+) -> u32 {
+    let Some(input) = (unsafe { input.as_ref() }) else {
+        return INVALID;
+    };
+    std::panic::catch_unwind(|| {
+        assessment((|| {
+            let (target, roots) = unsafe { map_target(input)? };
+            let bytes = unsafe { bytes(request, 8192)? };
+            PreflightRequest::decode(&bytes, &roots)?.assess(&target, &roots)
+        })())
     })
     .unwrap_or(INTERNAL_FAILURE)
 }

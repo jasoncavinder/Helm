@@ -9,7 +9,7 @@ public enum HelperObservationFailure: String, Error {
 
 /// A local snapshot of this running helper, not a caller assertion or update
 /// authorization. It must be recollected at review/confirmation boundaries.
-public struct NativeHelperEvidence: Encodable {
+public struct NativeHelperEvidence: Encodable, Equatable {
     public let canonicalPath: String
     public let bundleIdentifier: String
     public let build: String
