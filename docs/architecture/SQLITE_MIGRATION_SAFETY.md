@@ -26,6 +26,18 @@ transaction.
 
 ## Runtime Ledger
 
+Migration 24 adds per-app external Sparkle adoption/revocation history plus a
+random database epoch. Confirmation compares the prior epoch/path revision in
+one immediate transaction, consumes its consent ID and commits with FULL/fullfsync
+durability. Revocation appends a tombstone even before any grant and remains
+available in safe mode. Claim/handoff/verification transactions check the latest
+grant, not cached receipts. Reset/downgrade cannot drop either this ledger or
+migration 23 while an external-update reservation remains; a permitted reset
+forgets grants and creates a new epoch on reinitialization. Existing migration
+identities remain unchanged. This is user consent, not proven installation
+history or a general-purpose authorization service. See
+[the adoption contract](../validation/v0.20-sparkle-adoption.md).
+
 Migration 23 adds external Sparkle update sessions. Operation IDs remain consumed
 after terminal results, independently of ordinary task-history deletion. Active
 canonical paths and original filesystem identities have unique reservations;

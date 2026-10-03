@@ -7,7 +7,8 @@ relax Helm's sandbox. The existing vendor-app handoff remains unchanged.
 ## Authority and Scope
 
 `helm_core::external_update` defines a deterministic review/confirmation contract.
-Only the versioned `ReviewRequest` is deserializable. It is bounded to 8 KiB,
+Only the versioned `ReviewRequest` and separate `AdoptionRequest` accept client
+data. Each is bounded to 8 KiB,
 rejects unknown fields, and accepts operation identity, target path, bundle ID,
 and expected installed/candidate builds, not commands, environment, feed URLs,
 signing requirements, roots, or caller-supplied trust decisions.
@@ -22,10 +23,11 @@ direct-consumer identity and team, a separately signed/notarized helper, and an
 unchanged sandbox on Helm itself. The standalone development helper target is
 not embedded in Helm, registered by the product, or permitted to install updates.
 
-Initial eligibility is intentionally narrow: standalone, signed Sparkle 2 app
+Initial eligibility is intentionally narrow: positively standalone or explicitly
+user-adopted, signed Sparkle 2 app
 bundles in locally authorized `/Applications` or the current user's
 `~/Applications`, with HTTPS feeds and Ed25519 keys. Other manager authority,
-unknown provenance, App Store receipts, translocation, writable-by-others
+unadopted unknown provenance, App Store receipts, translocation, writable-by-others
 locations, nested app bundles, and Helm's own bundle namespace fail closed.
 Native collection must resolve symlinks and assess parents/ownership; lexical
 path validation in this model does not replace filesystem authorization.
@@ -139,6 +141,37 @@ still require coordinator-owned resolution. Even a successful empty scan keeps
 future runtime must repeat it and bind positive provenance/candidate/durable
 facts before confirmation or installation. The operational release gate remains
 open, and no automatic capability or new wire method is exposed.
+
+### Explicit Per-App Adoption
+
+The owner-approved [adoption contract](../validation/v0.20-sparkle-adoption.md)
+adds a distinct `UserAdopted` authority, not a new native `Standalone` assertion.
+The coordinator must first successfully collect fresh native evidence, preserving
+all known manager exclusions; incomplete/unreadable collection is not adoptable.
+Only then may it offer the separate explicit per-app review. Migration 24 stores
+that local consent/revocation history independently of update sessions and task
+history. Unknown apps without consent still require Open App.
+
+Adoption confirmation consumes a 120-second in-memory review binding the exact
+observed target and authenticated boundary. Ongoing permission binds the path,
+bundle ID, team, key, feed and Sparkle major version; version/inode/cdhash remain
+bound by each new review instead of requiring re-adoption after every vendor
+update. Changed identity or configuration requires a new adoption review. The
+permission does not attest to historical ownership or enable unattended updates.
+
+The store atomically rechecks the current grant at session claim, install handoff
+and successful version verification. Revocation, including before the first grant,
+fences pending adoption reviews; re-adoption changes the update-review fingerprint.
+A random database epoch prevents reset/downgrade from reusing old revisions.
+These are local concurrency/durability protections, not tamper-proof storage or
+protection against restoring a historical database backup. A handoff committed
+before revocation still requires normal installer completion/recovery handling.
+
+This core slice exposes no helper wire method, GUI/CLI command or automatic
+capability. The native-to-core mapping, completeness policy for additional manager
+claims, adoption/revocation UX, actual accepted candidate and shipping-helper
+integration remain open under #607. Do not turn `unresolved` into an adoption
+grant or trust an output receipt supplied by the client.
 
 ### Standalone Package And Bootstrap
 

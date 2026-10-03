@@ -90,7 +90,7 @@ impl<'a> DurableUpdateSession<'a> {
             state: UpdateState::Downloading,
             revision: 0,
         };
-        if !store.claim_external_update(&receipt)? {
+        if !store.claim_external_update(&receipt, &review.target)? {
             return Err(DurableUpdateError::Conflict);
         }
         Ok(Self {
@@ -119,7 +119,7 @@ impl<'a> DurableUpdateSession<'a> {
         self.session
             .event(operation_id, event)
             .map_err(DurableUpdateError::Policy)?;
-        self.persist_transition(false)
+        self.persist_transition(false, None)
     }
 
     /// Re-observe immediately before installation. Download time may exceed the
@@ -151,7 +151,7 @@ impl<'a> DurableUpdateSession<'a> {
                 UpdateEvent::InstallationWillBegin,
             )
             .map_err(DurableUpdateError::Policy)?;
-        self.persist_transition(true)?;
+        self.persist_transition(true, Some(&current.target))?;
         Ok(InstallationPermit {
             operation_id: self.receipt.operation_id.clone(),
             fingerprint: self.receipt.fingerprint.clone(),
@@ -172,7 +172,8 @@ impl<'a> DurableUpdateSession<'a> {
         self.session
             .reconcile(operation_id, observed)
             .map_err(DurableUpdateError::Policy)?;
-        self.persist_transition(false)
+        let authority = (self.session.state == UpdateState::VersionVerified).then_some(observed);
+        self.persist_transition(false, authority)
     }
 
     fn ensure_usable(&self) -> Result<(), DurableUpdateError> {
@@ -183,7 +184,11 @@ impl<'a> DurableUpdateSession<'a> {
         }
     }
 
-    fn persist_transition(&mut self, check_safe_mode: bool) -> Result<(), DurableUpdateError> {
+    fn persist_transition(
+        &mut self,
+        check_safe_mode: bool,
+        authority: Option<&TargetObservation>,
+    ) -> Result<(), DurableUpdateError> {
         // A commit error may be ambiguous. Do not issue a permit, restore the
         // old in-memory state, or allow the caller to retry this authorization.
         self.usable = false;
@@ -196,6 +201,7 @@ impl<'a> DurableUpdateSession<'a> {
             &self.receipt,
             self.session.state,
             check_safe_mode,
+            authority,
         )? {
             return Err(DurableUpdateError::Conflict);
         }

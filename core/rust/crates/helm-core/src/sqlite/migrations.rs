@@ -1124,7 +1124,36 @@ DROP TABLE external_update_sessions;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 23] = [
+const MIGRATION_0024: SqliteMigration = SqliteMigration {
+    version: 24,
+    name: "add_external_update_adoptions",
+    up_sql: r#"
+CREATE TABLE external_update_adoption_epoch (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    epoch BLOB NOT NULL CHECK (length(epoch) = 32)
+);
+INSERT INTO external_update_adoption_epoch VALUES (1, randomblob(32));
+CREATE TABLE external_update_adoptions (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    target_path TEXT NOT NULL,
+    consent_id TEXT UNIQUE,
+    identity_fingerprint TEXT,
+    review_fingerprint TEXT,
+    reviewed_target_json TEXT,
+    CHECK (
+        (consent_id IS NULL AND identity_fingerprint IS NULL AND review_fingerprint IS NULL AND reviewed_target_json IS NULL)
+        OR (consent_id IS NOT NULL AND identity_fingerprint IS NOT NULL AND review_fingerprint IS NOT NULL AND reviewed_target_json IS NOT NULL)
+    )
+);
+CREATE INDEX external_update_adoptions_path ON external_update_adoptions(target_path, sequence DESC);
+"#,
+    down_sql: r#"
+DROP TABLE external_update_adoptions;
+DROP TABLE external_update_adoption_epoch;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 24] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -1148,6 +1177,7 @@ const MIGRATIONS: [SqliteMigration; 23] = [
     MIGRATION_0021,
     MIGRATION_0022,
     MIGRATION_0023,
+    MIGRATION_0024,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

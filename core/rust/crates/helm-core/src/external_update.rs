@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
 
+pub mod adoption;
 pub mod durable;
 
 pub const HELPER_IDENTIFIER: &str = "com.jasoncavinder.Helm.SparkleExternalUpdater";
@@ -40,14 +41,7 @@ impl ReviewRequest {
 
     fn validate(&self) -> Result<(), Rejection> {
         if self.schema_version != 1
-            || self.operation_id.len() != 36
-            || !self.operation_id.bytes().enumerate().all(|(index, byte)| {
-                if [8, 13, 18, 23].contains(&index) {
-                    byte == b'-'
-                } else {
-                    byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
-                }
-            })
+            || !operation_identifier(&self.operation_id)
             || !bundle_identifier(&self.expected_bundle_identifier)
             || !bounded_text(&self.expected_installed_build, 128)
             || !bounded_text(&self.expected_candidate_build, 128)
@@ -63,8 +57,16 @@ impl ReviewRequest {
 #[serde(rename_all = "snake_case")]
 pub enum Authority {
     Standalone,
+    /// Explicit local consent, not proof of standalone installation history.
+    UserAdopted(adoption::AdoptionToken),
     OtherManager,
     Unknown,
+}
+
+impl Authority {
+    fn permits_review(self) -> bool {
+        matches!(self, Self::Standalone | Self::UserAdopted(_))
+    }
 }
 
 /// Security.framework, filesystem and bundle observations, collected locally by
@@ -157,53 +159,16 @@ impl ReviewedUpdate {
         now: u64,
     ) -> Result<Self, Rejection> {
         request.validate()?;
-        if boundary.helper_identifier != HELPER_IDENTIFIER
-            || boundary.helper_team_identifier != HELM_TEAM
-            || boundary.caller_identifier != HELM_IDENTIFIER
-            || boundary.caller_team_identifier != HELM_TEAM
-            || !boundary.authenticated_live_caller
-            || !boundary.developer_id_signature_valid
-            || !boundary.notarization_accepted
-            || !boundary.helm_sandbox_preserved
-            || !boundary.external_helper_unsandboxed
-            || !boundary.direct_consumer_channel
-            || !valid_cdhash(&boundary.helper_code_directory_hash)
-        {
-            return Err(Rejection::BoundaryUnavailable);
-        }
-        if target
-            .bundle_identifier
-            .to_ascii_lowercase()
-            .starts_with(&HELM_IDENTIFIER.to_ascii_lowercase())
-        {
-            return Err(Rejection::HelmSelfUpdate);
-        }
+        validate_boundary(&boundary)?;
+        validate_target(&target, application_roots)?;
         if request.target_path != target.canonical_path
             || request.expected_bundle_identifier != target.bundle_identifier
             || request.expected_installed_build != target.build
         {
             return Err(Rejection::TargetChanged);
         }
-        if !application_roots.iter().any(|root| {
-            allowed_application_root(root)
-                && target.canonical_path.starts_with(root)
-                && target.canonical_path != *root
-        }) {
-            return Err(Rejection::TargetOutsideRoots);
-        }
-        if target.authority != Authority::Standalone || target.has_store_receipt {
+        if !target.authority.permits_review() {
             return Err(Rejection::UnsupportedAuthority);
-        }
-        if !target.signature_valid
-            || !team_identifier(&target.team_identifier)
-            || !valid_cdhash(&target.code_directory_hash)
-            || target.ed25519_public_key.len() != 32
-            || target.framework_major != 2
-            || target.translocated
-            || target.writable_by_others
-            || !secure_url(&target.feed_url)
-        {
-            return Err(Rejection::UnsupportedTarget);
         }
         if candidate.build != request.expected_candidate_build
             || candidate.build == target.build
@@ -351,7 +316,8 @@ impl UpdateSession {
             && observed.ed25519_public_key == original.ed25519_public_key
             && observed.feed_url == original.feed_url
             && observed.framework_major == 2
-            && observed.authority == Authority::Standalone
+            && observed.authority.permits_review()
+            && observed.authority == original.authority
             && !observed.has_store_receipt
             && !observed.translocated
             && !observed.writable_by_others;
@@ -362,6 +328,71 @@ impl UpdateSession {
         };
         Ok(self.state)
     }
+}
+
+fn validate_boundary(boundary: &BoundaryObservation) -> Result<(), Rejection> {
+    if boundary.helper_identifier != HELPER_IDENTIFIER
+        || boundary.helper_team_identifier != HELM_TEAM
+        || boundary.caller_identifier != HELM_IDENTIFIER
+        || boundary.caller_team_identifier != HELM_TEAM
+        || !boundary.authenticated_live_caller
+        || !boundary.developer_id_signature_valid
+        || !boundary.notarization_accepted
+        || !boundary.helm_sandbox_preserved
+        || !boundary.external_helper_unsandboxed
+        || !boundary.direct_consumer_channel
+        || !valid_cdhash(&boundary.helper_code_directory_hash)
+    {
+        return Err(Rejection::BoundaryUnavailable);
+    }
+    Ok(())
+}
+
+fn validate_target(target: &TargetObservation, roots: &[PathBuf]) -> Result<(), Rejection> {
+    if target
+        .bundle_identifier
+        .to_ascii_lowercase()
+        .starts_with(&HELM_IDENTIFIER.to_ascii_lowercase())
+    {
+        return Err(Rejection::HelmSelfUpdate);
+    }
+    if !normal_app_path(&target.canonical_path)
+        || !roots.iter().any(|root| {
+            allowed_application_root(root)
+                && target.canonical_path.starts_with(root)
+                && target.canonical_path != *root
+        })
+    {
+        return Err(Rejection::TargetOutsideRoots);
+    }
+    if target.has_store_receipt || target.authority == Authority::OtherManager {
+        return Err(Rejection::UnsupportedAuthority);
+    }
+    if !target.signature_valid
+        || !bundle_identifier(&target.bundle_identifier)
+        || !bounded_text(&target.build, 128)
+        || !team_identifier(&target.team_identifier)
+        || !valid_cdhash(&target.code_directory_hash)
+        || target.ed25519_public_key.len() != 32
+        || target.framework_major != 2
+        || target.translocated
+        || target.writable_by_others
+        || !secure_url(&target.feed_url)
+    {
+        return Err(Rejection::UnsupportedTarget);
+    }
+    Ok(())
+}
+
+fn operation_identifier(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| {
+            if [8, 13, 18, 23].contains(&index) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+            }
+        })
 }
 
 fn bounded_text(value: &str, maximum: usize) -> bool {
@@ -405,7 +436,7 @@ fn valid_cdhash(value: &[u8]) -> bool {
     matches!(value.len(), 20 | 32) && value.iter().any(|byte| *byte != 0)
 }
 
-fn normal_app_path(path: &Path) -> bool {
+pub(crate) fn normal_app_path(path: &Path) -> bool {
     let Some(text) = path.to_str() else {
         return false;
     };

@@ -445,7 +445,10 @@ fn migration_preserves_prior_data_and_explicit_reset_removes_ledger() {
     );
     assert!(store.external_update_receipt(OPERATION).unwrap().is_some());
     assert!(store.apply_migration(0).is_err());
-    assert_eq!(store.current_version().unwrap(), 23);
+    assert_eq!(
+        store.current_version().unwrap(),
+        crate::sqlite::migrations::current_schema_version()
+    );
     active.event(OPERATION, UpdateEvent::Cancelled).unwrap();
     store.apply_migration(0).unwrap();
     store.migrate_to_latest().unwrap();
