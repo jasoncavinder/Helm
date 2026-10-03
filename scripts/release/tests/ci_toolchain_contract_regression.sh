@@ -53,4 +53,19 @@ for workflow in codeql ci-test; do
   fi
 done
 
+for workflow in codeql ci-test; do
+  cp "${ROOT_DIR}/.github/workflows/codeql.yml" "${TMP_DIR}/workflows/codeql.yml"
+  cp "${ROOT_DIR}/.github/workflows/ci-test.yml" "${TMP_DIR}/workflows/ci-test.yml"
+  sed '/library_dir=.*bash scripts\/build_external_update_bridge.sh arm64 debug/d' \
+    "${TMP_DIR}/workflows/${workflow}.yml" > "${TMP_DIR}/missing-bridge.yml"
+  mv "${TMP_DIR}/missing-bridge.yml" "${TMP_DIR}/workflows/${workflow}.yml"
+  if HELM_CI_WORKFLOWS_DIR="${TMP_DIR}/workflows" \
+    "${CONTRACT_PATH}" >"${TMP_DIR}/stdout.log" 2>"${TMP_DIR}/stderr.log"; then
+    fail "missing ${workflow} bridge build was accepted"
+  fi
+  if ! grep -Fq "private external updater Rust bridge" "${TMP_DIR}/stderr.log"; then
+    fail "missing ${workflow} bridge build was not identified"
+  fi
+done
+
 printf '[ci-toolchain-contract-regression] passed\n'

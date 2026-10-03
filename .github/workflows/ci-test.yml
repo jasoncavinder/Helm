@@ -92,6 +92,14 @@ jobs:
       - name: Validate Ventura arm64 compatibility contract
         run: scripts/ci/check_macos_ventura_compatibility.sh
 
+      - name: Test external updater bridge build inputs
+        run: python3 -m unittest discover -s scripts/tests -p test_build_external_update_bridge.py -v
+
+      - name: Build private external updater core bridge
+        run: |
+          library_dir="$(bash scripts/build_external_update_bridge.sh arm64 debug)"
+          echo "HELM_EXTERNAL_POLICY_LIB_DIR=$library_dir" >> "$GITHUB_ENV"
+
       - name: Test external updater native observation (no installer)
         run: swift test --package-path service/external-updater --arch arm64
 

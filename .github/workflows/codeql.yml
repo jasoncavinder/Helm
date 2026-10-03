@@ -63,6 +63,20 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+      - name: Install Rust toolchain for external updater bridge
+        if: matrix.language == 'swift'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+
+      - name: Build private external updater core bridge
+        if: matrix.language == 'swift'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
+        run: |
+          library_dir="$(bash scripts/build_external_update_bridge.sh arm64 debug)"
+          echo "HELM_EXTERNAL_POLICY_LIB_DIR=$library_dir" >> "$GITHUB_ENV"
+
       - name: Build external updater boundary (swift)
         if: matrix.language == 'swift'
         run: swift build --package-path service/external-updater --arch arm64
