@@ -11,9 +11,19 @@ evaluation remains under macOS control.
 `HelmSparkleExternalUpdater` is a separate executable, linked to its own exact
 Sparkle 2.9.5 distribution through SwiftPM (including the resolved revision and
 upstream binary checksum). It never initializes `SPUUpdater`. Its only commands
-are `--preflight` and `--serve-bootstrap`; both require native self-identity
+are `--preflight`, `--serve-bootstrap` and `--prepare-ledger`; all require native self-identity
 validation and the actual loaded framework to reside inside its own bundle.
 It never loads the target application's private updater or framework.
+
+`--prepare-ledger` explicitly initializes/reopens the helper's separate private
+storage; the other commands still do not open a ledger. It uses the OS account's
+`Library/Application Support/com.jasoncavinder.Helm.SparkleExternalUpdater/ledger.sqlite`,
+not HOME, `HELM_DB_PATH`, app preferences or a client path. The native filesystem
+lease and core migration checks must both succeed. Unsafe aliases, permissions,
+sidecars, incomplete stores and concurrent leases fail closed without automatic
+repair/reset. This command grants no adoption/update permission and exposes no
+XPC mutation. Run QA only in the disposable VM, not against the host account.
+See the [private ledger contract](../../docs/validation/v0.20-sparkle-private-ledger.md).
 
 `scripts/package_external_updater.py` stages a **new** unembedded app bundle or
 validates its layout. It checks the pinned framework, required nested components,

@@ -1,6 +1,7 @@
 //! Private, in-process ABI. This is not an XPC/JSON protocol or an authorization
 //! boundary: only the helper's successful native observer may supply evidence.
-//! No database, process, network, adoption mutation or installer entrypoint.
+//! The separate ledger initializer accepts only a native-leased private path.
+//! No process, network, adoption mutation or installer entrypoint.
 
 use std::{path::PathBuf, slice, str};
 
@@ -187,6 +188,33 @@ pub unsafe extern "C" fn helm_external_requested_preflight(
         })())
     })
     .unwrap_or(INTERNAL_FAILURE)
+}
+
+/// Prepare the helper's private ledger, not Helm's normal application database.
+/// This is NOT a wire operation or an adoption grant. The native caller must
+/// hold and revalidate its filesystem lease around this synchronous call.
+/// # Safety
+/// `path` must be readable/immutable for the call and supplied by the native
+/// OS-account path policy, never by IPC, preferences or environment overrides.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_ledger_prepare(path: Bytes, fresh: u8) -> u32 {
+    std::panic::catch_unwind(|| {
+        let Ok(path) = (unsafe { text(path, 4096) }) else {
+            return 0;
+        };
+        let path = PathBuf::from(path);
+        if fresh > 1
+            || !path.is_absolute()
+            || path.file_name().and_then(|name| name.to_str()) != Some("ledger.sqlite")
+        {
+            return 0;
+        }
+        u32::from(
+            helm_core::sqlite::SqliteStore::prepare_external_update_ledger(&path, fresh == 1)
+                .is_ok(),
+        )
+    })
+    .unwrap_or(0)
 }
 
 #[cfg(test)]

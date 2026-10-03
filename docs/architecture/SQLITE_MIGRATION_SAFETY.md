@@ -100,6 +100,16 @@ undisclosed copy of user data.
 
 ## Environment Isolation
 
+The unembedded external Sparkle helper's explicit `--prepare-ledger` command
+uses a separate, fixed OS-account-derived private namespace. It does not use
+`HELM_DB_PATH` or import the application database. A native filesystem lease is
+required around the private in-process initializer; SQLite opens existing files
+with no-follow behavior and never recreates missing storage. Existing stores
+must already contain migration 24 or later, valid immutable migration identities,
+the adoption epoch and session tables. An empty/partial existing store is not
+fresh initialization. Ordinary app connection behavior and all historical
+migrations are unchanged. See the [private helper ledger contract](../validation/v0.20-sparkle-private-ledger.md).
+
 Release builds use:
 
 ```text

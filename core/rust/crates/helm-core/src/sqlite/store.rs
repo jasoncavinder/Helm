@@ -43,13 +43,64 @@ pub const BUNDLED_REPAIR_KNOWLEDGE_SOURCE_KEY: &str = "bundled:helm";
 
 pub struct SqliteStore {
     database_path: PathBuf,
+    existing_private_ledger: bool,
 }
 
 impl SqliteStore {
     pub fn new(database_path: impl Into<PathBuf>) -> Self {
         Self {
             database_path: database_path.into(),
+            existing_private_ledger: false,
         }
+    }
+
+    /// Only the native helper may supply this path, while holding its verified
+    /// private-directory lease. Never pass an environment or client DB override.
+    /// SQLite must not recreate a missing ledger or follow a final-component alias.
+    pub fn prepare_external_update_ledger(
+        database_path: &Path,
+        fresh: bool,
+    ) -> PersistenceResult<()> {
+        let store = Self {
+            database_path: database_path.into(),
+            existing_private_ledger: true,
+        };
+        // Validate before WAL setup: journal_mode can write an SQLite header to
+        // an empty existing file, destroying evidence of incomplete initialization.
+        (|| -> rusqlite::Result<()> {
+            let connection = open_private_ledger(database_path)?;
+            let tables: i64 = connection.query_row(
+                "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table'",
+                [],
+                |row| row.get(0),
+            )?;
+            if fresh {
+                if tables != 0 {
+                    return Err(storage_error_sqlite("new ledger is not empty"));
+                }
+            } else if tables == 0 || read_current_version(&connection)? < 24 {
+                // This helper namespace starts at migration 24. Missing
+                // or partial initialization is recovery work, never a fresh grant epoch.
+                return Err(storage_error_sqlite("existing helper ledger is incomplete"));
+            }
+            let integrity: String =
+                connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+            if integrity != "ok" {
+                return Err(storage_error_sqlite("helper ledger integrity check failed"));
+            }
+            Ok(())
+        })()
+        .map_err(|error| storage_error("validate_external_update_ledger", error))?;
+        store.migrate_to_latest()?;
+        // A valid migration ledger is not enough if authority tables/epoch were
+        // removed. Do not acknowledge a partially restored/reset helper store.
+        store.external_adoption_cursor(Path::new("/Applications/LedgerCheck.app"))?;
+        store.with_connection("validate_external_update_sessions", |connection| {
+            connection.query_row("SELECT COUNT(*) FROM external_update_sessions", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+            Ok(())
+        })
     }
 
     pub fn database_path(&self) -> &Path {
@@ -73,8 +124,12 @@ impl SqliteStore {
         operation_name: &str,
         operation: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
     ) -> PersistenceResult<T> {
-        let mut connection = open_connection(&self.database_path)
-            .map_err(|error| storage_error(operation_name, error))?;
+        let mut connection = if self.existing_private_ledger {
+            open_private_ledger(&self.database_path).and_then(configure_connection)
+        } else {
+            open_connection(&self.database_path)
+        }
+        .map_err(|error| storage_error(operation_name, error))?;
         operation(&mut connection).map_err(|error| storage_error(operation_name, error))
     }
 
@@ -2600,7 +2655,17 @@ fn open_connection(database_path: &Path) -> rusqlite::Result<Connection> {
         fs::create_dir_all(parent)
             .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     }
-    let connection = Connection::open(database_path)?;
+    configure_connection(Connection::open(database_path)?)
+}
+
+fn open_private_ledger(database_path: &Path) -> rusqlite::Result<Connection> {
+    let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+        | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+        | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW;
+    Connection::open_with_flags(database_path, flags)
+}
+
+fn configure_connection(connection: Connection) -> rusqlite::Result<Connection> {
     // Use macOS's stronger flush at WAL sync boundaries without syncing every commit.
     // Forced-stop tests reproduced corruption without this macOS flush request.
     connection.execute_batch(
