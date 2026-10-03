@@ -106,6 +106,36 @@ opens refuse aliases in any component. This is a read-only observation, not an
 atomic lease, a shipping installation-root policy or proof of manager provenance.
 Re-observation at future review/confirmation/handoff boundaries remains required.
 
+### Native Competing-Manager Observation
+
+The [native manager observer](../validation/v0.20-sparkle-manager-authority.md)
+adds read-only exclusion facts to `NativeTargetEvidence`. It reads Homebrew's
+installed moved-app references at `/opt/homebrew/Caskroom` and
+`/usr/local/Caskroom` without running brew or evaluating cask definitions. Exact
+absolute/relative link destinations must identify the target path; names or
+bundle IDs alone do not match. The scan never follows those links or descends
+into app payloads. Standard-prefix scope is fixed locally, not supplied by XPC,
+HOME, PATH, manager preferences or cached package inventories.
+
+Each scan has a shared 10,000-entry bound. Directory opens refuse symlinks in
+every component, and missing roots differ from unreadable/unsupported paths.
+Directory/entry identity and link text snapshots must agree across target
+signature validation. Existing receipt containers, even empty or aliased ones,
+conservatively exclude App Store candidates based on the already checked bundle
+tree. Apps beneath an authorized application's `Setapp` directory are excluded
+on a component boundary. These markers are not authenticated receipts or a
+complete provenance catalog. Group-writable cask metadata may supply a denial
+signal; it can never authorize installation.
+
+The only dispositions are `otherManager` and `unresolved`; there is deliberately
+no native standalone grant yet. Nonstandard Homebrew prefixes, pkg/custom
+installations, relocated/static-linked Setapp builds and other authority sources
+still require coordinator-owned resolution. Even a successful empty scan keeps
+`requiresAuthorityResolution` true. Re-observation is not an atomic lease; the
+future runtime must repeat it and bind positive provenance/candidate/durable
+facts before confirmation or installation. The operational release gate remains
+open, and no automatic capability or new wire method is exposed.
+
 ### Standalone Package And Bootstrap
 
 The [helper package](../validation/v0.20-sparkle-helper-package.md) links its own

@@ -15,10 +15,14 @@ now stages its own pinned framework and a bounded fixed-service bootstrap;
 it is not embedded in Helm. Authorized QA-only notarization and signed-peer
 acceptance/rejection now pass in the VM, with unchanged native trust requirements
 and a fresh positive control after four rejected peer variants. PR #619 is
-reviewed and merged at `23133525`. Review the bounded
-[helper filesystem boundary](validation/v0.20-sparkle-path-authority.md), then
-continue fresh native manager authority/candidate mapping and durable-session
-binding. The filesystem checks do not establish standalone manager provenance
+reviewed and merged at `23133525`. The bounded
+[helper filesystem boundary](validation/v0.20-sparkle-path-authority.md) is
+reviewed and merged through #620 at `0722b00d`. Review the next
+[native competing-manager observation](validation/v0.20-sparkle-manager-authority.md)
+before binding these exclusions to positive standalone provenance and fresh
+candidate/durable-session evidence. The standard-prefix cask scan is not complete
+manager coverage, and absent markers never grant standalone authority.
+The filesystem checks do not establish standalone manager provenance
 or reserve the path against later changes. Do not infer installation authority from the successful
 handshake or change shipping entitlements based on the QA fixture. Keep #606/#607 open and retain Open App;
 #608's real execution, verification and recovery follows that reviewed boundary.
