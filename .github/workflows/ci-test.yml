@@ -95,6 +95,16 @@ jobs:
       - name: Test external updater native observation (no installer)
         run: swift test --package-path service/external-updater --arch arm64
 
+      - name: Validate external updater package (unsigned, no installer)
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts/tests -p test_package_external_updater.py -v
+          swift build --package-path service/external-updater --arch arm64 -c release
+          python3 scripts/package_external_updater.py stage \
+            --binary service/external-updater/.build/arm64-apple-macosx/release/HelmSparkleExternalUpdater \
+            --framework service/external-updater/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework \
+            --output "$RUNNER_TEMP/HelmSparkleExternalUpdater.app" --build 1
+
       - name: Build and test Xcode project
         run: |
           set -euo pipefail

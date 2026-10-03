@@ -1,8 +1,65 @@
 # External Updater Native Observation
 
-Development foundation only. This package is not embedded in Helm and has no
-installer, network request, manager mutation, privileged operation or updater
-command transport. Its data-free XPC bootstrap does not enable direct updates.
+Development foundation only. This package is not embedded in Helm and exposes no
+installer operation, feed request, manager mutation, privileged operation or
+updater command transport. Its data-free XPC bootstrap does not enable direct
+updates. Native signing/notarization trust evaluation remains under macOS control.
+
+## Standalone Helper Package
+
+`HelmSparkleExternalUpdater` is a separate executable, linked to its own exact
+Sparkle 2.9.5 distribution through SwiftPM (including the resolved revision and
+upstream binary checksum). It never initializes `SPUUpdater`. Its only commands
+are `--preflight` and `--serve-bootstrap`; both require native self-identity
+validation and the actual loaded framework to reside inside its own bundle.
+It never loads the target application's private updater or framework.
+
+`scripts/package_external_updater.py` stages a **new** unembedded app bundle or
+validates its layout. It checks the pinned framework, required nested components,
+architectures, Ventura deployment target, concrete executable, bounded tree,
+contained symlinks, sealed-metadata contract and confined loader search paths.
+It removes SwiftPM's developer-toolchain/loader-directory rpaths only from the
+new staged executable. It does not replace an existing output, sign, notarize,
+register or execute anything. Its JSON explicitly does **not** attest signature
+or notarization. Source inputs must come from the pinned build; structural
+checks do not authenticate an arbitrary supplied framework.
+
+Host compilation/staging, without runtime execution:
+
+```sh
+swift build --package-path service/external-updater --arch arm64 -c release
+python3 scripts/package_external_updater.py stage \
+  --binary service/external-updater/.build/arm64-apple-macosx/release/HelmSparkleExternalUpdater \
+  --framework service/external-updater/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework \
+  --output /existing/private/qa/HelmSparkleExternalUpdater.app --build 1
+```
+
+Signing and Apple submission are separately authorized steps. Sign nested
+Sparkle code inside-out with hardened runtime, preserving the downloader's
+upstream entitlements, then the framework and helper. The helper itself needs
+no entitlements. Do not use deep signing, weaken the requirements or copy
+credentials to the VM. Keep the main app's entitlements unchanged.
+
+The bootstrap uses the fixed per-user Mach service
+`com.jasoncavinder.Helm.SparkleExternalUpdater.bootstrap`, with the same exact
+bidirectional code requirements as the anonymous transport. A manually prepared,
+temporary VM-only LaunchAgent is test infrastructure, **not** shipped service
+registration. The host accepts at most one admitted connection, re-observes its
+own identity before admission and exits within 120 seconds. It exports only the
+version/nonce handshake, never paths, update requests or authorization tokens.
+Cancellation is local connection invalidation, not an exported update command.
+
+`helm-external-bootstrap-probe` is a data-free QA test host. Testing real
+acceptance requires a separately signed/notarized sandboxed app wrapper with the
+exact caller identity/channel and only the named Mach-lookup sandbox exception.
+Never install or launch that identity-matching test app on the production host.
+Do not ship the probe, fixture wrapper or launch registration. The signed VM
+handshake now passes, as do notarized wrong-identity/channel/unsandboxed-caller
+and impostor-helper rejection controls. This proves bounded transport acceptance,
+not permission to update or a shipping sandbox/launch strategy.
+See [package evidence and remaining gates](../../docs/validation/v0.20-sparkle-helper-package.md).
+
+## Native Observation And Authentication
 
 `NativeHelperObserver.observeSelf()` collects the current process through
 Security.framework, not a caller-supplied path or PID. It enforces the fixed
@@ -39,8 +96,8 @@ JSON includes local paths and app identity, so retain output locally or redact
 it before sharing. It is not the shipped Helm CLI and must not be bundled or
 advertised as an updater.
 
-`ExternalUpdaterPeerAuthentication` prepares inactive anonymous XPC listeners
-and connections with fixed, bidirectional macOS code-signing requirements. It
+`ExternalUpdaterPeerAuthentication` prepares inactive anonymous or fixed-service
+XPC listeners and connections with bidirectional macOS code-signing requirements. It
 does not expose an updater command protocol. For the bootstrap, the helper
 delegate passes each newly accepted, inactive connection directly to
 `ExternalUpdaterBootstrapServer`, whose initializer calls `admit` exactly once
@@ -53,7 +110,7 @@ observation. Native message delivery enforces the live requirement.
 
 Incoming peers require the exact sandboxed Developer ID consumer Helm identity,
 team and signed distribution field; responses require the exact separate helper
-identity/team without sandbox inheritance. Both require notarization and exclude
+identity/team without a sandbox entitlement. Both require notarization and exclude
 debug injection entitlements. There is no environment/preference override, PID
 lookup, developer-build allowlist or weaker fallback. Same-account incoming
 connections are required and root/setuid process initialization is rejected.
@@ -67,9 +124,12 @@ cancellation or connection loss, with no reconnect. Readiness is not update
 consent, and the session nonce is not an authorization token. Response
 authentication alone does
 not prove that an outgoing request was never observed by an impostor endpoint.
-This package deliberately has no such operation request yet. Real accepted-peer,
-entitlement/notarization, service packaging and sandbox-access tests are still
-required; unsigned negative/control tests do not substitute for them.
+This package deliberately has no such operation request yet. The notarized VM
+impostor control demonstrates this distinction: it receives the data-free hello,
+but the real client rejects its reply. The accepted/rejected peer tests use a
+temporary per-user service and isolated QA app wrappers, not shipping service
+registration or a complete inherited-sandbox proof. Unsigned negative/control
+tests remain separate evidence.
 
 Compile on the host if needed; execute only in the designated VM or CI:
 

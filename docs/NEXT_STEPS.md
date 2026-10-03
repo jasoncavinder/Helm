@@ -10,9 +10,14 @@ repeating package lifecycles. Final integrated-candidate QA remains separate.
 Continue #607's operational external Sparkle helper boundary. The
 [helper-identity observer](validation/v0.20-sparkle-helper-identity.md) supplies
 local fail-closed self-observation, not operational peer or installation proof.
-Next deliver the separately packaged helper with its own Sparkle framework and
-accepted signed/notarized peer evidence, then fresh native authority/candidate
-mapping and durable-session binding. Keep #606/#607 open and retain Open App;
+The [standalone helper package](validation/v0.20-sparkle-helper-package.md)
+now stages its own pinned framework and a bounded fixed-service bootstrap;
+it is not embedded in Helm. Authorized QA-only notarization and signed-peer
+acceptance/rejection now pass in the VM, with unchanged native trust requirements
+and a fresh positive control after four rejected peer variants. Independently
+review #619, then continue fresh native authority/candidate mapping and
+durable-session binding. Do not infer installation authority from the successful
+handshake or change shipping entitlements based on the QA fixture. Keep #606/#607 open and retain Open App;
 #608's real execution, verification and recovery follows that reviewed boundary.
 #616's [shipping first-run activation](validation/v0.20-shipping-first-run.md)
 is reviewed and merged at `63a210d4`, with all head checks passing. Ordinary

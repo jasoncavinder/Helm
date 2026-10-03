@@ -10,6 +10,7 @@ public enum PeerAuthenticationFailure: String, Error {
 /// Fixed production identities, never request parameters, preferences or a PID
 /// lookup. The OS checks the live peer when delivering connection messages.
 public struct ExternalUpdaterPeerAuthentication {
+    public static let bootstrapServiceName = "com.jasoncavinder.Helm.SparkleExternalUpdater.bootstrap"
     static let applicationRequirement = """
         anchor apple generic
         and certificate 1[field.1.2.840.113635.100.6.2.6] exists
@@ -60,6 +61,15 @@ public struct ExternalUpdaterPeerAuthentication {
         return listener
     }
 
+    /// Registration/launch is a separate packaging concern. This fixed-name
+    /// listener retains the same gate as the anonymous bootstrap transport.
+    public func makeBootstrapServiceListener(delegate: NSXPCListenerDelegate) -> NSXPCListener {
+        let listener = NSXPCListener(machServiceName: Self.bootstrapServiceName)
+        listener.setConnectionCodeSigningRequirement(Self.applicationRequirement)
+        listener.delegate = delegate
+        return listener
+    }
+
     /// Call once, on a newly received inactive connection. A true return only
     /// means the OS identity gate was configured, not that a message has passed
     /// authentication or that any operation is authorized.
@@ -77,6 +87,13 @@ public struct ExternalUpdaterPeerAuthentication {
     /// signed/notarized helper may respond after the caller configures it.
     public func makeConnection(to endpoint: NSXPCListenerEndpoint) -> NSXPCConnection {
         let connection = NSXPCConnection(listenerEndpoint: endpoint)
+        connection.setCodeSigningRequirement(Self.helperRequirement)
+        Self.closeOnInterruption(connection)
+        return connection
+    }
+
+    public func makeBootstrapServiceConnection() -> NSXPCConnection {
+        let connection = NSXPCConnection(machServiceName: Self.bootstrapServiceName, options: [])
         connection.setCodeSigningRequirement(Self.helperRequirement)
         Self.closeOnInterruption(connection)
         return connection

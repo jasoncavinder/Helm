@@ -59,9 +59,21 @@ It validates its own running code and a fresh on-disk bundle against the fixed
 notarized helper requirement, hardened runtime and signed direct-channel metadata,
 rejects entitlement grants, and re-observes identity/account/filesystem facts.
 No caller-supplied path, PID, trust result or requirement is accepted. The package
-remains unembedded and does not grant installation authority. Signed/notarized
-positive acceptance, helper packaging, live native authority mapping and real
-update execution remain open under #607/#608; #606 is not closed by this slice.
+remains unembedded and does not grant installation authority. #618 is reviewed
+and merged at `47527960`. A [standalone helper package](validation/v0.20-sparkle-helper-package.md)
+now stages its own Sparkle 2.9.5 framework, confines loader paths and supplies a
+bounded data-free fixed-service bootstrap. Its 17 packaging regressions and all
+49 native package tests pass in the VM; a Developer ID signed but unnotarized
+helper correctly rejected startup before notarization. Apple has now accepted
+the QA helper, sandboxed test host and four negative controls. Stapled-ticket,
+strict-signature, Gatekeeper and actual helper self/framework checks pass in the
+VM. The real signed connection succeeds in both directions; notarized callers
+with the wrong identity/channel or without sandboxing are rejected, as is an
+impostor helper's reply. A fresh valid connection passes afterward. The helper's
+requirements and shipped app entitlements are unchanged; this is bounded
+transport evidence, not installation authority or complete sandbox-inheritance proof.
+Shipping helper integration, live native authority mapping and real update
+execution remain open under #607/#608; #606 is not closed by this slice.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
