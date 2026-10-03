@@ -6,8 +6,8 @@ public enum HelperLedgerFailure: Error, Equatable {
     case unavailable, unsafePath, changed, busy, incomplete, storageRejected
 }
 
-/// A separate, helper-owned namespace. This prepares storage only: it does not
-/// load consent as authority, expose a wire operation or start an installer.
+/// A separate, helper-owned namespace. Preparation is explicit; authenticated
+/// history inspection only opens existing storage. Neither grants authority.
 public struct NativeHelperLedger {
     private let identity: NativeHelperEvidence
 
@@ -38,6 +38,35 @@ public struct NativeHelperLedger {
         }
         guard result == 1 else { throw HelperLedgerFailure.storageRejected }
     }
+
+    func consentStatus(evidence: NativeTargetEvidence, request: Data, userApplications: String?) throws -> ExternalConsentStatus {
+        guard try NativeHelperObserver().observeSelf() == identity,
+              let applications = NativeApplicationRoots.userApplications,
+              applications == userApplications else { throw HelperLedgerFailure.unavailable }
+        let home = URL(fileURLWithPath: applications, isDirectory: true).deletingLastPathComponent()
+        return try PrivateLedgerDirectory(home: home).withDatabase(createIfMissing: false) { path, _ in
+            let result = try Self.inspect(path: path, evidence: evidence, request: request, userApplications: applications)
+            guard try NativeHelperObserver().observeSelf() == identity,
+                  NativeApplicationRoots.userApplications == applications else { throw HelperLedgerFailure.changed }
+            return result
+        }
+    }
+
+    static func inspect(path: String, evidence: NativeTargetEvidence, request: Data,
+                        userApplications: String?) throws -> ExternalConsentStatus {
+        let path = Data(path.utf8)
+        let code = NativePolicyAssessment.withTarget(evidence, userApplications: userApplications) { input in
+            path.withUnsafeBytes { path in
+                request.withUnsafeBytes { request in
+                    helm_external_consent_status(input,
+                        HelmExternalBytes(data: request.bindMemory(to: UInt8.self).baseAddress, length: request.count),
+                        HelmExternalBytes(data: path.bindMemory(to: UInt8.self).baseAddress, length: path.count))
+                }
+            }
+        }
+        guard let result = ExternalConsentStatus(code: code) else { throw HelperLedgerFailure.storageRejected }
+        return result
+    }
 }
 
 /// Internal injection is for isolated filesystem tests. Runtime callers have no
@@ -53,7 +82,7 @@ struct PrivateLedgerDirectory {
             .appendingPathComponent(Self.directoryName, isDirectory: true)
     }
 
-    func withDatabase<T>(_ operation: (String, Bool) throws -> T) throws -> T {
+    func withDatabase<T>(createIfMissing: Bool = true, _ operation: (String, Bool) throws -> T) throws -> T {
         guard getuid() != 0, getuid() == geteuid(), home.isFileURL,
               home.path.hasPrefix("/"), !home.path.contains("//"),
               !home.path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else {
@@ -66,11 +95,11 @@ struct PrivateLedgerDirectory {
         var parentFD = homeFD
         for component in ["Library", "Application Support"] {
             parent.appendPathComponent(component, isDirectory: true)
-            if mkdirat(parentFD, component, 0o700) != 0, errno != EEXIST { throw HelperLedgerFailure.unavailable }
+            if createIfMissing, mkdirat(parentFD, component, 0o700) != 0, errno != EEXIST { throw HelperLedgerFailure.unavailable }
             parentFD = try held.openDirectory(parent, privateMode: false)
         }
-        let fresh = mkdirat(parentFD, Self.directoryName, 0o700) == 0
-        guard fresh || errno == EEXIST else { throw HelperLedgerFailure.unavailable }
+        let fresh = createIfMissing && mkdirat(parentFD, Self.directoryName, 0o700) == 0
+        guard !createIfMissing || fresh || errno == EEXIST else { throw HelperLedgerFailure.unavailable }
         let directoryFD = try held.openDirectory(directory, privateMode: true)
         // A partial previous initialization is recovery work. Never reconstruct a
         // missing lock or DB and silently forget a grant/revocation/reservation.
@@ -87,8 +116,10 @@ struct PrivateLedgerDirectory {
         try validateFiles(directoryFD)
         // SQLite's core ledger commits request FULL/fullfsync. Also flush the
         // initial file and directory entries before acknowledging preparation.
-        guard fcntl(databaseFD, F_FULLFSYNC) == 0, fsync(directoryFD) == 0,
-              fsync(parentFD) == 0 else { throw HelperLedgerFailure.unavailable }
+        if createIfMissing {
+            guard fcntl(databaseFD, F_FULLFSYNC) == 0, fsync(directoryFD) == 0,
+                  fsync(parentFD) == 0 else { throw HelperLedgerFailure.unavailable }
+        }
         try held.validate()
         return value
     }

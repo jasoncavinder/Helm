@@ -3,7 +3,7 @@ import Foundation
 
 /// Exclusion evidence only. Neither a missing marker nor a completed scan
 /// establishes standalone provenance. No caller can deserialize trusted facts.
-public struct NativeManagerEvidence: Encodable {
+public struct NativeManagerEvidence: Encodable, Equatable {
     public enum Disposition: String, Encodable {
         case otherManager, unresolved
     }

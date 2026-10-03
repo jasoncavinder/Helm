@@ -6,6 +6,16 @@ use super::*;
 use crate::external_update::durable::DurableUpdateError as Error;
 use crate::sqlite::SqliteStore;
 
+/// Point-in-time history only. Even Recorded is not resolved authority, complete
+/// exclusion coverage, candidate consent, or an install permit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConsentStatus {
+    NotRecorded,
+    Recorded,
+    Revoked,
+    IdentityChanged,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct AdoptionRequest {

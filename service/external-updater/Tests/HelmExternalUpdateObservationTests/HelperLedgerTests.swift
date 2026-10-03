@@ -37,6 +37,27 @@ final class HelperLedgerTests: XCTestCase {
         XCTAssertEqual(try FileIdentity.read(database).inode, first.inode)
     }
 
+    func testExistingOnlyLeaseDoesNotCreateMissingParentsOrNamespace() throws {
+        XCTAssertThrowsError(try scope.withDatabase(createIfMissing: false) { _, _ in XCTFail("missing store was opened") })
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), [])
+        try FileManager.default.createDirectory(at: scope.directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        XCTAssertThrowsError(try scope.withDatabase(createIfMissing: false) { _, _ in XCTFail("missing store was opened") })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scope.directory.path))
+    }
+
+    func testExistingOnlyLeaseRejectsIncompleteAndRetainsConcurrencyGuard() throws {
+        try prepare()
+        try scope.withDatabase(createIfMissing: false) { _, fresh in
+            XCTAssertFalse(fresh)
+            XCTAssertThrowsError(try scope.withDatabase(createIfMissing: false) { _, _ in }) {
+                XCTAssertEqual($0 as? HelperLedgerFailure, .busy)
+            }
+        }
+        try FileManager.default.removeItem(at: database)
+        XCTAssertThrowsError(try scope.withDatabase(createIfMissing: false) { _, _ in XCTFail("missing DB opened") })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
+    }
+
     func testPreparationDoesNotCreateAnyAdoptionOrSession() throws {
         try prepare()
         // Signed VM readback asserts the tables have no authority records.

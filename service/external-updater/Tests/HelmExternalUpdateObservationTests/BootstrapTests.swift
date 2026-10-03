@@ -10,11 +10,14 @@ private final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
     let event: (BootstrapEvent) -> Void
     let productionGate: Bool
     let assess: ((Data) throws -> NativePolicyAssessment)?
+    let consent: ((Data) throws -> ExternalConsentStatus)?
     init(productionGate: Bool = false, assess: ((Data) throws -> NativePolicyAssessment)? = nil,
+         consent: ((Data) throws -> ExternalConsentStatus)? = nil,
          event: @escaping (BootstrapEvent) -> Void = { _ in }) {
         self.productionGate = productionGate
         self.event = event
         self.assess = assess
+        self.consent = consent
     }
     var count: Int { lock.lock(); defer { lock.unlock() }; return servers.count }
 
@@ -24,7 +27,7 @@ private final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
             guard let guarded = try? ExternalUpdaterBootstrapServer(connection: connection, event: event) else { return false }
             server = guarded
         } else {
-            server = ExternalUpdaterBootstrapServer(testingConnection: connection, assess: assess, event: event)
+            server = ExternalUpdaterBootstrapServer(testingConnection: connection, assess: assess, consent: consent, event: event)
         }
         lock.lock(); servers.append(server); lock.unlock()
         return true
@@ -64,6 +67,10 @@ private final class SilentBootstrap: NSObject, NSXPCListenerDelegate, ExternalUp
         XCTFail("app data sent before authenticated readiness")
     }
 
+    func consentStatus(session: Data, sequence: UInt64, request: Data, reply: @escaping (UInt64, UInt32) -> Void) {
+        preflight(session: session, sequence: sequence, request: request, reply: reply)
+    }
+
     func replyLate() {
         lock.lock(); let reply = held; let echo = challenge; held = nil; lock.unlock()
         reply?(1, echo, Data(repeating: 1, count: 32))
@@ -81,6 +88,91 @@ final class BootstrapTests: XCTestCase {
 
     private var preflightRequest: ExternalPreflightRequest {
         ExternalPreflightRequest(targetPath: "/Applications/Example.app", bundleIdentifier: "org.example.App", installedBuild: "100")
+    }
+
+    func testConsentClientRoundTripAndWrongOperationReplyRejection() throws {
+        for code in [UInt32(21), 1, 6, 26] {
+            let ready = expectation(description: "ready")
+            let received = expectation(description: "consent reply")
+            let delegate = SilentBootstrap()
+            delegate.preflightResponse = (1, code)
+            let listener = NSXPCListener.anonymous()
+            listener.delegate = delegate
+            listener.activate()
+            let client = try ExternalUpdaterBootstrapClient(testingConnection: NSXPCConnection(listenerEndpoint: listener.endpoint)) {
+                if case .ready = $0 { ready.fulfill() }
+            }
+            defer { client.cancel(); delegate.cancel(); listener.invalidate() }
+            client.begin()
+            wait(for: [ready], timeout: 4)
+            client.consentStatus(preflightRequest) { result in
+                if code == 21 {
+                    XCTAssertEqual(try? result.get(), .recorded)
+                } else if case .success = result { XCTFail("foreign result accepted as consent") }
+                received.fulfill()
+            }
+            wait(for: [received], timeout: 4)
+        }
+    }
+
+    func testConsentAndPreflightShareOneSequenceAndRequestBudget() throws {
+        let delegate = BootstrapDelegate(assess: { _ in .unresolved }, consent: { _ in .notRecorded })
+        let listener = NSXPCListener.anonymous()
+        listener.delegate = delegate
+        listener.activate()
+        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        connection.remoteObjectInterface = NSXPCInterface(with: ExternalUpdaterBootstrapProtocol.self)
+        connection.activate()
+        defer { connection.invalidate(); delegate.cancel(); listener.invalidate() }
+        let proxy = try XCTUnwrap(connection.remoteObjectProxyWithErrorHandler { _ in } as? ExternalUpdaterBootstrapProtocol)
+        let hello = expectation(description: "hello")
+        var token = Data()
+        proxy.hello(version: 1, challenge: challenge) { _, _, session in token = session ?? Data(); hello.fulfill() }
+        wait(for: [hello], timeout: 4)
+        let data = try JSONEncoder().encode(preflightRequest)
+        for sequence in UInt64(1)...9 {
+            let replied = expectation(description: "sequence \(sequence)")
+            let callback: (UInt64, UInt32) -> Void = { echo, code in
+                XCTAssertEqual(echo, sequence)
+                XCTAssertEqual(code, sequence == 9 ? 0 : sequence.isMultiple(of: 2) ? 1 : 20)
+                replied.fulfill()
+            }
+            if sequence.isMultiple(of: 2) {
+                proxy.preflight(session: token, sequence: sequence, request: data, reply: callback)
+            } else {
+                proxy.consentStatus(session: token, sequence: sequence, request: data, reply: callback)
+            }
+            wait(for: [replied], timeout: 4)
+        }
+    }
+
+    func testConsentCancellationDiscardsLateHistoryResult() throws {
+        let ready = expectation(description: "ready")
+        let entered = expectation(description: "inspection entered")
+        let cancelled = expectation(description: "cancelled callback")
+        let release = DispatchSemaphore(value: 0)
+        let delegate = BootstrapDelegate(consent: { _ in
+            entered.fulfill()
+            _ = release.wait(timeout: .now() + 5)
+            return .recorded
+        })
+        let listener = NSXPCListener.anonymous()
+        listener.delegate = delegate
+        listener.activate()
+        let client = try ExternalUpdaterBootstrapClient(testingConnection: NSXPCConnection(listenerEndpoint: listener.endpoint)) {
+            if case .ready = $0 { ready.fulfill() }
+        }
+        defer { release.signal(); client.cancel(); delegate.cancel(); listener.invalidate() }
+        client.begin()
+        wait(for: [ready], timeout: 4)
+        client.consentStatus(preflightRequest) { result in
+            if case .success = result { XCTFail("cancelled history published") }
+            cancelled.fulfill()
+        }
+        wait(for: [entered], timeout: 4)
+        client.cancel()
+        wait(for: [cancelled], timeout: 4)
+        release.signal()
     }
 
     func testClientRejectsWrongSequenceAndUnknownOrFailedResponseCodes() throws {
@@ -137,11 +229,13 @@ final class BootstrapTests: XCTestCase {
     }
 
     func testForgedSessionAndPreHelloRequestsCannotReachObservation() throws {
-        for helloFirst in [false, true] {
+        for scenario in [(false, false), (true, false), (false, true), (true, true)] {
+            let (helloFirst, consent) = scenario
             let closed = expectation(description: "invalid app request closes server")
-            let delegate = BootstrapDelegate(assess: { _ in XCTFail("unauthorized observation"); return .unresolved }) {
+            let delegate = BootstrapDelegate(assess: { _ in XCTFail("unauthorized observation"); return .unresolved },
+                                             consent: { _ in XCTFail("unauthorized history read"); return .notRecorded }, event: {
                 if case .closed = $0 { closed.fulfill() }
-            }
+            })
             let listener = NSXPCListener.anonymous()
             listener.delegate = delegate
             listener.activate()
@@ -151,7 +245,13 @@ final class BootstrapTests: XCTestCase {
             defer { connection.invalidate(); delegate.cancel(); listener.invalidate() }
             let proxy = try XCTUnwrap(connection.remoteObjectProxyWithErrorHandler { _ in } as? ExternalUpdaterBootstrapProtocol)
             let request = try JSONEncoder().encode(preflightRequest)
-            let send = { proxy.preflight(session: self.session, sequence: 1, request: request) { _, code in XCTAssertEqual(code, 0) } }
+            let send = {
+                if consent {
+                    proxy.consentStatus(session: self.session, sequence: 1, request: request) { _, code in XCTAssertEqual(code, 0) }
+                } else {
+                    proxy.preflight(session: self.session, sequence: 1, request: request) { _, code in XCTAssertEqual(code, 0) }
+                }
+            }
             if helloFirst { proxy.hello(version: 1, challenge: challenge) { _, _, _ in send() } } else { send() }
             wait(for: [closed], timeout: 3)
         }
@@ -166,7 +266,7 @@ final class BootstrapTests: XCTestCase {
                 entered.fulfill()
                 if concurrent { _ = release.wait(timeout: .now() + .seconds(5)) }
                 return .unresolved
-            }) { if case .closed = $0 { closed.fulfill() } }
+            }, event: { if case .closed = $0 { closed.fulfill() } })
             let listener = NSXPCListener.anonymous()
             listener.delegate = delegate
             listener.activate()
