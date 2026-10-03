@@ -66,7 +66,12 @@ Security.framework, not a caller-supplied path or PID. It enforces the fixed
 notarized helper requirement, validates the running and fresh on-disk signatures,
 requires hardened runtime and the signed Developer ID channel, and rejects
 entitlement grants. Two observations must agree on bundle/code identity and
-account. The Encodable-only snapshot has no public initializer and grants no
+account. The helper's bundle tree and all ancestors are also checked for unsafe
+ownership, mode and ACL mutation grants and compared around signature validation.
+Only root/current-account owners are accepted; group-admin write mode is allowed
+only for the root-owned `/Applications` directory. Internal framework links must
+resolve inside the bundle. Dangling/cyclic links, special files and set-ID bundle
+entries fail closed. The Encodable-only snapshot has no public initializer and grants no
 update authority. This is not proof of launch-time sandbox inheritance, installed
 helper packaging, accepted signed peers or authority over any target app. Native
 trust evaluation is left to macOS; no offline/trust fallback exists. Debug-only
@@ -82,6 +87,10 @@ signature with Security.framework's strict/all-architectures/nested-code checks.
 It does not enable Security's certificate-network flag. Bundle metadata comes
 from Security's secured Info.plist, not CFBundle's cached presentation dictionary.
 No Command Line Tools or external process is used by the observer.
+The shared filesystem reader opens permission and metadata descriptors with
+`O_NOFOLLOW_ANY`, not just final-component `O_NOFOLLOW`. The helper rejects unsafe
+tree permissions; target evidence still reports them without granting authority.
+See the [filesystem checks and evidence](../../docs/validation/v0.20-sparkle-path-authority.md).
 
 Evidence is intentionally Encodable-only and always reports unresolved manager
 authority. A valid signature or Sparkle framework does not establish standalone

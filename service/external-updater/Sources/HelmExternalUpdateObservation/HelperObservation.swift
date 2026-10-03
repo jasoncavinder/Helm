@@ -4,7 +4,7 @@ import Security
 
 public enum HelperObservationFailure: String, Error {
     case invalidAccount, invalidRequirement, invalidSignature, invalidMetadata
-    case unsafeRuntime, invalidPath, changedDuringObservation
+    case unsafeRuntime, unsafeFilesystem, invalidPath, changedDuringObservation
 }
 
 /// A local snapshot of this running helper, not a caller assertion or update
@@ -91,7 +91,7 @@ public struct NativeHelperObserver {
               url.path == url.resolvingSymlinksInPath().path else {
             throw HelperObservationFailure.invalidPath
         }
-        let before = try HelperFileIdentity.read(url)
+        let before = try HelperFilesystemSnapshot.capture(url)
         // Obtain a fresh disk object: the dynamic -> static translation is not
         // itself a secure binding. Compare its sealed identity with the live one.
         var disk: SecStaticCode?
@@ -103,12 +103,12 @@ public struct NativeHelperObserver {
             throw HelperObservationFailure.invalidSignature
         }
         let diskSignature = try HelperSignature(values: signingInformation(disk, dynamic: false))
-        guard signature == diskSignature, before == (try HelperFileIdentity.read(url)),
+        guard signature == diskSignature, before == (try HelperFilesystemSnapshot.capture(url)),
               url.path == url.resolvingSymlinksInPath().path,
               SecCodeCheckValidity(live, [], requirement) == errSecSuccess else {
             throw HelperObservationFailure.changedDuringObservation
         }
-        return HelperSnapshot(path: url.path, file: before, signature: signature)
+        return HelperSnapshot(path: url.path, filesystem: before, signature: signature)
     }
 
     private static func signingInformation(_ code: SecStaticCode, dynamic: Bool) throws -> [String: Any] {
@@ -170,22 +170,33 @@ struct HelperSignature: Equatable {
 
 struct HelperSnapshot: Equatable {
     let path: String
-    let file: HelperFileIdentity
+    let filesystem: HelperFilesystemSnapshot
     let signature: HelperSignature
 }
 
-struct HelperFileIdentity: Equatable {
-    let device: dev_t
-    let inode: ino_t
-    let changedSeconds: Int
-    let changedNanoseconds: Int
+struct HelperFilesystemSnapshot: Equatable {
+    let ancestors: [String: FileIdentity]
+    let tree: BundleFilesystem.TreeSnapshot
 
-    static func read(_ url: URL) throws -> Self {
-        var status = stat()
-        guard lstat(url.path, &status) == 0, status.st_mode & S_IFMT == S_IFDIR else {
+    static func capture(_ url: URL, entryLimit: Int = 100_000) throws -> Self {
+        guard url.isFileURL, url.pathExtension == "app", url.path.hasPrefix("/"),
+              url.path == url.resolvingSymlinksInPath().path else {
             throw HelperObservationFailure.invalidPath
         }
-        return Self(device: status.st_dev, inode: status.st_ino,
-                    changedSeconds: status.st_ctimespec.tv_sec, changedNanoseconds: status.st_ctimespec.tv_nsec)
+        do {
+            let filesystem = BundleFilesystem(entryLimit: entryLimit)
+            let root = try FileIdentity.read(url)
+            guard root.isDirectory else { throw HelperObservationFailure.invalidPath }
+            let ancestors = try filesystem.ancestors(of: url)
+            let tree = try filesystem.tree(at: url)
+            guard !tree.unsafePermissions else { throw HelperObservationFailure.unsafeFilesystem }
+            guard tree.entries[url.path] == root,
+                  ancestors == (try filesystem.ancestors(of: url)) else {
+                throw HelperObservationFailure.changedDuringObservation
+            }
+            return Self(ancestors: ancestors, tree: tree)
+        } catch is ObservationFailure {
+            throw HelperObservationFailure.unsafeFilesystem
+        }
     }
 }

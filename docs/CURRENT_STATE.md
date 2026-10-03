@@ -74,6 +74,21 @@ requirements and shipped app entitlements are unchanged; this is bounded
 transport evidence, not installation authority or complete sandbox-inheritance proof.
 Shipping helper integration, live native authority mapping and real update
 execution remain open under #607/#608; #606 is not closed by this slice.
+PR #619 is reviewed and merged at `23133525`. The next
+[helper filesystem boundary](validation/v0.20-sparkle-path-authority.md)
+reuses the target observer's bounded native ownership/mode/ACL inspection for
+the helper's own bundle and every parent through `/`. Helper observations now
+reject unsafe placement and compare descendant/ancestor snapshots around native
+signature validation, rather than checking only the bundle-root inode/time.
+Shared reads refuse symlinks in intermediate path components; dangling/cyclic
+links and set-ID bundle entries fail closed. All 72 native tests pass in the VM.
+These are read-only filesystem facts, not manager provenance, an atomic path
+reservation, inherited-sandbox proof or update consent. Direct updating remains
+disabled. The separately notarized current-source helper passes real preflight
+and an authenticated VM session. Four permission-unsafe copies retain valid
+signatures but are rejected by the filesystem guard; a fresh safe preflight
+passes afterward. The temporary test service is removed. No host production app,
+shipping entitlements or accepted owner-QA profiles were changed.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
