@@ -22,6 +22,8 @@ reviewed and merged through #620 at `0722b00d`. Review the next
 before binding these exclusions to positive standalone provenance and fresh
 candidate/durable-session evidence. The standard-prefix cask scan is not complete
 manager coverage, and absent markers never grant standalone authority.
+Preserve the independently corrected filesystem-free reference normalization;
+directory-status inference must not probe untrusted artifact destinations.
 The filesystem checks do not establish standalone manager provenance
 or reserve the path against later changes. Do not infer installation authority from the successful
 handshake or change shipping entitlements based on the QA fixture. Keep #606/#607 open and retain Open App;

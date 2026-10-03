@@ -116,6 +116,10 @@ absolute/relative link destinations must identify the target path; names or
 bundle IDs alone do not match. The scan never follows those links or descends
 into app payloads. Standard-prefix scope is fixed locally, not supplied by XPC,
 HOME, PATH, manager preferences or cached package inventories.
+Reference normalization collapses path components in memory only, without
+filesystem standardization, tilde expansion or symlink resolution. All scanner
+URL construction supplies explicit directory hints so Foundation cannot infer
+directory status by consulting artifact destinations outside the scan.
 
 Each scan has a shared 10,000-entry bound. Directory opens refuse symlinks in
 every component, and missing roots differ from unreadable/unsupported paths.

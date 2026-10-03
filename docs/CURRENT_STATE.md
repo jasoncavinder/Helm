@@ -95,8 +95,12 @@ reads bounded Homebrew cask references at the two standard prefixes, App Store
 receipt-container markers and component-bounded Setapp application locations.
 It rejects unreadable/aliased scan paths and compares fresh manager snapshots
 around target validation. Matching competing-manager claims exclude a target;
-missing markers remain unresolved, never standalone. All 96 native tests pass in
-the VM, including 24 new regressions. A separate read-only probe matches three
+missing markers remain unresolved, never standalone. Independent review removed
+Foundation directory-status inference from reference normalization; link text is
+now normalized entirely in memory with explicit URL directory hints. All 100
+native tests pass in the VM, including 28 new regressions. The directory-inference
+regression fails against the old normalization in a VM negative control.
+A separate read-only probe matches three
 existing Homebrew casks, while native Rectangle validation retains unresolved
 authority. No manager command, app update, helper registration or host runtime
 was used. Positive standalone provenance, nonstandard-prefix/other-manager
