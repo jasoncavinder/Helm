@@ -3,7 +3,7 @@
 Development foundation only. This package is not embedded in Helm and exposes no
 installer operation, feed request, manager mutation, privileged operation or
 updater command transport. Its data-free XPC bootstrap and authenticated read-only
-app preflight do not enable direct updates. Native signing/notarization trust
+app preflight/consent-history checks do not enable direct updates. Native signing/notarization trust
 evaluation remains under macOS control.
 
 ## Standalone Helper Package
@@ -16,7 +16,9 @@ validation and the actual loaded framework to reside inside its own bundle.
 It never loads the target application's private updater or framework.
 
 `--prepare-ledger` explicitly initializes/reopens the helper's separate private
-storage; the other commands still do not open a ledger. It uses the OS account's
+storage; ordinary preflight and the bootstrap hello do not open a ledger. The
+separate authenticated `consentStatus` method reads only an already prepared
+ledger, without initialization, migration, repair or consent mutation. Both use the OS account's
 `Library/Application Support/com.jasoncavinder.Helm.SparkleExternalUpdater/ledger.sqlite`,
 not HOME, `HELM_DB_PATH`, app preferences or a client path. The native filesystem
 lease and core migration checks must both succeed. Unsafe aliases, permissions,
@@ -78,6 +80,15 @@ Cancellation is local connection invalidation, not an exported update command.
 `helm-external-bootstrap-probe` is a QA test host. Without arguments it tests only
 the data-free hello; `--preflight PATH BUNDLE_ID INSTALLED_BUILD` sends bounded
 intent only after authenticated readiness and prints a read-only assessment.
+`--consent-status PATH BUNDLE_ID INSTALLED_BUILD` instead requests advisory
+history: `notRecorded`, `recorded`, `revoked`, `identityChanged`,
+`ledgerUnavailable` or `targetRejected`, always with `canUpdate: false`.
+It exposes no reusable token and does not resolve update authority. Both methods
+share the same eight-request budget, sequence and single-flight/deadline gates;
+clients reject reply codes belonging to the other method. Missing/unsafe storage
+is unavailable, not an empty successful scan. Native helper/target/root identity
+is rechecked around inspection. See the
+[consent-status contract](../../docs/validation/v0.20-sparkle-consent-status.md).
 Testing real
 acceptance requires a separately signed/notarized sandboxed app wrapper with the
 exact caller identity/channel and only the named Mach-lookup sandbox exception.
@@ -107,7 +118,8 @@ rejected native observation never becomes an empty successful scan. The native
 entrypoint uses OS-account roots, not `HOME`; Rust also validates root shape.
 
 This preflight does not read saved adoption or assert complete manager-exclusion
-coverage. Authenticated ledger resolution/revocation, explicit consent UI and
+coverage. The separate consent-history diagnostic does not change that preflight
+contract. Operational ledger resolution/revocation, explicit consent UI and
 Sparkle-accepted candidates remain separate integration work. A test fixture
 exercises mapped evidence against real SQLite adoption, but is not a shipping
 database or authorization endpoint. See the

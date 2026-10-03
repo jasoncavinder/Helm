@@ -11,7 +11,7 @@ public enum ObservationFailure: String, Error {
 
 /// Locally collected facts, not installation authority. No Decodable initializer
 /// exists: a future helper must never accept these facts from an XPC client.
-public struct NativeTargetEvidence: Encodable {
+public struct NativeTargetEvidence: Encodable, Equatable {
     public let canonicalPath: String
     public let device: UInt64
     public let inode: UInt64

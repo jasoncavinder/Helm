@@ -62,6 +62,63 @@ pub(super) fn authority_is_current(
 }
 
 impl SqliteStore {
+    /// Read existing helper history without initialization, migration or consent
+    /// mutation. The native caller holds its private-directory lease throughout.
+    /// Never use this diagnostic as authority: session admission still resolves
+    /// fresh evidence and rechecks the latest grant in its write transaction.
+    pub fn inspect_external_update_consent(
+        database_path: &Path,
+        target: &TargetObservation,
+        roots: &[PathBuf],
+    ) -> PersistenceResult<crate::external_update::adoption::ConsentStatus> {
+        use crate::external_update::adoption::{ConsentStatus, validate_unresolved_target};
+        validate_unresolved_target(target, roots).map_err(|_| {
+            storage_error_text("inspect_external_update_consent", "target rejected")
+        })?;
+        (|| -> rusqlite::Result<_> {
+            let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW;
+            let mut connection = Connection::open_with_flags(database_path, flags)?;
+            connection.busy_timeout(Duration::from_millis(100))?;
+            // Never use immutable mode: committed WAL content must remain visible.
+            let transaction = connection.transaction()?;
+            let version = read_current_version(&transaction)?;
+            if version != current_schema_version()
+                || !migration_checksum_column_exists(&transaction)?
+            {
+                return Err(storage_error_sqlite(
+                    "helper ledger requires explicit preparation",
+                ));
+            }
+            validate_migration_manifest().map_err(|error| storage_error_sqlite(&error))?;
+            validate_applied_migration_identities(&transaction, version)?;
+            let integrity: String =
+                transaction.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+            if integrity != "ok" {
+                return Err(storage_error_sqlite("helper ledger integrity check failed"));
+            }
+            cursor(&transaction, &target.canonical_path)?;
+            transaction.query_row("SELECT COUNT(*) FROM external_update_sessions", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+            let status = match latest(&transaction, &target.canonical_path)? {
+                None => ConsentStatus::NotRecorded,
+                Some(receipt) if receipt.is_revoked() => ConsentStatus::Revoked,
+                Some(receipt)
+                    if receipt.identity_fingerprint.as_deref()
+                        == Some(&identity_fingerprint(target)) =>
+                {
+                    ConsentStatus::Recorded
+                }
+                Some(_) => ConsentStatus::IdentityChanged,
+            };
+            transaction.commit()?;
+            Ok(status)
+        })()
+        .map_err(|error| storage_error("inspect_external_update_consent", error))
+    }
+
     pub(crate) fn external_adoption_cursor(&self, path: &Path) -> PersistenceResult<AdoptionToken> {
         self.with_connection("external_adoption_cursor", |connection| {
             ensure_schema_ready(connection)?;

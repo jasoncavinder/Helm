@@ -45,12 +45,17 @@ The [private helper ledger boundary](validation/v0.20-sparkle-private-ledger.md)
 is reviewed and merged through #625 at `6dd4ff03`. Explicit preparation is separate from read-only preflight; missing or unsafe
 existing stores are not automatically repaired or recreated. Keep normal app data
 and helper consent/session storage separate, and never accept a client DB path.
-Review the [native receipt/Setapp exclusions](validation/v0.20-sparkle-receipt-exclusions.md)
-next. Bounded system queries and revalidated resource markers deny known claims;
+The [native receipt/Setapp exclusions](validation/v0.20-sparkle-receipt-exclusions.md)
+are reviewed and merged through #626 at `20b91a90`, with no independent-review
+findings. Bounded system queries and revalidated resource markers deny known claims;
 their absence is not complete manager coverage or adoption eligibility. Preserve
 the VM's real receipt-positive/unclaimed-negative controls without modifying
 the original installed app or repeating accepted package lifecycles.
-Continue with authenticated ledger/native-session integration,
+Review the [authenticated consent-history diagnostic](validation/v0.20-sparkle-consent-status.md)
+next. It reads only existing storage and returns no permission or reusable
+token; missing/incomplete stores require separate explicit preparation/recovery.
+Preserve its shared request budgets, fresh identity rechecks and WAL-visible
+revocation tests. Continue with operational authenticated ledger/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
 until the operational boundary and real lifecycle/recovery gates pass.

@@ -186,7 +186,7 @@ It accepts neither wire evidence nor a client authority override; its diagnostic
 `unresolved` result grants no permission and does not consult saved consent.
 The [authenticated preflight request](../validation/v0.20-sparkle-authenticated-preflight.md)
 now delivers that diagnostic after native peer readiness, without opening a ledger
-or accepting serialized observations. Authenticated ledger/session integration, completeness policy for additional manager
+or accepting serialized observations. Operational authenticated ledger/session integration, completeness policy for additional manager
 claims, adoption/revocation UX, actual accepted candidate and shipping-helper
 integration remain open under #607. Do not turn `unresolved` into an adoption
 grant or trust an output receipt supplied by the client.
@@ -199,11 +199,22 @@ OS-account namespace is separate from Helm's app/development databases. Native
 owner-only storage, descriptor revalidation and a cooperative exclusive lock
 surround strict core initialization/reopen. Missing or incomplete existing
 storage, unsafe sidecars and drift fail closed; no automatic reset, consent
-import or authority grant occurs. Bootstrap/preflight remain database-free.
+import or authority grant occurs. The hello and ordinary app preflight remain database-free.
 This is not tamper-proof storage against the same account/root or historical
 backup restoration, nor an atomic exclusion of unrelated processes. Native
 session integration must retain the lease around every future ledger operation,
 not cache a path or expose a bare store after validation.
+
+The separate [authenticated consent-history method](../validation/v0.20-sparkle-consent-status.md)
+uses that lease in existing-only mode. Fresh helper/target observations surround
+the read. Its six advisory states expose neither consent IDs nor epoch/sequence
+tokens and never resolve `UserAdopted` authority. SQLite opens read-only with
+no-follow, validates the current migration ledger/epoch/tables and uses a read
+transaction that includes committed WAL content. It performs no schema/consent
+mutation or automatic recovery. SQLite may still use normal WAL/SHM bookkeeping;
+this is not an immutable-file or tamper-proof guarantee. A result is history at
+the read snapshot, not permission valid until another refresh. Preflight and
+history share the eight-request budget, sequence, single-flight and deadlines.
 
 The [helper package](../validation/v0.20-sparkle-helper-package.md) links its own
 exact Sparkle 2.9.5 framework and checks the actual loaded framework path against

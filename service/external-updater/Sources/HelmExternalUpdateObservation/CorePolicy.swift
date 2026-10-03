@@ -15,6 +15,20 @@ public enum NativePolicyAssessment: String, Encodable {
 
     // Internal on purpose: public callers must perform a fresh native observation.
     static func assess(_ evidence: NativeTargetEvidence, userApplications: String?, request: Data? = nil) -> Self {
+        Self(code: withTarget(evidence, userApplications: userApplications) { input in
+            if let request {
+                return request.withUnsafeBytes { raw in
+                    helm_external_requested_preflight(input, HelmExternalBytes(
+                        data: raw.bindMemory(to: UInt8.self).baseAddress, length: raw.count
+                    ))
+                }
+            }
+            return helm_external_target_preflight(input)
+        })
+    }
+
+    static func withTarget(_ evidence: NativeTargetEvidence, userApplications: String?,
+                           operation: (UnsafePointer<HelmExternalNativeTarget>) -> UInt32) -> UInt32 {
         let slices: [[UInt8]] = [
             Array(evidence.canonicalPath.utf8), Array(evidence.bundleIdentifier.utf8),
             Array(evidence.build.utf8), Array(evidence.teamIdentifier.utf8),
@@ -27,7 +41,7 @@ public enum NativePolicyAssessment: String, Encodable {
             offsets.append(bytes.count)
             bytes.append(contentsOf: slice)
         }
-        guard let framework = UInt32(exactly: evidence.frameworkMajor) else { return .invalidEvidence }
+        guard let framework = UInt32(exactly: evidence.frameworkMajor) else { return 0 }
         var exclusions: UInt32 = 0
         for exclusion in evidence.managerEvidence.exclusions {
             switch exclusion {
@@ -38,7 +52,7 @@ public enum NativePolicyAssessment: String, Encodable {
             case .installerReceipt: exclusions |= 16
             }
         }
-        let code = bytes.withUnsafeBufferPointer { storage -> UInt32 in
+        return bytes.withUnsafeBufferPointer { storage -> UInt32 in
             func slice(_ index: Int) -> HelmExternalBytes {
                 HelmExternalBytes(data: slices[index].isEmpty ? nil : storage.baseAddress!.advanced(by: offsets[index]),
                                   length: slices[index].count)
@@ -51,16 +65,8 @@ public enum NativePolicyAssessment: String, Encodable {
                 writable_by_others: evidence.writableByOthers ? 1 : 0, manager_exclusions: exclusions,
                 user_applications_root: slice(7)
             )
-            if let request {
-                return request.withUnsafeBytes { raw in
-                    helm_external_requested_preflight(&input, HelmExternalBytes(
-                        data: raw.bindMemory(to: UInt8.self).baseAddress, length: raw.count
-                    ))
-                }
-            }
-            return helm_external_target_preflight(&input)
+            return operation(&input)
         }
-        return Self(code: code)
     }
 
     init(code: UInt32) {

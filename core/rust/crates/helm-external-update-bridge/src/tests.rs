@@ -136,6 +136,84 @@ fn request() -> Vec<u8> {
 }
 
 #[test]
+fn consent_bridge_distinguishes_history_without_granting_authority() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ledger.sqlite");
+    let query = |input: &NativeTarget| unsafe {
+        helm_external_consent_status(input, b(&request()), b(path.to_str().unwrap().as_bytes()))
+    };
+    assert_eq!(query(&fixture()), CONSENT_LEDGER_UNAVAILABLE);
+    assert!(!path.exists());
+    std::fs::File::create(&path).unwrap();
+    assert_eq!(prepare_ledger(&path, 1), 1);
+    assert_eq!(query(&fixture()), CONSENT_NOT_RECORDED);
+    let store = SqliteStore::new(&path);
+    let (native, roots) = unsafe { map_target(&fixture()) }.unwrap();
+    ReviewedAdoption::prepare(
+        &store,
+        AdoptionRequest {
+            schema_version: 1,
+            consent_id: "550e8400-e29b-41d4-a716-446655440099".into(),
+            target_path: native.canonical_path.clone(),
+            expected_bundle_identifier: native.bundle_identifier.clone(),
+            expected_installed_build: native.build.clone(),
+        },
+        native.clone(),
+        boundary_fixture(),
+        &roots,
+        100,
+    )
+    .unwrap()
+    .confirm(&store, native.clone(), boundary_fixture(), &roots, 110)
+    .unwrap();
+    assert_eq!(query(&fixture()), CONSENT_RECORDED);
+    let mut changed = fixture();
+    changed.ed25519_public_key = b(&[5; 32]);
+    assert_eq!(query(&changed), CONSENT_IDENTITY_CHANGED);
+    for flags in 1..=31 {
+        let mut excluded = fixture();
+        excluded.manager_exclusions = flags;
+        excluded.has_store_receipt = u8::from(flags & 1 != 0);
+        assert_eq!(query(&excluded), CONSENT_TARGET_REJECTED);
+    }
+    changed = fixture();
+    changed.build = b(b"changed");
+    assert_eq!(query(&changed), CONSENT_TARGET_REJECTED);
+    store
+        .revoke_external_update_adoption(&native.canonical_path)
+        .unwrap();
+    assert_eq!(query(&fixture()), CONSENT_REVOKED);
+    assert_eq!(preflight(&fixture()), UNRESOLVED);
+}
+
+#[test]
+fn consent_bridge_rejects_bad_intent_and_paths_without_io() {
+    for path in [
+        b"".as_slice(),
+        b"relative/ledger.sqlite",
+        b"/tmp/helm.db",
+        b"/tmp/ledger.sqlite\0",
+    ] {
+        assert_eq!(
+            unsafe { helm_external_consent_status(&fixture(), b(&request()), b(path)) },
+            INVALID
+        );
+    }
+    assert_eq!(
+        unsafe {
+            helm_external_consent_status(std::ptr::null(), b(&request()), b(b"/tmp/ledger.sqlite"))
+        },
+        INVALID
+    );
+    for data in [b"{}".as_slice(), b"{\"authority\":\"Standalone\"}"] {
+        assert_eq!(
+            unsafe { helm_external_consent_status(&fixture(), b(data), b(b"/tmp/ledger.sqlite")) },
+            INVALID
+        );
+    }
+}
+
+#[test]
 fn strict_request_contract_rejects_authority_paths_and_unknown_fields() {
     let valid = request();
     let validate = |data: &[u8]| unsafe {

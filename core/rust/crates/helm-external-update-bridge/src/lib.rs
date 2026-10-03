@@ -51,6 +51,14 @@ const UNSUPPORTED_TARGET: u32 = 5;
 const INTERNAL_FAILURE: u32 = 6;
 const TARGET_CHANGED: u32 = 7;
 
+// Disjoint from preflight results. These are history diagnostics, never permits.
+const CONSENT_NOT_RECORDED: u32 = 20;
+const CONSENT_RECORDED: u32 = 21;
+const CONSENT_REVOKED: u32 = 22;
+const CONSENT_IDENTITY_CHANGED: u32 = 23;
+const CONSENT_LEDGER_UNAVAILABLE: u32 = 24;
+const CONSENT_TARGET_REJECTED: u32 = 25;
+
 fn assessment(result: Result<(), Rejection>) -> u32 {
     match result {
         Ok(()) => UNRESOLVED,
@@ -187,6 +195,56 @@ pub unsafe extern "C" fn helm_external_requested_preflight(
             let bytes = unsafe { bytes(request, 8192)? };
             PreflightRequest::decode(&bytes, &roots)?.assess(&target, &roots)
         })())
+    })
+    .unwrap_or(INTERNAL_FAILURE)
+}
+
+/// Inspect existing helper consent history against freshly collected native
+/// evidence. No token, observation, path override or authority is accepted on XPC.
+/// # Safety
+/// The input/slices follow the preflight ABI contract. `path` is native leased
+/// helper storage; no client/environment DB override may reach this function.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_consent_status(
+    input: *const NativeTarget,
+    request: Bytes,
+    path: Bytes,
+) -> u32 {
+    let Some(input) = (unsafe { input.as_ref() }) else {
+        return INVALID;
+    };
+    std::panic::catch_unwind(|| {
+        let Ok((target, roots)) = (unsafe { map_target(input) }) else {
+            return INVALID;
+        };
+        let Ok(request) = (unsafe { bytes(request, 8192) }) else {
+            return INVALID;
+        };
+        let Ok(request) = PreflightRequest::decode(&request, &roots) else {
+            return INVALID;
+        };
+        if request.assess(&target, &roots).is_err() {
+            return CONSENT_TARGET_REJECTED;
+        }
+        let Ok(path) = (unsafe { text(path, 4096) }) else {
+            return INVALID;
+        };
+        let path = PathBuf::from(path);
+        if !path.is_absolute()
+            || path.file_name().and_then(|name| name.to_str()) != Some("ledger.sqlite")
+        {
+            return INVALID;
+        }
+        use adoption::ConsentStatus;
+        match helm_core::sqlite::SqliteStore::inspect_external_update_consent(
+            &path, &target, &roots,
+        ) {
+            Ok(ConsentStatus::NotRecorded) => CONSENT_NOT_RECORDED,
+            Ok(ConsentStatus::Recorded) => CONSENT_RECORDED,
+            Ok(ConsentStatus::Revoked) => CONSENT_REVOKED,
+            Ok(ConsentStatus::IdentityChanged) => CONSENT_IDENTITY_CHANGED,
+            Err(_) => CONSENT_LEDGER_UNAVAILABLE,
+        }
     })
     .unwrap_or(INTERNAL_FAILURE)
 }

@@ -129,6 +129,50 @@ final class PreflightTests: XCTestCase {
                              managerEvidence: NativeManagerEvidence(exclusions: exclusions, homebrewReferences: [], inspectedCaskEntries: 1))
     }
 
+    func testConsentStatusRequiresFreshMatchingTargetBeforeReadingLedger() throws {
+        let identity = try helperIdentity()
+        let data = try JSONEncoder().encode(request)
+        var observed = target()
+        var reads = 0
+        let processor = NativeConsentProcessor(identity: identity, helper: { identity }, target: { _ in observed },
+            userApplications: { nil }, inspect: { _, evidence, bytes, root in
+                XCTAssertEqual(evidence, observed); XCTAssertEqual(bytes, data); XCTAssertNil(root)
+                reads += 1; return .recorded
+            })
+        XCTAssertEqual(try processor.assess(data), .recorded)
+        observed = target(exclusions: [.installerReceipt])
+        XCTAssertEqual(try processor.assess(data), .targetRejected)
+        observed = target(build: "101")
+        XCTAssertEqual(try processor.assess(data), .targetRejected)
+        XCTAssertEqual(reads, 1)
+        XCTAssertThrowsError(try processor.assess(Data("{}".utf8)))
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testConsentStatusSuppressesTargetHelperAndRootDrift() throws {
+        let identity = try helperIdentity()
+        let changedHelper = try helperIdentity(build: "2")
+        let data = try JSONEncoder().encode(request)
+        for drift in 0..<3 {
+            var inspected = false
+            let processor = NativeConsentProcessor(identity: identity,
+                helper: { inspected && drift == 0 ? changedHelper : identity },
+                target: { _ in self.target(build: inspected && drift == 1 ? "101" : "100") },
+                userApplications: { inspected && drift == 2 ? "/Users/changed/Applications" : nil },
+                inspect: { _, _, _, _ in inspected = true; return .recorded })
+            XCTAssertThrowsError(try processor.assess(data))
+        }
+    }
+
+    func testUnavailableLedgerNeverBecomesAbsentConsent() throws {
+        let identity = try helperIdentity()
+        let processor = NativeConsentProcessor(identity: identity, helper: { identity }, target: { _ in self.target() },
+            userApplications: { nil }, inspect: { _, _, _, _ in throw HelperLedgerFailure.incomplete })
+        XCTAssertEqual(try processor.assess(JSONEncoder().encode(request)), .ledgerUnavailable)
+        for code in UInt32(20)...25 { XCTAssertEqual(ExternalConsentStatus(code: code)?.code, code) }
+        for code in [UInt32(0), 1, 6, 8, 19, 26, UInt32.max] { XCTAssertNil(ExternalConsentStatus(code: code)) }
+    }
+
     private func helperIdentity(build: String = "1") throws -> NativeHelperEvidence {
         let identifier = "com.jasoncavinder.Helm.SparkleExternalUpdater"
         let signature = try HelperSignature(values: [
