@@ -38,8 +38,10 @@ Review the [authenticated read-only app request](validation/v0.20-sparkle-authen
 next; it remains read-only, does not resolve saved consent and never promotes
 unknown origin. Preserve exact request/native identity binding, per-connection
 replay/size/work limits, deadline checks independent of timer delivery and
-loss-driven result suppression. Complete fresh current-source signed/notarized
-request acceptance before claiming operational authentication evidence.
+loss-driven result suppression. Fresh current-source signed/notarized request
+acceptance and peer-negative controls now pass in the VM; preserve that bounded
+evidence without relabeling it as install authority. Complete #624's review and
+head CI before integration.
 Continue with helper-owned ledger/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App

@@ -75,8 +75,12 @@ Never install or launch that identity-matching test app on the production host.
 Do not ship the probe, fixture wrapper or launch registration. The signed VM
 handshake now passes, as do notarized wrong-identity/channel/unsandboxed-caller
 and impostor-helper rejection controls. This proves bounded transport acceptance,
-not permission to update or a shipping sandbox/launch strategy. Those older
-signed binaries do not certify the newly added app request.
+not permission to update or a shipping sandbox/launch strategy. Separately
+notarized current-source helper/test-host binaries now also pass the
+[app request checks](../../docs/validation/v0.20-sparkle-authenticated-preflight.md),
+including changed/missing targets, out-of-root rejection and fresh positive
+controls after the signed peer-negative matrix. Older handshake evidence and
+unchanged negative fixtures are not substituted for current request acceptance.
 See [package evidence and remaining gates](../../docs/validation/v0.20-sparkle-helper-package.md).
 
 ## Native Observation And Authentication
