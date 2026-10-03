@@ -41,7 +41,7 @@ final class CorePolicyTests: XCTestCase {
     }
 
     func testEveryNativeExclusionReachesRust() {
-        for exclusion in [NativeManagerEvidence.Exclusion.appStoreReceipt, .homebrewCaskReference, .setappLocation] {
+        for exclusion in [NativeManagerEvidence.Exclusion.appStoreReceipt, .homebrewCaskReference, .setappLocation, .setappBundleMarker, .installerReceipt] {
             XCTAssertEqual(assess(evidence(receipt: exclusion == .appStoreReceipt, exclusions: [exclusion])), .otherManager)
         }
         XCTAssertEqual(assess(evidence(receipt: true, exclusions: [.appStoreReceipt, .homebrewCaskReference, .setappLocation])), .otherManager)
@@ -78,7 +78,9 @@ final class CorePolicyTests: XCTestCase {
         try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         XCTAssertEqual(chmod(root.path, 0o700), 0)
-        let info: [String: Any] = ["CFBundleIdentifier": "org.example.App", "CFBundleVersion": "100",
+        try FileManager.default.createDirectory(at: target.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
+        try Data("fixture executable, never launched".utf8).write(to: target.appendingPathComponent("Contents/MacOS/Example"))
+        let info: [String: Any] = ["CFBundleIdentifier": "org.example.App", "CFBundleVersion": "100", "CFBundleExecutable": "Example",
                                   "SUFeedURL": "https://example.org/feed",
                                   "SUPublicEDKey": Data(repeating: 8, count: 32).base64EncodedString()]
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)

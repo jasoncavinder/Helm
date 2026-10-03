@@ -19,6 +19,8 @@ final class NativeTargetObserverTests: XCTestCase {
         let resources = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources")
         try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
         XCTAssertEqual(chmod(root.path, 0o700), 0)
+        try FileManager.default.createDirectory(at: target.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
+        try Data("fixture executable, never launched".utf8).write(to: target.appendingPathComponent("Contents/MacOS/Example"))
         try plist(signature().info).write(to: target.appendingPathComponent("Contents/Info.plist"))
         try plist([
             "CFBundleIdentifier": "org.sparkle-project.Sparkle",
@@ -36,7 +38,7 @@ final class NativeTargetObserverTests: XCTestCase {
 
     private func signature(_ overrides: [String: Any] = [:]) -> NativeSigningEvidence {
         var info: [String: Any] = [
-            "CFBundleIdentifier": "org.example.App", "CFBundleVersion": "100",
+            "CFBundleIdentifier": "org.example.App", "CFBundleVersion": "100", "CFBundleExecutable": "Example",
             "SUFeedURL": "https://example.org/appcast.xml",
             "SUPublicEDKey": Data(repeating: 7, count: 32).base64EncodedString()
         ]

@@ -158,8 +158,20 @@ Existing incomplete stores fail before normal WAL setup, preserving empty-file
 evidence. Existing migration identities and ordinary app database behavior are
 unchanged. Only the explicit helper command prepares storage; authenticated app
 preflight remains read-only. This does not grant adoption, resolve manager
-authority, add a wire mutation or enable installation. Review/CI and the remaining
+authority, add a wire mutation or enable installation. PR #625 is reviewed and
+merged at `6dd4ff03`; its independent review found no issues. The remaining
 ownership, authenticated session and real Sparkle lifecycle gates remain separate.
+
+The [native receipt/Setapp exclusion follow-up](validation/v0.20-sparkle-receipt-exclusions.md)
+adds bounded read-only system receipt queries and validated-tree Setapp resource
+markers, including relocated/static-linked apps carrying those markers. Both map
+to the existing Rust competing-manager denial; saved adoption cannot override
+them. Final bundle checks follow the second receipt query to reject intervening
+target changes. All 160 native, 17 bridge and 22 packaging/build-contract tests
+pass in the VM. A real installer receipt on an isolated signed-app copy changes
+its assessment from unresolved to other-manager, while the original stays
+unchanged/unresolved. No-marker results remain unresolved; this is not complete
+ownership coverage, a signed-helper acceptance run or permission to update.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

@@ -138,7 +138,14 @@ facts, reads bounded framework metadata, and validates a Developer ID applicatio
 signature with Security.framework's strict/all-architectures/nested-code checks.
 It does not enable Security's certificate-network flag. Bundle metadata comes
 from Security's secured Info.plist, not CFBundle's cached presentation dictionary.
-No Command Line Tools or external process is used by the observer.
+No Command Line Tools are required by the observer. Native installer exclusions
+use only the OS-provided `/usr/sbin/pkgutil`, with structured fixed arguments,
+sanitized environment, closed input and bounded output/time; no shell or target
+code is executed. Receipt claims on the app root, Info.plist or main executable,
+and known Setapp bundle markers (including static-link resources), map to denial
+only. Failed queries never become empty successful scans. Absence remains
+unresolved, not complete ownership coverage or adoption eligibility. See the
+[receipt/Setapp scope and VM evidence](../../docs/validation/v0.20-sparkle-receipt-exclusions.md).
 The shared filesystem reader opens permission and metadata descriptors with
 `O_NOFOLLOW_ANY`, not just final-component `O_NOFOLLOW`. The helper rejects unsafe
 tree permissions; target evidence still reports them without granting authority.

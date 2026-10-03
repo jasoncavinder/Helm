@@ -9,16 +9,25 @@ public struct NativeManagerEvidence: Encodable {
     }
 
     public enum Exclusion: String, Encodable {
-        case appStoreReceipt, homebrewCaskReference, setappLocation
+        case appStoreReceipt, homebrewCaskReference, setappLocation, setappBundleMarker, installerReceipt
     }
 
     public let exclusions: [Exclusion]
     public let homebrewReferences: [String]
     public let inspectedCaskEntries: Int
+    public let installerPackageIdentifiers: [String]
     public var disposition: Disposition { exclusions.isEmpty ? .unresolved : .otherManager }
 
     enum CodingKeys: String, CodingKey {
-        case disposition, exclusions, homebrewReferences, inspectedCaskEntries
+        case disposition, exclusions, homebrewReferences, inspectedCaskEntries, installerPackageIdentifiers
+    }
+
+    init(exclusions: [Exclusion], homebrewReferences: [String], inspectedCaskEntries: Int,
+         installerPackageIdentifiers: [String] = []) {
+        self.exclusions = exclusions
+        self.homebrewReferences = homebrewReferences
+        self.inspectedCaskEntries = inspectedCaskEntries
+        self.installerPackageIdentifiers = installerPackageIdentifiers
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -27,6 +36,7 @@ public struct NativeManagerEvidence: Encodable {
         try values.encode(exclusions, forKey: .exclusions)
         try values.encode(homebrewReferences, forKey: .homebrewReferences)
         try values.encode(inspectedCaskEntries, forKey: .inspectedCaskEntries)
+        try values.encode(installerPackageIdentifiers, forKey: .installerPackageIdentifiers)
     }
 }
 
@@ -51,15 +61,25 @@ struct NativeManagerObserver {
         var references: [String] = []
         var entryCount = 0
 
-        func evidence(target: URL, applicationRoots: [URL], hasStoreReceipt: Bool) -> NativeManagerEvidence {
+        func evidence(target: URL, applicationRoots: [URL], hasStoreReceipt: Bool,
+                      entries: [String: FileIdentity] = [:], installerPackages: [String] = []) -> NativeManagerEvidence {
             var exclusions: [NativeManagerEvidence.Exclusion] = []
             if hasStoreReceipt { exclusions.append(.appStoreReceipt) }
             if !references.isEmpty { exclusions.append(.homebrewCaskReference) }
             if applicationRoots.contains(where: { target.path.hasPrefix($0.appendingPathComponent("Setapp", isDirectory: true).path + "/") }) {
                 exclusions.append(.setappLocation)
             }
+            // Presence is a denial marker, not a license check; static linkage
+            // need not embed a framework. Use only the revalidated bundle tree.
+            let setappMarkers = ["Contents/Frameworks/Setapp.framework", "Contents/Resources/setappPublicKey.pem",
+                                 "Contents/Resources/SetappFramework-Resources.bundle"]
+            let bundlePaths = Set(entries.keys.map { $0.lowercased() })
+            if setappMarkers.contains(where: { bundlePaths.contains(target.appendingPathComponent($0, isDirectory: false).path.lowercased()) }) {
+                exclusions.append(.setappBundleMarker)
+            }
+            if !installerPackages.isEmpty { exclusions.append(.installerReceipt) }
             return NativeManagerEvidence(exclusions: exclusions, homebrewReferences: references,
-                                         inspectedCaskEntries: entryCount)
+                                         inspectedCaskEntries: entryCount, installerPackageIdentifiers: installerPackages)
         }
     }
 

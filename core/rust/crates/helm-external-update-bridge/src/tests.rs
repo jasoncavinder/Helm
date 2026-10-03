@@ -277,7 +277,7 @@ fn mapping_preserves_native_facts_without_inventing_authority() {
 
 #[test]
 fn all_exclusion_combinations_remain_other_manager() {
-    for flags in 1..=7 {
+    for flags in 1..=31 {
         let mut input = fixture();
         input.manager_exclusions = flags;
         input.has_store_receipt = u8::from(flags & 1 != 0);
@@ -303,7 +303,7 @@ fn malformed_abi_is_not_a_successful_zero_result() {
             0 => input.abi_version = 2,
             1 => input.has_store_receipt = 2,
             2 => input.writable_by_others = 2,
-            3 => input.manager_exclusions = 8,
+            3 => input.manager_exclusions = 32,
             4 => input.has_store_receipt = 1,
             5 => input.manager_exclusions = 1,
             6 => input.build = b(b"\xff"),
@@ -432,7 +432,7 @@ fn fresh_bridge_evidence_fences_saved_adoption() {
         adoption::resolve(&store, native, &roots).unwrap().authority,
         Authority::UserAdopted(receipt.token)
     );
-    for flags in 1..=7 {
+    for flags in 1..=31 {
         let mut input = fixture();
         input.manager_exclusions = flags;
         input.has_store_receipt = u8::from(flags & 1 != 0);

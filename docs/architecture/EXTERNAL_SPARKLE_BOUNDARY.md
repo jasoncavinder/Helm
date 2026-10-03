@@ -133,10 +133,22 @@ on a component boundary. These markers are not authenticated receipts or a
 complete provenance catalog. Group-writable cask metadata may supply a denial
 signal; it can never authorize installation.
 
+The [receipt/Setapp follow-up](../validation/v0.20-sparkle-receipt-exclusions.md)
+queries the OS receipt service through fixed `/usr/sbin/pkgutil` arguments for
+the app root, Info.plist and validated main executable. Each child has closed
+input, a sanitized environment, a one-second deadline and a combined 64 KiB
+output bound. Malformed, incomplete, oversized, failed or changed replies reject
+the observation. Both receipt snapshots must agree across signature validation;
+the final bundle/ancestor checks run after those external queries. Existing
+Setapp framework, public-key and resource-bundle markers in the checked tree
+also deny adoption, even outside a Setapp folder. Receipt IDs/SDK markers are
+conservative exclusions, not authenticated historical installation provenance.
+
 The only dispositions are `otherManager` and `unresolved`; there is deliberately
-no native standalone grant yet. Nonstandard Homebrew prefixes, pkg/custom
-installations, relocated/static-linked Setapp builds and other authority sources
-still require coordinator-owned resolution. Even a successful empty scan keeps
+no native standalone grant yet. Nonstandard Homebrew prefixes, receipts covering
+only other payload paths, receipt-less custom/managed installations, marker-less
+Setapp integrations and other authority sources still require coordinator-owned
+resolution. Even a successful empty scan keeps
 `requiresAuthorityResolution` true. Re-observation is not an atomic lease; the
 future runtime must repeat it and bind positive provenance/candidate/durable
 facts before confirmation or installation. The operational release gate remains

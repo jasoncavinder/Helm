@@ -32,7 +32,8 @@ pub struct NativeTarget {
     pub framework_major: u32,
     pub has_store_receipt: u8,
     pub writable_by_others: u8,
-    /// Bit 0: App Store receipt; bit 1: Homebrew cask; bit 2: Setapp location.
+    /// Bits 0..4: App Store receipt, Homebrew cask, Setapp location,
+    /// Setapp bundle marker, native installer receipt. Any bit is denial only.
     pub manager_exclusions: u32,
     /// OS-account-derived root, never an XPC argument or HOME override. Empty
     /// means no user root; /Applications is always supplied by this bridge.
@@ -96,7 +97,7 @@ unsafe fn map_target(input: &NativeTarget) -> Result<(TargetObservation, Vec<Pat
     if input.abi_version != 1
         || input.has_store_receipt > 1
         || input.writable_by_others > 1
-        || input.manager_exclusions & !7 != 0
+        || input.manager_exclusions & !31 != 0
         || (input.manager_exclusions & 1 != 0) != (input.has_store_receipt == 1)
     {
         return Err(Rejection::MalformedRequest);

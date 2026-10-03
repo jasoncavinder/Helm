@@ -34,6 +34,8 @@ public enum NativePolicyAssessment: String, Encodable {
             case .appStoreReceipt: exclusions |= 1
             case .homebrewCaskReference: exclusions |= 2
             case .setappLocation: exclusions |= 4
+            case .setappBundleMarker: exclusions |= 8
+            case .installerReceipt: exclusions |= 16
             }
         }
         let code = bytes.withUnsafeBufferPointer { storage -> UInt32 in
