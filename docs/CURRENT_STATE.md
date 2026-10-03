@@ -84,7 +84,11 @@ Shared reads refuse symlinks in intermediate path components; dangling/cyclic
 links and set-ID bundle entries fail closed. All 72 native tests pass in the VM.
 These are read-only filesystem facts, not manager provenance, an atomic path
 reservation, inherited-sandbox proof or update consent. Direct updating remains
-disabled; signed current-source acceptance is recorded separately in the evidence.
+disabled. The separately notarized current-source helper passes real preflight
+and an authenticated VM session. Four permission-unsafe copies retain valid
+signatures but are rejected by the filesystem guard; a fresh safe preflight
+passes afterward. The temporary test service is removed. No host production app,
+shipping entitlements or accepted owner-QA profiles were changed.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
