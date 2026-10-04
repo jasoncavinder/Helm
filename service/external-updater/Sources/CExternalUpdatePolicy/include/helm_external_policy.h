@@ -57,4 +57,13 @@ uint32_t helm_external_ledger_prepare(HelmExternalBytes path, uint8_t fresh);
 /* Read-only history codes 20..25; not update/adoption authorization. */
 uint32_t helm_external_consent_status(const HelmExternalNativeTarget *input,
                                       HelmExternalBytes request, HelmExternalBytes path);
+
+/* Native-owned, nonserializable, one-shot review. No adoption/install authority. */
+typedef struct RevocationReview HelmExternalRevocationReview;
+uint32_t helm_external_revocation_request(HelmExternalBytes request, HelmExternalBytes user_root);
+HelmExternalRevocationReview *helm_external_revocation_prepare(HelmExternalBytes path, HelmExternalBytes request,
+                                                              HelmExternalBytes user_root, uint64_t now);
+/* Consumes review on every outcome: 40=revoked, 41=stale, 42=outcome unknown. */
+uint32_t helm_external_revocation_confirm(HelmExternalRevocationReview *review, HelmExternalBytes path, uint64_t now);
+void helm_external_revocation_free(HelmExternalRevocationReview *review);
 #endif

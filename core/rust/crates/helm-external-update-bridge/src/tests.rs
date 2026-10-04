@@ -11,6 +11,50 @@ fn b(value: &[u8]) -> Bytes {
     }
 }
 
+#[test]
+fn revocation_native_handles_are_read_only_single_use_and_revision_bound() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ledger.sqlite");
+    std::fs::File::create(&path).unwrap();
+    assert_eq!(prepare_ledger(&path, 1), 1);
+    let request = br#"{"schemaVersion":1,"requestId":"550e8400-e29b-41d4-a716-446655440000","targetPath":"/Applications/Gone.app"}"#;
+    let path_bytes = path.to_str().unwrap().as_bytes();
+    let before = std::fs::read(&path).unwrap();
+    unsafe {
+        let first = helm_external_revocation_prepare(b(path_bytes), b(request), b(b""), 100);
+        let stale = helm_external_revocation_prepare(b(path_bytes), b(request), b(b""), 100);
+        assert!(!first.is_null());
+        assert!(!stale.is_null());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(
+            helm_external_revocation_confirm(first, b(path_bytes), 110),
+            40
+        );
+        assert_eq!(
+            helm_external_revocation_confirm(stale, b(path_bytes), 110),
+            41
+        );
+        let expired = helm_external_revocation_prepare(b(path_bytes), b(request), b(b""), 100);
+        assert_eq!(
+            helm_external_revocation_confirm(expired, b(path_bytes), 220),
+            41
+        );
+        let discarded = helm_external_revocation_prepare(b(path_bytes), b(request), b(b""), 100);
+        helm_external_revocation_free(discarded);
+        helm_external_revocation_free(std::ptr::null_mut());
+        assert_eq!(
+            helm_external_revocation_confirm(std::ptr::null_mut(), b(path_bytes), 110),
+            42
+        );
+        assert!(helm_external_revocation_prepare(b(path_bytes), b(b"{}"), b(b""), 100).is_null());
+        let wrong = helm_external_revocation_prepare(b(path_bytes), b(request), b(b""), 100);
+        assert_eq!(
+            helm_external_revocation_confirm(wrong, b(b"/tmp/helm.db"), 110),
+            42
+        );
+    }
+}
+
 fn prepare_ledger(path: &std::path::Path, fresh: u8) -> u32 {
     unsafe { helm_external_ledger_prepare(b(path.to_str().unwrap().as_bytes()), fresh) }
 }

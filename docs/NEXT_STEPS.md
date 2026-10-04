@@ -51,11 +51,16 @@ findings. Bounded system queries and revalidated resource markers deny known cla
 their absence is not complete manager coverage or adoption eligibility. Preserve
 the VM's real receipt-positive/unclaimed-negative controls without modifying
 the original installed app or repeating accepted package lifecycles.
-Review the [authenticated consent-history diagnostic](validation/v0.20-sparkle-consent-status.md)
-next. It reads only existing storage and returns no permission or reusable
+The [authenticated consent-history diagnostic](validation/v0.20-sparkle-consent-status.md)
+is reviewed and merged through #627 at `33e82095`, with no independent-review
+findings. It reads only existing storage and returns no permission or reusable
 token; missing/incomplete stores require separate explicit preparation/recovery.
 Preserve its shared request budgets, fresh identity rechecks and WAL-visible
-revocation tests. Continue with operational authenticated ledger/native-session integration,
+revocation tests. Review the next [denial-only revocation slice](validation/v0.20-sparkle-consent-revocation.md):
+connection-local review/confirmation and atomic epoch/revision checks, with no
+grant or installer activation. Preserve cancellation-before-admission and
+lost-reply uncertainty; never retry a possibly committed removal automatically.
+Continue with operational authenticated grant/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
 until the operational boundary and real lifecycle/recovery gates pass.

@@ -126,6 +126,13 @@ candidate review and durable install handoff. No shipping capability is enabled
 by this core foundation. See the [adoption contract](../validation/v0.20-sparkle-adoption.md)
 and [external boundary](EXTERNAL_SPARKLE_BOUNDARY.md).
 
+Permission removal is deliberately not installation eligibility. The
+[authenticated revocation review](../validation/v0.20-sparkle-consent-revocation.md)
+can remove saved permission for an absent or newly ineligible allowed-root app;
+it cannot grant permission, override manager ownership or abort an already
+handed-off installer. Exact ledger revision checks prevent an old review from
+revoking a newer grant. Shipping adoption/revocation controls remain gated.
+
 ## Adding A New Rule
 
 1. Add rule and constants in `manager_policy.rs`.

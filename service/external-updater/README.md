@@ -3,7 +3,8 @@
 Development foundation only. This package is not embedded in Helm and exposes no
 installer operation, feed request, manager mutation, privileged operation or
 updater command transport. Its data-free XPC bootstrap and authenticated read-only
-app preflight/consent-history checks do not enable direct updates. Native signing/notarization trust
+app preflight/consent-history checks and denial-only consent revocation do not
+enable direct updates. Native signing/notarization trust
 evaluation remains under macOS control.
 
 ## Standalone Helper Package
@@ -72,7 +73,7 @@ bidirectional code requirements as the anonymous transport. A manually prepared,
 temporary VM-only LaunchAgent is test infrastructure, **not** shipped service
 registration. The host accepts at most one admitted connection, re-observes its
 own identity before admission and exits within 120 seconds. After the
-version/nonce handshake, it accepts at most eight sequential read-only app checks
+version/nonce handshake, it accepts at most eight sequential diagnostics or denial-only revocation requests
 on the same connection. Each has an 8 KiB strict request and a 15-second deadline.
 No feeds, database paths, trusted observations or authorization grants are accepted.
 Cancellation is local connection invalidation, not an exported update command.
@@ -89,6 +90,21 @@ clients reject reply codes belonging to the other method. Missing/unsafe storage
 is unavailable, not an empty successful scan. Native helper/target/root identity
 is rechecked around inspection. See the
 [consent-status contract](../../docs/validation/v0.20-sparkle-consent-status.md).
+
+`--review-revocation PATH` tests a read-only revocation review;
+`--revoke-consent PATH` explicitly performs review then confirmation of permission
+removal. Use only approved, task-owned targets in the disposable VM. The native
+review is opaque, connection-local, single-use and bound to the helper's current
+ledger epoch/path revision. New reviews replace prior handles. Confirmation
+cannot remove consent granted after review. A missing or newly ineligible app
+does not prevent removal of its permission. No authority is granted and no
+installer is launched. These two methods share the existing eight-request budget
+and deadlines, returning only `revoked`, `reviewChanged` or `outcomeUnknown`.
+Disconnect/expiry before mutation admission denies the write; afterwards the
+write can commit with no delivered result. Never automatically replay a lost
+confirmation. The helper logs only fixed failure categories, never paths, handles
+or ledger contents. See the [revocation contract](../../docs/validation/v0.20-sparkle-consent-revocation.md).
+
 Testing real
 acceptance requires a separately signed/notarized sandboxed app wrapper with the
 exact caller identity/channel and only the named Mach-lookup sandbox exception.
