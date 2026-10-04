@@ -54,4 +54,7 @@ uint32_t helm_external_requested_preflight(const HelmExternalNativeTarget *input
  * 0 on rejection; neither grants adoption, update consent or install authority. */
 uint32_t helm_external_ledger_prepare(HelmExternalBytes path, uint8_t fresh);
 
+/* Read-only history codes 20..25; not update/adoption authorization. */
+uint32_t helm_external_consent_status(const HelmExternalNativeTarget *input,
+                                      HelmExternalBytes request, HelmExternalBytes path);
 #endif

@@ -2,14 +2,16 @@ import Darwin
 import Foundation
 
 /// Per-connection handshake and bounded read-only preflight. No adoption grant,
-/// database access, candidate download or installer operation is exposed.
+/// candidate download or installer operation is exposed. Consent inspection uses
+/// only existing helper storage; ordinary preflight remains database-free.
 public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBootstrapProtocol {
     private let connection: NSXPCConnection
     private let queue = DispatchQueue(label: "com.jasoncavinder.Helm.external-bootstrap-server")
     private let notifications = DispatchQueue(label: "com.jasoncavinder.Helm.external-bootstrap-server-events")
     private let event: (BootstrapEvent) -> Void
     private let worker = DispatchQueue(label: "com.jasoncavinder.Helm.external-preflight-worker")
-    private let assess: ((Data) throws -> NativePolicyAssessment)?
+    private let assess: ((Data) throws -> UInt32)?
+    private let consent: ((Data) throws -> UInt32)?
     private let started = DispatchTime.now().uptimeNanoseconds
     private var operations = PreflightGate(started: DispatchTime.now().uptimeNanoseconds)
     private var pendingReply: ((UInt64, UInt32) -> Void)?
@@ -25,15 +27,18 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
         guard authentication.admit(connection) else { throw BootstrapFailure.invalidAccount }
         let processor = helperIdentity.map { NativePreflightProcessor(identity: $0) }
         self.init(configuredConnection: connection, assess: processor.map { processor in
-            { try processor.assess($0) }
+            { try processor.assess($0).code }
+        }, consent: helperIdentity.map { identity in
+            { try NativeConsentProcessor(identity: identity).assess($0).code }
         }, event: event)
     }
 
-    private init(configuredConnection: NSXPCConnection, assess: ((Data) throws -> NativePolicyAssessment)?,
+    private init(configuredConnection: NSXPCConnection, assess: ((Data) throws -> UInt32)?, consent: ((Data) throws -> UInt32)?,
                  event: @escaping (BootstrapEvent) -> Void) {
         connection = configuredConnection
         self.event = event
         self.assess = assess
+        self.consent = consent
         super.init()
         connection.exportedInterface = NSXPCInterface(with: ExternalUpdaterBootstrapProtocol.self)
         connection.exportedObject = self
@@ -50,8 +55,11 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     #if DEBUG
     convenience init(testingConnection: NSXPCConnection,
                      assess: ((Data) throws -> NativePolicyAssessment)? = nil,
+                     consent: ((Data) throws -> ExternalConsentStatus)? = nil,
                      event: @escaping (BootstrapEvent) -> Void) {
-        self.init(configuredConnection: testingConnection, assess: assess, event: event)
+        self.init(configuredConnection: testingConnection,
+                  assess: assess.map { call in { try call($0).code } },
+                  consent: consent.map { call in { try call($0).code } }, event: event)
     }
     #endif
 
@@ -87,10 +95,20 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
 
     public func preflight(session: Data, sequence: UInt64, request: Data,
                           reply: @escaping (UInt64, UInt32) -> Void) {
+        perform(assess: assess, session: session, sequence: sequence, request: request, reply: reply)
+    }
+
+    public func consentStatus(session: Data, sequence: UInt64, request: Data,
+                              reply: @escaping (UInt64, UInt32) -> Void) {
+        perform(assess: consent, session: session, sequence: sequence, request: request, reply: reply)
+    }
+
+    private func perform(assess: ((Data) throws -> UInt32)?, session: Data, sequence: UInt64, request: Data,
+                         reply: @escaping (UInt64, UInt32) -> Void) {
         queue.async { [weak self] in
             guard let self else { reply(sequence, 0); return }
             do {
-                guard !self.closed, self.established, let assess = self.assess,
+                guard !self.closed, self.established, let assess,
                       self.connection.effectiveUserIdentifier == geteuid() else {
                     throw BootstrapFailure.invalidMessage
                 }
@@ -115,7 +133,7 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
         }
     }
 
-    private func complete(sequence: UInt64, result: Result<NativePolicyAssessment, Error>) {
+    private func complete(sequence: UInt64, result: Result<UInt32, Error>) {
         guard !closed else { return }
         guard operations.complete(sequence: sequence, now: DispatchTime.now().uptimeNanoseconds) else {
             finish(.expired)
@@ -125,7 +143,7 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
         case .success(let assessment):
             let reply = pendingReply
             pendingReply = nil
-            reply?(sequence, assessment.code)
+            reply?(sequence, assessment)
         case .failure(let error): finish((error as? BootstrapFailure) ?? .invalidated)
         }
     }

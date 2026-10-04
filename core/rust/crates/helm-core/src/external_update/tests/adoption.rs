@@ -60,6 +60,123 @@ fn revoke(store: &SqliteStore) {
 }
 
 #[test]
+fn consent_history_inspection_is_read_only_and_never_resolves_authority() {
+    use adoption::ConsentStatus::*;
+    let (_directory, store) = store();
+    let inspect = |target: &TargetObservation| {
+        SqliteStore::inspect_external_update_consent(store.database_path(), target, &roots())
+            .unwrap()
+    };
+    assert_eq!(inspect(&native()), NotRecorded);
+    adopt(&store, 101);
+    let before = std::fs::read(store.database_path()).unwrap();
+    assert_eq!(inspect(&native()), Recorded);
+    let mut changed = native();
+    changed.feed_url = "https://example.org/changed.xml".into();
+    assert_eq!(inspect(&changed), IdentityChanged);
+    changed = native();
+    changed.build = "later-build".into();
+    changed.inode += 1;
+    assert_eq!(inspect(&changed), Recorded);
+    assert_eq!(std::fs::read(store.database_path()).unwrap(), before);
+    revoke(&store);
+    assert_eq!(inspect(&native()), Revoked);
+    assert_eq!(native().authority, Authority::Unknown);
+}
+
+#[test]
+fn consent_inspection_never_creates_repairs_or_follows_a_missing_ledger() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("missing/ledger.sqlite");
+    assert!(SqliteStore::inspect_external_update_consent(&path, &native(), &roots()).is_err());
+    assert!(!path.parent().unwrap().exists());
+    let path = directory.path().join("ledger.sqlite");
+    for bytes in [b"".as_slice(), b"corrupt ledger"] {
+        std::fs::write(&path, bytes).unwrap();
+        assert!(SqliteStore::inspect_external_update_consent(&path, &native(), &roots()).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+    #[cfg(unix)]
+    {
+        let alias = directory.path().join("alias.sqlite");
+        std::os::unix::fs::symlink(&path, &alias).unwrap();
+        assert!(SqliteStore::inspect_external_update_consent(&alias, &native(), &roots()).is_err());
+    }
+}
+
+#[test]
+fn consent_inspection_rejects_partial_or_tampered_schema_without_repair() {
+    for sql in [
+        "DELETE FROM helm_schema_migrations WHERE version = 24",
+        "UPDATE helm_schema_migrations SET name = 'tampered' WHERE version = 24",
+        "UPDATE helm_schema_migrations SET definition_checksum = NULL WHERE version = 24",
+        "DROP TABLE external_update_adoption_epoch",
+        "DELETE FROM external_update_adoption_epoch",
+        "DROP TABLE external_update_sessions",
+    ] {
+        let (_directory, store) = store();
+        rusqlite::Connection::open(store.database_path())
+            .unwrap()
+            .execute_batch(sql)
+            .unwrap();
+        let before = std::fs::read(store.database_path()).unwrap();
+        assert!(
+            SqliteStore::inspect_external_update_consent(
+                store.database_path(),
+                &native(),
+                &roots()
+            )
+            .is_err(),
+            "{sql}"
+        );
+        assert_eq!(std::fs::read(store.database_path()).unwrap(), before);
+    }
+}
+
+#[test]
+fn consent_inspection_sees_committed_wal_and_not_uncommitted_revocation() {
+    use adoption::ConsentStatus::*;
+    let (_directory, store) = store();
+    adopt(&store, 102);
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    connection
+        .execute_batch("PRAGMA wal_autocheckpoint=0; BEGIN IMMEDIATE;")
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO external_update_adoptions (target_path) VALUES (?1)",
+            [native().canonical_path.to_str()],
+        )
+        .unwrap();
+    let inspect = || {
+        SqliteStore::inspect_external_update_consent(store.database_path(), &native(), &roots())
+            .unwrap()
+    };
+    assert_eq!(inspect(), Recorded);
+    connection.execute_batch("COMMIT;").unwrap();
+    assert_eq!(inspect(), Revoked);
+    assert!(std::path::PathBuf::from(format!("{}-wal", store.database_path().display())).exists());
+}
+
+#[test]
+fn consent_history_cannot_override_new_native_exclusions() {
+    let (_directory, store) = store();
+    adopt(&store, 103);
+    for mode in 0..3 {
+        let mut target = native();
+        match mode {
+            0 => target.authority = Authority::OtherManager,
+            1 => target.writable_by_others = true,
+            _ => target.has_store_receipt = true,
+        }
+        assert!(
+            SqliteStore::inspect_external_update_consent(store.database_path(), &target, &roots())
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn adoption_request_cannot_supply_authority_or_installation_arguments() {
     let valid = request(0);
     assert_eq!(

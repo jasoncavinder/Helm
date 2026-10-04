@@ -172,6 +172,20 @@ pass in the VM. A real installer receipt on an isolated signed-app copy changes
 its assessment from unresolved to other-manager, while the original stays
 unchanged/unresolved. No-marker results remain unresolved; this is not complete
 ownership coverage, a signed-helper acceptance run or permission to update.
+PR #626 is reviewed and merged at `20b91a90`; its independent review found no issues.
+
+The [authenticated consent-history diagnostic](validation/v0.20-sparkle-consent-status.md)
+now reads existing private helper storage after fresh native target checks. Its
+bounded XPC response distinguishes no record, matching history, revocation,
+changed identity, unavailable storage and rejected targets. It returns no token
+or update permission, creates no missing storage and performs no migration or
+repair. Both diagnostic methods share the existing replay/work/deadline gate.
+All 896 core, 19 bridge, 168 native and 22 packaging/build-contract tests pass in
+the VM, along with the migration compatibility suite. Six current-source signed/
+notarized helper cases pass, including stale/receipt-owned targets, lock contention
+and fresh positive controls; saved history is unchanged. Ordinary app preflight
+remains database-free. Operational consent/session integration, supported
+ownership scope and live installation/recovery remain open.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

@@ -1106,6 +1106,12 @@ policy/persistence foundation only. Native/helper integration, localized GUI/CLI
 review and revocation, accepted candidates, real execution and recovery remain
 required before activation. Open App is unchanged.
 
+The [authenticated history diagnostic](validation/v0.20-sparkle-consent-status.md)
+is advisory only: even a matching saved record is not eligibility or permission
+to install. It returns no consent/epoch/sequence token, and never initializes or
+repairs storage. Operational admission must still resolve fresh evidence and
+recheck the latest grant transactionally at claim/handoff/verification.
+
 ---
 
 ## Summary

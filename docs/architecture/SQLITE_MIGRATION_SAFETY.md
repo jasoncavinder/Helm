@@ -110,6 +110,15 @@ the adoption epoch and session tables. An empty/partial existing store is not
 fresh initialization. Ordinary app connection behavior and all historical
 migrations are unchanged. See the [private helper ledger contract](../validation/v0.20-sparkle-private-ledger.md).
 
+Authenticated helper consent inspection is a separate existing-only read path,
+not the normal migrating store constructor. It requires the exact current schema,
+valid migration identities/checksums, integrity, adoption epoch and session tables,
+then reads history in one read-only snapshot. No absent file/schema/epoch is
+created or repaired. Do not use SQLite `immutable` here: a committed revocation
+in WAL must be visible. Normal WAL/SHM bookkeeping is possible; no consent or
+schema writes are performed. This diagnostic returns no authority token. See
+the [consent-status contract](../validation/v0.20-sparkle-consent-status.md).
+
 Release builds use:
 
 ```text

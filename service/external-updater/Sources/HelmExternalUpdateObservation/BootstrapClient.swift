@@ -10,7 +10,7 @@ public final class ExternalUpdaterBootstrapClient {
     private var started = false
     private var session: Data?
     private var nextSequence: UInt64 = 1
-    private var pending: (sequence: UInt64, started: UInt64, reply: (Result<NativePolicyAssessment, BootstrapFailure>) -> Void)?
+    private var pending: (sequence: UInt64, started: UInt64, consent: Bool, reply: (Result<UInt32, BootstrapFailure>) -> Void)?
 
     /// Retain until finished; release/cancel closes the connection. The endpoint
     /// alone is untrusted. Production always installs the fixed helper requirement.
@@ -97,6 +97,20 @@ public final class ExternalUpdaterBootstrapClient {
     /// No app data is sent until the helper has authenticated its hello reply.
     public func preflight(_ request: ExternalPreflightRequest,
                           reply: @escaping (Result<NativePolicyAssessment, BootstrapFailure>) -> Void) {
+        send(request, consent: false) { reply($0.map { NativePolicyAssessment(code: $0) }) }
+    }
+
+    public func consentStatus(_ request: ExternalPreflightRequest,
+                              reply: @escaping (Result<ExternalConsentStatus, BootstrapFailure>) -> Void) {
+        send(request, consent: true) { result in
+            reply(result.flatMap { code in
+                ExternalConsentStatus(code: code).map { .success($0) } ?? .failure(.invalidMessage)
+            })
+        }
+    }
+
+    private func send(_ request: ExternalPreflightRequest, consent: Bool,
+                      reply: @escaping (Result<UInt32, BootstrapFailure>) -> Void) {
         queue.async { [weak self] in
             guard let self else { reply(.failure(.invalidated)); return }
             guard self.gate.established, !self.gate.closed, let session = self.session,
@@ -115,15 +129,20 @@ public final class ExternalUpdaterBootstrapClient {
                 _ = try ExternalPreflightRequest.decode(data, userApplications: NativeApplicationRoots.userApplications)
                 let sequence = self.nextSequence
                 self.nextSequence += 1
-                self.pending = (sequence, DispatchTime.now().uptimeNanoseconds, reply)
+                self.pending = (sequence, DispatchTime.now().uptimeNanoseconds, consent, reply)
                 guard let proxy = self.connection.remoteObjectProxyWithErrorHandler({ [weak self] _ in
                     self?.close(.transport)
                 }) as? ExternalUpdaterBootstrapProtocol else {
                     self.finish(.transport)
                     return
                 }
-                proxy.preflight(session: session, sequence: sequence, request: data) { [weak self] echo, code in
+                let completed: (UInt64, UInt32) -> Void = { [weak self] echo, code in
                     self?.receivePreflight(sequence: sequence, echo: echo, code: code)
+                }
+                if consent {
+                    proxy.consentStatus(session: session, sequence: sequence, request: data, reply: completed)
+                } else {
+                    proxy.preflight(session: session, sequence: sequence, request: data, reply: completed)
                 }
                 self.queue.asyncAfter(deadline: .now() + .seconds(15)) { [weak self] in
                     guard let self, self.pending?.sequence == sequence else { return }
@@ -139,7 +158,8 @@ public final class ExternalUpdaterBootstrapClient {
         queue.async { [weak self] in
             guard let self, !self.gate.closed, let pending = self.pending else { return }
             let now = DispatchTime.now().uptimeNanoseconds
-            guard sequence == pending.sequence, echo == sequence, (1...8).contains(code), code != 6,
+            let validCode = pending.consent ? ExternalConsentStatus(code: code) != nil : (1...8).contains(code) && code != 6
+            guard sequence == pending.sequence, echo == sequence, validCode,
                   self.connection.effectiveUserIdentifier == self.gate.account,
                   now >= pending.started, now - pending.started < PreflightGate.requestNanoseconds,
                   now >= self.gate.started, now - self.gate.started < BootstrapWire.lifetimeNanoseconds else {
@@ -147,7 +167,7 @@ public final class ExternalUpdaterBootstrapClient {
                 return
             }
             self.pending = nil
-            self.notifications.async { pending.reply(.success(NativePolicyAssessment(code: code))) }
+            self.notifications.async { pending.reply(.success(code)) }
         }
     }
 
