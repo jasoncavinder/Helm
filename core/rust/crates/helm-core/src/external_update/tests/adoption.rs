@@ -525,7 +525,7 @@ fn competing_claims_unsafe_targets_and_failed_boundary_cannot_be_adopted() {
 #[test]
 fn adoption_confirmation_reobserves_expires_and_binds_exact_review() {
     let (_directory, store) = store();
-    for now in [99, 221, u64::MAX] {
+    for now in [99, 220, 221, u64::MAX] {
         assert!(matches!(
             review(&store, 0).confirm(&store, native(), fixture().3, &roots(), now),
             Err(Error::Policy(Rejection::ReviewExpired))
@@ -562,7 +562,7 @@ fn adoption_confirmation_reobserves_expires_and_binds_exact_review() {
     );
     assert!(
         review(&store, 99)
-            .confirm(&store, native(), fixture().3, &roots(), 220)
+            .confirm(&store, native(), fixture().3, &roots(), 219)
             .is_ok()
     );
 }

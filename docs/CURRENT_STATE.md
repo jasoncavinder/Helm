@@ -201,6 +201,17 @@ PR #628 is reviewed and merged at `9932f2e1`, with no independent-review finding
 Its earlier one-off fail-closed confirmation rejection remains a recorded,
 nonreproduced pre-shipping limitation; successful later checks do not explain it.
 
+The [existing-only adoption prerequisite](validation/v0.20-sparkle-ledger-adoption.md)
+now gives core a private-ledger review/confirmation path without the general
+store's migrations or repair. It binds the database path, epoch/path revision,
+fresh target and authenticated-boundary observations to a consumed in-memory
+review. Confirmation rejects safe mode, consumed consent IDs, stale reviews and
+active target reservations in the same immediate transaction as the grant.
+The 120-second limit is exclusive, matching revocation. This is a core prerequisite,
+not a new authenticated wire method: native observation, live admission and the
+filesystem lease remain coordinator responsibilities. No shipping adoption or
+direct update is enabled; update consent remains a separate decision.
+
 The [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts.md)
 extends receipt checks from three anchor paths to the full bounded inspected
 bundle tree. It also checks the OS receipt catalog and exports overlapping

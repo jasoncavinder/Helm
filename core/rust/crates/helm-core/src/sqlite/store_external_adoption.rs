@@ -62,7 +62,7 @@ pub(super) fn authority_is_current(
 }
 
 impl SqliteStore {
-    pub(crate) fn read_external_revocation_cursor(
+    pub(crate) fn read_external_adoption_cursor(
         database_path: &Path,
         target: &Path,
     ) -> PersistenceResult<AdoptionToken> {
@@ -74,7 +74,33 @@ impl SqliteStore {
             transaction.commit()?;
             Ok(prior)
         })()
-        .map_err(|error| storage_error("read_external_revocation_cursor", error))
+        .map_err(|error| storage_error("read_external_adoption_cursor", error))
+    }
+
+    pub(crate) fn commit_reviewed_external_adoption(
+        database_path: &Path,
+        consent_id: &str,
+        target: &TargetObservation,
+        review_fingerprint: &str,
+        prior: AdoptionToken,
+    ) -> PersistenceResult<Option<AdoptionReceipt>> {
+        (|| -> rusqlite::Result<_> {
+            let mut connection = open_private_ledger(database_path)?;
+            connection.busy_timeout(Duration::from_millis(100))?;
+            connection.execute_batch("PRAGMA synchronous=FULL; PRAGMA fullfsync=ON;")?;
+            let transaction =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            // No CREATE, schema migration, journal-mode change or missing-epoch repair.
+            validate_current_ledger(&transaction, &target.canonical_path)?;
+            let Some(receipt) =
+                insert_adoption(&transaction, consent_id, target, review_fingerprint, prior)?
+            else {
+                return Ok(None);
+            };
+            transaction.commit()?;
+            Ok(Some(receipt))
+        })()
+        .map_err(|error| storage_error("commit_reviewed_external_adoption", error))
     }
 
     pub(crate) fn commit_reviewed_external_revocation(
@@ -156,26 +182,15 @@ impl SqliteStore {
     ) -> PersistenceResult<Option<AdoptionReceipt>> {
         self.with_connection("commit_external_adoption", |connection| {
             external_update::prepare(connection)?;
-            let transaction = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            if !external_update::mutation_allowed(&transaction)?
-                || cursor(&transaction, &target.canonical_path)? != prior { return Ok(None); }
-            let conflict: bool = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM external_update_adoptions WHERE consent_id = ?1)
-                 OR EXISTS(SELECT 1 FROM external_update_sessions WHERE holds_target = 1
-                     AND (target_path = ?2 OR (target_device = ?3 AND target_inode = ?4)))",
-                params![consent_id, target.canonical_path.to_str(), target.device.to_string(), target.inode.to_string()],
-                |row| row.get(0),
-            )?;
-            if conflict { return Ok(None); }
-            let snapshot = serde_json::to_string(target).map_err(|_| storage_error_sqlite("invalid adoption snapshot"))?;
-            transaction.execute(
-                "INSERT INTO external_update_adoptions (target_path, consent_id, identity_fingerprint, review_fingerprint, reviewed_target_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![target.canonical_path.to_str(), consent_id, identity_fingerprint(target), review_fingerprint, snapshot],
-            )?;
-            let receipt = latest(&transaction, &target.canonical_path)?;
+            let transaction =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let Some(receipt) =
+                insert_adoption(&transaction, consent_id, target, review_fingerprint, prior)?
+            else {
+                return Ok(None);
+            };
             transaction.commit()?;
-            Ok(receipt)
+            Ok(Some(receipt))
         })
     }
 
@@ -215,6 +230,47 @@ impl SqliteStore {
             Ok(receipt)
         })
     }
+}
+
+/// Both callers hold an immediate transaction; keep all admission checks and
+/// the insert together so another connection cannot race revocation or claims.
+fn insert_adoption(
+    connection: &Connection,
+    consent_id: &str,
+    target: &TargetObservation,
+    review_fingerprint: &str,
+    prior: AdoptionToken,
+) -> rusqlite::Result<Option<AdoptionReceipt>> {
+    if !external_update::mutation_allowed(connection)?
+        || cursor(connection, &target.canonical_path)? != prior
+    {
+        return Ok(None);
+    }
+    let conflict: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM external_update_adoptions WHERE consent_id = ?1)
+         OR EXISTS(SELECT 1 FROM external_update_sessions WHERE holds_target = 1
+             AND (target_path = ?2 OR (target_device = ?3 AND target_inode = ?4)))",
+        params![
+            consent_id,
+            target.canonical_path.to_str(),
+            target.device.to_string(),
+            target.inode.to_string()
+        ],
+        |row| row.get(0),
+    )?;
+    if conflict {
+        return Ok(None);
+    }
+    let snapshot = serde_json::to_string(target)
+        .map_err(|_| storage_error_sqlite("invalid adoption snapshot"))?;
+    connection.execute(
+        "INSERT INTO external_update_adoptions (target_path, consent_id, identity_fingerprint, review_fingerprint, reviewed_target_json)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![target.canonical_path.to_str(), consent_id, identity_fingerprint(target), review_fingerprint, snapshot],
+    )?;
+    latest(connection, &target.canonical_path)?
+        .map(Some)
+        .ok_or_else(|| storage_error_sqlite("missing adoption receipt"))
 }
 
 fn open_read_only_ledger(database_path: &Path) -> rusqlite::Result<Connection> {
