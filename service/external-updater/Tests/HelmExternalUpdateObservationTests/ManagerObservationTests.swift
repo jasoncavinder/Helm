@@ -360,10 +360,10 @@ final class ManagerObservationTests: XCTestCase {
     }
 
     func testTargetChangeDuringFinalReceiptQueryIsRejected() throws {
-        var calls = 0
+        var passes = 0
         let receipts = NativeInstallerReceiptObserver { path in
-            calls += 1
-            if calls == 6 {
+            if path == self.target.path { passes += 1 }
+            if passes == 2, path.hasSuffix("/Example") {
                 try Data("changed during receipt query".utf8)
                     .write(to: self.target.appendingPathComponent("Contents/MacOS/Example"))
             }
@@ -372,7 +372,44 @@ final class ManagerObservationTests: XCTestCase {
         XCTAssertThrowsError(try observe(receipts: receipts)) {
             XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
         }
-        XCTAssertEqual(calls, 6)
+        XCTAssertEqual(passes, 2)
+    }
+
+    func testResourceOnlyInstallerClaimIsNotMissed() throws {
+        let resource = target.appendingPathComponent("Contents/Resources/receipt-only.dat", isDirectory: false)
+        try FileManager.default.createDirectory(at: resource.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("resource only".utf8).write(to: resource)
+        var queried: [String] = []
+        let receipts = NativeInstallerReceiptObserver { path in
+            queried.append(path)
+            return try ReceiptFixtures.reply(path: path, identifiers: path == resource.path ? ["org.example.resource"] : [])
+        }
+        let evidence = try observe(receipts: receipts)
+        XCTAssertEqual(evidence.managerEvidence.exclusions, [.installerReceipt])
+        XCTAssertEqual(evidence.managerEvidence.installerPackageIdentifiers, ["org.example.resource"])
+        XCTAssertEqual(queried.filter { $0 == resource.path }.count, 2)
+        XCTAssertTrue(evidence.requiresAuthorityResolution)
+    }
+
+    func testResourceClaimChangingDuringSignatureValidationFailsClosed() throws {
+        let path = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources/Info.plist").path
+        var present = false
+        let receipts = NativeInstallerReceiptObserver {
+            try ReceiptFixtures.reply(path: $0, identifiers: $0 == path && present ? ["org.example.resource"] : [])
+        }
+        XCTAssertThrowsError(try observe(receipts: receipts) { present = true }) {
+            XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+        }
+    }
+
+    func testUnreadablePayloadReceiptDoesNotReturnPartialEvidence() throws {
+        let receipts = NativeInstallerReceiptObserver { path in
+            if path.hasSuffix("Sparkle.framework/Resources/Info.plist") { throw ObservationFailure.unreadableManagerEvidence }
+            return try ReceiptFixtures.reply(path: path)
+        }
+        XCTAssertThrowsError(try observe(receipts: receipts)) {
+            XCTAssertEqual($0 as? ObservationFailure, .unreadableManagerEvidence)
+        }
     }
 
     func testUnsignedExecutableNameMustMatchSignedMetadata() throws {

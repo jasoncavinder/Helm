@@ -134,10 +134,22 @@ complete provenance catalog. Group-writable cask metadata may supply a denial
 signal; it can never authorize installation.
 
 The [receipt/Setapp follow-up](../validation/v0.20-sparkle-receipt-exclusions.md)
-queries the OS receipt service through fixed `/usr/sbin/pkgutil` arguments for
-the app root, Info.plist and validated main executable. Each child has closed
+queries the OS receipt service through fixed `/usr/sbin/pkgutil` arguments. The
+[payload follow-up](../validation/v0.20-sparkle-payload-receipts.md) now queries
+every entry in the inspected native bundle tree, not only the app root,
+Info.plist and executable. Repeated options batch at most 32 paths per child;
+every echoed path and XML document must be present in order. At most four file-info
+children run at once, with deterministic result ordering and joined completion.
+Each file-info child has closed
 input, a sanitized environment, a one-second deadline and a combined 64 KiB
-output bound. Malformed, incomplete, oversized, failed or changed replies reject
+output bound. A pass has at most 4096 paths, 4 MiB of file-info output and a shared
+three-second monotonic budget including catalog queries and parsing. The catalog
+uses at most 1024 root-volume receipt IDs, exact ID/volume metadata binding and
+exports for overlapping non-root install locations. Those locations must be
+applied to relative payload paths; the VM's file-info lookup alone omits such
+claims. Catalog output has a separate 4 MiB aggregate cap, with 256 KiB for the
+ID list, 64 KiB metadata batches and 2 MiB per relevant export. Malformed,
+incomplete, oversized, failed or changed replies reject
 the observation. Both receipt snapshots must agree across signature validation;
 the final bundle/ancestor checks run after those external queries. Existing
 Setapp framework, public-key and resource-bundle markers in the checked tree
@@ -145,8 +157,9 @@ also deny adoption, even outside a Setapp folder. Receipt IDs/SDK markers are
 conservative exclusions, not authenticated historical installation provenance.
 
 The only dispositions are `otherManager` and `unresolved`; there is deliberately
-no native standalone grant yet. Nonstandard Homebrew prefixes, receipts covering
-only other payload paths, receipt-less custom/managed installations, marker-less
+no native standalone grant yet. Nonstandard Homebrew prefixes, root-location
+receipts for historical/deleted paths or alternate symlink spellings absent from
+the inspected tree, receipt-less custom/managed installations, marker-less
 Setapp integrations and other authority sources still require coordinator-owned
 resolution. Even a successful empty scan keeps
 `requiresAuthorityResolution` true. Re-observation is not an atomic lease; the

@@ -90,7 +90,8 @@ public struct NativeTargetObserver {
                 .appendingPathComponent(executable, isDirectory: false).path]?.isRegular == true else {
             throw ObservationFailure.invalidMetadata
         }
-        let receiptSnapshot = try receipts.snapshot(target: target, executable: executable)
+        let receiptPaths = Array(permissions.entries.keys)
+        let receiptSnapshot = try receipts.snapshot(target: target, paths: receiptPaths)
         let frameworkURL = target.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Resources/Info.plist")
             .resolvingSymlinksInPath()
         guard Self.contains(target, frameworkURL) else { throw ObservationFailure.unsupportedSparkle }
@@ -120,7 +121,7 @@ public struct NativeTargetObserver {
         }
         // Finish external evidence queries before the final bundle snapshot so
         // target changes during a slow receipt query cannot escape revalidation.
-        guard receiptSnapshot == (try receipts.snapshot(target: target, executable: executable)),
+        guard receiptSnapshot == (try receipts.snapshot(target: target, paths: receiptPaths)),
               managerSnapshot == (try managers.snapshot(target: target)) else {
             throw ObservationFailure.changedDuringObservation
         }

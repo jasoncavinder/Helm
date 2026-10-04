@@ -56,10 +56,16 @@ is reviewed and merged through #627 at `33e82095`, with no independent-review
 findings. It reads only existing storage and returns no permission or reusable
 token; missing/incomplete stores require separate explicit preparation/recovery.
 Preserve its shared request budgets, fresh identity rechecks and WAL-visible
-revocation tests. Review the next [denial-only revocation slice](validation/v0.20-sparkle-consent-revocation.md):
+revocation tests. The [denial-only revocation slice](validation/v0.20-sparkle-consent-revocation.md)
+is reviewed and merged through #628 at `9932f2e1`, without independent-review findings:
 connection-local review/confirmation and atomic epoch/revision checks, with no
 grant or installer activation. Preserve cancellation-before-admission and
 lost-reply uncertainty; never retry a possibly committed removal automatically.
+Retain its unexplained, nonreproduced initial rejection as a pre-shipping limitation.
+Review the [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts.md)
+before granting adoption. It covers the bounded inspected tree plus receipt
+exports for overlapping non-root install locations, which file-info queries alone
+miss on the VM. Do not call an incomplete/oversized/timed-out scan unclaimed.
 Continue with operational authenticated grant/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App

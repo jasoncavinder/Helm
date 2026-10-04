@@ -117,7 +117,8 @@ lifecycle authority. The owner-approved per-app policy permits an explicit
 "Let Helm manage updates" review when fresh native checks succeed but historical
 standalone provenance cannot be proved. It never overrides a known competing
 manager claim or unreadable evidence. Native installer receipt claims on the
-observed app/metadata/executable and known Setapp bundle markers are denial
+inspected bundle tree, overlapping non-root receipt exports and known Setapp
+bundle markers are denial
 signals too; their absence is not complete exclusion coverage. The
 [bounded observer](../validation/v0.20-sparkle-receipt-exclusions.md) remains
 read-only and cannot grant adoption. Migration 24 records revocable consent;

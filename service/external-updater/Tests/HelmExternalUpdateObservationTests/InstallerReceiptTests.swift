@@ -5,26 +5,30 @@ import XCTest
 
 final class InstallerReceiptTests: XCTestCase {
     private let target = URL(fileURLWithPath: "/Applications/Space & Quote's.app", isDirectory: true)
+    private var paths: [String] {
+        [target.path, target.path + "/Contents/Info.plist", target.path + "/Contents/MacOS/Main",
+         target.path + "/Contents/Resources/Payload.dat"]
+    }
 
     func testEmptyResponsesRemainOnlyAbsenceOfTheseMarkers() throws {
-        let snapshot = try ReceiptFixtures.empty.snapshot(target: target, executable: "Main")
-        XCTAssertEqual(snapshot.replies.count, 3)
+        let snapshot = try ReceiptFixtures.empty.snapshot(target: target, paths: paths)
+        XCTAssertEqual(snapshot.replies.count, 2)
         XCTAssertTrue(snapshot.identifiers.isEmpty)
     }
 
-    func testExactlyBundleInfoAndExecutableAreQueried() throws {
-        var paths: [String] = []
+    func testEveryInspectedPathIsQueriedInDeterministicOrder() throws {
+        var queried: [String] = []
         let observer = NativeInstallerReceiptObserver { path in
-            paths.append(path)
-            return try ReceiptFixtures.reply(path: path, identifiers: path.hasSuffix("/Main") ? ["org.example.installer"] : [])
+            queried.append(path)
+            return try ReceiptFixtures.reply(path: path, identifiers: path.hasSuffix("/Payload.dat") ? ["org.example.installer"] : [])
         }
-        XCTAssertEqual(try observer.snapshot(target: target, executable: "Main").identifiers, ["org.example.installer"])
-        XCTAssertEqual(paths, [target.path, target.path + "/Contents/Info.plist", target.path + "/Contents/MacOS/Main"])
+        XCTAssertEqual(try observer.snapshot(target: target, paths: paths.reversed()).identifiers, ["org.example.installer"])
+        XCTAssertEqual(queried, paths.sorted())
     }
 
     func testMultipleReceiptsAreDeduplicatedAndSorted() throws {
         let observer = NativeInstallerReceiptObserver { try ReceiptFixtures.reply(path: $0, identifiers: ["z.pkg", "a.pkg", "z.pkg"]) }
-        XCTAssertEqual(try observer.snapshot(target: target, executable: "Main").identifiers, ["a.pkg", "z.pkg"])
+        XCTAssertEqual(try observer.snapshot(target: target, paths: paths).identifiers, ["a.pkg", "z.pkg"])
     }
 
     func testMalformedOrMisdirectedRepliesAreNotEmptyInventory() throws {
@@ -49,18 +53,23 @@ final class InstallerReceiptTests: XCTestCase {
         }
     }
 
-    func testUnsafeExecutableNameNeverQueriesSystem() {
+    func testInvalidScopeNeverQueriesSystem() {
         var calls = 0
         let observer = NativeInstallerReceiptObserver { _ in calls += 1; return Data() }
-        for name in ["", ".", "..", "../Other", "/bin/sh", "Main\0", String(repeating: "x", count: 256)] {
-            XCTAssertThrowsError(try observer.snapshot(target: target, executable: name))
+        for scope in [[], [target.path, target.path], [paths[1]],
+                      [target.path, "/Applications/Other.app"], [target.path, target.path + ".other/Child"],
+                      [target.path, target.path + "/../Other"], [target.path, target.path + "/./Other"],
+                      [target.path, target.path + "//Child"], [target.path, target.path + "/Child/"],
+                      [target.path, target.path + "/Bad\0"], [target.path, target.path + "/Line\n"],
+                      [target.path, target.path + "/" + String(repeating: "x", count: 4096)]] {
+            XCTAssertThrowsError(try observer.snapshot(target: target, paths: scope))
         }
         XCTAssertEqual(calls, 0)
     }
 
     func testQueryFailureIsNotAnEmptySnapshot() {
         let observer = NativeInstallerReceiptObserver { _ in throw ObservationFailure.unreadableManagerEvidence }
-        XCTAssertThrowsError(try observer.snapshot(target: target, executable: "Main"))
+        XCTAssertThrowsError(try observer.snapshot(target: target, paths: paths))
     }
 
     func testReceiptMetadataDriftChangesSnapshotEvenWithSamePackageID() throws {
@@ -69,9 +78,9 @@ final class InstallerReceiptTests: XCTestCase {
             try PropertyListSerialization.data(fromPropertyList: ["path": path, "path-info": [["pkgid": "same.pkg", "install-time": revision]]],
                                                format: .xml, options: 0)
         }
-        let before = try observer.snapshot(target: target, executable: "Main")
+        let before = try observer.snapshot(target: target, paths: paths)
         revision = 2
-        let after = try observer.snapshot(target: target, executable: "Main")
+        let after = try observer.snapshot(target: target, paths: paths)
         XCTAssertEqual(before.identifiers, after.identifiers)
         XCTAssertNotEqual(before, after)
     }
@@ -115,7 +124,14 @@ final class InstallerReceiptTests: XCTestCase {
     func testActualReadOnlySystemQueryParsesForUniqueUnclaimedPath() throws {
         // Runtime is restricted to VM/CI. This does not install/forget a receipt.
         let path = "/Applications/Helm-Receipt-Test-\(UUID().uuidString).app"
-        let reply = try NativeInstallerReceiptObserver().query(path)
+        let reply = try NativeInstallerReceiptObserver().batchQuery([path], 1_000_000_000)
         XCTAssertTrue(try NativeInstallerReceiptObserver.identifiers(reply, path: path).isEmpty)
+    }
+
+    func testActualSystemQueryReturnsEveryRepeatedOption() throws {
+        let path = "/Applications/Helm-Receipt-Test-\(UUID().uuidString).app"
+        let paths = [path, path + "/Contents/Resources/a & b's.dat", path + "/Contents/Info.plist"]
+        let reply = try NativeInstallerReceiptObserver().batchQuery(paths, 1_000_000_000)
+        XCTAssertTrue(try NativeInstallerReceiptObserver.batchIdentifiers(reply, paths: paths).isEmpty)
     }
 }

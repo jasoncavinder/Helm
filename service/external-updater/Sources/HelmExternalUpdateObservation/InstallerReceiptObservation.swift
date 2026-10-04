@@ -4,32 +4,93 @@ import Foundation
 /// Exclusion evidence from macOS's supported receipt query, never an installer.
 /// The process/environment/arguments are fixed locally, not supplied over XPC.
 struct NativeInstallerReceiptObserver {
-    var query: (String) throws -> Data = { path in
-        try BoundedSystemQuery.run(executable: "/usr/sbin/pkgutil", arguments: ["--volume", "/", "--file-info-plist", path])
+    static let pathLimit = 4096
+    static let batchSize = 32
+    static let byteLimit = 4 * 1024 * 1024
+    static let snapshotNanoseconds: UInt64 = 3_000_000_000
+    var batchQuery: ([String], UInt64) throws -> Data = { paths, remaining in
+        try BoundedSystemQuery.run(executable: "/usr/sbin/pkgutil",
+                                   arguments: ["--volume", "/"] + paths.flatMap { ["--file-info-plist", $0] },
+                                   timeoutNanoseconds: min(remaining, 1_000_000_000))
     }
+    var clock: () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+    var catalog = NativeReceiptCatalog()
+    var workers = 4
 
     struct Snapshot: Equatable {
         let replies: [Data]
         let identifiers: [String]
     }
 
-    func snapshot(target: URL, executable: String) throws -> Snapshot {
-        guard !executable.isEmpty, executable.utf8.count <= 255,
-              executable != ".", executable != "..", !executable.contains("/"),
-              !executable.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
-            throw ObservationFailure.invalidMetadata
+    func snapshot(target: URL, paths: [String]) throws -> Snapshot {
+        // Only the already inspected native bundle tree supplies this scope.
+        // A truncated scope must not become apparently unclaimed evidence.
+        guard !paths.isEmpty, paths.count <= Self.pathLimit else { throw ObservationFailure.limitExceeded }
+        guard paths.contains(target.path), Set(paths).count == paths.count,
+              paths.allSatisfy({ path in
+                  (path == target.path || path.hasPrefix(target.path + "/")) && path.hasPrefix("/")
+                      && path.utf8.count <= 4096 && !path.contains("//") && !path.hasSuffix("/")
+                      && !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." })
+                      && !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+              }) else {
+            throw ObservationFailure.unreadableManagerEvidence
         }
-        let paths = [target.path, target.appendingPathComponent("Contents/Info.plist", isDirectory: false).path,
-                     target.appendingPathComponent("Contents/MacOS", isDirectory: true)
-                        .appendingPathComponent(executable, isDirectory: false).path]
-        var replies: [Data] = []
-        var identifiers = Set<String>()
-        for path in paths {
-            let reply = try query(path)
-            identifiers.formUnion(try Self.identifiers(reply, path: path))
-            replies.append(reply)
+        let paths = paths.sorted()
+        let started = clock()
+        func remaining() throws -> UInt64 {
+            let now = clock()
+            guard now >= started else { throw ObservationFailure.unreadableManagerEvidence }
+            guard now - started < Self.snapshotNanoseconds else { throw ObservationFailure.limitExceeded }
+            return Self.snapshotNanoseconds - (now - started)
         }
-        return Snapshot(replies: replies, identifiers: identifiers.sorted())
+        let catalog = try catalog.snapshot(target: target, remaining: remaining)
+        let batches = stride(from: 0, to: paths.count, by: Self.batchSize).map {
+            Array(paths[$0..<min($0 + Self.batchSize, paths.count)])
+        }
+        let collector = ReceiptBatchCollector(count: batches.count)
+        // At most four system children, not one worker per bundle entry. Join
+        // all workers before returning; each child retains its own deadline.
+        DispatchQueue.concurrentPerform(iterations: min(max(workers, 1), 4, batches.count)) { _ in
+            while let index = collector.next() {
+                do {
+                    let reply = try batchQuery(batches[index], remaining())
+                    let ids = try Self.batchIdentifiers(reply, paths: batches[index])
+                    _ = try remaining()
+                    try collector.record(index: index, reply: reply, identifiers: ids)
+                } catch {
+                    collector.reject(error)
+                    return
+                }
+            }
+        }
+        let result = try collector.result()
+        _ = try remaining()
+        return Snapshot(replies: catalog.replies + result.replies,
+                        identifiers: Set(catalog.identifiers + result.identifiers).sorted())
+    }
+
+    static func batchIdentifiers(_ data: Data, paths: [String]) throws -> [String] {
+        guard !data.isEmpty, data.count <= BoundedSystemQuery.maximumBytes,
+              !paths.isEmpty, paths.count <= batchSize else { throw ObservationFailure.unreadableManagerEvidence }
+        return try zip(paths, documents(data, count: paths.count)).flatMap { path, data in
+            try identifiers(data, path: path)
+        }
+    }
+
+    static func documents(_ data: Data, count: Int) throws -> [Data] {
+        // pkgutil emits one XML document per repeated --file-info-plist option,
+        // not a single array. Require every document, in order, with no extras.
+        let end = Data("</plist>".utf8)
+        var remainder = data
+        var documents: [Data] = []
+        for _ in 0..<count {
+            guard let boundary = remainder.range(of: end) else { throw ObservationFailure.unreadableManagerEvidence }
+            let document = Data(remainder[..<boundary.upperBound])
+            documents.append(document)
+            remainder = Data(remainder[boundary.upperBound...])
+        }
+        guard remainder.allSatisfy({ [9, 10, 13, 32].contains($0) }) else { throw ObservationFailure.unreadableManagerEvidence }
+        return documents
     }
 
     static func identifiers(_ data: Data, path: String) throws -> [String] {
@@ -48,6 +109,50 @@ struct NativeInstallerReceiptObserver {
             }
             return identifier
         }
+    }
+}
+
+private final class ReceiptBatchCollector {
+    private let lock = NSLock()
+    private var index = 0
+    private var bytes = 0
+    private var replies: [Data?]
+    private var identifiers = Set<String>()
+    private var failure: Error?
+
+    init(count: Int) { replies = Array(repeating: nil, count: count) }
+
+    func next() -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard failure == nil, index < replies.count else { return nil }
+        defer { index += 1 }
+        return index
+    }
+
+    func record(index: Int, reply: Data, identifiers: [String]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard reply.count <= NativeInstallerReceiptObserver.byteLimit - bytes else {
+            throw ObservationFailure.limitExceeded
+        }
+        replies[index] = reply
+        bytes += reply.count
+        self.identifiers.formUnion(identifiers)
+    }
+
+    func reject(_ error: Error) {
+        lock.lock()
+        defer { lock.unlock() }
+        if failure == nil { failure = error }
+    }
+
+    func result() throws -> NativeInstallerReceiptObserver.Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        if let failure { throw failure }
+        guard replies.allSatisfy({ $0 != nil }) else { throw ObservationFailure.unreadableManagerEvidence }
+        return .init(replies: replies.compactMap { $0 }, identifiers: identifiers.sorted())
     }
 }
 
