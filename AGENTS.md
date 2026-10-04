@@ -78,6 +78,8 @@ Use these existing Skills when triggers match:
 
 - `agent-worktree-isolation`
   - Trigger: before every agent task or when assigning concurrent agent lanes.
+- `git-cleanup`
+  - Trigger: repository/worktree maintenance or host/VM development-cache cleanup; audit by default, destructive actions require scoped authorization.
 - `run-quality-gate`
   - Trigger: PR-readiness, CI-like validation, cross-layer refactors.
 - `audit-remediation-batch`
