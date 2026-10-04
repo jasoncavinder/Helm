@@ -184,8 +184,19 @@ All 896 core, 19 bridge, 168 native and 22 packaging/build-contract tests pass i
 the VM, along with the migration compatibility suite. Six current-source signed/
 notarized helper cases pass, including stale/receipt-owned targets, lock contention
 and fresh positive controls; saved history is unchanged. Ordinary app preflight
-remains database-free. Operational consent/session integration, supported
+remains database-free. PR #627 is reviewed and merged at `33e82095`, with no
+independent-review findings. Operational consent/session integration, supported
 ownership scope and live installation/recovery remain open.
+
+The next [authenticated revocation slice](validation/v0.20-sparkle-consent-revocation.md)
+adds denial-only review/confirmation against that private ledger. The helper
+retains the reviewed epoch/revision; a connection-local single-use handle cannot
+revoke a newer grant. Confirmation appends a tombstone inside an immediate
+FULL/fullfsync transaction without migration, recreation, grant or installer
+activation. Missing/ineligible apps remain revocable because permission removal
+does not require installation eligibility. Loss before admission prevents a
+write; loss after admission may leave a committed revocation with an unknown
+outcome, never an automatic retry. No shipping GUI/CLI endpoint is enabled.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

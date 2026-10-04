@@ -119,6 +119,15 @@ in WAL must be visible. Normal WAL/SHM bookkeeping is possible; no consent or
 schema writes are performed. This diagnostic returns no authority token. See
 the [consent-status contract](../validation/v0.20-sparkle-consent-status.md).
 
+Authenticated [reviewed revocation](../validation/v0.20-sparkle-consent-revocation.md)
+also requires an existing validated helper ledger. Review reads its epoch/path
+revision without mutation. Confirmation opens READ_WRITE/NOFOLLOW without CREATE,
+revalidates the exact current schema/manifest inside `BEGIN IMMEDIATE`, compares
+the reviewed cursor and appends only a tombstone with FULL/fullfsync durability.
+No migration definition changes. Missing/corrupt/incompatible storage is not
+repaired, and safe mode does not block denial-only revocation. Active session
+reservations remain intact; a lost reply is not proof that no commit occurred.
+
 Release builds use:
 
 ```text

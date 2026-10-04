@@ -7,6 +7,7 @@ struct PreflightGate {
     private var pending: UInt64?
     private var pendingAt: UInt64?
     private var closed = false
+    private var revocationAdmitted = false
     let started: UInt64
     static let maximumRequests: UInt64 = 8
     static let maximumBytes = 8192
@@ -27,6 +28,7 @@ struct PreflightGate {
         guard live(now) else { throw BootstrapFailure.expired }
         pending = sequence
         pendingAt = now
+        revocationAdmitted = false
         next += 1
     }
 
@@ -39,6 +41,12 @@ struct PreflightGate {
     }
 
     func isPending(_ sequence: UInt64) -> Bool { !closed && pending == sequence }
+
+    mutating func admitRevocation(sequence: UInt64, now: UInt64) throws {
+        guard !revocationAdmitted, isPending(sequence), live(now), let pendingAt,
+              now >= pendingAt, now - pendingAt < Self.requestNanoseconds else { throw BootstrapFailure.expired }
+        revocationAdmitted = true
+    }
 
     mutating func close() { closed = true; token = nil; pending = nil; pendingAt = nil }
 

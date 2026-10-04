@@ -4,20 +4,23 @@ import XCTest
 @testable import HelmExternalUpdateObservation
 
 #if DEBUG
-private final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
+final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
     private let lock = NSLock()
     private var servers: [ExternalUpdaterBootstrapServer] = []
     let event: (BootstrapEvent) -> Void
     let productionGate: Bool
     let assess: ((Data) throws -> NativePolicyAssessment)?
     let consent: ((Data) throws -> ExternalConsentStatus)?
+    let revocation: ((Data) throws -> PreparedRevocation)?
     init(productionGate: Bool = false, assess: ((Data) throws -> NativePolicyAssessment)? = nil,
          consent: ((Data) throws -> ExternalConsentStatus)? = nil,
+         revocation: ((Data) throws -> PreparedRevocation)? = nil,
          event: @escaping (BootstrapEvent) -> Void = { _ in }) {
         self.productionGate = productionGate
         self.event = event
         self.assess = assess
         self.consent = consent
+        self.revocation = revocation
     }
     var count: Int { lock.lock(); defer { lock.unlock() }; return servers.count }
 
@@ -27,7 +30,8 @@ private final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
             guard let guarded = try? ExternalUpdaterBootstrapServer(connection: connection, event: event) else { return false }
             server = guarded
         } else {
-            server = ExternalUpdaterBootstrapServer(testingConnection: connection, assess: assess, consent: consent, event: event)
+            server = ExternalUpdaterBootstrapServer(testingConnection: connection, assess: assess, consent: consent,
+                                                   revocation: revocation, event: event)
         }
         lock.lock(); servers.append(server); lock.unlock()
         return true
@@ -39,12 +43,13 @@ private final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
     }
 }
 
-private final class SilentBootstrap: NSObject, NSXPCListenerDelegate, ExternalUpdaterBootstrapProtocol {
+final class SilentBootstrap: NSObject, NSXPCListenerDelegate, ExternalUpdaterBootstrapProtocol {
     private let lock = NSLock()
     private var connections: [NSXPCConnection] = []
     private var held: ((UInt32, Data?, Data?) -> Void)?
     private var challenge: Data?
     var preflightResponse: (UInt64, UInt32)?
+    var reviewPayload: Data? = Data(repeating: 1, count: 32)
 
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         connection.exportedInterface = NSXPCInterface(with: ExternalUpdaterBootstrapProtocol.self)
@@ -69,6 +74,15 @@ private final class SilentBootstrap: NSObject, NSXPCListenerDelegate, ExternalUp
 
     func consentStatus(session: Data, sequence: UInt64, request: Data, reply: @escaping (UInt64, UInt32) -> Void) {
         preflight(session: session, sequence: sequence, request: request, reply: reply)
+    }
+
+    func reviewRevocation(session: Data, sequence: UInt64, request: Data,
+                          reply: @escaping (UInt64, UInt32, Data?) -> Void) {
+        if let response = preflightResponse { reply(response.0, response.1, reviewPayload) }
+    }
+
+    func confirmRevocation(session: Data, sequence: UInt64, review: Data, reply: @escaping (UInt64, UInt32) -> Void) {
+        preflight(session: session, sequence: sequence, request: review, reply: reply)
     }
 
     func replyLate() {

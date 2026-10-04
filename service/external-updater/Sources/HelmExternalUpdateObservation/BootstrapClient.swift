@@ -10,7 +10,8 @@ public final class ExternalUpdaterBootstrapClient {
     private var started = false
     private var session: Data?
     private var nextSequence: UInt64 = 1
-    private var pending: (sequence: UInt64, started: UInt64, consent: Bool, reply: (Result<UInt32, BootstrapFailure>) -> Void)?
+    private enum Operation { case preflight, consent, reviewRevocation, confirmRevocation }
+    private var pending: (sequence: UInt64, started: UInt64, operation: Operation, reply: (Result<BootstrapResponse, BootstrapFailure>) -> Void)?
 
     /// Retain until finished; release/cancel closes the connection. The endpoint
     /// alone is untrusted. Production always installs the fixed helper requirement.
@@ -97,20 +98,46 @@ public final class ExternalUpdaterBootstrapClient {
     /// No app data is sent until the helper has authenticated its hello reply.
     public func preflight(_ request: ExternalPreflightRequest,
                           reply: @escaping (Result<NativePolicyAssessment, BootstrapFailure>) -> Void) {
-        send(request, consent: false) { reply($0.map { NativePolicyAssessment(code: $0) }) }
+        encode(request, operation: .preflight) { reply($0.map { NativePolicyAssessment(code: $0.code) }) }
     }
 
     public func consentStatus(_ request: ExternalPreflightRequest,
                               reply: @escaping (Result<ExternalConsentStatus, BootstrapFailure>) -> Void) {
-        send(request, consent: true) { result in
+        encode(request, operation: .consent) { result in
             reply(result.flatMap { code in
-                ExternalConsentStatus(code: code).map { .success($0) } ?? .failure(.invalidMessage)
+                ExternalConsentStatus(code: code.code).map { .success($0) } ?? .failure(.invalidMessage)
             })
         }
     }
 
-    private func send(_ request: ExternalPreflightRequest, consent: Bool,
-                      reply: @escaping (Result<UInt32, BootstrapFailure>) -> Void) {
+    public func reviewRevocation(_ request: ExternalRevocationRequest,
+                                 reply: @escaping (Result<ExternalRevocationReview, BootstrapFailure>) -> Void) {
+        encode(request, operation: .reviewRevocation) { result in
+            reply(result.flatMap { response in
+                guard let handle = response.payload else { return .failure(.invalidMessage) }
+                return .success(ExternalRevocationReview(targetPath: request.targetPath, handle: handle))
+            })
+        }
+    }
+
+    /// Transport failure after confirmation can mean the write committed. Never
+    /// automatically retry; inspect/review current history before a new decision.
+    public func confirmRevocation(_ review: ExternalRevocationReview,
+                                  reply: @escaping (Result<ExternalRevocationOutcome, BootstrapFailure>) -> Void) {
+        send(review.handle, operation: .confirmRevocation) { result in
+            reply(result.flatMap { ExternalRevocationOutcome(code: $0.code).map { .success($0) } ?? .failure(.invalidMessage) })
+        }
+    }
+
+    private func encode<T: Encodable>(_ request: T, operation: Operation,
+                                      reply: @escaping (Result<BootstrapResponse, BootstrapFailure>) -> Void) {
+        do { send(try JSONEncoder().encode(request), operation: operation, reply: reply) } catch {
+            notifications.async { reply(.failure(.invalidMessage)) }
+        }
+    }
+
+    private func send(_ data: Data, operation: Operation,
+                      reply: @escaping (Result<BootstrapResponse, BootstrapFailure>) -> Void) {
         queue.async { [weak self] in
             guard let self else { reply(.failure(.invalidated)); return }
             guard self.gate.established, !self.gate.closed, let session = self.session,
@@ -125,11 +152,17 @@ public final class ExternalUpdaterBootstrapClient {
                 return
             }
             do {
-                let data = try JSONEncoder().encode(request)
-                _ = try ExternalPreflightRequest.decode(data, userApplications: NativeApplicationRoots.userApplications)
+                switch operation {
+                case .preflight, .consent:
+                    _ = try ExternalPreflightRequest.decode(data, userApplications: NativeApplicationRoots.userApplications)
+                case .reviewRevocation:
+                    _ = try ExternalRevocationRequest.decode(data, root: NativeApplicationRoots.userApplications)
+                case .confirmRevocation:
+                    guard data.count == BootstrapWire.bytes else { throw BootstrapFailure.invalidMessage }
+                }
                 let sequence = self.nextSequence
                 self.nextSequence += 1
-                self.pending = (sequence, DispatchTime.now().uptimeNanoseconds, consent, reply)
+                self.pending = (sequence, DispatchTime.now().uptimeNanoseconds, operation, reply)
                 guard let proxy = self.connection.remoteObjectProxyWithErrorHandler({ [weak self] _ in
                     self?.close(.transport)
                 }) as? ExternalUpdaterBootstrapProtocol else {
@@ -137,12 +170,19 @@ public final class ExternalUpdaterBootstrapClient {
                     return
                 }
                 let completed: (UInt64, UInt32) -> Void = { [weak self] echo, code in
-                    self?.receivePreflight(sequence: sequence, echo: echo, code: code)
+                    self?.receiveResponse(sequence: sequence, echo: echo, code: code, payload: nil)
                 }
-                if consent {
+                switch operation {
+                case .consent:
                     proxy.consentStatus(session: session, sequence: sequence, request: data, reply: completed)
-                } else {
+                case .preflight:
                     proxy.preflight(session: session, sequence: sequence, request: data, reply: completed)
+                case .reviewRevocation:
+                    proxy.reviewRevocation(session: session, sequence: sequence, request: data) { [weak self] echo, code, payload in
+                        self?.receiveResponse(sequence: sequence, echo: echo, code: code, payload: payload)
+                    }
+                case .confirmRevocation:
+                    proxy.confirmRevocation(session: session, sequence: sequence, review: data, reply: completed)
                 }
                 self.queue.asyncAfter(deadline: .now() + .seconds(15)) { [weak self] in
                     guard let self, self.pending?.sequence == sequence else { return }
@@ -154,11 +194,17 @@ public final class ExternalUpdaterBootstrapClient {
         }
     }
 
-    private func receivePreflight(sequence: UInt64, echo: UInt64, code: UInt32) {
+    private func receiveResponse(sequence: UInt64, echo: UInt64, code: UInt32, payload: Data?) {
         queue.async { [weak self] in
             guard let self, !self.gate.closed, let pending = self.pending else { return }
             let now = DispatchTime.now().uptimeNanoseconds
-            let validCode = pending.consent ? ExternalConsentStatus(code: code) != nil : (1...8).contains(code) && code != 6
+            let validCode: Bool
+            switch pending.operation {
+            case .preflight: validCode = (1...8).contains(code) && code != 6 && payload == nil
+            case .consent: validCode = ExternalConsentStatus(code: code) != nil && payload == nil
+            case .reviewRevocation: validCode = code == 39 && payload?.count == BootstrapWire.bytes
+            case .confirmRevocation: validCode = ExternalRevocationOutcome(code: code) != nil && payload == nil
+            }
             guard sequence == pending.sequence, echo == sequence, validCode,
                   self.connection.effectiveUserIdentifier == self.gate.account,
                   now >= pending.started, now - pending.started < PreflightGate.requestNanoseconds,
@@ -167,7 +213,7 @@ public final class ExternalUpdaterBootstrapClient {
                 return
             }
             self.pending = nil
-            self.notifications.async { pending.reply(.success(code)) }
+            self.notifications.async { pending.reply(.success(BootstrapResponse(code: code, payload: payload))) }
         }
     }
 

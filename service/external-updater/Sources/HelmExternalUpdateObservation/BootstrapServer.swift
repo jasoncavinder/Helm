@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-/// Per-connection handshake and bounded read-only preflight. No adoption grant,
+/// Per-connection diagnostics and denial-only revocation. No adoption grant,
 /// candidate download or installer operation is exposed. Consent inspection uses
 /// only existing helper storage; ordinary preflight remains database-free.
 public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBootstrapProtocol {
@@ -12,9 +12,10 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     private let worker = DispatchQueue(label: "com.jasoncavinder.Helm.external-preflight-worker")
     private let assess: ((Data) throws -> UInt32)?
     private let consent: ((Data) throws -> UInt32)?
+    private let revocations: RevocationCoordinator?
     private let started = DispatchTime.now().uptimeNanoseconds
     private var operations = PreflightGate(started: DispatchTime.now().uptimeNanoseconds)
-    private var pendingReply: ((UInt64, UInt32) -> Void)?
+    private var pendingReply: ((UInt64, UInt32, Data?) -> Void)?
     private var pendingSequence: UInt64 = 0
     private var established = false
     private var closed = false
@@ -30,15 +31,19 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
             { try processor.assess($0).code }
         }, consent: helperIdentity.map { identity in
             { try NativeConsentProcessor(identity: identity).assess($0).code }
+        }, revocation: helperIdentity.map { identity in
+            { try NativeRevocationProcessor(identity: identity).prepare($0) }
         }, event: event)
     }
 
     private init(configuredConnection: NSXPCConnection, assess: ((Data) throws -> UInt32)?, consent: ((Data) throws -> UInt32)?,
+                 revocation: ((Data) throws -> PreparedRevocation)?,
                  event: @escaping (BootstrapEvent) -> Void) {
         connection = configuredConnection
         self.event = event
         self.assess = assess
         self.consent = consent
+        revocations = revocation.map { RevocationCoordinator(prepare: $0) }
         super.init()
         connection.exportedInterface = NSXPCInterface(with: ExternalUpdaterBootstrapProtocol.self)
         connection.exportedObject = self
@@ -56,10 +61,11 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     convenience init(testingConnection: NSXPCConnection,
                      assess: ((Data) throws -> NativePolicyAssessment)? = nil,
                      consent: ((Data) throws -> ExternalConsentStatus)? = nil,
+                     revocation: ((Data) throws -> PreparedRevocation)? = nil,
                      event: @escaping (BootstrapEvent) -> Void) {
         self.init(configuredConnection: testingConnection,
                   assess: assess.map { call in { try call($0).code } },
-                  consent: consent.map { call in { try call($0).code } }, event: event)
+                  consent: consent.map { call in { try call($0).code } }, revocation: revocation, event: event)
     }
     #endif
 
@@ -95,18 +101,39 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
 
     public func preflight(session: Data, sequence: UInt64, request: Data,
                           reply: @escaping (UInt64, UInt32) -> Void) {
-        perform(assess: assess, session: session, sequence: sequence, request: request, reply: reply)
+        perform(assess: assess.map { call in { BootstrapResponse(code: try call($0)) } },
+                session: session, sequence: sequence, request: request) { echo, code, _ in reply(echo, code) }
     }
 
     public func consentStatus(session: Data, sequence: UInt64, request: Data,
                               reply: @escaping (UInt64, UInt32) -> Void) {
-        perform(assess: consent, session: session, sequence: sequence, request: request, reply: reply)
+        perform(assess: consent.map { call in { BootstrapResponse(code: try call($0)) } },
+                session: session, sequence: sequence, request: request) { echo, code, _ in reply(echo, code) }
     }
 
-    private func perform(assess: ((Data) throws -> UInt32)?, session: Data, sequence: UInt64, request: Data,
-                         reply: @escaping (UInt64, UInt32) -> Void) {
+    public func reviewRevocation(session: Data, sequence: UInt64, request: Data,
+                                 reply: @escaping (UInt64, UInt32, Data?) -> Void) {
+        perform(assess: revocations.map { controller in { BootstrapResponse(code: 39, payload: try controller.review($0)) } },
+                session: session, sequence: sequence, request: request, reply: reply)
+    }
+
+    public func confirmRevocation(session: Data, sequence: UInt64, review: Data,
+                                  reply: @escaping (UInt64, UInt32) -> Void) {
+        perform(assess: { [weak self] handle in
+            guard let self, let controller = self.revocations else { throw BootstrapFailure.invalidMessage }
+            let result = try controller.confirm(handle) {
+                try self.queue.sync {
+                    try self.operations.admitRevocation(sequence: sequence, now: DispatchTime.now().uptimeNanoseconds)
+                }
+            }
+            return BootstrapResponse(code: result.code)
+        }, session: session, sequence: sequence, request: review) { echo, code, _ in reply(echo, code) }
+    }
+
+    private func perform(assess: ((Data) throws -> BootstrapResponse)?, session: Data, sequence: UInt64, request: Data,
+                         reply: @escaping (UInt64, UInt32, Data?) -> Void) {
         queue.async { [weak self] in
-            guard let self else { reply(sequence, 0); return }
+            guard let self else { reply(sequence, 0, nil); return }
             do {
                 guard !self.closed, self.established, let assess,
                       self.connection.effectiveUserIdentifier == geteuid() else {
@@ -127,13 +154,13 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
                     self.finish(.expired)
                 }
             } catch {
-                reply(sequence, 0)
+                reply(sequence, 0, nil)
                 self.finish((error as? BootstrapFailure) ?? .invalidMessage)
             }
         }
     }
 
-    private func complete(sequence: UInt64, result: Result<UInt32, Error>) {
+    private func complete(sequence: UInt64, result: Result<BootstrapResponse, Error>) {
         guard !closed else { return }
         guard operations.complete(sequence: sequence, now: DispatchTime.now().uptimeNanoseconds) else {
             finish(.expired)
@@ -143,8 +170,21 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
         case .success(let assessment):
             let reply = pendingReply
             pendingReply = nil
-            reply?(sequence, assessment)
-        case .failure(let error): finish((error as? BootstrapFailure) ?? .invalidated)
+            reply?(sequence, assessment.code, assessment.payload)
+        case .failure(let error):
+            // Fixed error categories only: never log paths, handles or ledger data.
+            let reason: String
+            if let failure = error as? BootstrapFailure {
+                reason = failure.rawValue
+            } else if let failure = error as? HelperLedgerFailure {
+                reason = "ledger.\(failure)"
+            } else if let failure = error as? HelperObservationFailure {
+                reason = "helper.\(failure.rawValue)"
+            } else {
+                reason = "observationUnavailable"
+            }
+            FileHandle.standardError.write(Data("External updater request rejected: \(reason)\n".utf8))
+            finish((error as? BootstrapFailure) ?? .invalidated)
         }
     }
 
@@ -158,7 +198,8 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
         operations.close()
         let reply = pendingReply
         pendingReply = nil
-        reply?(pendingSequence, 0)
+        reply?(pendingSequence, 0, nil)
+        if let revocations { worker.async { revocations.clear() } }
         connection.invalidate()
         connection.exportedObject = nil
         emit(.closed(failure))

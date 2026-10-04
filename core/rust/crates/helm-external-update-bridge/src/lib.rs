@@ -1,7 +1,7 @@
 //! Private, in-process ABI. This is not an XPC/JSON protocol or an authorization
 //! boundary: only the helper's successful native observer may supply evidence.
 //! The separate ledger initializer accepts only a native-leased private path.
-//! No process, network, adoption mutation or installer entrypoint.
+//! Revocation is denial-only. No process, network, adoption grant or installer entrypoint.
 
 use std::{path::PathBuf, slice, str};
 
@@ -274,6 +274,102 @@ pub unsafe extern "C" fn helm_external_ledger_prepare(path: Bytes, fresh: u8) ->
         )
     })
     .unwrap_or(0)
+}
+
+/// Private native handle, never serialized or accepted from an XPC client.
+pub struct RevocationReview(helm_core::external_update::revocation::ReviewedRevocation);
+
+/// # Safety
+/// Slices follow the preflight contract; user_root is the native OS account root.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_revocation_request(request: Bytes, user_root: Bytes) -> u32 {
+    std::panic::catch_unwind(|| {
+        assessment((|| {
+            let roots = unsafe { application_roots(user_root)? };
+            let data = unsafe { bytes(request, 8192)? };
+            helm_core::external_update::revocation::RevocationRequest::decode(&data, &roots)
+                .map(|_| ())
+        })())
+    })
+    .unwrap_or(INTERNAL_FAILURE)
+}
+
+/// Read-only review. Null means rejected/unavailable, never empty success.
+/// # Safety
+/// Native supplies a leased private DB path and monotonic seconds, not wire data.
+/// The returned handle must be consumed exactly once by confirm or free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_revocation_prepare(
+    path: Bytes,
+    request: Bytes,
+    user_root: Bytes,
+    now: u64,
+) -> *mut RevocationReview {
+    std::panic::catch_unwind(|| {
+        let prepared = (|| {
+            let path = unsafe { private_path(path)? };
+            let roots = unsafe { application_roots(user_root)? };
+            let data = unsafe { bytes(request, 8192)? };
+            let request =
+                helm_core::external_update::revocation::RevocationRequest::decode(&data, &roots)?;
+            helm_core::external_update::revocation::ReviewedRevocation::prepare(
+                &path, request, &roots, now,
+            )
+            .map_err(|_| Rejection::MalformedRequest)
+        })();
+        prepared
+            .map(|review| Box::into_raw(Box::new(RevocationReview(review))))
+            .unwrap_or(std::ptr::null_mut())
+    })
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// 40=revoked, 41=review changed/expired, 42=outcome unknown. A lost/error result
+/// must not be replayed. Native admission/lease checks precede this call.
+/// # Safety
+/// Handle is a live pointer returned by prepare, used exclusively and consumed
+/// exactly once here (including invalid input), never a client-supplied pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_revocation_confirm(
+    review: *mut RevocationReview,
+    path: Bytes,
+    now: u64,
+) -> u32 {
+    if review.is_null() {
+        return 42;
+    }
+    let review = unsafe { Box::from_raw(review) };
+    std::panic::catch_unwind(|| {
+        let Ok(path) = (unsafe { private_path(path) }) else {
+            return 42;
+        };
+        use helm_core::external_update::durable::DurableUpdateError;
+        match review.0.confirm(&path, now) {
+            Ok(_) => 40,
+            Err(DurableUpdateError::Conflict | DurableUpdateError::Policy(_)) => 41,
+            Err(_) => 42,
+        }
+    })
+    .unwrap_or(42)
+}
+
+/// # Safety
+/// Null or a live, exclusively owned prepare result, never already consumed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_revocation_free(review: *mut RevocationReview) {
+    if !review.is_null() {
+        drop(unsafe { Box::from_raw(review) });
+    }
+}
+
+unsafe fn private_path(value: Bytes) -> Result<PathBuf, Rejection> {
+    let path = PathBuf::from(unsafe { text(value, 4096)? });
+    if !path.is_absolute()
+        || path.file_name().and_then(|name| name.to_str()) != Some("ledger.sqlite")
+    {
+        return Err(Rejection::MalformedRequest);
+    }
+    Ok(path)
 }
 
 #[cfg(test)]

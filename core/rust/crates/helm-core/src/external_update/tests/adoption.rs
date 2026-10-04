@@ -1,8 +1,214 @@
 use super::*;
 use crate::external_update::adoption::{self, AdoptionRequest, ReviewedAdoption};
 use crate::external_update::durable::{DurableUpdateError as Error, DurableUpdateSession};
+use crate::external_update::revocation::{ReviewedRevocation, RevocationRequest};
 use crate::persistence::{MigrationStore, TaskStore};
 use crate::sqlite::SqliteStore;
+
+fn removal(store: &SqliteStore) -> ReviewedRevocation {
+    ReviewedRevocation::prepare(
+        store.database_path(),
+        RevocationRequest {
+            schema_version: 1,
+            request_id: OPERATION.into(),
+            target_path: native().canonical_path,
+        },
+        &roots(),
+        100,
+    )
+    .unwrap()
+}
+
+#[test]
+fn removal_request_rejects_authority_injection_and_unscoped_paths() {
+    let base = serde_json::json!({"schemaVersion":1,"requestId":OPERATION,"targetPath":"/Applications/Gone.app"});
+    assert!(RevocationRequest::decode(&serde_json::to_vec(&base).unwrap(), &roots()).is_ok());
+    for path in [
+        "/tmp/Gone.app",
+        "/Applications/../Gone.app",
+        "/Applications/Host.app/Nested.app",
+        "relative.app",
+    ] {
+        let mut value = base.clone();
+        value["targetPath"] = path.into();
+        assert!(RevocationRequest::decode(&serde_json::to_vec(&value).unwrap(), &roots()).is_err());
+    }
+    for field in [
+        "epoch",
+        "revision",
+        "databasePath",
+        "authority",
+        "confirmed",
+    ] {
+        let mut value = base.clone();
+        value[field] = true.into();
+        assert!(RevocationRequest::decode(&serde_json::to_vec(&value).unwrap(), &roots()).is_err());
+    }
+    assert!(RevocationRequest::decode(&vec![b' '; 8193], &roots()).is_err());
+}
+
+#[test]
+fn reviewed_removal_is_read_only_until_confirmation_and_fences_pending_grants() {
+    let (_directory, store) = store();
+    let pending_grant = review(&store, 0);
+    let pending = removal(&store);
+    assert!(
+        store
+            .external_update_adoption(&native().canonical_path)
+            .unwrap()
+            .is_none()
+    );
+    // No target file/signature is needed to remove permission for a vanished app.
+    let receipt = pending.confirm(store.database_path(), 110).unwrap();
+    assert!(receipt.is_revoked());
+    assert!(matches!(
+        pending_grant.confirm(&store, native(), fixture().3, &roots(), 110),
+        Err(Error::Conflict)
+    ));
+    assert!(
+        store
+            .pending_external_updates(None, 100)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn reviewed_removal_cannot_revoke_a_newer_grant_or_replay_prior_revision() {
+    let (_directory, store) = store();
+    adopt(&store, 0);
+    let stale = removal(&store);
+    let concurrent = removal(&store);
+    concurrent.confirm(store.database_path(), 110).unwrap();
+    let current = adopt(&store, 1);
+    assert!(matches!(
+        stale.confirm(store.database_path(), 110),
+        Err(Error::Conflict)
+    ));
+    assert_eq!(
+        adoption::resolve(&store, native(), &roots())
+            .unwrap()
+            .authority,
+        current.authority
+    );
+    let first = removal(&store);
+    let second = removal(&store);
+    first.confirm(store.database_path(), 110).unwrap();
+    assert!(matches!(
+        second.confirm(store.database_path(), 110),
+        Err(Error::Conflict)
+    ));
+}
+
+#[test]
+fn reviewed_removal_binds_database_epoch_and_exact_expiry() {
+    let (_directory, first) = store();
+    let (_other, second) = store();
+    for now in [99, 220, u64::MAX] {
+        assert!(matches!(
+            removal(&first).confirm(first.database_path(), now),
+            Err(Error::Policy(Rejection::ReviewExpired))
+        ));
+    }
+    assert!(matches!(
+        removal(&first).confirm(second.database_path(), 110),
+        Err(Error::Policy(Rejection::ReviewChanged))
+    ));
+    let old = removal(&first);
+    first.apply_migration(23).unwrap();
+    first.migrate_to_latest().unwrap();
+    assert!(matches!(
+        old.confirm(first.database_path(), 110),
+        Err(Error::Conflict)
+    ));
+    assert!(removal(&first).confirm(first.database_path(), 219).is_ok());
+}
+
+#[test]
+fn reviewed_removal_allows_safe_mode_and_preserves_active_session_reservations() {
+    let (_directory, store) = store();
+    let target = adopt(&store, 0);
+    let mut active = DurableUpdateSession::claim(&store, update(target.clone()), 110).unwrap();
+    active.event(OPERATION, UpdateEvent::Downloaded).unwrap();
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO app_settings(key,value) VALUES('safe_mode','1')",
+            [],
+        )
+        .unwrap();
+    removal(&store).confirm(store.database_path(), 110).unwrap();
+    assert!(matches!(
+        active.begin_install(target, fixture().2, fixture().3, &roots()),
+        Err(Error::Conflict)
+    ));
+    assert_eq!(store.pending_external_updates(None, 100).unwrap().len(), 1);
+}
+
+#[test]
+fn reviewed_removal_does_not_repair_missing_empty_corrupt_or_replaced_history() {
+    for replacement in [None, Some(Vec::new()), Some(b"not a database".to_vec())] {
+        let (_directory, store) = store();
+        let review = removal(&store);
+        std::fs::remove_file(store.database_path()).unwrap();
+        if let Some(bytes) = &replacement {
+            std::fs::write(store.database_path(), bytes).unwrap();
+        }
+        assert!(review.confirm(store.database_path(), 110).is_err());
+        let request = RevocationRequest {
+            schema_version: 1,
+            request_id: OPERATION.into(),
+            target_path: native().canonical_path,
+        };
+        assert!(
+            ReviewedRevocation::prepare(store.database_path(), request, &roots(), 100).is_err()
+        );
+        assert_eq!(std::fs::read(store.database_path()).ok(), replacement);
+    }
+}
+
+#[test]
+fn reviewed_removal_write_failure_rolls_back_without_erasing_the_grant() {
+    let (_directory, store) = store();
+    let target = adopt(&store, 0);
+    let review = removal(&store);
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    connection.execute_batch("CREATE TRIGGER reject_removal BEFORE INSERT ON external_update_adoptions BEGIN SELECT RAISE(ABORT,'failure'); END;").unwrap();
+    assert!(matches!(
+        review.confirm(store.database_path(), 110),
+        Err(Error::Storage(_))
+    ));
+    assert_eq!(
+        adoption::resolve(&store, native(), &roots())
+            .unwrap()
+            .authority,
+        target.authority
+    );
+}
+
+#[test]
+fn concurrent_reviewed_removals_have_only_one_commit() {
+    let (_directory, store) = store();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+    let threads: Vec<_> = (0..4)
+        .map(|_| {
+            let review = removal(&store);
+            let path = store.database_path().to_path_buf();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                review.confirm(&path, 110).is_ok()
+            })
+        })
+        .collect();
+    assert_eq!(
+        threads
+            .into_iter()
+            .filter_map(|thread| thread.join().unwrap().then_some(()))
+            .count(),
+        1
+    );
+}
 
 fn store() -> (tempfile::TempDir, SqliteStore) {
     let directory = tempfile::tempdir().unwrap();

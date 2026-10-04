@@ -216,6 +216,20 @@ this is not an immutable-file or tamper-proof guarantee. A result is history at
 the read snapshot, not permission valid until another refresh. Preflight and
 history share the eight-request budget, sequence, single-flight and deadlines.
 
+The [denial-only revocation methods](../validation/v0.20-sparkle-consent-revocation.md)
+share that same gate. Review accepts only a strict allowed-root app path and
+request ID, not target trust assertions, a database path or a ledger revision.
+It need not revalidate app eligibility: a missing or newly manager-owned app's
+permission must still be removable. The helper retains the reviewed epoch and
+path revision behind one random, connection-local, single-use handle. Confirm
+rechecks helper/account/storage and admits the mutation only while the request
+and session are live. Core atomically compares epoch/revision and appends a
+revocation; newer consent is never silently revoked by an older review.
+Cancellation before admission denies writes. Admission before cancellation can
+commit with no delivered result; report uncertainty and never blindly replay.
+This does not abort an installer already handed off or free its reservation.
+Granting consent, accepted candidates and live installers remain gated.
+
 The [helper package](../validation/v0.20-sparkle-helper-package.md) links its own
 exact Sparkle 2.9.5 framework and checks the actual loaded framework path against
 its signed bundle. Staging validates Ventura slices, framework completeness,
