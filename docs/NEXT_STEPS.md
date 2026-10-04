@@ -66,6 +66,9 @@ Review the [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts
 before granting adoption. It covers the bounded inspected tree plus receipt
 exports for overlapping non-root install locations, which file-info queries alone
 miss on the VM. Do not call an incomplete/oversized/timed-out scan unclaimed.
+Preserve the independent review's case-equivalent receipt exclusions and exact
+raw-evidence drift checks. The corrected native probe/tests pass; refresh signed
+helper acceptance before shipping rather than relabeling the pre-fix signed run.
 Continue with operational authenticated grant/native-session integration,
 complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App

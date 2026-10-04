@@ -213,6 +213,15 @@ All 203 native and 22 build/package tests pass in the VM. Ten fresh native probe
 and six current-source signed/notarized helper cases pass, preserving original
 app bytes and the existing consent/session ledger. The temporary service is removed.
 Shipping Open App and the remaining consent/candidate/installer gates are unchanged.
+Independent review of #629 found that case-sensitive lexical comparisons missed
+a real non-root receipt whose stored spelling differed from the app on the VM's
+case-insensitive volume. Denial-only comparisons now use fixed-locale case folding
+and canonical composition, conservatively including such claims on all volumes.
+Exact receipt metadata binding and raw drift checks remain unchanged. All 209
+native tests pass in the VM; four new regression cases fail against the original
+implementation. The real receipt fixture now reports `otherManager`, with app
+bytes preserved. The six signed checks above remain attributed to `1ba689dd`,
+before this correction; no new signed-helper acceptance is claimed by the review.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

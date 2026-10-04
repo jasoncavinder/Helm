@@ -147,7 +147,11 @@ three-second monotonic budget including catalog queries and parsing. The catalog
 uses at most 1024 root-volume receipt IDs, exact ID/volume metadata binding and
 exports for overlapping non-root install locations. Those locations must be
 applied to relative payload paths; the VM's file-info lookup alone omits such
-claims. Catalog output has a separate 4 MiB aggregate cap, with 256 KiB for the
+claims. Overlap and payload containment use fixed-locale case-folded, canonically
+composed lexical keys. These conservatively exclude case-equivalent claims even
+on case-sensitive volumes; they are not filesystem identity or permission evidence.
+Exact catalog/export binding and raw-reply drift comparisons remain unchanged.
+Catalog output has a separate 4 MiB aggregate cap, with 256 KiB for the
 ID list, 64 KiB metadata batches and 2 MiB per relevant export. Malformed,
 incomplete, oversized, failed or changed replies reject
 the observation. Both receipt snapshots must agree across signature validation;

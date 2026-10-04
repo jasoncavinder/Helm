@@ -11,6 +11,7 @@ struct NativeReceiptCatalog {
     }
 
     func snapshot(target: URL, remaining: () throws -> UInt64) throws -> NativeInstallerReceiptObserver.Snapshot {
+        let targetPath = Self.denialPath(target.path)
         var replies: [Data] = []
         var bytes = 0
         func read(_ arguments: [String], limit: Int) throws -> Data {
@@ -37,7 +38,7 @@ struct NativeReceiptCatalog {
             for (identifier, document) in zip(batch, documents) {
                 let info = try Self.record(document, identifier: identifier)
                 let location = try Self.location(info)
-                guard location != "/", Self.overlaps(location, target.path) else { continue }
+                guard location != "/", Self.overlaps(Self.denialPath(location), targetPath) else { continue }
                 let exported = try read(["--export-plist", identifier], limit: 2 * 1024 * 1024)
                 let receipt = try Self.record(exported, identifier: identifier)
                 guard try Self.location(receipt) == location,
@@ -51,8 +52,8 @@ struct NativeReceiptCatalog {
                     guard let metadata = raw as? [String: Any], metadata["pkgid"] as? String == identifier else {
                         throw ObservationFailure.unreadableManagerEvidence
                     }
-                    let installed = location + (components.isEmpty ? "" : "/" + components.joined(separator: "/"))
-                    if installed == target.path || installed.hasPrefix(target.path + "/") { claims.insert(identifier) }
+                    let installed = Self.denialPath(location + (components.isEmpty ? "" : "/" + components.joined(separator: "/")))
+                    if installed == targetPath || installed.hasPrefix(targetPath + "/") { claims.insert(identifier) }
                 }
             }
         }
@@ -91,5 +92,14 @@ struct NativeReceiptCatalog {
 
     private static func overlaps(_ first: String, _ second: String) -> Bool {
         first == second || first.hasPrefix(second + "/") || second.hasPrefix(first + "/")
+    }
+
+    private static func denialPath(_ path: String) -> String {
+        // Receipts preserve spelling even on case-insensitive volumes. These
+        // lexical keys only broaden denials (also on case-sensitive volumes),
+        // never establish filesystem identity or grant authority. Raw replies
+        // and exact catalog/export metadata still participate in drift checks.
+        path.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+            .precomposedStringWithCanonicalMapping
     }
 }

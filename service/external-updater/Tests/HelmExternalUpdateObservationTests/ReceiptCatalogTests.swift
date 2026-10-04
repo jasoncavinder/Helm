@@ -47,6 +47,44 @@ final class ReceiptCatalogTests: XCTestCase {
         XCTAssertTrue(try snapshot(catalog(location: "/Applications", paths: ["Other.app/Contents/Icon"])).identifiers.isEmpty)
     }
 
+    func testCaseEquivalentInstallLocationsRemainExclusions() throws {
+        for location in ["/applications/example.app/Contents/Resources", "/APPLICATIONS/EXAMPLE.APP"] {
+            XCTAssertEqual(try snapshot(catalog(location: location, paths: ["Icon.icns"])).identifiers, [id])
+        }
+    }
+
+    func testCaseEquivalentPayloadPathsRemainExclusionsWithoutMatchingSiblings() throws {
+        XCTAssertEqual(try snapshot(catalog(location: "/Applications", paths: ["example.APP/Contents/Icon.icns"])).identifiers, [id])
+        XCTAssertTrue(try snapshot(catalog(location: "/applications", paths: ["EXAMPLE.APP.other/Contents/Icon.icns"])).identifiers.isEmpty)
+        XCTAssertTrue(try snapshot(catalog(location: "/applications/EXAMPLE.APP.other", paths: ["Icon.icns"])).identifiers.isEmpty)
+    }
+
+    func testCanonicalUnicodeAndCaseEquivalentReceiptPathsRemainExclusions() throws {
+        let unicodeTarget = URL(fileURLWithPath: "/Applications/Caf\u{E9}.app", isDirectory: true)
+        let observer = catalog(location: "/applications", paths: ["CAFE\u{301}.APP/Contents/Icon.icns"])
+        XCTAssertEqual(try observer.snapshot(target: unicodeTarget, remaining: { 3_000_000_000 }).identifiers, [id])
+    }
+
+    func testCaseOnlyReceiptDriftStillChangesTheRawSnapshot() throws {
+        let first = try snapshot(catalog(location: target.path, paths: ["Contents/Icon.icns"]))
+        let second = try snapshot(catalog(location: target.path, paths: ["CONTENTS/ICON.ICNS"]))
+        XCTAssertEqual(first.identifiers, second.identifiers)
+        XCTAssertNotEqual(first, second)
+    }
+
+    func testCaseOnlyExportLocationDriftStillRejects() throws {
+        XCTAssertThrowsError(try snapshot(catalog(location: target.path, paths: ["Icon.icns"], mutate: {
+            $0["install-location"] = self.target.path.lowercased()
+        })))
+    }
+
+    func testCaseEquivalentCatalogClaimSurvivesEmptyFileInfo() throws {
+        let observer = NativeInstallerReceiptObserver(batchQuery: { paths, _ in
+            try paths.reduce(into: Data()) { $0.append(try ReceiptFixtures.reply(path: $1)) }
+        }, catalog: catalog(location: "/applications/example.app/Contents/Resources", paths: ["Icon.icns"]))
+        XCTAssertEqual(try observer.snapshot(target: target, paths: [target.path]).identifiers, [id])
+    }
+
     func testTargetRootReceiptAndHistoricalPayloadAreConservativeClaims() throws {
         XCTAssertEqual(try snapshot(catalog(location: target.path, paths: ["."])).identifiers, [id])
         XCTAssertEqual(try snapshot(catalog(location: target.path, paths: ["Contents/Deleted.dat"])).identifiers, [id])
