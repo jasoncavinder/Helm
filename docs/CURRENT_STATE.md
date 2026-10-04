@@ -188,7 +188,7 @@ remains database-free. PR #627 is reviewed and merged at `33e82095`, with no
 independent-review findings. Operational consent/session integration, supported
 ownership scope and live installation/recovery remain open.
 
-The next [authenticated revocation slice](validation/v0.20-sparkle-consent-revocation.md)
+The [authenticated revocation slice](validation/v0.20-sparkle-consent-revocation.md)
 adds denial-only review/confirmation against that private ledger. The helper
 retains the reviewed epoch/revision; a connection-local single-use handle cannot
 revoke a newer grant. Confirmation appends a tombstone inside an immediate
@@ -197,6 +197,31 @@ activation. Missing/ineligible apps remain revocable because permission removal
 does not require installation eligibility. Loss before admission prevents a
 write; loss after admission may leave a committed revocation with an unknown
 outcome, never an automatic retry. No shipping GUI/CLI endpoint is enabled.
+PR #628 is reviewed and merged at `9932f2e1`, with no independent-review findings.
+Its earlier one-off fail-closed confirmation rejection remains a recorded,
+nonreproduced pre-shipping limitation; successful later checks do not explain it.
+
+The [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts.md)
+extends receipt checks from three anchor paths to the full bounded inspected
+bundle tree. It also checks the OS receipt catalog and exports overlapping
+non-root install locations: the VM's file-info query alone misses those relocated
+payload claims. Batched queries retain strict identity/output/time bounds and
+complete reply comparison around signature validation. Missing, partial or
+changed evidence rejects observation, rather than returning an empty scan.
+This remains denial evidence, not complete manager coverage or adoption authority.
+All 203 native and 22 build/package tests pass in the VM. Ten fresh native probes
+and six current-source signed/notarized helper cases pass, preserving original
+app bytes and the existing consent/session ledger. The temporary service is removed.
+Shipping Open App and the remaining consent/candidate/installer gates are unchanged.
+Independent review of #629 found that case-sensitive lexical comparisons missed
+a real non-root receipt whose stored spelling differed from the app on the VM's
+case-insensitive volume. Denial-only comparisons now use fixed-locale case folding
+and canonical composition, conservatively including such claims on all volumes.
+Exact receipt metadata binding and raw drift checks remain unchanged. All 209
+native tests pass in the VM; four new regression cases fail against the original
+implementation. The real receipt fixture now reports `otherManager`, with app
+bytes preserved. The six signed checks above remain attributed to `1ba689dd`,
+before this correction; no new signed-helper acceptance is claimed by the review.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer
