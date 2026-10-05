@@ -5,7 +5,7 @@ import Foundation
 /// does not establish them. No production constructor currently supplies these:
 /// live peer/sandbox proof and complete supported ownership observations remain
 /// required before the authenticated coordinator may call the grant bridge.
-struct NativeAdoptionBoundary {
+struct NativeAdoptionBoundary: Equatable {
     let helperIdentifier: String
     let helperTeamIdentifier: String
     let helperCodeDirectoryHash: Data

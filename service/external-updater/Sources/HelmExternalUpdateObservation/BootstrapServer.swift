@@ -1,9 +1,9 @@
 import Darwin
 import Foundation
 
-/// Per-connection diagnostics and denial-only revocation. No adoption grant,
-/// candidate download or installer operation is exposed. Consent inspection uses
-/// only existing helper storage; ordinary preflight remains database-free.
+/// Per-connection diagnostics and denial-only revocation. Adoption transport is
+/// staged but disabled in production until native trust/ownership proof is wired.
+/// No candidate download or installer operation is exposed.
 public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBootstrapProtocol {
     private let connection: NSXPCConnection
     private let queue = DispatchQueue(label: "com.jasoncavinder.Helm.external-bootstrap-server")
@@ -13,6 +13,7 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     private let assess: ((Data) throws -> UInt32)?
     private let consent: ((Data) throws -> UInt32)?
     private let revocations: RevocationCoordinator?
+    private let adoptions: AdoptionCoordinator?
     private let started = DispatchTime.now().uptimeNanoseconds
     private var operations = PreflightGate(started: DispatchTime.now().uptimeNanoseconds)
     private var pendingReply: ((UInt64, UInt32, Data?) -> Void)?
@@ -33,17 +34,19 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
             { try NativeConsentProcessor(identity: identity).assess($0).code }
         }, revocation: helperIdentity.map { identity in
             { try NativeRevocationProcessor(identity: identity).prepare($0) }
-        }, event: event)
+        }, adoption: nil, event: event)
     }
 
     private init(configuredConnection: NSXPCConnection, assess: ((Data) throws -> UInt32)?, consent: ((Data) throws -> UInt32)?,
                  revocation: ((Data) throws -> PreparedRevocation)?,
+                 adoption: ((Data) throws -> PreparedAdoption)?,
                  event: @escaping (BootstrapEvent) -> Void) {
         connection = configuredConnection
         self.event = event
         self.assess = assess
         self.consent = consent
         revocations = revocation.map { RevocationCoordinator(prepare: $0) }
+        adoptions = adoption.map { AdoptionCoordinator(prepare: $0) }
         super.init()
         connection.exportedInterface = NSXPCInterface(with: ExternalUpdaterBootstrapProtocol.self)
         connection.exportedObject = self
@@ -62,10 +65,11 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
                      assess: ((Data) throws -> NativePolicyAssessment)? = nil,
                      consent: ((Data) throws -> ExternalConsentStatus)? = nil,
                      revocation: ((Data) throws -> PreparedRevocation)? = nil,
+                     adoption: ((Data) throws -> PreparedAdoption)? = nil,
                      event: @escaping (BootstrapEvent) -> Void) {
         self.init(configuredConnection: testingConnection,
                   assess: assess.map { call in { try call($0).code } },
-                  consent: consent.map { call in { try call($0).code } }, revocation: revocation, event: event)
+                  consent: consent.map { call in { try call($0).code } }, revocation: revocation, adoption: adoption, event: event)
     }
     #endif
 
@@ -124,6 +128,25 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
             let result = try controller.confirm(handle) {
                 try self.queue.sync {
                     try self.operations.admitRevocation(sequence: sequence, now: DispatchTime.now().uptimeNanoseconds)
+                }
+            }
+            return BootstrapResponse(code: result.code)
+        }, session: session, sequence: sequence, request: review) { echo, code, _ in reply(echo, code) }
+    }
+
+    public func reviewAdoption(session: Data, sequence: UInt64, request: Data,
+                               reply: @escaping (UInt64, UInt32, Data?) -> Void) {
+        perform(assess: adoptions.map { controller in { BootstrapResponse(code: 50, payload: try controller.review($0)) } },
+                session: session, sequence: sequence, request: request, reply: reply)
+    }
+
+    public func confirmAdoption(session: Data, sequence: UInt64, review: Data,
+                                reply: @escaping (UInt64, UInt32) -> Void) {
+        perform(assess: { [weak self] handle in
+            guard let self, let controller = self.adoptions else { throw BootstrapFailure.invalidMessage }
+            let result = try controller.confirm(handle) {
+                try self.queue.sync {
+                    try self.operations.admitAdoption(sequence: sequence, now: DispatchTime.now().uptimeNanoseconds)
                 }
             }
             return BootstrapResponse(code: result.code)
@@ -200,6 +223,7 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
         pendingReply = nil
         reply?(pendingSequence, 0, nil)
         if let revocations { worker.async { revocations.clear() } }
+        if let adoptions { worker.async { adoptions.clear() } }
         connection.invalidate()
         connection.exportedObject = nil
         emit(.closed(failure))

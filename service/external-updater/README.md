@@ -111,6 +111,22 @@ write can commit with no delivered result. Never automatically replay a lost
 confirmation. The helper logs only fixed failure categories, never paths, handles
 or ledger contents. See the [revocation contract](../../docs/validation/v0.20-sparkle-consent-revocation.md).
 
+The library also stages `reviewAdoption`/`confirmAdoption` under the same limits.
+**Production adoption is disabled:** the normal server initializer supplies no
+provider, both methods reject, and the probe exposes no adoption command. Only
+the Debug test server accepts injected native evidence. There is no user setting,
+environment override or wire assertion that enables a grant. Successful hello or
+preflight never means adoption is available.
+
+An enabled test coordinator validates strict intent through core, owns one
+single-use review per connection, and admits confirmation once while holding an
+existing-only private ledger lease. Fresh complete native snapshots must match;
+the worker and connection gate have separate queues. Post-commit lease/identity
+failures report uncertainty, and cancellation/lost replies suppress success
+without retry. The client accepts only adoption-specific codes and 32-byte review
+handles. See the [coordinator evidence](../../docs/validation/v0.20-sparkle-adoption-coordinator.md)
+for tests and the native proof/signed integration required before enabling this.
+
 Testing real
 acceptance requires a separately signed/notarized sandboxed app wrapper with the
 exact caller identity/channel and only the named Mach-lookup sandbox exception.
@@ -152,7 +168,7 @@ maps explicit local boundary facts to the existing-only Rust adoption ledger.
 Its internal Swift review owner is single-use, including failed confirmation
 attempts, and releases abandoned reviews. Native inputs are neither Codable nor
 a public Swift API, and no production caller currently constructs these trust
-facts. No XPC adoption method is exposed. Live peer/sandbox proof, complete
+facts. Staged XPC adoption methods remain disabled in production. Live peer/sandbox proof, complete
 supported ownership observations, one-time admission and the private filesystem
 lease remain required before operational use. Result 51 records per-app consent
 only; 52 rejects the changed review, and 53 means uncertainty. None approves an

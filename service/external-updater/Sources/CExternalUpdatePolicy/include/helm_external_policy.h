@@ -84,9 +84,11 @@ typedef struct {
 
 /* A separate explicit adoption review. Never grants candidate/install consent.
  * Both calls require the native private filesystem lease; confirm additionally
- * requires fresh observations and one-time live-session admission. This is not
- * exposed by any XPC method. Ownership scan completeness is a caller obligation. */
+ * requires fresh observations and one-time live-session admission. The pointer
+ * and observations never cross XPC. Production adoption remains disabled. Ownership scan
+ * completeness is a caller obligation. */
 typedef struct AdoptionReview HelmExternalAdoptionReview;
+uint32_t helm_external_adoption_request(HelmExternalBytes request, HelmExternalBytes user_root);
 HelmExternalAdoptionReview *helm_external_adoption_prepare(HelmExternalBytes path, HelmExternalBytes request,
     const HelmExternalNativeTarget *target, const HelmExternalNativeBoundary *boundary, uint64_t now);
 /* Consumes review even on invalid input. 51=recorded, 52=changed, 53=unknown.

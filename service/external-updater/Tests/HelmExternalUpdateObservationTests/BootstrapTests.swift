@@ -12,15 +12,18 @@ final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
     let assess: ((Data) throws -> NativePolicyAssessment)?
     let consent: ((Data) throws -> ExternalConsentStatus)?
     let revocation: ((Data) throws -> PreparedRevocation)?
+    let adoption: ((Data) throws -> PreparedAdoption)?
     init(productionGate: Bool = false, assess: ((Data) throws -> NativePolicyAssessment)? = nil,
          consent: ((Data) throws -> ExternalConsentStatus)? = nil,
          revocation: ((Data) throws -> PreparedRevocation)? = nil,
+         adoption: ((Data) throws -> PreparedAdoption)? = nil,
          event: @escaping (BootstrapEvent) -> Void = { _ in }) {
         self.productionGate = productionGate
         self.event = event
         self.assess = assess
         self.consent = consent
         self.revocation = revocation
+        self.adoption = adoption
     }
     var count: Int { lock.lock(); defer { lock.unlock() }; return servers.count }
 
@@ -31,7 +34,7 @@ final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
             server = guarded
         } else {
             server = ExternalUpdaterBootstrapServer(testingConnection: connection, assess: assess, consent: consent,
-                                                   revocation: revocation, event: event)
+                                                   revocation: revocation, adoption: adoption, event: event)
         }
         lock.lock(); servers.append(server); lock.unlock()
         return true
@@ -88,6 +91,15 @@ final class SilentBootstrap: NSObject, NSXPCListenerDelegate, ExternalUpdaterBoo
     func replyLate() {
         lock.lock(); let reply = held; let echo = challenge; held = nil; lock.unlock()
         reply?(1, echo, Data(repeating: 1, count: 32))
+    }
+
+    func reviewAdoption(session: Data, sequence: UInt64, request: Data,
+                        reply: @escaping (UInt64, UInt32, Data?) -> Void) {
+        if let response = preflightResponse { reply(response.0, response.1, reviewPayload) }
+    }
+
+    func confirmAdoption(session: Data, sequence: UInt64, review: Data, reply: @escaping (UInt64, UInt32) -> Void) {
+        preflight(session: session, sequence: sequence, request: review, reply: reply)
     }
 
     func cancel() {

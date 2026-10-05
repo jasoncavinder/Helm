@@ -10,7 +10,7 @@ public final class ExternalUpdaterBootstrapClient {
     private var started = false
     private var session: Data?
     private var nextSequence: UInt64 = 1
-    private enum Operation { case preflight, consent, reviewRevocation, confirmRevocation }
+    private enum Operation { case preflight, consent, reviewRevocation, confirmRevocation, reviewAdoption, confirmAdoption }
     private var pending: (sequence: UInt64, started: UInt64, operation: Operation, reply: (Result<BootstrapResponse, BootstrapFailure>) -> Void)?
 
     /// Retain until finished; release/cancel closes the connection. The endpoint
@@ -129,6 +129,27 @@ public final class ExternalUpdaterBootstrapClient {
         }
     }
 
+    /// Staged transport only: shipping helper construction rejects adoption until
+    /// native boundary and ownership proof are connected. Never auto-confirm.
+    public func reviewAdoption(_ request: ExternalAdoptionRequest,
+                               reply: @escaping (Result<ExternalAdoptionReview, BootstrapFailure>) -> Void) {
+        encode(request, operation: .reviewAdoption) { result in
+            reply(result.flatMap { response in
+                guard let handle = response.payload else { return .failure(.invalidMessage) }
+                return .success(ExternalAdoptionReview(request: request, handle: handle))
+            })
+        }
+    }
+
+    /// Failure/lost reply may hide committed consent. Inspect current history
+    /// and obtain a new explicit review; this client never retries confirmation.
+    public func confirmAdoption(_ review: ExternalAdoptionReview,
+                                reply: @escaping (Result<ExternalAdoptionOutcome, BootstrapFailure>) -> Void) {
+        send(review.handle, operation: .confirmAdoption) { result in
+            reply(result.flatMap { ExternalAdoptionOutcome(code: $0.code).map { .success($0) } ?? .failure(.invalidMessage) })
+        }
+    }
+
     private func encode<T: Encodable>(_ request: T, operation: Operation,
                                       reply: @escaping (Result<BootstrapResponse, BootstrapFailure>) -> Void) {
         do { send(try JSONEncoder().encode(request), operation: operation, reply: reply) } catch {
@@ -157,7 +178,9 @@ public final class ExternalUpdaterBootstrapClient {
                     _ = try ExternalPreflightRequest.decode(data, userApplications: NativeApplicationRoots.userApplications)
                 case .reviewRevocation:
                     _ = try ExternalRevocationRequest.decode(data, root: NativeApplicationRoots.userApplications)
-                case .confirmRevocation:
+                case .reviewAdoption:
+                    _ = try ExternalAdoptionRequest.decode(data, root: NativeApplicationRoots.userApplications)
+                case .confirmRevocation, .confirmAdoption:
                     guard data.count == BootstrapWire.bytes else { throw BootstrapFailure.invalidMessage }
                 }
                 let sequence = self.nextSequence
@@ -183,6 +206,12 @@ public final class ExternalUpdaterBootstrapClient {
                     }
                 case .confirmRevocation:
                     proxy.confirmRevocation(session: session, sequence: sequence, review: data, reply: completed)
+                case .reviewAdoption:
+                    proxy.reviewAdoption(session: session, sequence: sequence, request: data) { [weak self] echo, code, payload in
+                        self?.receiveResponse(sequence: sequence, echo: echo, code: code, payload: payload)
+                    }
+                case .confirmAdoption:
+                    proxy.confirmAdoption(session: session, sequence: sequence, review: data, reply: completed)
                 }
                 self.queue.asyncAfter(deadline: .now() + .seconds(15)) { [weak self] in
                     guard let self, self.pending?.sequence == sequence else { return }
@@ -204,6 +233,8 @@ public final class ExternalUpdaterBootstrapClient {
             case .consent: validCode = ExternalConsentStatus(code: code) != nil && payload == nil
             case .reviewRevocation: validCode = code == 39 && payload?.count == BootstrapWire.bytes
             case .confirmRevocation: validCode = ExternalRevocationOutcome(code: code) != nil && payload == nil
+            case .reviewAdoption: validCode = code == 50 && payload?.count == BootstrapWire.bytes
+            case .confirmAdoption: validCode = ExternalAdoptionOutcome(code: code) != nil && payload == nil
             }
             guard sequence == pending.sequence, echo == sequence, validCode,
                   self.connection.effectiveUserIdentifier == self.gate.account,

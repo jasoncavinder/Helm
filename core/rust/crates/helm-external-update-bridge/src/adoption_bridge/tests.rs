@@ -17,6 +17,75 @@ fn boundary() -> NativeBoundary {
     }
 }
 
+#[test]
+fn adoption_wire_validation_is_strict_root_bound_and_filesystem_free() {
+    let request = std::str::from_utf8(REQUEST).unwrap();
+    assert_eq!(
+        unsafe { helm_external_adoption_request(b(REQUEST), b(b"")) },
+        UNRESOLVED
+    );
+    for path in [
+        "/tmp/Example.app",
+        "/ApplicationsElse/Example.app",
+        "/Applications/Host.app/Example.app",
+        "/Applications/../Example.app",
+        "/Users/other/Applications/Example.app",
+    ] {
+        let changed = request.replace("/Applications/Example.app", path);
+        assert_ne!(
+            unsafe {
+                helm_external_adoption_request(
+                    b(changed.as_bytes()),
+                    b(b"/Users/agent/Applications"),
+                )
+            },
+            UNRESOLVED
+        );
+    }
+    let user = request.replace(
+        "/Applications/Example.app",
+        "/Users/agent/Applications/Example.app",
+    );
+    assert_eq!(
+        unsafe {
+            helm_external_adoption_request(b(user.as_bytes()), b(b"/Users/agent/Applications"))
+        },
+        UNRESOLVED
+    );
+    assert_ne!(
+        unsafe { helm_external_adoption_request(b(user.as_bytes()), b(b"")) },
+        UNRESOLVED
+    );
+    for value in [
+        request.replace("org.example.App", "com.jasoncavinder.Helm.QA"),
+        request.replace(
+            "\"schemaVersion\":1",
+            "\"schemaVersion\":1,\"schemaVersion\":1",
+        ),
+        request.replace(
+            "\"schemaVersion\":1",
+            "\"authority\":\"Standalone\",\"schemaVersion\":1",
+        ),
+    ] {
+        assert_ne!(
+            unsafe { helm_external_adoption_request(b(value.as_bytes()), b(b"")) },
+            UNRESOLVED
+        );
+    }
+    assert_ne!(
+        unsafe {
+            helm_external_adoption_request(
+                Bytes {
+                    data: std::ptr::null(),
+                    length: 8193,
+                },
+                b(b""),
+            )
+        },
+        UNRESOLVED
+    );
+}
+
 fn ledger() -> (tempfile::TempDir, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("ledger.sqlite");
