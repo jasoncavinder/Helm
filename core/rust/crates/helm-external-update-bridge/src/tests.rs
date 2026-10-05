@@ -4,7 +4,7 @@ use helm_core::{
     sqlite::SqliteStore,
 };
 
-fn b(value: &[u8]) -> Bytes {
+pub(super) fn b(value: &[u8]) -> Bytes {
     Bytes {
         data: value.as_ptr(),
         length: value.len(),
@@ -55,7 +55,7 @@ fn revocation_native_handles_are_read_only_single_use_and_revision_bound() {
     }
 }
 
-fn prepare_ledger(path: &std::path::Path, fresh: u8) -> u32 {
+pub(super) fn prepare_ledger(path: &std::path::Path, fresh: u8) -> u32 {
     unsafe { helm_external_ledger_prepare(b(path.to_str().unwrap().as_bytes()), fresh) }
 }
 
@@ -151,7 +151,7 @@ fn helper_ledger_rejects_invalid_abi_input() {
     );
 }
 
-fn fixture() -> NativeTarget {
+pub(super) fn fixture() -> NativeTarget {
     NativeTarget {
         abi_version: 1,
         canonical_path: b(b"/Applications/Example.app"),
@@ -503,7 +503,7 @@ fn unsafe_target_fields_use_the_shared_core_policy() {
     assert_eq!(preflight(&input), HELM_SELF_UPDATE);
 }
 
-fn boundary_fixture() -> BoundaryObservation {
+pub(super) fn boundary_fixture() -> BoundaryObservation {
     BoundaryObservation {
         helper_identifier: "com.jasoncavinder.Helm.SparkleExternalUpdater".into(),
         helper_team_identifier: "V73WPJR9M4".into(),

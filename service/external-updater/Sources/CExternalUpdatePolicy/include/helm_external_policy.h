@@ -66,4 +66,32 @@ HelmExternalRevocationReview *helm_external_revocation_prepare(HelmExternalBytes
 /* Consumes review on every outcome: 40=revoked, 41=stale, 42=outcome unknown. */
 uint32_t helm_external_revocation_confirm(HelmExternalRevocationReview *review, HelmExternalBytes path, uint64_t now);
 void helm_external_revocation_free(HelmExternalRevocationReview *review);
+
+/* Native-only freshly established boundary facts, NOT an IPC/JSON payload.
+ * None of these facts may be inferred solely from hello or absent entitlements.
+ * This ABI transports observations; it does not authenticate or collect them. */
+typedef struct {
+    uint32_t abi_version;
+    HelmExternalBytes helper_identifier;
+    HelmExternalBytes helper_team_identifier;
+    HelmExternalBytes helper_code_directory_hash;
+    HelmExternalBytes caller_identifier;
+    HelmExternalBytes caller_team_identifier;
+    /* Bits 0..5: live authenticated caller, valid Developer ID signatures,
+     * notarization, preserved Helm sandbox, unsandboxed helper, direct channel. */
+    uint32_t observed_flags;
+} HelmExternalNativeBoundary;
+
+/* A separate explicit adoption review. Never grants candidate/install consent.
+ * Both calls require the native private filesystem lease; confirm additionally
+ * requires fresh observations and one-time live-session admission. This is not
+ * exposed by any XPC method. Ownership scan completeness is a caller obligation. */
+typedef struct AdoptionReview HelmExternalAdoptionReview;
+HelmExternalAdoptionReview *helm_external_adoption_prepare(HelmExternalBytes path, HelmExternalBytes request,
+    const HelmExternalNativeTarget *target, const HelmExternalNativeBoundary *boundary, uint64_t now);
+/* Consumes review even on invalid input. 51=recorded, 52=changed, 53=unknown.
+ * Lost replies/storage failures are uncertainty, never automatic retry consent. */
+uint32_t helm_external_adoption_confirm(HelmExternalAdoptionReview *review, HelmExternalBytes path,
+    const HelmExternalNativeTarget *target, const HelmExternalNativeBoundary *boundary, uint64_t now);
+void helm_external_adoption_free(HelmExternalAdoptionReview *review);
 #endif

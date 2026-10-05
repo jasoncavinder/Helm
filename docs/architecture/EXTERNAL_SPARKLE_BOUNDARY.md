@@ -200,6 +200,27 @@ and admit confirmation while the session is live; core does not collect or
 authenticate native observations. A storage error/lost reply is not retry
 permission. No adoption grant approves an update session or an installer.
 
+The [private adoption bridge](../validation/v0.20-sparkle-adoption-bridge.md)
+transports native target and boundary evidence through a synchronous C ABI.
+The six boundary facts (live authenticated caller, valid Developer ID signatures,
+notarization, preserved Helm sandbox, unsandboxed helper, direct channel) have no
+default-success inference; absent or unknown flags reject the request. These are
+trusted local observations, never deserialized IPC assertions. In particular,
+the ABI does not prove inherited sandbox state or complete manager coverage.
+
+Preparation returns an opaque owned pointer, not a serializable review/token.
+Confirmation consumes it on all outcomes and returns only 51 (consent recorded),
+52 (review changed/rejected), or 53 (uncertain outcome). No result authorizes an
+update. The internal Swift owner clears its handle before entering core, frees
+abandoned reviews, and also consumes attempts rejected by local target mapping
+or account-root drift. The owner is worker-confined, not a concurrency guard.
+It adds no XPC method or production boundary-evidence constructor. The future
+authenticated coordinator must bind review lifetime to one connection, retain
+the private existing-only lease, enforce deadlines/cancellation and fresh native
+checks, admit the commit once, then suppress success after failed postchecks or
+session loss. Uncertainty requires fresh history and a new human decision, not
+automatic replay.
+
 The store atomically rechecks the current grant at session claim, install handoff
 and successful version verification. Revocation, including before the first grant,
 fences pending adoption reviews; re-adoption changes the update-review fingerprint.

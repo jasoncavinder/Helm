@@ -55,7 +55,7 @@ public struct NativeHelperLedger {
     static func inspect(path: String, evidence: NativeTargetEvidence, request: Data,
                         userApplications: String?) throws -> ExternalConsentStatus {
         let path = Data(path.utf8)
-        let code = NativePolicyAssessment.withTarget(evidence, userApplications: userApplications) { input in
+        let code = NativePolicyAssessment.withTarget(evidence, userApplications: userApplications, invalid: UInt32(0)) { input in
             path.withUnsafeBytes { path in
                 request.withUnsafeBytes { request in
                     helm_external_consent_status(input,

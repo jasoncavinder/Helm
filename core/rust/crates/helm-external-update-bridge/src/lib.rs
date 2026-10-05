@@ -1,12 +1,15 @@
 //! Private, in-process ABI. This is not an XPC/JSON protocol or an authorization
 //! boundary: only the helper's successful native observer may supply evidence.
 //! The separate ledger initializer accepts only a native-leased private path.
-//! Revocation is denial-only. No process, network, adoption grant or installer entrypoint.
+//! Adoption is a separate native-only reviewed ledger operation, not an update
+//! approval. No process, network or installer entrypoint is exposed.
 
 use std::{path::PathBuf, slice, str};
 
 use helm_core::external_update::preflight::PreflightRequest;
 use helm_core::external_update::{Authority, Rejection, TargetObservation, adoption};
+
+pub mod adoption_bridge;
 
 #[repr(C)]
 #[derive(Clone, Copy)]

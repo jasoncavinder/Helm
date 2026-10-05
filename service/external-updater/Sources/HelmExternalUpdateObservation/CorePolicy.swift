@@ -15,7 +15,7 @@ public enum NativePolicyAssessment: String, Encodable {
 
     // Internal on purpose: public callers must perform a fresh native observation.
     static func assess(_ evidence: NativeTargetEvidence, userApplications: String?, request: Data? = nil) -> Self {
-        Self(code: withTarget(evidence, userApplications: userApplications) { input in
+        Self(code: withTarget(evidence, userApplications: userApplications, invalid: 0) { input in
             if let request {
                 return request.withUnsafeBytes { raw in
                     helm_external_requested_preflight(input, HelmExternalBytes(
@@ -27,8 +27,8 @@ public enum NativePolicyAssessment: String, Encodable {
         })
     }
 
-    static func withTarget(_ evidence: NativeTargetEvidence, userApplications: String?,
-                           operation: (UnsafePointer<HelmExternalNativeTarget>) -> UInt32) -> UInt32 {
+    static func withTarget<T>(_ evidence: NativeTargetEvidence, userApplications: String?, invalid: T,
+                              operation: (UnsafePointer<HelmExternalNativeTarget>) -> T) -> T {
         let slices: [[UInt8]] = [
             Array(evidence.canonicalPath.utf8), Array(evidence.bundleIdentifier.utf8),
             Array(evidence.build.utf8), Array(evidence.teamIdentifier.utf8),
@@ -41,7 +41,7 @@ public enum NativePolicyAssessment: String, Encodable {
             offsets.append(bytes.count)
             bytes.append(contentsOf: slice)
         }
-        guard let framework = UInt32(exactly: evidence.frameworkMajor) else { return 0 }
+        guard let framework = UInt32(exactly: evidence.frameworkMajor) else { return invalid }
         var exclusions: UInt32 = 0
         for exclusion in evidence.managerEvidence.exclusions {
             switch exclusion {
@@ -52,7 +52,7 @@ public enum NativePolicyAssessment: String, Encodable {
             case .installerReceipt: exclusions |= 16
             }
         }
-        return bytes.withUnsafeBufferPointer { storage -> UInt32 in
+        return bytes.withUnsafeBufferPointer { storage -> T in
             func slice(_ index: Int) -> HelmExternalBytes {
                 HelmExternalBytes(data: slices[index].isEmpty ? nil : storage.baseAddress!.advanced(by: offsets[index]),
                                   length: slices[index].count)
