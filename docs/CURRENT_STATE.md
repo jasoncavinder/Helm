@@ -109,6 +109,16 @@ open under #607. This is not complete native authority resolution or signed
 operational updater evidence; #606/#608 remain open and Open App is unchanged.
 PR #621 is reviewed and merged at `c04f024e`, with all head checks passing.
 
+The [MacPorts exclusion follow-up](validation/v0.20-sparkle-macports-ownership.md)
+adds the standard application location and bounded read-only registry claims to
+native target evidence. Registered and actual payload paths are conservative
+denial signals, including inactive records and case-equivalent spellings. Safe
+system SQLite queries never run port or create/recover registry storage; unknown
+schemas, active journals, unsafe paths, bounds and drift fail closed. No claim
+still means unresolved, not complete ownership coverage or adoption permission.
+All 232 native Swift, 27 bridge and 22 build/package contract tests pass in the
+VM; a real Rectangle probe leaves the installed MacPorts registry unchanged.
+
 The owner approved explicit per-app adoption for unknown-origin Sparkle apps,
 without overriding known manager ownership. The [core adoption foundation](validation/v0.20-sparkle-adoption.md)
 now distinguishes `UserAdopted` permission from `Standalone` provenance. A

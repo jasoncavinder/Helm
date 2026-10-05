@@ -10,24 +10,27 @@ public struct NativeManagerEvidence: Encodable, Equatable {
 
     public enum Exclusion: String, Encodable {
         case appStoreReceipt, homebrewCaskReference, setappLocation, setappBundleMarker, installerReceipt
+        case macportsLocation, macportsRegistry
     }
 
     public let exclusions: [Exclusion]
     public let homebrewReferences: [String]
     public let inspectedCaskEntries: Int
     public let installerPackageIdentifiers: [String]
+    public let macportsClaims: [String]
     public var disposition: Disposition { exclusions.isEmpty ? .unresolved : .otherManager }
 
     enum CodingKeys: String, CodingKey {
-        case disposition, exclusions, homebrewReferences, inspectedCaskEntries, installerPackageIdentifiers
+        case disposition, exclusions, homebrewReferences, inspectedCaskEntries, installerPackageIdentifiers, macportsClaims
     }
 
     init(exclusions: [Exclusion], homebrewReferences: [String], inspectedCaskEntries: Int,
-         installerPackageIdentifiers: [String] = []) {
+         installerPackageIdentifiers: [String] = [], macportsClaims: [String] = []) {
         self.exclusions = exclusions
         self.homebrewReferences = homebrewReferences
         self.inspectedCaskEntries = inspectedCaskEntries
         self.installerPackageIdentifiers = installerPackageIdentifiers
+        self.macportsClaims = macportsClaims
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -37,6 +40,7 @@ public struct NativeManagerEvidence: Encodable, Equatable {
         try values.encode(homebrewReferences, forKey: .homebrewReferences)
         try values.encode(inspectedCaskEntries, forKey: .inspectedCaskEntries)
         try values.encode(installerPackageIdentifiers, forKey: .installerPackageIdentifiers)
+        try values.encode(macportsClaims, forKey: .macportsClaims)
     }
 }
 
@@ -62,7 +66,8 @@ struct NativeManagerObserver {
         var entryCount = 0
 
         func evidence(target: URL, applicationRoots: [URL], hasStoreReceipt: Bool,
-                      entries: [String: FileIdentity] = [:], installerPackages: [String] = []) -> NativeManagerEvidence {
+                      entries: [String: FileIdentity] = [:], installerPackages: [String] = [],
+                      macportsClaims: [String] = []) -> NativeManagerEvidence {
             var exclusions: [NativeManagerEvidence.Exclusion] = []
             if hasStoreReceipt { exclusions.append(.appStoreReceipt) }
             if !references.isEmpty { exclusions.append(.homebrewCaskReference) }
@@ -78,8 +83,12 @@ struct NativeManagerObserver {
                 exclusions.append(.setappBundleMarker)
             }
             if !installerPackages.isEmpty { exclusions.append(.installerReceipt) }
+            if target.path.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+                .hasPrefix("/applications/macports/") { exclusions.append(.macportsLocation) }
+            if !macportsClaims.isEmpty { exclusions.append(.macportsRegistry) }
             return NativeManagerEvidence(exclusions: exclusions, homebrewReferences: references,
-                                         inspectedCaskEntries: entryCount, installerPackageIdentifiers: installerPackages)
+                                         inspectedCaskEntries: entryCount, installerPackageIdentifiers: installerPackages,
+                                         macportsClaims: macportsClaims)
         }
     }
 

@@ -52,9 +52,10 @@ final class ManagerObservationTests: XCTestCase {
         NativeManagerObserver(caskrooms: [caskroom], entryLimit: limit)
     }
 
-    private func observe(receipts: NativeInstallerReceiptObserver = ReceiptFixtures.empty,
+    private func observe(receipts: NativeInstallerReceiptObserver = ReceiptFixtures.empty, macports: NativeMacPortsObserver? = nil,
                          _ mutation: (() throws -> Void)? = nil) throws -> NativeTargetEvidence {
-        try NativeTargetObserver(roots: [apps], managers: scanner(), receipts: receipts) { _ in
+        try NativeTargetObserver(roots: [apps], managers: scanner(), receipts: receipts,
+                                 macports: macports ?? NativeMacPortsObserver(registry: root.appendingPathComponent("absent-registry.db", isDirectory: false))) { _ in
             try mutation?()
             return self.signature()
         }.observe(path: target.path)
@@ -65,6 +66,28 @@ final class ManagerObservationTests: XCTestCase {
         XCTAssertEqual(evidence.managerEvidence.disposition, .unresolved)
         XCTAssertTrue(evidence.managerEvidence.exclusions.isEmpty)
         XCTAssertTrue(evidence.requiresAuthorityResolution)
+    }
+
+    func testMacPortsClaimIsPreservedAndRawEvidenceDriftRejectsTarget() throws {
+        let database = root.appendingPathComponent("registry.db", isDirectory: false)
+        try Data("injected query fixture".utf8).write(to: database)
+        var observer = NativeMacPortsObserver(registry: database)
+        var active = 1
+        observer.read = { _ in
+            try JSONSerialization.data(withJSONObject: [
+                ["kind": "version", "path": "1.215"],
+                ["kind": "file", "path": self.target.path + "/Contents/Info.plist", "actual_path": self.target.path + "/Contents/Info.plist", "active": active]
+            ], options: [.sortedKeys])
+        }
+        let evidence = try observe(macports: observer)
+        XCTAssertEqual(evidence.managerEvidence.exclusions, [.macportsRegistry])
+        XCTAssertEqual(evidence.managerEvidence.macportsClaims, [target.path + "/Contents/Info.plist"])
+        XCTAssertTrue(evidence.requiresAuthorityResolution)
+        // The normalized deny result stays the same; raw registry evidence must
+        // still agree across signature verification.
+        XCTAssertThrowsError(try observe(macports: observer) { active = 0 }) {
+            XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+        }
     }
 
     func testEmptyRootNeverEstablishesStandalone() throws {

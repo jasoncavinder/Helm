@@ -69,6 +69,13 @@ miss on the VM. Do not call an incomplete/oversized/timed-out scan unclaimed.
 Preserve the independent review's case-equivalent receipt exclusions and exact
 raw-evidence drift checks. The corrected native probe/tests pass; refresh signed
 helper acceptance before shipping rather than relabeling the pre-fix signed run.
+The [MacPorts exclusion follow-up](validation/v0.20-sparkle-macports-ownership.md)
+now covers its standard application location and bounded registry claims without
+running port or modifying its database. Preserve raw registry/filesystem drift
+checks, nonempty-journal rejection and the unresolved disposition when claims
+are absent. Nonstandard prefixes/configurations and additional manager authority
+still require explicit supported-scope resolution; this is not a complete
+ownership provider or operational adoption activation.
 Continue with operational authenticated grant/native-session integration,
 using the [existing-only core adoption path](validation/v0.20-sparkle-ledger-adoption.md)
 rather than the general migrating store; #631 is reviewed and merged at `fa083770`.

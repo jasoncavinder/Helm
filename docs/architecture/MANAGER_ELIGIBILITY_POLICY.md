@@ -127,6 +127,12 @@ candidate review and durable install handoff. No shipping capability is enabled
 by this core foundation. See the [adoption contract](../validation/v0.20-sparkle-adoption.md)
 and [external boundary](EXTERNAL_SPARKLE_BOUNDARY.md).
 
+The [MacPorts exclusion observer](../validation/v0.20-sparkle-macports-ownership.md)
+adds standard application-folder and registry payload claims as denial signals.
+It does not run port, modify its registry, change MacPorts manager enablement or
+claim complete provenance coverage. Unsupported, busy or changed registry state
+is not an empty successful ownership scan.
+
 Permission removal is deliberately not installation eligibility. The
 [authenticated revocation review](../validation/v0.20-sparkle-consent-revocation.md)
 can remove saved permission for an absent or newly ineligible allowed-root app;

@@ -26,7 +26,7 @@ typedef struct {
     uint32_t framework_major;
     uint8_t has_store_receipt;
     uint8_t writable_by_others;
-    /* Bits 0..4: MAS, cask, Setapp location, Setapp bundle marker, pkg receipt.
+    /* Bits 0..5: MAS, cask, Setapp location, Setapp bundle marker, pkg receipt, MacPorts.
      * Denial signals only; no bits ever authorize adoption or installation. */
     uint32_t manager_exclusions;
     HelmExternalBytes user_applications_root; /* OS account, not HOME/client */

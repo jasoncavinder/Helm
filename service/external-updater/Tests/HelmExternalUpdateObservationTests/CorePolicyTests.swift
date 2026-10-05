@@ -41,7 +41,8 @@ final class CorePolicyTests: XCTestCase {
     }
 
     func testEveryNativeExclusionReachesRust() {
-        for exclusion in [NativeManagerEvidence.Exclusion.appStoreReceipt, .homebrewCaskReference, .setappLocation, .setappBundleMarker, .installerReceipt] {
+        for exclusion in [NativeManagerEvidence.Exclusion.appStoreReceipt, .homebrewCaskReference, .setappLocation, .setappBundleMarker,
+                          .installerReceipt, .macportsLocation, .macportsRegistry] {
             XCTAssertEqual(assess(evidence(receipt: exclusion == .appStoreReceipt, exclusions: [exclusion])), .otherManager)
         }
         XCTAssertEqual(assess(evidence(receipt: true, exclusions: [.appStoreReceipt, .homebrewCaskReference, .setappLocation])), .otherManager)
