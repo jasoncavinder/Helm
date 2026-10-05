@@ -160,6 +160,30 @@ Setapp framework, public-key and resource-bundle markers in the checked tree
 also deny adoption, even outside a Setapp folder. Receipt IDs/SDK markers are
 conservative exclusions, not authenticated historical installation provenance.
 
+The [MacPorts follow-up](../validation/v0.20-sparkle-macports-ownership.md)
+also excludes apps under `/Applications/MacPorts` on a case-folded component
+boundary, and exact/payload claims from the standard
+`/opt/local/var/macports/registry/registry.db`. Both registered and actual paths,
+including retained inactive records, are conservative exclusions. A prefix
+collision or a general parent directory claim is not an app-specific match.
+Native queries use fixed `/usr/bin/sqlite3` arguments, safe/read-only mode,
+disabled startup configuration, query-only/untrusted-schema settings and a
+bounded constant query. No port command, dynamic SQL, database creation,
+migration, checkpoint or journal recovery is performed.
+
+Only schema 1.215 is supported. Registry input is limited to 64 MiB, 100,000 file
+rows, 4 MiB output and a one-second child deadline. Path components and sidecars
+are descriptor-inspected without following symlinks. Immutable SQLite reads avoid
+creating sidecars; nonempty WAL/rollback journals reject rather than hide pending
+claims. Empty journals and at most 1 MiB of existing shared-memory metadata are
+allowed and bound into the filesystem snapshot. Missing registries with orphaned
+sidecars, unsupported schemas, malformed rows, query errors and limits fail closed.
+Before/after identities and raw query output must agree across target signature
+validation. This is observation, not an atomic exclusion of other writers or
+authenticated ownership. MacPorts absence never supplies standalone provenance
+or complete manager coverage. Custom prefixes, configuration overrides, legacy
+registries and alias spellings outside the inspected scope remain unresolved.
+
 The only dispositions are `otherManager` and `unresolved`; there is deliberately
 no native standalone grant yet. Nonstandard Homebrew prefixes, root-location
 receipts for historical/deleted paths or alternate symlink spellings absent from

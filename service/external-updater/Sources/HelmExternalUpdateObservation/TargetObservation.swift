@@ -52,6 +52,7 @@ public struct NativeTargetObserver {
     private let filesystem: BundleFilesystem
     private let managers: NativeManagerObserver
     private let receipts: NativeInstallerReceiptObserver
+    private let macports: NativeMacPortsObserver
 
     public init() {
         // Resolve the account through the OS, not a caller-controlled HOME value.
@@ -64,13 +65,14 @@ public struct NativeTargetObserver {
     }
 
     init(roots: [URL], entryLimit: Int = 100_000, managers: NativeManagerObserver = NativeManagerObserver(),
-         receipts: NativeInstallerReceiptObserver,
+         receipts: NativeInstallerReceiptObserver, macports: NativeMacPortsObserver = NativeMacPortsObserver(),
          signer: @escaping (URL) throws -> NativeSigningEvidence) {
         self.roots = roots
         self.filesystem = BundleFilesystem(entryLimit: entryLimit)
         self.signer = signer
         self.managers = managers
         self.receipts = receipts
+        self.macports = macports
     }
 
     public func observe(path: String) throws -> NativeTargetEvidence {
@@ -81,6 +83,7 @@ public struct NativeTargetObserver {
         let ancestors = try filesystem.ancestors(of: target)
         let permissions = try filesystem.tree(at: target)
         let managerSnapshot = try managers.snapshot(target: target)
+        let macportsSnapshot = try macports.snapshot(target: target)
         let infoURL = target.appendingPathComponent("Contents/Info.plist")
         let infoBytes = try boundedRead(infoURL)
         guard let rawInfo = try PropertyListSerialization.propertyList(from: infoBytes, format: nil) as? [String: Any],
@@ -125,6 +128,7 @@ public struct NativeTargetObserver {
               managerSnapshot == (try managers.snapshot(target: target)) else {
             throw ObservationFailure.changedDuringObservation
         }
+        let currentMacports = try macports.snapshot(target: target)
         // The signed Info.plist comes from Security.framework, not CFBundle's
         // mutable/cached dictionary. Re-observe after signature validation.
         guard before == (try FileIdentity.read(target)),
@@ -138,6 +142,7 @@ public struct NativeTargetObserver {
               ancestors == (try filesystem.ancestors(of: target)) else {
             throw ObservationFailure.changedDuringObservation
         }
+        guard macportsSnapshot == currentMacports else { throw ObservationFailure.changedDuringObservation }
         // Even an empty or aliased receipt container is an exclusion marker,
         // not proof that this app is standalone or that its receipt is valid.
         let hasStoreReceipt = permissions.entries[target.appendingPathComponent("Contents/_MASReceipt").path] != nil
@@ -149,7 +154,8 @@ public struct NativeTargetObserver {
             hasStoreReceipt: hasStoreReceipt,
             writableByOthers: permissions.unsafePermissions, inspectedEntries: permissions.entries.count,
             managerEvidence: managerSnapshot.evidence(target: target, applicationRoots: roots, hasStoreReceipt: hasStoreReceipt,
-                                                     entries: permissions.entries, installerPackages: receiptSnapshot.identifiers)
+                                                     entries: permissions.entries, installerPackages: receiptSnapshot.identifiers,
+                                                     macportsClaims: macportsSnapshot.claims)
         )
     }
 

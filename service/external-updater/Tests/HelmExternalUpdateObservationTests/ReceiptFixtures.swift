@@ -37,6 +37,7 @@ extension ReceiptFixtures {
 extension NativeTargetObserver {
     init(roots: [URL], entryLimit: Int = 100_000, managers: NativeManagerObserver = NativeManagerObserver(),
          signer: @escaping (URL) throws -> NativeSigningEvidence) {
-        self.init(roots: roots, entryLimit: entryLimit, managers: managers, receipts: ReceiptFixtures.empty, signer: signer)
+        self.init(roots: roots, entryLimit: entryLimit, managers: managers, receipts: ReceiptFixtures.empty,
+                  macports: NativeMacPortsObserver(registry: roots[0].appendingPathComponent("absent-registry.db", isDirectory: false)), signer: signer)
     }
 }

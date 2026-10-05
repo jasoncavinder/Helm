@@ -50,6 +50,7 @@ public enum NativePolicyAssessment: String, Encodable {
             case .setappLocation: exclusions |= 4
             case .setappBundleMarker: exclusions |= 8
             case .installerReceipt: exclusions |= 16
+            case .macportsLocation, .macportsRegistry: exclusions |= 32
             }
         }
         return bytes.withUnsafeBufferPointer { storage -> T in

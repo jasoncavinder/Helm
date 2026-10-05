@@ -214,7 +214,7 @@ fn consent_bridge_distinguishes_history_without_granting_authority() {
     let mut changed = fixture();
     changed.ed25519_public_key = b(&[5; 32]);
     assert_eq!(query(&changed), CONSENT_IDENTITY_CHANGED);
-    for flags in 1..=31 {
+    for flags in 1..=63 {
         let mut excluded = fixture();
         excluded.manager_exclusions = flags;
         excluded.has_store_receipt = u8::from(flags & 1 != 0);
@@ -399,7 +399,7 @@ fn mapping_preserves_native_facts_without_inventing_authority() {
 
 #[test]
 fn all_exclusion_combinations_remain_other_manager() {
-    for flags in 1..=31 {
+    for flags in 1..=63 {
         let mut input = fixture();
         input.manager_exclusions = flags;
         input.has_store_receipt = u8::from(flags & 1 != 0);
@@ -425,7 +425,7 @@ fn malformed_abi_is_not_a_successful_zero_result() {
             0 => input.abi_version = 2,
             1 => input.has_store_receipt = 2,
             2 => input.writable_by_others = 2,
-            3 => input.manager_exclusions = 32,
+            3 => input.manager_exclusions = 64,
             4 => input.has_store_receipt = 1,
             5 => input.manager_exclusions = 1,
             6 => input.build = b(b"\xff"),
@@ -554,7 +554,7 @@ fn fresh_bridge_evidence_fences_saved_adoption() {
         adoption::resolve(&store, native, &roots).unwrap().authority,
         Authority::UserAdopted(receipt.token)
     );
-    for flags in 1..=31 {
+    for flags in 1..=63 {
         let mut input = fixture();
         input.manager_exclusions = flags;
         input.has_store_receipt = u8::from(flags & 1 != 0);
