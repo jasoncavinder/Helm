@@ -15,6 +15,10 @@ public protocol ExternalUpdaterBootstrapProtocol {
                           reply: @escaping (UInt64, UInt32, Data?) -> Void)
     func confirmRevocation(session: Data, sequence: UInt64, review: Data,
                            reply: @escaping (UInt64, UInt32) -> Void)
+    func reviewAdoption(session: Data, sequence: UInt64, request: Data,
+                        reply: @escaping (UInt64, UInt32, Data?) -> Void)
+    func confirmAdoption(session: Data, sequence: UInt64, review: Data,
+                         reply: @escaping (UInt64, UInt32) -> Void)
 }
 
 public enum BootstrapFailure: String, Error {

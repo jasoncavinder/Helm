@@ -221,6 +221,34 @@ checks, admit the commit once, then suppress success after failed postchecks or
 session loss. Uncertainty requires fresh history and a new human decision, not
 automatic replay.
 
+The [staged adoption coordinator](../validation/v0.20-sparkle-adoption-coordinator.md)
+implements that lifecycle through `reviewAdoption`/`confirmAdoption`, but the
+production server supplies no provider and rejects both methods. A Debug-only
+server initializer accepts injected local observations for isolated tests; no
+runtime preference, environment flag or wire field enables that path. The client
+does not auto-confirm or retry. A successful hello advertises no adoption capability.
+
+Review intent contains only version, consent ID, target path, bundle ID and build.
+Core rejects unknown/duplicate fields, invalid roots and Helm self-update intent
+before native inspection. A 32-byte random handle maps to one worker-confined
+review on one connection; new/malformed reviews replace the pending review, and
+every confirmation attempt consumes it. Handles cannot cross connections or
+substitute for revocation handles. Methods share the eight-request ceiling,
+8 KiB request limit and 15-second request/120-second session deadlines with the
+existing diagnostics and revocation operations. Code 50 is a review handle;
+51/52/53 are consent-recorded/review-changed/outcome-unknown, never update permission.
+
+The processor requires complete local ownership observations, rechecks the entire
+native snapshot/account root before preparation and confirmation, and holds the
+private existing-only filesystem lease around the core calls. Snapshot equality
+includes raw manager evidence, not just a summarized allow/deny result. Admission
+is synchronous on the connection gate queue immediately before entering core;
+the native worker never blocks timeout/invalidation handling. After admission,
+failed observation/lease checks return uncertainty. Connection loss clears the
+pending review and suppresses late success; a possibly committed grant is not
+automatically replayed. None of this supplies the missing native boundary or
+ownership proof: operational enabling and signed-helper grant checks remain open.
+
 The store atomically rechecks the current grant at session claim, install handoff
 and successful version verification. Revocation, including before the first grant,
 fences pending adoption reviews; re-adoption changes the update-review fingerprint.

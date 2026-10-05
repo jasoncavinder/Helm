@@ -27,6 +27,25 @@ pub struct AdoptionRequest {
 }
 
 impl AdoptionRequest {
+    /// Validate untrusted intent before collecting native evidence or opening a ledger.
+    pub fn decode_for_roots(bytes: &[u8], roots: &[PathBuf]) -> Result<Self, Rejection> {
+        let request = Self::decode(bytes)?;
+        if !roots
+            .iter()
+            .any(|root| allowed_application_root(root) && request.target_path.starts_with(root))
+        {
+            return Err(Rejection::TargetOutsideRoots);
+        }
+        if request
+            .expected_bundle_identifier
+            .to_ascii_lowercase()
+            .starts_with(&HELM_IDENTIFIER.to_ascii_lowercase())
+        {
+            return Err(Rejection::HelmSelfUpdate);
+        }
+        Ok(request)
+    }
+
     pub fn decode(bytes: &[u8]) -> Result<Self, Rejection> {
         if bytes.len() > MAX_REQUEST_BYTES {
             return Err(Rejection::MalformedRequest);
