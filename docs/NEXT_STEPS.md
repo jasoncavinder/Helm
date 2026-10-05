@@ -74,9 +74,13 @@ using the [existing-only core adoption path](validation/v0.20-sparkle-ledger-ado
 rather than the general migrating store; #631 is reviewed and merged at `fa083770`.
 The [private adoption ABI and Swift single-use owner](validation/v0.20-sparkle-adoption-bridge.md)
 now transport explicit native facts, but establish none and expose no XPC grant.
-Next connect fresh native boundary observations, supported ownership coverage,
-live admission and the existing-only filesystem lease to authenticated
-connection-local review/confirmation, with explicit lost-reply uncertainty.
+PR #632 is reviewed and merged at `3895f469` without independent-review findings.
+The [staged connection-local coordinator](validation/v0.20-sparkle-adoption-coordinator.md)
+now connects bounded review/confirmation transport to single-use admission,
+existing-only leases and explicit lost-reply uncertainty. Its production provider
+is intentionally absent; injected native facts are available only through the
+Debug test server. Next implement the fresh native boundary/ownership provider
+and validate signed-helper acceptance/rejection before enabling grants.
 Do not infer sandbox inheritance from absent entitlements or full manager
 coverage from an empty exclusion list. Then complete
 the supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared

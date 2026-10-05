@@ -223,6 +223,21 @@ constructor for trusted boundary facts. Live authenticated admission, native
 sandbox-inheritance proof, complete supported ownership observations and the
 private filesystem lease still precede operational use; the existing preflight
 continues to report unknown origin as unresolved.
+PR #632 is reviewed and merged at `3895f469`, with no independent-review findings.
+
+The [staged adoption coordinator](validation/v0.20-sparkle-adoption-coordinator.md)
+adds bounded review/confirmation methods to the authenticated transport, strict
+intent validation before native reads, connection-local single-use handles and
+existing-only leased ledger integration. Adoption and revocation share one-time
+admission and the existing work/deadline limits. Failed checks before admission
+cannot commit; storage/postcheck failures after admission are uncertain, and
+session loss suppresses success without replay. Production construction passes
+no adoption provider, so both new methods reject without opening a ledger. The
+VM's injected-observation XPC/real-ledger tests validate lifecycle handling, not
+native authentication, complete manager coverage or shipping grants. A native
+provider must still establish fresh peer/sandbox/ownership facts before enabling
+the route. GUI/CLI controls, candidate/session execution and installation remain
+separate gates; Open App is unchanged.
 
 The [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts.md)
 extends receipt checks from three anchor paths to the full bounded inspected

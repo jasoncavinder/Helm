@@ -22,6 +22,21 @@ pub const ADOPTED: u32 = 51;
 pub const REVIEW_CHANGED: u32 = 52;
 pub const OUTCOME_UNKNOWN: u32 = 53;
 
+/// Validate untrusted intent without filesystem or ledger access.
+/// # Safety
+/// Slices are readable/immutable; user_root is native account data, not IPC input.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn helm_external_adoption_request(request: Bytes, user_root: Bytes) -> u32 {
+    std::panic::catch_unwind(|| {
+        assessment((|| {
+            let roots = unsafe { application_roots(user_root)? };
+            let data = unsafe { bytes(request, 8192)? };
+            adoption::AdoptionRequest::decode_for_roots(&data, &roots).map(|_| ())
+        })())
+    })
+    .unwrap_or(INTERNAL_FAILURE)
+}
+
 unsafe fn map_boundary(input: &NativeBoundary) -> Result<BoundaryObservation, Rejection> {
     if input.abi_version != 1 || input.observed_flags != 63 {
         return Err(Rejection::BoundaryUnavailable);
