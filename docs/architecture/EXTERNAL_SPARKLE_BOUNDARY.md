@@ -188,6 +188,18 @@ bound by each new review instead of requiring re-adoption after every vendor
 update. Changed identity or configuration requires a new adoption review. The
 permission does not attest to historical ownership or enable unattended updates.
 
+The [existing-only core adoption path](../validation/v0.20-sparkle-ledger-adoption.md)
+is a separate native-integration prerequisite, not a helper wire capability.
+Preparation reads an already-current ledger without migrations. Confirmation
+consumes the review before 120 seconds, rechecks fresh target/boundary evidence
+and the exact database path, then atomically compares epoch/revision, safe mode,
+consent-ID reuse and active path/inode reservations before appending consent.
+Missing, corrupt or incompatible storage is never repaired or recreated.
+The future authenticated coordinator must retain its private filesystem lease
+and admit confirmation while the session is live; core does not collect or
+authenticate native observations. A storage error/lost reply is not retry
+permission. No adoption grant approves an update session or an installer.
+
 The store atomically rechecks the current grant at session claim, install handoff
 and successful version verification. Revocation, including before the first grant,
 fences pending adoption reviews; re-adoption changes the update-review fingerprint.

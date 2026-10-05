@@ -55,7 +55,7 @@ impl ReviewedRevocation {
             serde_json::to_vec(&request).map_err(|_| Error::Policy(Rejection::MalformedRequest))?;
         RevocationRequest::decode(&bytes, roots).map_err(Error::Policy)?;
         let prior =
-            SqliteStore::read_external_revocation_cursor(database_path, &request.target_path)?;
+            SqliteStore::read_external_adoption_cursor(database_path, &request.target_path)?;
         Ok(Self {
             database_path: database_path.into(),
             target_path: request.target_path,

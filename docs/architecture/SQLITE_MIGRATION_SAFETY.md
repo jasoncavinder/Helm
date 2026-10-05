@@ -128,6 +128,15 @@ No migration definition changes. Missing/corrupt/incompatible storage is not
 repaired, and safe mode does not block denial-only revocation. Active session
 reservations remain intact; a lost reply is not proof that no commit occurred.
 
+The [existing-only adoption prerequisite](../validation/v0.20-sparkle-ledger-adoption.md)
+uses the same read-only cursor and existing READ_WRITE/NOFOLLOW confirmation
+boundary. Unlike revocation, grants reject safe mode and active path/inode
+reservations. Epoch/revision comparison, consumed consent-ID checking and the
+grant append share one `BEGIN IMMEDIATE` transaction with FULL/fullfsync.
+No CREATE, schema migration, journal-mode switch or epoch repair occurs. Native
+authentication, observation and the private filesystem lease are still required
+at the future helper integration boundary. This does not change any migration.
+
 Release builds use:
 
 ```text

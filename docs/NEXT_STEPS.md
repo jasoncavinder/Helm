@@ -70,7 +70,12 @@ Preserve the independent review's case-equivalent receipt exclusions and exact
 raw-evidence drift checks. The corrected native probe/tests pass; refresh signed
 helper acceptance before shipping rather than relabeling the pre-fix signed run.
 Continue with operational authenticated grant/native-session integration,
-complete supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
+using the [existing-only core adoption path](validation/v0.20-sparkle-ledger-adoption.md)
+rather than the general migrating store. Its private native bridge and
+connection-local review/confirmation are still to be implemented; fresh native
+observations, supported ownership coverage, live admission and the filesystem
+lease must surround the grant, with explicit lost-reply uncertainty. Then complete
+the supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
 until the operational boundary and real lifecycle/recovery gates pass.
 #616's [shipping first-run activation](validation/v0.20-shipping-first-run.md)

@@ -100,6 +100,16 @@ impl ReviewedAdoption {
     ) -> Result<Self, Error> {
         Self::validate(&request, &target, &boundary, application_roots).map_err(Error::Policy)?;
         let prior = store.external_adoption_cursor(&target.canonical_path)?;
+        Self::from_validated(request, target, boundary, prior, now)
+    }
+
+    fn from_validated(
+        request: AdoptionRequest,
+        target: TargetObservation,
+        boundary: BoundaryObservation,
+        prior: AdoptionToken,
+        now: u64,
+    ) -> Result<Self, Error> {
         let fingerprint = Self::fingerprint_for(&request, &target, &boundary, prior)?;
         Ok(Self {
             request,
@@ -125,15 +135,7 @@ impl ReviewedAdoption {
         application_roots: &[PathBuf],
         now: u64,
     ) -> Result<AdoptionReceipt, Error> {
-        if now < self.reviewed_at || now - self.reviewed_at > REVIEW_SECONDS {
-            return Err(Error::Policy(Rejection::ReviewExpired));
-        }
-        Self::validate(&self.request, &target, &boundary, application_roots)
-            .map_err(Error::Policy)?;
-        if Self::fingerprint_for(&self.request, &target, &boundary, self.prior)? != self.fingerprint
-        {
-            return Err(Error::Policy(Rejection::ReviewChanged));
-        }
+        self.validate_confirmation(&target, &boundary, application_roots, now)?;
         store
             .commit_external_adoption(
                 &self.request.consent_id,
@@ -142,6 +144,24 @@ impl ReviewedAdoption {
                 self.prior,
             )?
             .ok_or(Error::Conflict)
+    }
+
+    fn validate_confirmation(
+        &self,
+        target: &TargetObservation,
+        boundary: &BoundaryObservation,
+        application_roots: &[PathBuf],
+        now: u64,
+    ) -> Result<(), Error> {
+        if now < self.reviewed_at || now - self.reviewed_at >= REVIEW_SECONDS {
+            return Err(Error::Policy(Rejection::ReviewExpired));
+        }
+        Self::validate(&self.request, target, boundary, application_roots)
+            .map_err(Error::Policy)?;
+        if Self::fingerprint_for(&self.request, target, boundary, self.prior)? != self.fingerprint {
+            return Err(Error::Policy(Rejection::ReviewChanged));
+        }
+        Ok(())
     }
 
     fn validate(
@@ -171,6 +191,64 @@ impl ReviewedAdoption {
         let bytes = serde_json::to_vec(&(request, target, boundary, prior))
             .map_err(|_| Error::Policy(Rejection::MalformedRequest))?;
         Ok(format!("{:x}", Sha256::digest(bytes)))
+    }
+}
+
+/// Existing-only helper ledger review. Neither the review nor its path crosses
+/// IPC. The authenticated native coordinator must supply fresh observations and
+/// hold its private filesystem lease around both preparation and confirmation.
+/// This type does not collect those facts, authenticate a peer or start an update.
+pub struct ReviewedLedgerAdoption {
+    database_path: PathBuf,
+    review: ReviewedAdoption,
+}
+
+impl ReviewedLedgerAdoption {
+    pub fn prepare(
+        database_path: &Path,
+        request: AdoptionRequest,
+        target: TargetObservation,
+        boundary: BoundaryObservation,
+        application_roots: &[PathBuf],
+        now: u64,
+    ) -> Result<Self, Error> {
+        if !database_path.is_absolute() {
+            return Err(Error::Policy(Rejection::MalformedRequest));
+        }
+        ReviewedAdoption::validate(&request, &target, &boundary, application_roots)
+            .map_err(Error::Policy)?;
+        let prior =
+            SqliteStore::read_external_adoption_cursor(database_path, &target.canonical_path)?;
+        Ok(Self {
+            database_path: database_path.into(),
+            review: ReviewedAdoption::from_validated(request, target, boundary, prior, now)?,
+        })
+    }
+
+    /// Consumes the review regardless of outcome. The caller must admit this
+    /// explicit confirmation while its authenticated session is live. A storage
+    /// error or lost reply is not retry permission or proof of an unchanged ledger.
+    pub fn confirm(
+        self,
+        database_path: &Path,
+        target: TargetObservation,
+        boundary: BoundaryObservation,
+        application_roots: &[PathBuf],
+        now: u64,
+    ) -> Result<AdoptionReceipt, Error> {
+        if database_path != self.database_path {
+            return Err(Error::Policy(Rejection::ReviewChanged));
+        }
+        self.review
+            .validate_confirmation(&target, &boundary, application_roots, now)?;
+        SqliteStore::commit_reviewed_external_adoption(
+            database_path,
+            &self.review.request.consent_id,
+            &target,
+            &self.review.fingerprint,
+            self.review.prior,
+        )?
+        .ok_or(Error::Conflict)
     }
 }
 
