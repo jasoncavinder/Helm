@@ -135,11 +135,22 @@ entrypoint uses OS-account roots, not `HOME`; Rust also validates root shape.
 
 This preflight does not read saved adoption or assert complete manager-exclusion
 coverage. The separate consent-history diagnostic does not change that preflight
-contract. Operational ledger resolution/revocation, explicit consent UI and
+contract. Operational grant/session integration, explicit consent UI and
 Sparkle-accepted candidates remain separate integration work. A test fixture
 exercises mapped evidence against real SQLite adoption, but is not a shipping
 database or authorization endpoint. See the
 [integration evidence](../../docs/validation/v0.20-sparkle-native-core-bridge.md).
+
+The separate [private adoption bridge](../../docs/validation/v0.20-sparkle-adoption-bridge.md)
+maps explicit local boundary facts to the existing-only Rust adoption ledger.
+Its internal Swift review owner is single-use, including failed confirmation
+attempts, and releases abandoned reviews. Native inputs are neither Codable nor
+a public Swift API, and no production caller currently constructs these trust
+facts. No XPC adoption method is exposed. Live peer/sandbox proof, complete
+supported ownership observations, one-time admission and the private filesystem
+lease remain required before operational use. Result 51 records per-app consent
+only; 52 rejects the changed review, and 53 means uncertainty. None approves an
+update or permits automatic replay after storage/postcheck failure or lost reply.
 
 `NativeHelperObserver.observeSelf()` collects the current process through
 Security.framework, not a caller-supplied path or PID. It enforces the fixed

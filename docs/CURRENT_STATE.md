@@ -210,7 +210,19 @@ active target reservations in the same immediate transaction as the grant.
 The 120-second limit is exclusive, matching revocation. This is a core prerequisite,
 not a new authenticated wire method: native observation, live admission and the
 filesystem lease remain coordinator responsibilities. No shipping adoption or
-direct update is enabled; update consent remains a separate decision.
+direct update is enabled; update consent remains a separate decision. PR #631 is
+reviewed and merged at `fa083770`, with no independent-review findings.
+
+The [private adoption bridge](validation/v0.20-sparkle-adoption-bridge.md) now
+maps explicit native boundary facts and fresh target evidence into that core
+path. An internal Swift owner consumes the opaque review on every confirmation
+attempt, including mapping/root failures, and frees abandoned handles. Distinct
+results mean consent recorded, changed/rejected review or uncertain outcome;
+none is an update permit. This slice adds no XPC grant method or production
+constructor for trusted boundary facts. Live authenticated admission, native
+sandbox-inheritance proof, complete supported ownership observations and the
+private filesystem lease still precede operational use; the existing preflight
+continues to report unknown origin as unresolved.
 
 The [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts.md)
 extends receipt checks from three anchor paths to the full bounded inspected
@@ -233,6 +245,7 @@ native tests pass in the VM; four new regression cases fail against the original
 implementation. The real receipt fixture now reports `otherManager`, with app
 bytes preserved. The six signed checks above remain attributed to `1ba689dd`,
 before this correction; no new signed-helper acceptance is claimed by the review.
+PR #629 is reviewed and merged at `17e46cc7`; preserve those attribution limits.
 
 The isolated signed uv GUI upgrade passed on `41c01768`: task 9 completed,
 GUI/CLI/native versions agree on 1.1, receipt policy is preserved and the peer

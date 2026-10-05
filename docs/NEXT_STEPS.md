@@ -62,8 +62,8 @@ connection-local review/confirmation and atomic epoch/revision checks, with no
 grant or installer activation. Preserve cancellation-before-admission and
 lost-reply uncertainty; never retry a possibly committed removal automatically.
 Retain its unexplained, nonreproduced initial rejection as a pre-shipping limitation.
-Review the [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts.md)
-before granting adoption. It covers the bounded inspected tree plus receipt
+The [payload receipt follow-up](validation/v0.20-sparkle-payload-receipts.md)
+is reviewed and merged through #629 at `17e46cc7`. It covers the bounded inspected tree plus receipt
 exports for overlapping non-root install locations, which file-info queries alone
 miss on the VM. Do not call an incomplete/oversized/timed-out scan unclaimed.
 Preserve the independent review's case-equivalent receipt exclusions and exact
@@ -71,10 +71,14 @@ raw-evidence drift checks. The corrected native probe/tests pass; refresh signed
 helper acceptance before shipping rather than relabeling the pre-fix signed run.
 Continue with operational authenticated grant/native-session integration,
 using the [existing-only core adoption path](validation/v0.20-sparkle-ledger-adoption.md)
-rather than the general migrating store. Its private native bridge and
-connection-local review/confirmation are still to be implemented; fresh native
-observations, supported ownership coverage, live admission and the filesystem
-lease must surround the grant, with explicit lost-reply uncertainty. Then complete
+rather than the general migrating store; #631 is reviewed and merged at `fa083770`.
+The [private adoption ABI and Swift single-use owner](validation/v0.20-sparkle-adoption-bridge.md)
+now transport explicit native facts, but establish none and expose no XPC grant.
+Next connect fresh native boundary observations, supported ownership coverage,
+live admission and the existing-only filesystem lease to authenticated
+connection-local review/confirmation, with explicit lost-reply uncertainty.
+Do not infer sandbox inheritance from absent entitlements or full manager
+coverage from an empty exclusion list. Then complete
 the supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
 by GUI/CLI. Keep adoption separate from each update's consent and keep Open App
 until the operational boundary and real lifecycle/recovery gates pass.
