@@ -30,6 +30,18 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+PRs #633 (staged adoption coordinator, `7bd09af7`) and #634 (bounded MacPorts
+exclusions, `82633c57`) are reviewed and merged. The next
+[private-XPC launch slice](validation/v0.20-sparkle-private-xpc.md) adds optional
+unembedded `.xpc` packaging and a fixed private-service client/listener with
+unchanged production peer requirements. The VM-only ad-hoc launch experiment
+passes separate-service access, direct-child inherited denial, sandboxed-service
+denial and a fresh positive control. This is launch evidence only, not signed
+operational adoption or installation certification. The production adoption
+provider remains absent; no updater is initialized or shipping app entitlement
+changed. Fresh signed/notarized nested-service acceptance, native ownership and
+boundary mapping, actual lifecycle/recovery and GUI/CLI integration remain open.
+
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
 Research previews remain Debug-only and cannot acknowledge the real experience.

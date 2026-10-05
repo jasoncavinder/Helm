@@ -4,8 +4,9 @@ import Sparkle
 
 // Inspection, read-only app preflight and private storage preparation. Never initialize
 // SPUUpdater or accept a feed, install command or authorization grant.
-guard CommandLine.arguments.count == 2,
-      ["--preflight", "--serve-bootstrap", "--prepare-ledger"].contains(CommandLine.arguments[1]) else {
+let serviceLaunch = CommandLine.arguments.count == 1
+let mode = CommandLine.arguments.count == 2 ? CommandLine.arguments[1] : nil
+guard serviceLaunch || mode.map({ ["--preflight", "--serve-bootstrap", "--prepare-ledger"].contains($0) }) == true else {
     FileHandle.standardError.write(Data("Use --preflight, --serve-bootstrap or --prepare-ledger; direct updates are disabled.\n".utf8))
     exit(64)
 }
@@ -19,6 +20,11 @@ struct PreflightReport: Encodable {
 
 do {
     let helper = try NativeHelperObserver().observeSelf()
+    let bundledService = URL(fileURLWithPath: helper.canonicalPath).pathExtension == "xpc"
+    guard !serviceLaunch || bundledService,
+          mode != "--serve-bootstrap" || !bundledService else {
+        throw HelperObservationFailure.invalidMetadata
+    }
     let framework = Bundle(for: SPUUpdater.self)
     let frameworkPath = framework.bundleURL.resolvingSymlinksInPath().path
     let expected = URL(fileURLWithPath: helper.canonicalPath)
@@ -29,10 +35,10 @@ do {
           framework.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "2.9.5" else {
         throw HelperObservationFailure.invalidMetadata
     }
-    if CommandLine.arguments[1] == "--prepare-ledger" {
+    if mode == "--prepare-ledger" {
         try NativeHelperLedger(identity: helper).prepare()
         FileHandle.standardOutput.write(Data("{\"ledgerReady\":true,\"directUpdatesEnabled\":false}\n".utf8))
-    } else if CommandLine.arguments[1] == "--preflight" {
+    } else if mode == "--preflight" {
         let report = PreflightReport(helper: helper, frameworkPath: frameworkPath, frameworkVersion: "2.9.5")
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -40,7 +46,7 @@ do {
         FileHandle.standardOutput.write(Data("\n".utf8))
     } else {
         let host = try BootstrapHost(identity: helper)
-        host.run()
+        host.run(bundledService: bundledService)
     }
 } catch {
     FileHandle.standardError.write(Data("External updater preflight rejected: \(error)\n".utf8))

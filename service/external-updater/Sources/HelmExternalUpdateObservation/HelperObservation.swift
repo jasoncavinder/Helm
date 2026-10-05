@@ -87,10 +87,7 @@ public struct NativeHelperObserver {
             throw HelperObservationFailure.invalidPath
         }
         let url = codePath as URL
-        guard url.isFileURL, url.pathExtension == "app", url.path.hasPrefix("/"),
-              url.path == url.resolvingSymlinksInPath().path else {
-            throw HelperObservationFailure.invalidPath
-        }
+        try signature.bundleFormat.validate(path: url)
         let before = try HelperFilesystemSnapshot.capture(url)
         // Obtain a fresh disk object: the dynamic -> static translation is not
         // itself a secure binding. Compare its sealed identity with the live one.
@@ -121,6 +118,7 @@ public struct NativeHelperObserver {
 }
 
 struct HelperSignature: Equatable {
+    let bundleFormat: HelperBundleFormat
     let identifier: String
     let team: String
     let build: String
@@ -134,7 +132,6 @@ struct HelperSignature: Equatable {
               let team = values[kSecCodeInfoTeamIdentifier as String] as? String, team == "V73WPJR9M4",
               let info = values[kSecCodeInfoPList as String] as? [String: Any],
               info["CFBundleIdentifier"] as? String == identifier,
-              info["CFBundlePackageType"] as? String == "APPL",
               info["HelmDistributionChannel"] as? String == "developer_id",
               let build = info["CFBundleVersion"] as? String, Self.bounded(build, limit: 128),
               let executable = info["CFBundleExecutable"] as? String, Self.bounded(executable, limit: 255),
@@ -144,6 +141,7 @@ struct HelperSignature: Equatable {
               let flags = values[kSecCodeInfoFlags as String] as? NSNumber else {
             throw HelperObservationFailure.invalidMetadata
         }
+        bundleFormat = try HelperBundleFormat(info: info)
         guard flags.uint32Value & SecCodeSignatureFlags.runtime.rawValue != 0 else { throw HelperObservationFailure.unsafeRuntime }
         // This unprivileged helper requires no entitlements. Fail closed for new
         // grants until packaging and their security implications are reviewed.
@@ -179,7 +177,7 @@ struct HelperFilesystemSnapshot: Equatable {
     let tree: BundleFilesystem.TreeSnapshot
 
     static func capture(_ url: URL, entryLimit: Int = 100_000) throws -> Self {
-        guard url.isFileURL, url.pathExtension == "app", url.path.hasPrefix("/"),
+        guard url.isFileURL, ["app", "xpc"].contains(url.pathExtension), url.path.hasPrefix("/"),
               url.path == url.resolvingSymlinksInPath().path else {
             throw HelperObservationFailure.invalidPath
         }

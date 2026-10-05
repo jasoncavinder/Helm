@@ -27,6 +27,13 @@ public final class ExternalUpdaterBootstrapClient {
         try self.init(connection: authentication.makeBootstrapServiceConnection(), event: event)
     }
 
+    /// Staged private service route. The shipping app does not embed this service
+    /// yet. The route alone proves neither an unsandboxed peer nor authorization.
+    public static func bundledService(event: @escaping (BootstrapEvent) -> Void) throws -> ExternalUpdaterBootstrapClient {
+        let authentication = try ExternalUpdaterPeerAuthentication()
+        return try ExternalUpdaterBootstrapClient(connection: authentication.makeBundledServiceConnection(), event: event)
+    }
+
     private init(connection: NSXPCConnection, event: @escaping (BootstrapEvent) -> Void) throws {
         self.connection = connection
         self.event = event

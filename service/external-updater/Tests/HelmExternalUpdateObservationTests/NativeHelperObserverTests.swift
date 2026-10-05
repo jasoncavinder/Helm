@@ -194,6 +194,16 @@ final class NativeHelperObserverTests: XCTestCase {
         }
     }
 
+    func testSealedServiceConfigurationRetainsAllSignatureGates() throws {
+        var values = replacingInfo("CFBundlePackageType", "XPC!")
+        var info = try XCTUnwrap(values[kSecCodeInfoPList as String] as? [String: Any])
+        info["XPCService"] = ["ServiceType": "Application"]
+        values[kSecCodeInfoPList as String] = info
+        XCTAssertEqual(try HelperSignature(values: values).bundleFormat, .privateService)
+        values[kSecCodeInfoEntitlementsDict as String] = ["com.apple.security.app-sandbox": true]
+        XCTAssertThrowsError(try HelperSignature(values: values))
+    }
+
     func testRequiresHardenedRuntimeAndNoEntitlementGrants() throws {
         var values = metadata()
         values[kSecCodeInfoFlags as String] = NSNumber(value: 0)

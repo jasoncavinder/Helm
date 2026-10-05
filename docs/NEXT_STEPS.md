@@ -70,7 +70,7 @@ Preserve the independent review's case-equivalent receipt exclusions and exact
 raw-evidence drift checks. The corrected native probe/tests pass; refresh signed
 helper acceptance before shipping rather than relabeling the pre-fix signed run.
 The [MacPorts exclusion follow-up](validation/v0.20-sparkle-macports-ownership.md)
-now covers its standard application location and bounded registry claims without
+is reviewed and merged through #634 at `82633c57`. It covers its standard application location and bounded registry claims without
 running port or modifying its database. Preserve raw registry/filesystem drift
 checks, nonempty-journal rejection and the unresolved disposition when claims
 are absent. Nonstandard prefixes/configurations and additional manager authority
@@ -83,11 +83,17 @@ The [private adoption ABI and Swift single-use owner](validation/v0.20-sparkle-a
 now transport explicit native facts, but establish none and expose no XPC grant.
 PR #632 is reviewed and merged at `3895f469` without independent-review findings.
 The [staged connection-local coordinator](validation/v0.20-sparkle-adoption-coordinator.md)
-now connects bounded review/confirmation transport to single-use admission,
+is reviewed and merged through #633 at `7bd09af7`. It connects bounded review/confirmation transport to single-use admission,
 existing-only leases and explicit lost-reply uncertainty. Its production provider
 is intentionally absent; injected native facts are available only through the
-Debug test server. Next implement the fresh native boundary/ownership provider
-and validate signed-helper acceptance/rejection before enabling grants.
+Debug test server. The next [private-XPC launch slice](validation/v0.20-sparkle-private-xpc.md)
+stages an optional private bundled service and unchanged authenticated transport.
+Its VM-only ad-hoc experiment distinguishes inherited child-process denial from
+separate-service access, with a sandboxed-service negative control. This is not
+production trust certification, and the app still embeds no helper.
+Next validate a freshly signed/notarized nested service with the exact production
+requirements, bind actual accepted peers and launch evidence to fresh native
+boundary facts, and complete the ownership provider before enabling grants.
 Do not infer sandbox inheritance from absent entitlements or full manager
 coverage from an empty exclusion list. Then complete
 the supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
