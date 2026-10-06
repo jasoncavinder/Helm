@@ -16,14 +16,17 @@ final class BootstrapHost: NSObject, NSXPCListenerDelegate {
         authentication = try ExternalUpdaterPeerAuthentication()
     }
 
-    func run() {
-        let listener = authentication.makeBootstrapServiceListener(delegate: self)
+    func run(bundledService: Bool = false) {
+        let listener = bundledService
+            ? authentication.makeBundledServiceListener(delegate: self)
+            : authentication.makeBootstrapServiceListener(delegate: self)
         self.listener = listener
-        listener.activate()
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(120)) { [weak self] in
             self?.listener?.invalidate()
             exit(1)
         }
+        // service() may own the main run loop. Arm the deadline before resuming.
+        listener.resume()
         withExtendedLifetime(self) { RunLoop.main.run() }
     }
 

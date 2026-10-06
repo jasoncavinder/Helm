@@ -42,6 +42,13 @@ private final class ProbeDelegate: NSObject, NSXPCListenerDelegate {
 }
 
 final class PeerAuthenticationTests: XCTestCase {
+    func testPrivateServiceUsesFixedIdentityWithoutBootstrapNamespace() throws {
+        XCTAssertEqual(ExternalUpdaterPeerAuthentication.bundledServiceName, "com.jasoncavinder.Helm.SparkleExternalUpdater")
+        let connection = try ExternalUpdaterPeerAuthentication().makeBundledServiceConnection()
+        XCTAssertEqual(connection.serviceName, ExternalUpdaterPeerAuthentication.bundledServiceName)
+        connection.invalidate()
+    }
+
     func testFixedRequirementsCompileAndRejectTheTestHost() throws {
         _ = try ExternalUpdaterPeerAuthentication()
         var code: SecCode?

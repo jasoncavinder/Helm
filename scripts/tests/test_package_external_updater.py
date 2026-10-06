@@ -92,6 +92,44 @@ class PackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "never replaced"):
             self.stage()
 
+    def test_private_xpc_format_is_explicit_and_updates_remain_disabled(self):
+        self.output = self.root / "Helper.xpc"
+        result = PACKAGE.stage(self.binary, self.framework, self.output, "1", "xpc")
+        info = PACKAGE.read_plist(self.output / "Contents/Info.plist")
+        self.assertEqual(info["CFBundlePackageType"], "XPC!")
+        self.assertEqual(info["XPCService"], {"ServiceType": "Application"})
+        self.assertNotIn("LSUIElement", info)
+        self.assertFalse(result["directUpdatesEnabled"])
+        self.assertFalse(result["signatureAndNotarizationVerified"])
+        self.assertFalse(any(call[0].endswith(("codesign", "launchctl", "open")) for call in self.calls))
+
+    def test_format_and_suffix_must_agree(self):
+        with self.assertRaisesRegex(ValueError, "new .xpc"):
+            PACKAGE.stage(self.binary, self.framework, self.output, "1", "xpc")
+        self.assertFalse(self.output.exists())
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            PACKAGE.bundle_info("1", "other")
+
+    def test_xpc_service_configuration_cannot_be_broadened(self):
+        self.output = self.root / "Helper.xpc"
+        PACKAGE.stage(self.binary, self.framework, self.output, "1", "xpc")
+        path = self.output / "Contents/Info.plist"
+        pristine = PACKAGE.read_plist(path)
+        for service in [{}, {"ServiceType": "System"}, {"ServiceType": True},
+                        {"ServiceType": "Application", "RunLoopType": "dispatch_main"},
+                        {"ServiceType": "Application", "JoinExistingSession": True}]:
+            with self.subTest(service=service):
+                self.write_plist(path, {**pristine, "XPCService": service})
+                with self.assertRaises(ValueError):
+                    PACKAGE.verify(self.output)
+
+    def test_app_metadata_cannot_silently_become_a_service(self):
+        self.stage()
+        path = self.output / "Contents/Info.plist"
+        self.write_plist(path, PACKAGE.bundle_info("1", "xpc"))
+        with self.assertRaises(ValueError):
+            PACKAGE.verify(self.output)
+
     def test_dangling_output_symlink_is_never_followed(self):
         self.output.symlink_to(self.root / "absent")
         with self.assertRaisesRegex(ValueError, "never replaced"):

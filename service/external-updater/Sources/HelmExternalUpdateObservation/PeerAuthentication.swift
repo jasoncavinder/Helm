@@ -10,6 +10,7 @@ public enum PeerAuthenticationFailure: String, Error {
 /// Fixed production identities, never request parameters, preferences or a PID
 /// lookup. The OS checks the live peer when delivering connection messages.
 public struct ExternalUpdaterPeerAuthentication {
+    public static let bundledServiceName = "com.jasoncavinder.Helm.SparkleExternalUpdater"
     public static let bootstrapServiceName = "com.jasoncavinder.Helm.SparkleExternalUpdater.bootstrap"
     static let applicationRequirement = """
         anchor apple generic
@@ -70,6 +71,14 @@ public struct ExternalUpdaterPeerAuthentication {
         return listener
     }
 
+    /// Private XPC services do not support listener-level signing requirements.
+    /// The delegate MUST call admit on each connection before exporting messages.
+    public func makeBundledServiceListener(delegate: NSXPCListenerDelegate) -> NSXPCListener {
+        let listener = NSXPCListener.service()
+        listener.delegate = delegate
+        return listener
+    }
+
     /// Call once, on a newly received inactive connection. A true return only
     /// means the OS identity gate was configured, not that a message has passed
     /// authentication or that any operation is authorized.
@@ -94,6 +103,13 @@ public struct ExternalUpdaterPeerAuthentication {
 
     public func makeBootstrapServiceConnection() -> NSXPCConnection {
         let connection = NSXPCConnection(machServiceName: Self.bootstrapServiceName, options: [])
+        connection.setCodeSigningRequirement(Self.helperRequirement)
+        Self.closeOnInterruption(connection)
+        return connection
+    }
+
+    public func makeBundledServiceConnection() -> NSXPCConnection {
+        let connection = NSXPCConnection(serviceName: Self.bundledServiceName)
         connection.setCodeSigningRequirement(Self.helperRequirement)
         Self.closeOnInterruption(connection)
         return connection

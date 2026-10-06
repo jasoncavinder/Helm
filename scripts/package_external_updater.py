@@ -95,10 +95,12 @@ def inspect_macho(binary):
     return architectures, paths
 
 
-def bundle_info(build):
+def bundle_info(build, bundle_format="app"):
+    if bundle_format not in {"app", "xpc"}:
+        raise ValueError("unsupported helper bundle format")
     if not re.fullmatch(r"[1-9][0-9]{0,8}", build):
         raise ValueError("build must be a positive integer of at most nine digits")
-    return {
+    info = {
         "CFBundleIdentifier": IDENTIFIER,
         "CFBundleExecutable": EXECUTABLE,
         "CFBundleName": "Helm Sparkle External Updater",
@@ -115,14 +117,19 @@ def bundle_info(build):
         "SUEnableInstallerLauncherService": False,
         "SUEnableDownloaderService": False,
     }
+    if bundle_format == "xpc":
+        info["CFBundlePackageType"] = "XPC!"
+        info["XPCService"] = {"ServiceType": "Application"}
+        del info["LSUIElement"]
+    return info
 
 
 def verify(app):
-    if app.is_symlink() or not app.is_dir() or app.suffix != ".app":
-        raise ValueError("expected a concrete application bundle")
+    if app.is_symlink() or not app.is_dir() or app.suffix not in {".app", ".xpc"}:
+        raise ValueError("expected a concrete application or private XPC bundle")
     inspect_tree(app)
     info = read_plist(app / "Contents/Info.plist")
-    expected = bundle_info(info.get("CFBundleVersion", ""))
+    expected = bundle_info(info.get("CFBundleVersion", ""), app.suffix[1:])
     if info.keys() != expected.keys() or any(type(info[key]) is not type(value) or info[key] != value for key, value in expected.items()):
         raise ValueError("unexpected helper metadata or enabled updater capability")
     binary = app / "Contents/MacOS" / EXECUTABLE
@@ -141,8 +148,8 @@ def verify(app):
             "signatureAndNotarizationVerified": False}
 
 
-def stage(binary, framework, output, build):
-    info = bundle_info(build)
+def stage(binary, framework, output, build, bundle_format="app"):
+    info = bundle_info(build, bundle_format)
     if binary.is_symlink() or not binary.is_file() or not os.access(binary, os.X_OK):
         raise ValueError("expected a concrete executable input")
     if binary.stat().st_mode & (stat.S_ISUID | stat.S_ISGID):
@@ -154,8 +161,8 @@ def stage(binary, framework, output, build):
     # Normalize only the parent. resolve() on output would follow an existing
     # destination symlink before the no-overwrite check.
     output = output.parent.resolve(strict=True) / output.name
-    if output.suffix != ".app" or output.exists() or output.is_symlink():
-        raise ValueError("output must be a new .app; existing paths are never replaced")
+    if output.suffix != "." + bundle_format or output.exists() or output.is_symlink():
+        raise ValueError(f"output must be a new .{bundle_format}; existing paths are never replaced")
     if output.is_relative_to(framework.resolve()):
         raise ValueError("output must not be inside the input framework")
     output.mkdir(mode=0o700)
@@ -182,11 +189,12 @@ def main():
     create.add_argument("--framework", type=Path, required=True)
     create.add_argument("--output", type=Path, required=True)
     create.add_argument("--build", required=True)
+    create.add_argument("--format", choices=("app", "xpc"), default="app")
     check = sub.add_parser("verify")
     check.add_argument("app", type=Path)
     args = parser.parse_args()
     try:
-        result = stage(args.binary, args.framework, args.output, args.build) if args.action == "stage" else verify(args.app)
+        result = stage(args.binary, args.framework, args.output, args.build, args.format) if args.action == "stage" else verify(args.app)
         print(json.dumps(result, sort_keys=True))
     except (OSError, ValueError, TypeError, subprocess.CalledProcessError, plistlib.InvalidFileException) as error:
         parser.exit(1, f"external-updater packaging failed: {error}\n")

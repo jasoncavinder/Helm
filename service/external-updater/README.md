@@ -21,6 +21,10 @@ upstream binary checksum). It never initializes `SPUUpdater`. Its only commands
 are `--preflight`, `--serve-bootstrap` and `--prepare-ledger`; all require native self-identity
 validation and the actual loaded framework to reside inside its own bundle.
 It never loads the target application's private updater or framework.
+The optional private-XPC package also accepts the OS's no-argument service launch,
+but only after validating sealed `XPC!` metadata and a concrete bundle under an
+app's `Contents/XPCServices`. A standalone `.app` rejects no-argument launch;
+the private service rejects `--serve-bootstrap` (the legacy Mach-service route).
 
 `--prepare-ledger` explicitly initializes/reopens the helper's separate private
 storage; ordinary preflight and the bootstrap hello do not open a ledger. The
@@ -43,6 +47,24 @@ new staged executable. It does not replace an existing output, sign, notarize,
 register or execute anything. Its JSON explicitly does **not** attest signature
 or notarization. Source inputs must come from the pinned build; structural
 checks do not authenticate an arbitrary supplied framework.
+
+`stage --format xpc --output /existing/private/qa/HelmSparkleExternalUpdater.xpc`
+instead stages the same helper/framework as a private application XPC service.
+It permits only `XPCService = { ServiceType = Application; }`, no alternate
+launch configuration or entitlement grants. This remains unembedded: signing,
+notarization and placement in a QA app are separate steps. Ordinary self-preflight
+of this format requires its intended nested placement, not the staging directory.
+No entitlement-free bundle is assumed to be an unsandboxed process.
+
+`ExternalUpdaterBootstrapClient.bundledService(event:)` selects the exact private
+service identifier with the unchanged helper requirement and handshake. It does
+not accept a caller-selected service or authorize a grant. Foundation's private
+service listener does not support a listener-level signing requirement; the
+server initializer still installs the exact per-connection caller requirement
+before exporting messages or activation. The same account, nonce, deadline,
+single-flight and loss/no-reconnect gates apply. The shipping app does not call
+this constructor or embed the helper, and the production adoption provider is
+still absent. See the [VM launch experiment and limits](../../docs/validation/v0.20-sparkle-private-xpc.md).
 
 Host compilation/staging, without runtime execution:
 
@@ -127,7 +149,7 @@ without retry. The client accepts only adoption-specific codes and 32-byte revie
 handles. See the [coordinator evidence](../../docs/validation/v0.20-sparkle-adoption-coordinator.md)
 for tests and the native proof/signed integration required before enabling this.
 
-Testing real
+Testing real legacy Mach-service
 acceptance requires a separately signed/notarized sandboxed app wrapper with the
 exact caller identity/channel and only the named Mach-lookup sandbox exception.
 Never install or launch that identity-matching test app on the production host.

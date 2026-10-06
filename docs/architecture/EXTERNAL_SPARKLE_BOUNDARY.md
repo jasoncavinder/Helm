@@ -360,6 +360,32 @@ shipping launch strategy, target authority or inherited-sandbox proof.
 
 ## Verification
 
+### Staged Private XPC Launch
+
+The [private-service slice](../validation/v0.20-sparkle-private-xpc.md) adds an
+optional `.xpc` package, not automatic embedding or registration. Its sealed
+configuration is `XPC!` with exactly `XPCService/ServiceType = Application`, no
+helper entitlement grants, and runtime placement under an app's
+`Contents/XPCServices`. Code, account, filesystem and loaded-framework checks
+remain mandatory. Signed bundle shape is not itself live sandbox evidence.
+
+The private connection uses only `com.jasoncavinder.Helm.SparkleExternalUpdater`.
+`NSXPCListener.service()` cannot apply a listener-level code requirement; each
+new connection therefore receives the exact production caller requirement in
+the server constructor before export/activation. The client retains the exact
+notarized helper requirement and data-free handshake before target intent.
+Anonymous/Mach-service test transports keep their existing listener gates.
+The 120-second process deadline is armed before resuming the service listener.
+
+Apple documents private XPC services as independently sandboxed system-launched
+processes; directly spawned children instead inherit the parent's restrictions.
+The ad-hoc VM experiment confirms this distinction for a fixed isolated read,
+including a sandboxed-service negative control. It does not populate a native
+`externalHelperUnsandboxed` fact or close the production signed-launch gate.
+No adoption provider, installer, auto-retry or shipped sandbox exception is added.
+
+### Earlier Policy Evidence
+
 Twelve new pure-policy tests cover strict requests, roots, helper/target/candidate
 eligibility, identity drift, expiry, operation isolation and uncertain outcomes.
 All 821 core unit tests pass in the disposable macOS 27 arm64 VM. Host workspace
