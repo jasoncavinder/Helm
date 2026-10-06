@@ -254,6 +254,12 @@ and known Setapp bundle markers (including static-link resources), map to denial
 only. Failed queries never become empty successful scans. Absence remains
 unresolved, not complete ownership coverage or adoption eligibility. See the
 [receipt/Setapp scope and VM evidence](../../docs/validation/v0.20-sparkle-receipt-exclusions.md).
+Native evidence additionally retains sorted per-token `homebrewCoverageGaps`:
+missing metadata/receipts/declarations, empty declarations, or uninspected
+non-app artifacts. Matching app claims are preserved even when another artifact
+is unsupported. Known gaps reject adoption before storage and at the Swift
+adoption bridge; they never authorize a grant. Empty gaps still leave the target
+unresolved. See the [coverage regression evidence](../../docs/validation/v0.20-sparkle-ownership-coverage.md).
 The [payload receipt follow-up](../../docs/validation/v0.20-sparkle-payload-receipts.md)
 requires all per-path replies and bounded catalog metadata, not a partial best-effort
 scan. It applies receipt install locations explicitly and compares both snapshots.

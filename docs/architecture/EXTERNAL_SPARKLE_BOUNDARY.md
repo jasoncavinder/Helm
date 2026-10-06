@@ -146,6 +146,23 @@ configuration for an app, unreadable inputs and limits fail closed. Missing or
 legacy receipts without app declarations remain unresolved, never a complete
 ownership proof. Timestamped definitions and nonstandard prefixes are not scanned.
 
+The [coverage-gap follow-up](../validation/v0.20-sparkle-ownership-coverage.md)
+retains a sorted `homebrewCoverageGaps` list in native evidence, each entry
+binding a scanned token path to a typed reason: missing metadata, receipt or
+artifact declarations, empty declarations, or uninspected non-app artifacts.
+App claims survive alongside gaps in mixed declarations. Non-app artifacts are
+not executed or presumed harmless, and incomplete tokens are not filtered out
+by target name. Malformed/unreadable inputs still throw rather than becoming a
+successful partial scan. No gaps means only that these specific receipt gaps
+were absent; it does not resolve the other ownership scopes below.
+
+Known gaps reject coordinator preparation before opening storage, regardless
+of its local `ownershipComplete` assertion. The direct Swift adoption bridge
+also rejects preparation and consumes confirmation on such evidence. Snapshot
+drift before admission rejects; a gap observed after a possible commit reports
+uncertainty, not safe retry. This is a necessary denial guard, not a production
+ownership provider or a new core ABI/wire authority field.
+
 Each scan has a shared 10,000-entry bound. Directory opens refuse symlinks in
 every component, and missing roots differ from unreadable/unsupported paths.
 Directory/entry identity and link text snapshots must agree across target
@@ -289,7 +306,10 @@ existing diagnostics and revocation operations. Code 50 is a review handle;
 The processor requires complete local ownership observations, rechecks the entire
 native snapshot/account root before preparation and confirmation, and holds the
 private existing-only filesystem lease around the core calls. Snapshot equality
-includes raw manager evidence, not just a summarized allow/deny result. Admission
+includes the reported manager claims and coverage gaps, not just a summarized
+allow/deny result. The native scanners separately compare raw inputs within each
+observation around target signing; the cross-review evidence does not retain
+those raw receipt bytes. Admission
 is synchronous on the connection gate queue immediately before entering core;
 the native worker never blocks timeout/invalidation handling. After admission,
 failed observation/lease checks return uncertainty. Connection loss clears the
