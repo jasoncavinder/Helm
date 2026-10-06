@@ -384,6 +384,16 @@ including a sandboxed-service negative control. It does not populate a native
 `externalHelperUnsandboxed` fact or close the production signed-launch gate.
 No adoption provider, installer, auto-retry or shipped sandbox exception is added.
 
+The subsequent [signed private-peer matrix](../validation/v0.20-sparkle-private-peer.md)
+uses the real helper nested inside notarized sandboxed QA callers, without any
+Mach-lookup entitlement. The unchanged production requirements accept the valid
+handshake/read-only preflight and reject wrong identity, channel and sandbox
+controls. A wrong-identity service receives the data-free hello but no target
+intent; a fresh valid connection then succeeds. This closes the bounded signed
+private-transport gate on the tested arm64 VM, not native boundary-fact mapping,
+complete ownership observation, operational adoption or installation. Neither
+these test results nor a successful hello can supply an authority flag at runtime.
+
 ### Earlier Policy Evidence
 
 Twelve new pure-policy tests cover strict requests, roots, helper/target/candidate
