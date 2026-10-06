@@ -42,10 +42,16 @@ operational adoption or installation certification. Separately, the
 [signed private-peer matrix](validation/v0.20-sparkle-private-peer.md) now passes
 actual notarized nested-service handshake/read-only preflight, rejected caller
 identity/channel/sandbox controls, an impostor response gate and a fresh valid
-connection in the disposable arm64 VM. These callers have no Mach-lookup sandbox
-exception. The production adoption provider remains absent; no updater is
-initialized or shipping app entitlement changed. Native ownership and live
-boundary mapping, actual lifecycle/recovery and GUI/CLI integration remain open.
+connection in the disposable arm64 VM. PR #636 is reviewed and merged at
+`86c480e8`; these callers have no Mach-lookup sandbox exception. The next
+[live private-service boundary](validation/v0.20-sparkle-live-boundary.md) binds
+native facts to the owned listener, authenticated message delivery and a bounded
+connection lifetime. Private-route work revalidates helper identity before and
+after observation; loss, expiry and drift suppress results. All 261 native tests,
+26 contract checks and a fresh notarized nine-case peer matrix pass in the VM.
+The production adoption provider remains absent; no updater is initialized or
+shipping app entitlement changed. Complete supported ownership, grant-provider
+wiring, actual lifecycle/recovery and GUI/CLI integration remain open.
 
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
@@ -246,9 +252,11 @@ path. An internal Swift owner consumes the opaque review on every confirmation
 attempt, including mapping/root failures, and frees abandoned handles. Distinct
 results mean consent recorded, changed/rejected review or uncertain outcome;
 none is an update permit. This slice adds no XPC grant method or production
-constructor for trusted boundary facts. Live authenticated admission, native
-sandbox-inheritance proof, complete supported ownership observations and the
-private filesystem lease still precede operational use; the existing preflight
+constructor for trusted boundary facts. The subsequent
+[live private-service boundary](validation/v0.20-sparkle-live-boundary.md) now
+supplies connection-scoped native facts for the owned private route, not the
+legacy Mach route. Complete supported ownership observations, adoption-provider
+wiring and the private filesystem lease still precede operational use; preflight
 continues to report unknown origin as unresolved.
 PR #632 is reviewed and merged at `3895f469`, with no independent-review findings.
 

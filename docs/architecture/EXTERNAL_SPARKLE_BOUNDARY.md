@@ -238,7 +238,8 @@ Confirmation consumes it on all outcomes and returns only 51 (consent recorded),
 update. The internal Swift owner clears its handle before entering core, frees
 abandoned reviews, and also consumes attempts rejected by local target mapping
 or account-root drift. The owner is worker-confined, not a concurrency guard.
-It adds no XPC method or production boundary-evidence constructor. The future
+That bridge slice adds no XPC method or production boundary-evidence constructor;
+the later private-service boundary below supplies connection-scoped facts. The
 authenticated coordinator must bind review lifetime to one connection, retain
 the private existing-only lease, enforce deadlines/cancellation and fresh native
 checks, admit the commit once, then suppress success after failed postchecks or
@@ -270,8 +271,8 @@ is synchronous on the connection gate queue immediately before entering core;
 the native worker never blocks timeout/invalidation handling. After admission,
 failed observation/lease checks return uncertainty. Connection loss clears the
 pending review and suppresses late success; a possibly committed grant is not
-automatically replayed. None of this supplies the missing native boundary or
-ownership proof: operational enabling and signed-helper grant checks remain open.
+automatically replayed. The coordinator itself supplies neither native boundary
+nor ownership proof: operational enabling and signed-helper grant checks remain open.
 
 The store atomically rechecks the current grant at session claim, install handoff
 and successful version verification. Revocation, including before the first grant,
@@ -393,6 +394,37 @@ intent; a fresh valid connection then succeeds. This closes the bounded signed
 private-transport gate on the tested arm64 VM, not native boundary-fact mapping,
 complete ownership observation, operational adoption or installation. Neither
 these test results nor a successful hello can supply an authority flag at runtime.
+
+### Live Private-Service Boundary
+
+The [runtime-binding follow-up](../validation/v0.20-sparkle-live-boundary.md)
+owns `NSXPCListener.service()` inside the native library. Only that listener's
+delegate creates a private acceptance context, after fresh helper identity
+validation; the server still configures the exact production caller requirement
+before export/activation. `NSXPCConnection.current()` must match that accepted
+connection synchronously on hello and every exported request, before dispatch.
+Configuring a requirement or directly calling an exported method is not delivery.
+
+After a valid hello, worker observations are bracketed by native helper
+revalidation and connection/account/lifetime checks. Local cancellation and
+invalidation/interruption callbacks close the boundary immediately, independent
+of the server queue's later result cleanup. Monotonic expiry also rejects when
+the timer has not fired. Existing per-request budgets, deadlines, cancellation
+and one-time mutation admission remain mandatory and independent.
+
+The internal boundary maps the delivered fixed caller requirement plus fresh
+native self-evidence and owned private-service launch into the six ABI facts.
+The unsandboxed-helper fact combines actual service-listener provenance with
+sealed service configuration/placement and absent helper entitlements, not the
+absence of entitlements alone or a test result. It does not imply unrestricted
+filesystem access, bypass native App Management/TCC or authorize a target.
+Mach/anonymous transport and standalone self-preflight do not create these facts.
+No path, PID, Boolean, peer identity or launch assertion is accepted from IPC.
+
+This mapping currently brackets private-route diagnostic/revocation work only;
+the mapped value is not passed to the grant bridge. The production adoption
+provider remains nil until complete supported ownership and coordinator wiring
+are reviewed. No new XPC method, shipping embedding or installer is introduced.
 
 ### Earlier Policy Evidence
 
