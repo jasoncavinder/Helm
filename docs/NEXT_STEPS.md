@@ -101,9 +101,18 @@ The [live private-service boundary](validation/v0.20-sparkle-live-boundary.md)
 now binds fresh native facts to the owned service listener and delivered messages,
 with connection-loss/expiry/account fencing and helper rechecks around work.
 Its 261 native tests, 26 contracts and new notarized peer matrix pass in the VM;
-the production adoption provider remains absent. Review that increment, then
-complete the supported ownership provider and connect the staged adoption
-coordinator to these live observations before enabling grants.
+it is reviewed and merged through #637 at `65421dae`, with all head checks green
+and no review findings. The production adoption provider remains absent.
+Review the [Homebrew receipt exclusion follow-up](validation/v0.20-sparkle-cask-receipts.md):
+installed app destinations and saved app-directory precedence now supplement
+references, with bounded no-follow reads, raw snapshot comparisons and
+case-equivalent denial matching. Its 281 native tests, 26 contracts and real
+read-only cask controls pass, but it does not certify operational grants.
+Resolve the remaining supported ownership scope explicitly, then connect the
+staged adoption coordinator to these live observations before enabling grants.
+In particular, missing legacy artifact declarations are still unresolved, not a
+complete successful ownership result; do not flip `ownershipComplete` merely
+because these additional exclusions are empty.
 Do not infer sandbox inheritance from absent entitlements or full manager
 coverage from an empty exclusion list. Then complete
 the supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared

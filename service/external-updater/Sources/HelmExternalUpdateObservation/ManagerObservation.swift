@@ -10,7 +10,7 @@ public struct NativeManagerEvidence: Encodable, Equatable {
 
     public enum Exclusion: String, Encodable {
         case appStoreReceipt, homebrewCaskReference, setappLocation, setappBundleMarker, installerReceipt
-        case macportsLocation, macportsRegistry
+        case macportsLocation, macportsRegistry, homebrewCaskReceipt
     }
 
     public let exclusions: [Exclusion]
@@ -18,19 +18,22 @@ public struct NativeManagerEvidence: Encodable, Equatable {
     public let inspectedCaskEntries: Int
     public let installerPackageIdentifiers: [String]
     public let macportsClaims: [String]
+    public let homebrewReceiptClaims: [String]
     public var disposition: Disposition { exclusions.isEmpty ? .unresolved : .otherManager }
 
     enum CodingKeys: String, CodingKey {
         case disposition, exclusions, homebrewReferences, inspectedCaskEntries, installerPackageIdentifiers, macportsClaims
+        case homebrewReceiptClaims
     }
 
     init(exclusions: [Exclusion], homebrewReferences: [String], inspectedCaskEntries: Int,
-         installerPackageIdentifiers: [String] = [], macportsClaims: [String] = []) {
+         installerPackageIdentifiers: [String] = [], macportsClaims: [String] = [], homebrewReceiptClaims: [String] = []) {
         self.exclusions = exclusions
         self.homebrewReferences = homebrewReferences
         self.inspectedCaskEntries = inspectedCaskEntries
         self.installerPackageIdentifiers = installerPackageIdentifiers
         self.macportsClaims = macportsClaims
+        self.homebrewReceiptClaims = homebrewReceiptClaims
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -41,6 +44,7 @@ public struct NativeManagerEvidence: Encodable, Equatable {
         try values.encode(inspectedCaskEntries, forKey: .inspectedCaskEntries)
         try values.encode(installerPackageIdentifiers, forKey: .installerPackageIdentifiers)
         try values.encode(macportsClaims, forKey: .macportsClaims)
+        try values.encode(homebrewReceiptClaims, forKey: .homebrewReceiptClaims)
     }
 }
 
@@ -63,6 +67,8 @@ struct NativeManagerObserver {
         var absentRoots: [String] = []
         var links: [String: String] = [:]
         var references: [String] = []
+        var receipts: [String: NativeCaskReceiptObserver.Snapshot] = [:]
+        var receiptBytes = 0
         var entryCount = 0
 
         func evidence(target: URL, applicationRoots: [URL], hasStoreReceipt: Bool,
@@ -71,7 +77,10 @@ struct NativeManagerObserver {
             var exclusions: [NativeManagerEvidence.Exclusion] = []
             if hasStoreReceipt { exclusions.append(.appStoreReceipt) }
             if !references.isEmpty { exclusions.append(.homebrewCaskReference) }
-            if applicationRoots.contains(where: { target.path.hasPrefix($0.appendingPathComponent("Setapp", isDirectory: true).path + "/") }) {
+            if applicationRoots.contains(where: {
+                NativeManagerObserver.denialKey(target.path).hasPrefix(
+                    NativeManagerObserver.denialKey($0.appendingPathComponent("Setapp", isDirectory: true).path) + "/")
+            }) {
                 exclusions.append(.setappLocation)
             }
             // Presence is a denial marker, not a license check; static linkage
@@ -86,9 +95,11 @@ struct NativeManagerObserver {
             if target.path.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
                 .hasPrefix("/applications/macports/") { exclusions.append(.macportsLocation) }
             if !macportsClaims.isEmpty { exclusions.append(.macportsRegistry) }
+            let receiptClaims = receipts.values.flatMap(\.claims).sorted()
+            if !receiptClaims.isEmpty { exclusions.append(.homebrewCaskReceipt) }
             return NativeManagerEvidence(exclusions: exclusions, homebrewReferences: references,
                                          inspectedCaskEntries: entryCount, installerPackageIdentifiers: installerPackages,
-                                         macportsClaims: macportsClaims)
+                                         macportsClaims: macportsClaims, homebrewReceiptClaims: receiptClaims)
         }
     }
 
@@ -116,6 +127,12 @@ struct NativeManagerObserver {
             }
         }
         return URL(fileURLWithPath: "/" + components.joined(separator: "/"), isDirectory: false)
+    }
+
+    // Conservative denial matching only, never a filesystem identity assertion.
+    static func denialKey(_ path: String) -> String {
+        path.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+            .precomposedStringWithCanonicalMapping
     }
 
     private func scan(_ directory: URL, depth: Int, target: URL, snapshot: inout Snapshot) throws {
@@ -159,7 +176,7 @@ struct NativeManagerObserver {
                 snapshot.links[child.path] = destination
                 // Compare the lexical absolute destination, not a basename or
                 // bundle ID. Relative links are resolved only against this directory.
-                if Self.lexicalReferenceURL(destination, relativeTo: directory).path == target.path {
+                if Self.denialKey(Self.lexicalReferenceURL(destination, relativeTo: directory).path) == Self.denialKey(target.path) {
                     snapshot.references.append(child.path)
                 }
                 var after = stat()
@@ -173,6 +190,12 @@ struct NativeManagerObserver {
         for (child, identity) in children.sorted(by: { $0.0.path < $1.0.path }) {
             try scan(child, depth: depth + 1, target: target, snapshot: &snapshot)
             guard snapshot.identities[child.path] == identity else { throw ObservationFailure.changedDuringObservation }
+        }
+        if depth == 1 {
+            let receipt = try NativeCaskReceiptObserver.snapshot(token: directory, target: target,
+                                                                remainingBytes: 4 * 1024 * 1024 - snapshot.receiptBytes)
+            snapshot.receipts[directory.path] = receipt
+            snapshot.receiptBytes += receipt.byteCount
         }
         guard before == (try FileIdentity.read(descriptor: descriptor)),
               before == (try FileIdentity.read(directory)) else { throw ObservationFailure.changedDuringObservation }

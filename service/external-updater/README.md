@@ -13,6 +13,13 @@ never port or Helm's package cache; nonempty journals and changed/unsupported
 evidence reject the observation. No matching claim still means unresolved.
 See the [MacPorts scope and evidence](../../docs/validation/v0.20-sparkle-macports-ownership.md).
 
+Homebrew cask observation now supplements moved-app references with bounded
+installed receipt app declarations and saved appdir configuration. It compares
+case-equivalent paths conservatively and binds exact metadata bytes into the
+native snapshot, without running brew, Ruby, scripts or destination probes.
+Missing legacy declarations remain unresolved; no complete-ownership or adoption
+authority is produced. See the [receipt scope and evidence](../../docs/validation/v0.20-sparkle-cask-receipts.md).
+
 ## Standalone Helper Package
 
 `HelmSparkleExternalUpdater` is a separate executable, linked to its own exact

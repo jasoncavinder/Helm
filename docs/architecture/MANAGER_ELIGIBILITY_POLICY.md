@@ -140,6 +140,13 @@ it cannot grant permission, override manager ownership or abort an already
 handed-off installer. Exact ledger revision checks prevent an old review from
 revoking a newer grant. Shipping adoption/revocation controls remain gated.
 
+Homebrew cask exclusions also include supported installed receipt app declarations
+resolved with saved app-directory settings, even without a moved-app symlink.
+Case-equivalent paths conservatively deny rather than authorize; metadata is
+never executed. Missing legacy declarations and nonstandard manager locations
+remain unresolved, not evidence that adoption is safe. See the
+[receipt scope and validation](../validation/v0.20-sparkle-cask-receipts.md).
+
 ## Adding A New Rule
 
 1. Add rule and constants in `manager_policy.rs`.

@@ -116,6 +116,47 @@ final class ManagerObservationTests: XCTestCase {
         XCTAssertEqual(try observe().managerEvidence.disposition, .unresolved)
     }
 
+    func testCaseEquivalentReferenceExcludesTargetWithoutProbingDestination() throws {
+        try link(apps.path + "/eXAMPLE.APP")
+        XCTAssertEqual(try observe().managerEvidence.exclusions, [.homebrewCaskReference])
+    }
+
+    func testCanonicalEquivalentReferenceExcludesTarget() throws {
+        try link(apps.path + "/Caf\u{e9}.app")
+        let equivalent = URL(fileURLWithPath: apps.path + "/Cafe\u{301}.app", isDirectory: false)
+        XCTAssertEqual(try scanner().snapshot(target: equivalent).references, [reference.path])
+    }
+
+    private func installReceipt(time: Int = 1) throws {
+        let metadata = caskroom.appendingPathComponent("example/.metadata", isDirectory: true)
+        try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: ["uninstall_artifacts": [["app": ["Example.app"]]], "time": time])
+            .write(to: metadata.appendingPathComponent("INSTALL_RECEIPT.json", isDirectory: false))
+        try JSONSerialization.data(withJSONObject: ["default": ["appdir": apps.path], "env": [:], "explicit": [:]])
+            .write(to: metadata.appendingPathComponent("config.json", isDirectory: false))
+    }
+
+    func testFullTargetObservationRetainsReceiptClaimWithoutReference() throws {
+        try installReceipt()
+        let evidence = try observe()
+        XCTAssertEqual(evidence.managerEvidence.exclusions, [.homebrewCaskReceipt])
+        XCTAssertEqual(evidence.managerEvidence.homebrewReceiptClaims, [target.path])
+        XCTAssertTrue(evidence.requiresAuthorityResolution)
+    }
+
+    func testReceiptRawDriftAcrossSignatureValidationRejectsEvenWithSameClaim() throws {
+        try installReceipt()
+        XCTAssertThrowsError(try observe { try self.installReceipt(time: 2) }) {
+            XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+        }
+    }
+
+    func testReceiptAppearingDuringSigningRejectsObservation() throws {
+        XCTAssertThrowsError(try observe { try self.installReceipt() }) {
+            XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+        }
+    }
+
     func testLexicalReferenceNormalization() {
         let directory = URL(fileURLWithPath: "/prefix/Caskroom/example/100", isDirectory: true)
         let cases = [
@@ -252,7 +293,7 @@ final class ManagerObservationTests: XCTestCase {
     }
 
     func testSetappLocationIsComponentBounded() throws {
-        for (folder, expected) in [("Setapp", true), ("Setapp-like", false)] {
+        for (folder, expected) in [("setAPP", true), ("Setapp-like", false)] {
             let parent = apps.appendingPathComponent(folder)
             try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
             let moved = parent.appendingPathComponent("Example.app")
