@@ -144,6 +144,28 @@ final class ManagerObservationTests: XCTestCase {
         XCTAssertTrue(evidence.requiresAuthorityResolution)
     }
 
+    func testFullTargetObservationRetainsUnrelatedLegacyTokenGap() throws {
+        let token = caskroom.appendingPathComponent("unrelated", isDirectory: true)
+        try FileManager.default.createDirectory(at: token, withIntermediateDirectories: true)
+        let evidence = try observe()
+        XCTAssertEqual(evidence.managerEvidence.homebrewCoverageGaps,
+                       [NativeCaskCoverageGap(tokenPath: token.path, reason: .missingMetadata)])
+        XCTAssertTrue(evidence.managerEvidence.exclusions.isEmpty)
+        XCTAssertEqual(evidence.managerEvidence.disposition, .unresolved)
+        XCTAssertTrue(evidence.requiresAuthorityResolution)
+    }
+
+    func testCoverageOnlyChangeDuringSigningRejectsObservation() throws {
+        let metadata = caskroom.appendingPathComponent("unrelated/.metadata", isDirectory: true)
+        try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try observe {
+            try JSONSerialization.data(withJSONObject: ["uninstall_artifacts": []])
+                .write(to: metadata.appendingPathComponent("INSTALL_RECEIPT.json", isDirectory: false))
+        }) {
+            XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+        }
+    }
+
     func testReceiptRawDriftAcrossSignatureValidationRejectsEvenWithSameClaim() throws {
         try installReceipt()
         XCTAssertThrowsError(try observe { try self.installReceipt(time: 2) }) {

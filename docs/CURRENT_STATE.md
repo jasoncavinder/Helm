@@ -70,6 +70,17 @@ This does not complete ownership scope or activate adoption: legacy/missing
 declarations, nonstandard prefixes and other unsupported manager claims remain
 separate gates.
 
+PR #638 is reviewed and merged at `a1dbf0ac`, with all head checks passing and
+no independent-review findings. The [coverage-gap follow-up](validation/v0.20-sparkle-ownership-coverage.md)
+now retains specific missing/legacy/empty/uninspected cask-receipt reasons in
+native evidence instead of flattening them into an empty claims list. Known
+gaps reject adoption before storage and at the direct Swift bridge; late gaps
+consume confirmation or report post-commit uncertainty. All 293 native tests
+and 26 contracts pass in the VM, with two guard-removal negative controls and
+unchanged real cask/Rectangle evidence. An empty gap list is not complete manager
+coverage. The production adoption provider remains absent; supported ownership
+scope, live grant wiring and execution/recovery remain open.
+
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
 Research previews remain Debug-only and cannot acknowledge the real experience.

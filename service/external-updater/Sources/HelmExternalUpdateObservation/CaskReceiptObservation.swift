@@ -8,6 +8,7 @@ enum NativeCaskReceiptObserver {
         var identities: [String: FileIdentity] = [:]
         var bytes: [String: Data] = [:]
         var claims: [String] = []
+        var coverageGap: NativeCaskCoverageGap.Reason? = .missingReceipt
         var byteCount: Int { bytes.values.reduce(0) { $0 + $1.count } }
     }
 
@@ -15,7 +16,7 @@ enum NativeCaskReceiptObserver {
         let metadata = token.appendingPathComponent(".metadata", isDirectory: true)
         let descriptor = open(metadata.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW_ANY | O_DIRECTORY | O_NONBLOCK)
         guard descriptor >= 0 else {
-            if errno == ENOENT { return Snapshot() }
+            if errno == ENOENT { return Snapshot(coverageGap: .missingMetadata) }
             throw ObservationFailure.unreadableManagerEvidence
         }
         defer { close(descriptor) }
@@ -29,7 +30,9 @@ enum NativeCaskReceiptObserver {
             }
         }
         if let receipt = result.bytes["INSTALL_RECEIPT.json"] {
-            result.claims = try claims(receipt: receipt, config: result.bytes["config.json"], target: target.path)
+            let artifacts = try inspect(receipt: receipt, config: result.bytes["config.json"], target: target.path)
+            result.claims = artifacts.claims
+            result.coverageGap = artifacts.coverageGap
         }
         guard before == (try FileIdentity.read(descriptor: descriptor)),
               before == (try FileIdentity.read(metadata)) else { throw ObservationFailure.changedDuringObservation }
@@ -62,19 +65,34 @@ enum NativeCaskReceiptObserver {
     }
 
     static func claims(receipt: Data, config: Data?, target: String) throws -> [String] {
+        try inspect(receipt: receipt, config: config, target: target).claims
+    }
+
+    struct Artifacts {
+        let claims: [String]
+        let coverageGap: NativeCaskCoverageGap.Reason?
+    }
+
+    static func inspect(receipt: Data, config: Data?, target: String) throws -> Artifacts {
         guard receipt.count <= 256 * 1024, (config?.count ?? 0) <= 64 * 1024 else { throw ObservationFailure.limitExceeded }
         let object = try dictionary(receipt)
         // Legacy receipts without artifact declarations remain unresolved. This
         // observer never supplies a successful complete-ownership assertion.
-        guard let raw = object["uninstall_artifacts"], !(raw is NSNull) else { return [] }
+        guard let raw = object["uninstall_artifacts"], !(raw is NSNull) else {
+            return Artifacts(claims: [], coverageGap: .missingArtifactDeclarations)
+        }
         guard let artifacts = raw as? [[String: Any]] else { throw ObservationFailure.unreadableManagerEvidence }
         guard artifacts.count <= 512 else { throw ObservationFailure.limitExceeded }
         var destinations = Set<String>()
+        var gap: NativeCaskCoverageGap.Reason? = artifacts.isEmpty ? .emptyArtifactDeclarations : nil
         var savedDirectory: URL?
         let targetKey = NativeManagerObserver.denialKey(target)
         for artifact in artifacts {
             guard artifact.count == 1 else { throw ObservationFailure.unreadableManagerEvidence }
-            guard let rawApp = artifact["app"] else { continue }
+            guard let rawApp = artifact["app"] else {
+                gap = .uninspectedArtifacts
+                continue
+            }
             guard let arguments = rawApp as? [Any], (1...2).contains(arguments.count),
                   let source = arguments.first as? String else { throw ObservationFailure.unreadableManagerEvidence }
             try validateText(source)
@@ -97,7 +115,7 @@ enum NativeCaskReceiptObserver {
             let key = NativeManagerObserver.denialKey(path)
             if key == targetKey || key.hasPrefix(targetKey + "/") { destinations.insert(path) }
         }
-        return destinations.sorted()
+        return Artifacts(claims: destinations.sorted(), coverageGap: gap)
     }
 
     private static func appDirectory(_ data: Data?) throws -> URL {

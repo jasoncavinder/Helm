@@ -146,6 +146,11 @@ Case-equivalent paths conservatively deny rather than authorize; metadata is
 never executed. Missing legacy declarations and nonstandard manager locations
 remain unresolved, not evidence that adoption is safe. See the
 [receipt scope and validation](../validation/v0.20-sparkle-cask-receipts.md).
+Known missing/legacy/empty/uninspected cask declarations are now retained as
+[coverage gaps](../validation/v0.20-sparkle-ownership-coverage.md), including in
+unrelated tokens. They block adoption review/confirmation without erasing valid
+competing-manager claims. An empty gap list is not positive provenance or proof
+that the remaining ownership scopes were inspected.
 
 ## Adding A New Rule
 

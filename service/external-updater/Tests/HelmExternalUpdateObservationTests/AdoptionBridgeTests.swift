@@ -10,13 +10,15 @@ final class AdoptionBridgeTests: XCTestCase {
     private let request = Data(#"{"schemaVersion":1,"consentId":"550e8400-e29b-41d4-a716-446655440000","targetPath":"/Applications/Example.app","expectedBundleIdentifier":"org.example.App","expectedInstalledBuild":"100"}"#.utf8)
 
     private func evidence(build: String = "100", major: Int = 2,
-                          exclusions: [NativeManagerEvidence.Exclusion] = []) -> NativeTargetEvidence {
+                          exclusions: [NativeManagerEvidence.Exclusion] = [],
+                          gaps: [NativeCaskCoverageGap] = []) -> NativeTargetEvidence {
         NativeTargetEvidence(canonicalPath: "/Applications/Example.app", device: 42, inode: 123,
             bundleIdentifier: "org.example.App", build: build, teamIdentifier: "ABCDE12345",
             codeDirectoryHash: Array(repeating: 7, count: 20), ed25519PublicKey: Array(repeating: 8, count: 32),
             feedURL: "https://example.org/feed", frameworkMajor: major, hasStoreReceipt: false,
             writableByOthers: false, inspectedEntries: 10,
-            managerEvidence: NativeManagerEvidence(exclusions: exclusions, homebrewReferences: [], inspectedCaskEntries: 2))
+            managerEvidence: NativeManagerEvidence(exclusions: exclusions, homebrewReferences: [], inspectedCaskEntries: 2,
+                                                  homebrewCoverageGaps: gaps))
     }
 
     private func boundary(missing: Int? = nil, hash: UInt8 = 9) -> NativeAdoptionBoundary {
@@ -134,6 +136,24 @@ final class AdoptionBridgeTests: XCTestCase {
                 XCTAssertEqual(revoke.confirm(path: path, now: 110), .revoked)
                 XCTAssertEqual(review.confirm(path: path, target: evidence(), boundary: boundary(), userApplications: applications, now: 110), .reviewChanged)
                 XCTAssertEqual(try status(path), .revoked)
+            }
+        }
+    }
+
+    func testCoverageGapCannotBypassCoordinatorViaBridgeAndConsumesConfirmation() throws {
+        try withLedger { scope in
+            try scope.withDatabase(createIfMissing: false) { path, _ in
+                for reason in NativeCaskCoverageGap.Reason.allCases {
+                    let target = evidence(gaps: [NativeCaskCoverageGap(tokenPath: "/opt/homebrew/Caskroom/legacy", reason: reason)])
+                    XCTAssertThrowsError(try NativeAdoptionReview(path: path, request: request, target: target,
+                        boundary: boundary(), userApplications: applications, now: 100))
+                    let review = try prepare(path)
+                    XCTAssertEqual(review.confirm(path: path, target: target, boundary: boundary(),
+                        userApplications: applications, now: 110), .reviewChanged)
+                    XCTAssertEqual(review.confirm(path: path, target: evidence(), boundary: boundary(),
+                        userApplications: applications, now: 110), .reviewChanged)
+                    XCTAssertEqual(try status(path), .notRecorded)
+                }
             }
         }
     }

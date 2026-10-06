@@ -103,16 +103,27 @@ with connection-loss/expiry/account fencing and helper rechecks around work.
 Its 261 native tests, 26 contracts and new notarized peer matrix pass in the VM;
 it is reviewed and merged through #637 at `65421dae`, with all head checks green
 and no review findings. The production adoption provider remains absent.
-Review the [Homebrew receipt exclusion follow-up](validation/v0.20-sparkle-cask-receipts.md):
+The [Homebrew receipt exclusion follow-up](validation/v0.20-sparkle-cask-receipts.md)
+is reviewed and merged through #638 at `a1dbf0ac`, with all head checks passing
+and no independent-review findings:
 installed app destinations and saved app-directory precedence now supplement
 references, with bounded no-follow reads, raw snapshot comparisons and
 case-equivalent denial matching. Its 281 native tests, 26 contracts and real
 read-only cask controls pass, but it does not certify operational grants.
+Review the [coverage-gap follow-up](validation/v0.20-sparkle-ownership-coverage.md):
+missing metadata/receipts/declarations, empty declarations and uninspected
+non-app artifacts now remain explicit native evidence. Both coordinator and
+Swift bridge reject known gaps, even with an asserted complete-ownership input.
+Its 293 native tests, 26 contracts, two guard-removal negative controls and
+read-only installed-cask checks pass in the VM. Preserve existing known-manager
+denials and the unresolved Rectangle outcome; no production grant is enabled.
 Resolve the remaining supported ownership scope explicitly, then connect the
 staged adoption coordinator to these live observations before enabling grants.
 In particular, missing legacy artifact declarations are still unresolved, not a
 complete successful ownership result; do not flip `ownershipComplete` merely
-because these additional exclusions are empty.
+because these additional exclusions or coverage-gap lists are empty. Non-app
+artifacts in otherwise valid receipts also remain uninspected; a gap in any
+scanned token blocks adoption, not just a token whose name resembles the app.
 Do not infer sandbox inheritance from absent entitlements or full manager
 coverage from an empty exclusion list. Then complete
 the supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
