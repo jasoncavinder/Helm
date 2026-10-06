@@ -14,6 +14,7 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     private let consent: ((Data) throws -> UInt32)?
     private let revocations: RevocationCoordinator?
     private let adoptions: AdoptionCoordinator?
+    private let boundary: NativePrivateServiceBoundary?
     private let started = DispatchTime.now().uptimeNanoseconds
     private var operations = PreflightGate(started: DispatchTime.now().uptimeNanoseconds)
     private var pendingReply: ((UInt64, UInt32, Data?) -> Void)?
@@ -25,6 +26,16 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     /// Foundation permits configuring a connection requirement only once.
     public convenience init(connection: NSXPCConnection, helperIdentity: NativeHelperEvidence? = nil,
                             event: @escaping (BootstrapEvent) -> Void) throws {
+        try self.init(connection: connection, helperIdentity: helperIdentity, privateService: nil, event: event)
+    }
+
+    convenience init(privateService: PrivateServiceAcceptance, event: @escaping (BootstrapEvent) -> Void) throws {
+        try self.init(connection: privateService.connection, helperIdentity: privateService.identity,
+                      privateService: privateService, event: event)
+    }
+
+    private convenience init(connection: NSXPCConnection, helperIdentity: NativeHelperEvidence?,
+                             privateService: PrivateServiceAcceptance?, event: @escaping (BootstrapEvent) -> Void) throws {
         let authentication = try ExternalUpdaterPeerAuthentication()
         guard authentication.admit(connection) else { throw BootstrapFailure.invalidAccount }
         let processor = helperIdentity.map { NativePreflightProcessor(identity: $0) }
@@ -34,17 +45,19 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
             { try NativeConsentProcessor(identity: identity).assess($0).code }
         }, revocation: helperIdentity.map { identity in
             { try NativeRevocationProcessor(identity: identity).prepare($0) }
-        }, adoption: nil, event: event)
+        }, adoption: nil, boundary: privateService.map { NativePrivateServiceBoundary(acceptance: $0) }, event: event)
     }
 
     private init(configuredConnection: NSXPCConnection, assess: ((Data) throws -> UInt32)?, consent: ((Data) throws -> UInt32)?,
                  revocation: ((Data) throws -> PreparedRevocation)?,
                  adoption: ((Data) throws -> PreparedAdoption)?,
+                 boundary: NativePrivateServiceBoundary? = nil,
                  event: @escaping (BootstrapEvent) -> Void) {
         connection = configuredConnection
         self.event = event
         self.assess = assess
         self.consent = consent
+        self.boundary = boundary
         revocations = revocation.map { RevocationCoordinator(prepare: $0) }
         adoptions = adoption.map { AdoptionCoordinator(prepare: $0) }
         super.init()
@@ -66,18 +79,21 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
                      consent: ((Data) throws -> ExternalConsentStatus)? = nil,
                      revocation: ((Data) throws -> PreparedRevocation)? = nil,
                      adoption: ((Data) throws -> PreparedAdoption)? = nil,
+                     boundary: NativePrivateServiceBoundary? = nil,
                      event: @escaping (BootstrapEvent) -> Void) {
         self.init(configuredConnection: testingConnection,
                   assess: assess.map { call in { try call($0).code } },
-                  consent: consent.map { call in { try call($0).code } }, revocation: revocation, adoption: adoption, event: event)
+                  consent: consent.map { call in { try call($0).code } }, revocation: revocation, adoption: adoption,
+                  boundary: boundary, event: event)
     }
     #endif
 
     public func hello(version: UInt32, challenge: Data, reply: @escaping (UInt32, Data?, Data?) -> Void) {
+        let delivered = boundary?.deliveredMessage() ?? true
         queue.async { [weak self] in
             guard let self else { return }
             let now = DispatchTime.now().uptimeNanoseconds
-            guard !self.closed, !self.established, version == BootstrapWire.version,
+            guard delivered, !self.closed, !self.established, version == BootstrapWire.version,
                   challenge.count == BootstrapWire.bytes else {
                 reply(0, nil, nil)
                 self.finish(.invalidMessage)
@@ -90,13 +106,14 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
             }
             do {
                 let session = try BootstrapWire.nonce()
+                try self.boundary?.establish()
                 self.operations.establish(session)
                 self.established = true
                 reply(BootstrapWire.version, challenge, session)
                 self.emit(.ready)
             } catch {
                 reply(0, nil, nil)
-                self.finish(.entropyUnavailable)
+                self.finish((error as? BootstrapFailure) ?? .entropyUnavailable)
             }
         }
     }
@@ -155,10 +172,11 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
 
     private func perform(assess: ((Data) throws -> BootstrapResponse)?, session: Data, sequence: UInt64, request: Data,
                          reply: @escaping (UInt64, UInt32, Data?) -> Void) {
+        let delivered = boundary?.deliveredMessage() ?? true
         queue.async { [weak self] in
             guard let self else { reply(sequence, 0, nil); return }
             do {
-                guard !self.closed, self.established, let assess,
+                guard delivered, !self.closed, self.established, let assess,
                       self.connection.effectiveUserIdentifier == geteuid() else {
                     throw BootstrapFailure.invalidMessage
                 }
@@ -169,8 +187,14 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
                 // Native signing/filesystem inspection must not block the queue
                 // handling expiry or loss. Late work can never publish a result.
                 self.worker.async { [weak self] in
-                    let result = Result { try assess(request) }
-                    self?.queue.async { [weak self] in self?.complete(sequence: sequence, result: result) }
+                    guard let self else { return }
+                    let result = Result {
+                        if let boundary = self.boundary {
+                            return try boundary.withObservation { _ in try assess(request) }
+                        }
+                        return try assess(request)
+                    }
+                    self.queue.async { [weak self] in self?.complete(sequence: sequence, result: result) }
                 }
                 self.queue.asyncAfter(deadline: .now() + .seconds(15)) { [weak self] in
                     guard let self, self.operations.isPending(sequence) else { return }
@@ -212,12 +236,14 @@ public final class ExternalUpdaterBootstrapServer: NSObject, ExternalUpdaterBoot
     }
 
     private func close(_ failure: BootstrapFailure) {
+        boundary?.close()
         queue.async { [weak self] in self?.finish(failure) }
     }
 
     private func finish(_ failure: BootstrapFailure) {
         guard !closed else { return }
         closed = true
+        boundary?.close()
         operations.close()
         let reply = pendingReply
         pendingReply = nil

@@ -66,6 +66,14 @@ single-flight and loss/no-reconnect gates apply. The shipping app does not call
 this constructor or embed the helper, and the production adoption provider is
 still absent. See the [VM launch experiment and limits](../../docs/validation/v0.20-sparkle-private-xpc.md).
 
+`ExternalUpdaterPrivateServiceHost` owns the private listener and creates a
+connection-local acceptance context only in its matching delegate. The
+[live boundary](../../docs/validation/v0.20-sparkle-live-boundary.md) requires
+actual current-connection delivery before queue dispatch, valid hello, bounded
+session/account state and fresh helper identity before/after native work. It
+does not infer trust from a supplied path, PID or sandbox flag. The standalone
+Mach host retains its existing diagnostics but cannot construct this context.
+
 Host compilation/staging, without runtime execution:
 
 ```sh
@@ -197,9 +205,10 @@ The separate [private adoption bridge](../../docs/validation/v0.20-sparkle-adopt
 maps explicit local boundary facts to the existing-only Rust adoption ledger.
 Its internal Swift review owner is single-use, including failed confirmation
 attempts, and releases abandoned reviews. Native inputs are neither Codable nor
-a public Swift API, and no production caller currently constructs these trust
-facts. Staged XPC adoption methods remain disabled in production. Live peer/sandbox proof, complete
-supported ownership observations, one-time admission and the private filesystem
+a public Swift API. The owned private-service context now constructs native
+facts around admitted work, but does not pass them to the grant bridge. Staged
+XPC adoption methods remain disabled in production. Complete supported ownership
+observations, provider wiring, one-time admission and the private filesystem
 lease remain required before operational use. Result 51 records per-app consent
 only; 52 rejects the changed review, and 53 means uncertainty. None approves an
 update or permits automatic replay after storage/postcheck failure or lost reply.

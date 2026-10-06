@@ -13,10 +13,12 @@ final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
     let consent: ((Data) throws -> ExternalConsentStatus)?
     let revocation: ((Data) throws -> PreparedRevocation)?
     let adoption: ((Data) throws -> PreparedAdoption)?
+    let boundary: ((NSXPCConnection) -> NativePrivateServiceBoundary)?
     init(productionGate: Bool = false, assess: ((Data) throws -> NativePolicyAssessment)? = nil,
          consent: ((Data) throws -> ExternalConsentStatus)? = nil,
          revocation: ((Data) throws -> PreparedRevocation)? = nil,
          adoption: ((Data) throws -> PreparedAdoption)? = nil,
+         boundary: ((NSXPCConnection) -> NativePrivateServiceBoundary)? = nil,
          event: @escaping (BootstrapEvent) -> Void = { _ in }) {
         self.productionGate = productionGate
         self.event = event
@@ -24,6 +26,7 @@ final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
         self.consent = consent
         self.revocation = revocation
         self.adoption = adoption
+        self.boundary = boundary
     }
     var count: Int { lock.lock(); defer { lock.unlock() }; return servers.count }
 
@@ -34,7 +37,8 @@ final class BootstrapDelegate: NSObject, NSXPCListenerDelegate {
             server = guarded
         } else {
             server = ExternalUpdaterBootstrapServer(testingConnection: connection, assess: assess, consent: consent,
-                                                   revocation: revocation, adoption: adoption, event: event)
+                                                   revocation: revocation, adoption: adoption,
+                                                   boundary: boundary?(connection), event: event)
         }
         lock.lock(); servers.append(server); lock.unlock()
         return true

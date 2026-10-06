@@ -44,9 +44,15 @@ do {
         encoder.outputFormatting = [.sortedKeys]
         FileHandle.standardOutput.write(try encoder.encode(report))
         FileHandle.standardOutput.write(Data("\n".utf8))
+    } else if bundledService {
+        try ExternalUpdaterPrivateServiceHost.run(identity: helper) { event in
+            if case .ready = event {
+                FileHandle.standardOutput.write(Data("{\"event\":\"authenticated_caller_ready\"}\n".utf8))
+            }
+        }
     } else {
         let host = try BootstrapHost(identity: helper)
-        host.run(bundledService: bundledService)
+        host.run()
     }
 } catch {
     FileHandle.standardError.write(Data("External updater preflight rejected: \(error)\n".utf8))

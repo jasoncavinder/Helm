@@ -2,9 +2,9 @@ import CExternalUpdatePolicy
 import Foundation
 
 /// Native-only inputs, not Codable or a public API. This transports facts, it
-/// does not establish them. No production constructor currently supplies these:
-/// live peer/sandbox proof and complete supported ownership observations remain
-/// required before the authenticated coordinator may call the grant bridge.
+/// does not establish them. The owned private-service boundary now constructs
+/// these only during live, authenticated native work. Complete supported ownership
+/// observations remain required before the coordinator may call the grant bridge.
 struct NativeAdoptionBoundary: Equatable {
     let helperIdentifier: String
     let helperTeamIdentifier: String

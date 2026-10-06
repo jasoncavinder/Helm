@@ -93,12 +93,17 @@ Its VM-only ad-hoc experiment distinguishes inherited child-process denial from
 separate-service access, with a sandboxed-service negative control. This is not
 production trust certification, and the app still embeds no helper.
 The separate [signed private-peer matrix](validation/v0.20-sparkle-private-peer.md)
-now passes fresh notarized nested-service handshake/read-only preflight with the
+is reviewed and merged through #636 at `86c480e8`; it passes fresh notarized nested-service handshake/read-only preflight with the
 exact production requirements, rejected caller identity/channel/sandbox controls,
 an impostor response gate and a fresh valid connection. Preserve this bounded
 arm64 VM evidence; it does not activate adoption or certify other OS versions.
-Next bind actual accepted peers and launch evidence to fresh native boundary
-facts, and complete the ownership provider before enabling grants.
+The [live private-service boundary](validation/v0.20-sparkle-live-boundary.md)
+now binds fresh native facts to the owned service listener and delivered messages,
+with connection-loss/expiry/account fencing and helper rechecks around work.
+Its 261 native tests, 26 contracts and new notarized peer matrix pass in the VM;
+the production adoption provider remains absent. Review that increment, then
+complete the supported ownership provider and connect the staged adoption
+coordinator to these live observations before enabling grants.
 Do not infer sandbox inheritance from absent entitlements or full manager
 coverage from an empty exclusion list. Then complete
 the supported exclusion scope, accepted Sparkle candidates and adoption/revocation UX shared
