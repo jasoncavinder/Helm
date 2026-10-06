@@ -113,7 +113,7 @@ Re-observation at future review/confirmation/handoff boundaries remains required
 The [native manager observer](../validation/v0.20-sparkle-manager-authority.md)
 adds read-only exclusion facts to `NativeTargetEvidence`. It reads Homebrew's
 installed moved-app references at `/opt/homebrew/Caskroom` and
-`/usr/local/Caskroom` without running brew or evaluating cask definitions. Exact
+`/usr/local/Caskroom` without running brew or evaluating cask definitions. Normalized
 absolute/relative link destinations must identify the target path; names or
 bundle IDs alone do not match. The scan never follows those links or descends
 into app payloads. Standard-prefix scope is fixed locally, not supplied by XPC,
@@ -122,6 +122,29 @@ Reference normalization collapses path components in memory only, without
 filesystem standardization, tilde expansion or symlink resolution. All scanner
 URL construction supplies explicit directory hints so Foundation cannot infer
 directory status by consulting artifact destinations outside the scan.
+Reference comparison now uses fixed-locale case folding and canonical Unicode
+composition as a conservative denial key, not a filesystem identity assertion.
+Setapp location comparison uses the same component-bounded key. Equivalent
+spellings deny even on case-sensitive filesystems rather than risk overriding
+a manager claim on a case-insensitive volume.
+
+The [installed receipt follow-up](../validation/v0.20-sparkle-cask-receipts.md)
+also reads each token's fixed `.metadata/INSTALL_RECEIPT.json` and `config.json`.
+Supported `uninstall_artifacts` app declarations yield full destinations using
+saved `explicit > env > default` appdir precedence, source basename and optional
+target renames. Matching app/payload destinations add `homebrewCaskReceipt`;
+the native bridge maps it to the existing Homebrew exclusion bit. It does not
+trust a matching basename alone or execute non-app artifacts, scripts or Ruby.
+No destination is probed, including appdirs outside allowed target roots.
+
+Metadata files must be regular and opened without following any symlink.
+Reads are bounded to 256 KiB per receipt, 64 KiB per config and 4 MiB total per
+scan, with at most 512 artifacts per receipt. Exact bytes, metadata-directory
+identity and file identities remain part of the snapshot compared around target
+signature validation. Malformed app declarations, unsupported/missing saved
+configuration for an app, unreadable inputs and limits fail closed. Missing or
+legacy receipts without app declarations remain unresolved, never a complete
+ownership proof. Timestamped definitions and nonstandard prefixes are not scanned.
 
 Each scan has a shared 10,000-entry bound. Directory opens refuse symlinks in
 every component, and missing roots differ from unreadable/unsupported paths.

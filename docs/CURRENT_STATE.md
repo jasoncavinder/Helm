@@ -43,15 +43,32 @@ operational adoption or installation certification. Separately, the
 actual notarized nested-service handshake/read-only preflight, rejected caller
 identity/channel/sandbox controls, an impostor response gate and a fresh valid
 connection in the disposable arm64 VM. PR #636 is reviewed and merged at
-`86c480e8`; these callers have no Mach-lookup sandbox exception. The next
+`86c480e8`; these callers have no Mach-lookup sandbox exception. The
 [live private-service boundary](validation/v0.20-sparkle-live-boundary.md) binds
 native facts to the owned listener, authenticated message delivery and a bounded
 connection lifetime. Private-route work revalidates helper identity before and
 after observation; loss, expiry and drift suppress results. All 261 native tests,
 26 contract checks and a fresh notarized nine-case peer matrix pass in the VM.
+PR #637 is reviewed and merged at `65421dae`, with no independent-review
+findings and all head checks passing. The review repeated the native/contracts
+and two sequential signed-peer matrices; its retained interference limitation
+does not grant runtime authority.
 The production adoption provider remains absent; no updater is initialized or
 shipping app entitlement changed. Complete supported ownership, grant-provider
 wiring, actual lifecycle/recovery and GUI/CLI integration remain open.
+
+The [Homebrew receipt exclusion follow-up](validation/v0.20-sparkle-cask-receipts.md)
+now inspects bounded installed app declarations and saved app-directory settings
+at the standard Caskroom prefixes. A missing moved-app symlink no longer hides a
+supported receipt claim. Case-equivalent reference/destination and Setapp-location
+spellings are conservative denials, including on case-sensitive volumes. Raw
+receipt/config bytes and filesystem identities must agree across native target
+validation; metadata is never evaluated as Ruby or used to invoke brew. All 281
+native tests and 26 contracts pass in the disposable VM. A read-only probe matches
+three real cask receipts and leaves Rectangle unresolved with `canUpdate: false`.
+This does not complete ownership scope or activate adoption: legacy/missing
+declarations, nonstandard prefixes and other unsupported manager claims remain
+separate gates.
 
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.

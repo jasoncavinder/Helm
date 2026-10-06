@@ -46,7 +46,7 @@ public enum NativePolicyAssessment: String, Encodable {
         for exclusion in evidence.managerEvidence.exclusions {
             switch exclusion {
             case .appStoreReceipt: exclusions |= 1
-            case .homebrewCaskReference: exclusions |= 2
+            case .homebrewCaskReference, .homebrewCaskReceipt: exclusions |= 2
             case .setappLocation: exclusions |= 4
             case .setappBundleMarker: exclusions |= 8
             case .installerReceipt: exclusions |= 16

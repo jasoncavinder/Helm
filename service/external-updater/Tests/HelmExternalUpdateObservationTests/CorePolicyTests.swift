@@ -42,7 +42,7 @@ final class CorePolicyTests: XCTestCase {
 
     func testEveryNativeExclusionReachesRust() {
         for exclusion in [NativeManagerEvidence.Exclusion.appStoreReceipt, .homebrewCaskReference, .setappLocation, .setappBundleMarker,
-                          .installerReceipt, .macportsLocation, .macportsRegistry] {
+                          .installerReceipt, .macportsLocation, .macportsRegistry, .homebrewCaskReceipt] {
             XCTAssertEqual(assess(evidence(receipt: exclusion == .appStoreReceipt, exclusions: [exclusion])), .otherManager)
         }
         XCTAssertEqual(assess(evidence(receipt: true, exclusions: [.appStoreReceipt, .homebrewCaskReference, .setappLocation])), .otherManager)
@@ -101,6 +101,17 @@ final class CorePolicyTests: XCTestCase {
         let excluded = try observer.observeForPolicy(path: target.path)
         XCTAssertEqual(excluded.assessment, .otherManager)
         XCTAssertFalse(excluded.canUpdate)
+        try FileManager.default.removeItem(at: version.appendingPathComponent("Example.app"))
+        let metadata = caskroom.appendingPathComponent("example/.metadata", isDirectory: true)
+        try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: ["uninstall_artifacts": [["app": ["Example.app"]]]])
+            .write(to: metadata.appendingPathComponent("INSTALL_RECEIPT.json", isDirectory: false))
+        try JSONSerialization.data(withJSONObject: ["default": ["appdir": root.path], "env": [:], "explicit": [:]])
+            .write(to: metadata.appendingPathComponent("config.json", isDirectory: false))
+        let receiptExcluded = try observer.observeForPolicy(path: target.path)
+        XCTAssertEqual(receiptExcluded.assessment, .otherManager)
+        XCTAssertEqual(receiptExcluded.observation.managerEvidence.exclusions, [.homebrewCaskReceipt])
+        XCTAssertFalse(receiptExcluded.canUpdate)
         // A scan error is not an empty scan or an unresolved-policy success.
         XCTAssertEqual(chmod(caskroom.path, 0), 0)
         defer { _ = chmod(caskroom.path, 0o700) }
