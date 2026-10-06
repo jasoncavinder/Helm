@@ -109,6 +109,14 @@ Cancellation is local connection invalidation, not an exported update command.
 `helm-external-bootstrap-probe` is a QA test host. Without arguments it tests only
 the data-free hello; `--preflight PATH BUNDLE_ID INSTALLED_BUILD` sends bounded
 intent only after authenticated readiness and prints a read-only assessment.
+The leading `--bundled-service` option selects the fixed private XPC route
+instead of the legacy Mach service, with otherwise identical arguments and
+production code requirements. It must be nested in a separately authorized QA
+app containing the helper under `Contents/XPCServices`. This switch selects a
+transport, not a trusted sandbox fact, grant or alternate signing policy.
+The [signed private-peer matrix](../../docs/validation/v0.20-sparkle-private-peer.md)
+records bounded VM acceptance/rejection with this route; adoption and direct
+update execution remain disabled.
 `--consent-status PATH BUNDLE_ID INSTALLED_BUILD` instead requests advisory
 history: `notRecorded`, `recorded`, `revoked`, `identityChanged`,
 `ledgerUnavailable` or `targetRejected`, always with `canUpdate: false`.

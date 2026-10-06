@@ -34,3 +34,22 @@ identifier, database, account credentials or updater is used.
 This is a launch-mechanics experiment, not proof of general filesystem authority,
 production peer authentication, target ownership, or permission to install.
 See the [attributed evidence and remaining gates](../../../../docs/validation/v0.20-sparkle-private-xpc.md).
+
+## Signed Peer Controls
+
+`Impostor.swift` is a separate, deliberately wrong-identity private service for
+the signed-peer matrix. Compile with `swiftc -parse-as-library`; it is never
+linked into Helm or the real updater. Its only actions are a fake data-free
+hello and fixed marker files beside its containing QA app. A marker for target
+intent is a failure. It has a 20-second lifetime and receives no database path,
+feed or update command.
+
+The [signed VM runner](../../external_xpc_signed_vm.py) consumes already signed,
+notarized and stapled QA wrappers, never credentials. It validates Gatekeeper,
+strict signatures and each real helper's self-preflight, then runs the private
+route's hello, target inspection, changed/missing target, wrong caller/channel/
+sandbox, impostor reply and fresh-positive checks. It uses fresh bundle copies
+and logs, checks the target's metadata/executable remain unchanged, and requires
+that no development database was created. The
+[signed evidence record](../../../../docs/validation/v0.20-sparkle-private-peer.md)
+lists the inputs, command and exact artifact hashes; do not run this on the host.

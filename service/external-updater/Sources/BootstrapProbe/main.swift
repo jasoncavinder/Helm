@@ -3,7 +3,9 @@ import HelmExternalUpdateObservation
 
 // VM-only QA host. Intent is sent only after authenticated readiness. No database,
 // native trust assertion, permission grant or installer request is accepted.
-let arguments = CommandLine.arguments
+let bundledService = CommandLine.arguments.dropFirst().first == "--bundled-service"
+let arguments = bundledService
+    ? [CommandLine.arguments[0]] + Array(CommandLine.arguments.dropFirst(2)) : CommandLine.arguments
 guard arguments.count == 1 || (arguments.count == 5 && ["--preflight", "--consent-status"].contains(arguments[1]))
     || (arguments.count == 3 && ["--review-revocation", "--revoke-consent"].contains(arguments[1])) else { exit(64) }
 let request = arguments.count == 5 ? ExternalPreflightRequest(
@@ -14,7 +16,7 @@ final class Probe {
     var client: ExternalUpdaterBootstrapClient?
 
     func run() throws {
-        client = try ExternalUpdaterBootstrapClient { [weak self] event in
+        let handler: (BootstrapEvent) -> Void = { [weak self] event in
             switch event {
             case .ready:
                 FileHandle.standardOutput.write(Data("{\"event\":\"authenticated_bootstrap_ready\"}\n".utf8))
@@ -72,6 +74,8 @@ final class Probe {
             case .closed(let failure): self?.fail(failure)
             }
         }
+        client = try bundledService ? ExternalUpdaterBootstrapClient.bundledService(event: handler)
+            : ExternalUpdaterBootstrapClient(event: handler)
         client?.begin()
         withExtendedLifetime(self) { RunLoop.main.run() }
     }
