@@ -1,6 +1,17 @@
 import Darwin
 import Foundation
 
+/// A gap in the inspected standard-prefix cask receipts, not a statement about
+/// other prefixes or managers. An empty list never establishes ownership.
+public struct NativeCaskCoverageGap: Encodable, Equatable {
+    public enum Reason: String, Encodable, CaseIterable {
+        case missingMetadata, missingReceipt, missingArtifactDeclarations, emptyArtifactDeclarations, uninspectedArtifacts
+    }
+
+    public let tokenPath: String
+    public let reason: Reason
+}
+
 /// Exclusion evidence only. Neither a missing marker nor a completed scan
 /// establishes standalone provenance. No caller can deserialize trusted facts.
 public struct NativeManagerEvidence: Encodable, Equatable {
@@ -19,21 +30,24 @@ public struct NativeManagerEvidence: Encodable, Equatable {
     public let installerPackageIdentifiers: [String]
     public let macportsClaims: [String]
     public let homebrewReceiptClaims: [String]
+    public let homebrewCoverageGaps: [NativeCaskCoverageGap]
     public var disposition: Disposition { exclusions.isEmpty ? .unresolved : .otherManager }
 
     enum CodingKeys: String, CodingKey {
         case disposition, exclusions, homebrewReferences, inspectedCaskEntries, installerPackageIdentifiers, macportsClaims
-        case homebrewReceiptClaims
+        case homebrewReceiptClaims, homebrewCoverageGaps
     }
 
     init(exclusions: [Exclusion], homebrewReferences: [String], inspectedCaskEntries: Int,
-         installerPackageIdentifiers: [String] = [], macportsClaims: [String] = [], homebrewReceiptClaims: [String] = []) {
+         installerPackageIdentifiers: [String] = [], macportsClaims: [String] = [], homebrewReceiptClaims: [String] = [],
+         homebrewCoverageGaps: [NativeCaskCoverageGap] = []) {
         self.exclusions = exclusions
         self.homebrewReferences = homebrewReferences
         self.inspectedCaskEntries = inspectedCaskEntries
         self.installerPackageIdentifiers = installerPackageIdentifiers
         self.macportsClaims = macportsClaims
         self.homebrewReceiptClaims = homebrewReceiptClaims
+        self.homebrewCoverageGaps = homebrewCoverageGaps
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -45,6 +59,7 @@ public struct NativeManagerEvidence: Encodable, Equatable {
         try values.encode(installerPackageIdentifiers, forKey: .installerPackageIdentifiers)
         try values.encode(macportsClaims, forKey: .macportsClaims)
         try values.encode(homebrewReceiptClaims, forKey: .homebrewReceiptClaims)
+        try values.encode(homebrewCoverageGaps, forKey: .homebrewCoverageGaps)
     }
 }
 
@@ -96,10 +111,14 @@ struct NativeManagerObserver {
                 .hasPrefix("/applications/macports/") { exclusions.append(.macportsLocation) }
             if !macportsClaims.isEmpty { exclusions.append(.macportsRegistry) }
             let receiptClaims = receipts.values.flatMap(\.claims).sorted()
+            let gaps = receipts.keys.sorted().compactMap { path in
+                receipts[path]?.coverageGap.map { NativeCaskCoverageGap(tokenPath: path, reason: $0) }
+            }
             if !receiptClaims.isEmpty { exclusions.append(.homebrewCaskReceipt) }
             return NativeManagerEvidence(exclusions: exclusions, homebrewReferences: references,
                                          inspectedCaskEntries: entryCount, installerPackageIdentifiers: installerPackages,
-                                         macportsClaims: macportsClaims, homebrewReceiptClaims: receiptClaims)
+                                         macportsClaims: macportsClaims, homebrewReceiptClaims: receiptClaims,
+                                         homebrewCoverageGaps: gaps)
         }
     }
 

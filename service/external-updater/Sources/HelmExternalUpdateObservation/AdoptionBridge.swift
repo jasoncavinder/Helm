@@ -62,6 +62,7 @@ final class NativeAdoptionReview {
     init(path: String, request: Data, target: NativeTargetEvidence, boundary: NativeAdoptionBoundary,
          userApplications: String?, now: UInt64) throws {
         self.userApplications = userApplications
+        guard target.managerEvidence.homebrewCoverageGaps.isEmpty else { throw HelperLedgerFailure.storageRejected }
         handle = NativePolicyAssessment.withTarget(target, userApplications: userApplications, invalid: nil) { target in
             boundary.withBoundary { boundary in
                 withBytes(Data(path.utf8)) { path in
@@ -80,7 +81,8 @@ final class NativeAdoptionReview {
         self.handle = nil
         var consumed = false
         defer { if !consumed { helm_external_adoption_free(handle) } }
-        guard self.userApplications == userApplications else { return .reviewChanged }
+        guard self.userApplications == userApplications,
+              target.managerEvidence.homebrewCoverageGaps.isEmpty else { return .reviewChanged }
         let code = NativePolicyAssessment.withTarget(target, userApplications: userApplications, invalid: UInt32(52)) { target in
             boundary.withBoundary { boundary in
                 withBytes(Data(path.utf8)) { path in

@@ -108,6 +108,75 @@ final class CaskReceiptTests: XCTestCase {
                                       applicationRoots: [], hasStoreReceipt: false).disposition, .unresolved)
     }
 
+    func testMissingMetadataAndReceiptHaveDistinctCoverageGaps() throws {
+        XCTAssertEqual(try snapshot().coverageGap, .missingReceipt)
+        try FileManager.default.removeItem(at: metadata)
+        XCTAssertEqual(try snapshot().coverageGap, .missingMetadata)
+    }
+
+    func testLegacyEmptyAndUninspectedArtifactsRetainCoverageGaps() throws {
+        for (value, gap): (Any, NativeCaskCoverageGap.Reason) in [
+            ([:], .missingArtifactDeclarations), (["uninstall_artifacts": NSNull()], .missingArtifactDeclarations),
+            (["uninstall_artifacts": []], .emptyArtifactDeclarations),
+            (["uninstall_artifacts": [["pkg": ["Example.pkg"]]]], .uninspectedArtifacts),
+            (["uninstall_artifacts": [["future-artifact": ["Example.app"]]]], .uninspectedArtifacts)
+        ] {
+            try install(json(value))
+            let observed = try snapshot()
+            XCTAssertEqual(observed.coverageGap, gap)
+            XCTAssertTrue(observed.claims.isEmpty)
+        }
+    }
+
+    func testInspectedAppDestinationsAreNotCompleteOwnershipProof() throws {
+        try install(receipt(["Other.app"]))
+        let target = URL(fileURLWithPath: target, isDirectory: false)
+        let observed = try NativeManagerObserver(caskrooms: [token.deletingLastPathComponent()]).snapshot(target: target)
+        let evidence = observed.evidence(target: target, applicationRoots: [], hasStoreReceipt: false)
+        XCTAssertTrue(evidence.homebrewCoverageGaps.isEmpty)
+        XCTAssertTrue(evidence.homebrewReceiptClaims.isEmpty)
+        XCTAssertEqual(evidence.disposition, .unresolved)
+    }
+
+    func testMatchingAppClaimSurvivesUninspectedArtifactsAndGapIsEncoded() throws {
+        try install(json(["uninstall_artifacts": [["app": ["Example.app"]], ["pkg": ["Other.pkg"]]]]))
+        let target = URL(fileURLWithPath: target, isDirectory: false)
+        let observed = try NativeManagerObserver(caskrooms: [token.deletingLastPathComponent()]).snapshot(target: target)
+        let evidence = observed.evidence(target: target, applicationRoots: [], hasStoreReceipt: false)
+        XCTAssertEqual(evidence.homebrewReceiptClaims, [self.target])
+        XCTAssertEqual(evidence.disposition, .otherManager)
+        XCTAssertEqual(evidence.homebrewCoverageGaps, [NativeCaskCoverageGap(tokenPath: token.path, reason: .uninspectedArtifacts)])
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(evidence)) as? [String: Any])
+        let gaps = try XCTUnwrap(encoded["homebrewCoverageGaps"] as? [[String: String]])
+        XCTAssertEqual(gaps, [["tokenPath": token.path, "reason": "uninspectedArtifacts"]])
+    }
+
+    func testCoverageGapOrderIsDeterministicAcrossBothRoots() throws {
+        let otherRoot = root.appendingPathComponent("OtherCaskroom", isDirectory: true)
+        let otherToken = otherRoot.appendingPathComponent("second", isDirectory: true)
+        try FileManager.default.createDirectory(at: otherToken, withIntermediateDirectories: true)
+        let target = URL(fileURLWithPath: target, isDirectory: false)
+        var results: [[NativeCaskCoverageGap]] = []
+        for roots in [[otherRoot, token.deletingLastPathComponent()], [token.deletingLastPathComponent(), otherRoot]] {
+            let observed = try NativeManagerObserver(caskrooms: roots).snapshot(target: target)
+            results.append(observed.evidence(target: target, applicationRoots: [], hasStoreReceipt: false).homebrewCoverageGaps)
+        }
+        XCTAssertEqual(results[0], results[1])
+        XCTAssertEqual(results[0].map(\.tokenPath), [token.path, otherToken.path].sorted())
+        XCTAssertEqual(Set(results[0].map(\.reason)), [.missingReceipt, .missingMetadata])
+    }
+
+    func testAddingDeclarationsChangesGapAndSnapshotWithoutAddingClaims() throws {
+        try install(json([:]))
+        let before = try snapshot()
+        try install(receipt(["Other.app"]))
+        let after = try snapshot()
+        XCTAssertEqual(before.claims, after.claims)
+        XCTAssertEqual(before.coverageGap, .missingArtifactDeclarations)
+        XCTAssertNil(after.coverageGap)
+        XCTAssertNotEqual(before, after)
+    }
+
     func testMissingOrUnsupportedSavedConfigurationFailsClosed() throws {
         for data in [nil, Data("[]".utf8), try json([:]), try json(["default": [:], "env": NSNull(), "explicit": [:]]),
                      try config("~/Applications"), try config("relative"), try config("/Applications", explicit: ["appdir": 7])] {

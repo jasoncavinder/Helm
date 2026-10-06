@@ -86,7 +86,9 @@ struct NativeAdoptionProcessor {
         let request = try ExternalAdoptionRequest.decode(data, root: root)
         guard let root else { throw BootstrapFailure.invalidated }
         let snapshot = try observe(request.targetPath)
-        guard snapshot.ownershipComplete else { throw BootstrapFailure.invalidated }
+        guard snapshot.ownershipComplete, snapshot.target.managerEvidence.homebrewCoverageGaps.isEmpty else {
+            throw BootstrapFailure.invalidated
+        }
         let scope = scope(root)
         let recheck = { () throws -> NativeAdoptionObservation in
             guard userApplications() == root else { throw BootstrapFailure.invalidated }

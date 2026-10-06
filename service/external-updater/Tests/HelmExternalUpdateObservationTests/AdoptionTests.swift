@@ -6,13 +6,14 @@ final class AdoptionTests: XCTestCase {
     private let request = ExternalAdoptionRequest(targetPath: "/Applications/Example.app", bundleIdentifier: "org.example.App", installedBuild: "100")
     private let applications = "/Users/agent/Applications"
 
-    private func snapshot(complete: Bool = true, build: String = "100") -> NativeAdoptionObservation {
+    private func snapshot(complete: Bool = true, build: String = "100",
+                          gaps: [NativeCaskCoverageGap] = []) -> NativeAdoptionObservation {
         let target = NativeTargetEvidence(canonicalPath: request.targetPath, device: 42, inode: 123,
             bundleIdentifier: request.expectedBundleIdentifier, build: build, teamIdentifier: "ABCDE12345",
             codeDirectoryHash: Array(repeating: 7, count: 20), ed25519PublicKey: Array(repeating: 8, count: 32),
             feedURL: "https://example.org/feed", frameworkMajor: 2, hasStoreReceipt: false,
             writableByOthers: false, inspectedEntries: 10,
-            managerEvidence: NativeManagerEvidence(exclusions: [], homebrewReferences: [], inspectedCaskEntries: 2))
+            managerEvidence: NativeManagerEvidence(exclusions: [], homebrewReferences: [], inspectedCaskEntries: 2, homebrewCoverageGaps: gaps))
         let boundary = NativeAdoptionBoundary(helperIdentifier: "com.jasoncavinder.Helm.SparkleExternalUpdater",
             helperTeamIdentifier: "V73WPJR9M4", helperCodeDirectoryHash: Data(repeating: 9, count: 20),
             callerIdentifier: "com.jasoncavinder.Helm", callerTeamIdentifier: "V73WPJR9M4",
@@ -129,6 +130,46 @@ final class AdoptionTests: XCTestCase {
             XCTAssertThrowsError(try review.confirm { throw BootstrapFailure.cancelled })
             XCTAssertThrowsError(try review.confirm { XCTFail("retried rejected admission") })
             XCTAssertEqual(try status(scope), .notRecorded)
+        }
+    }
+
+    func testKnownCoverageGapsOverrideCompleteAssertionBeforeOpeningStorage() throws {
+        for reason in NativeCaskCoverageGap.Reason.allCases {
+            let gap = NativeCaskCoverageGap(tokenPath: "/opt/homebrew/Caskroom/legacy", reason: reason)
+            var storageRequests = 0
+            let processor = NativeAdoptionProcessor(observe: { _ in self.snapshot(gaps: [gap]) },
+                userApplications: { self.applications }, scope: { _ in
+                    storageRequests += 1
+                    return PrivateLedgerDirectory(home: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+                })
+            XCTAssertThrowsError(try processor.prepare(JSONEncoder().encode(request)))
+            XCTAssertEqual(storageRequests, 0)
+        }
+    }
+
+    func testNewCoverageGapConsumesReviewWithoutAdmissionOrConsent() throws {
+        try withLedger { scope in
+            var current = snapshot()
+            let review = try processor(scope, observe: { current }).prepare(JSONEncoder().encode(request))
+            current = snapshot(gaps: [NativeCaskCoverageGap(tokenPath: "/opt/homebrew/Caskroom/legacy", reason: .missingReceipt)])
+            XCTAssertThrowsError(try review.confirm { XCTFail("new coverage gap admitted") })
+            current = snapshot()
+            XCTAssertThrowsError(try review.confirm { XCTFail("review reused after gap removed") })
+            XCTAssertEqual(try status(scope), .notRecorded)
+        }
+    }
+
+    func testCoverageGapAfterCommitReportsUncertaintyNotSafeRetry() throws {
+        try withLedger { scope in
+            var calls = 0
+            let review = try processor(scope, observe: {
+                calls += 1
+                let gaps = calls == 5 ? [NativeCaskCoverageGap(tokenPath: "/opt/homebrew/Caskroom/legacy", reason: .missingReceipt)] : []
+                return self.snapshot(gaps: gaps)
+            }).prepare(JSONEncoder().encode(request))
+            XCTAssertEqual(try review.confirm {}, .outcomeUnknown)
+            XCTAssertEqual(try status(scope), .recorded)
+            XCTAssertThrowsError(try review.confirm { XCTFail("uncertain grant replayed") })
         }
     }
 
