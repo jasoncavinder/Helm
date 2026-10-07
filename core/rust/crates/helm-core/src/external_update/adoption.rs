@@ -6,6 +6,10 @@ use super::*;
 use crate::external_update::durable::DurableUpdateError as Error;
 use crate::sqlite::SqliteStore;
 
+/// Version of the explicitly reviewed supported ownership scope. This is not
+/// proof that the native collector has completed that scope.
+pub const OWNERSHIP_SCOPE_VERSION: u32 = 1;
+
 /// Point-in-time history only. Even Recorded is not resolved authority, complete
 /// exclusion coverage, candidate consent, or an install permit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -14,6 +18,7 @@ pub enum ConsentStatus {
     Recorded,
     Revoked,
     IdentityChanged,
+    ScopeChanged,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -24,6 +29,8 @@ pub struct AdoptionRequest {
     pub target_path: PathBuf,
     pub expected_bundle_identifier: String,
     pub expected_installed_build: String,
+    pub ownership_scope_version: u32,
+    pub confirms_no_unsupported_owner: bool,
 }
 
 impl AdoptionRequest {
@@ -57,7 +64,9 @@ impl AdoptionRequest {
     }
 
     fn validate(&self) -> Result<(), Rejection> {
-        if self.schema_version != 1
+        if self.schema_version != 2
+            || self.ownership_scope_version != OWNERSHIP_SCOPE_VERSION
+            || !self.confirms_no_unsupported_owner
             || !operation_identifier(&self.consent_id)
             || !normal_app_path(&self.target_path)
             || !bundle_identifier(&self.expected_bundle_identifier)
@@ -86,11 +95,18 @@ pub struct AdoptionReceipt {
     pub consent_id: Option<String>,
     pub identity_fingerprint: Option<String>,
     pub review_fingerprint: Option<String>,
+    pub ownership_scope_version: Option<u32>,
+    pub confirms_no_unsupported_owner: Option<bool>,
 }
 
 impl AdoptionReceipt {
     pub fn is_revoked(&self) -> bool {
         self.consent_id.is_none()
+    }
+
+    pub(crate) fn has_current_scope(&self) -> bool {
+        self.ownership_scope_version == Some(OWNERSHIP_SCOPE_VERSION)
+            && self.confirms_no_unsupported_owner == Some(true)
     }
 }
 
@@ -156,12 +172,7 @@ impl ReviewedAdoption {
     ) -> Result<AdoptionReceipt, Error> {
         self.validate_confirmation(&target, &boundary, application_roots, now)?;
         store
-            .commit_external_adoption(
-                &self.request.consent_id,
-                &target,
-                &self.fingerprint,
-                self.prior,
-            )?
+            .commit_external_adoption(&self.request, &target, &self.fingerprint, self.prior)?
             .ok_or(Error::Conflict)
     }
 
@@ -262,7 +273,7 @@ impl ReviewedLedgerAdoption {
             .validate_confirmation(&target, &boundary, application_roots, now)?;
         SqliteStore::commit_reviewed_external_adoption(
             database_path,
-            &self.review.request.consent_id,
+            &self.review.request,
             &target,
             &self.review.fingerprint,
             self.review.prior,
@@ -281,6 +292,7 @@ pub fn resolve(
     validate_unresolved_target(&target, roots).map_err(Error::Policy)?;
     if let Some(receipt) = store.external_update_adoption(&target.canonical_path)?
         && !receipt.is_revoked()
+        && receipt.has_current_scope()
         && receipt.identity_fingerprint.as_deref() == Some(&identity_fingerprint(&target))
     {
         target.authority = Authority::UserAdopted(receipt.token);

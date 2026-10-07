@@ -3037,7 +3037,13 @@ fn apply_up_migration(
     migration: &SqliteMigration,
 ) -> rusqlite::Result<()> {
     let transaction = connection.transaction()?;
-    execute_batch_tolerant(&transaction, migration.up_sql)?;
+    if migration.version >= 25 {
+        // New authority migrations must install every constraint. Historical
+        // duplicate-column tolerance can otherwise accept a partially run batch.
+        transaction.execute_batch(migration.up_sql)?;
+    } else {
+        execute_batch_tolerant(&transaction, migration.up_sql)?;
+    }
     if migration_checksum_column_exists(&transaction)? {
         let checksum = migration_definition_checksum_for_version(migration.version)
             .map_err(|error| storage_error_sqlite(&error))?;
@@ -3096,7 +3102,7 @@ fn apply_down_migration(
 ) -> rusqlite::Result<()> {
     let transaction =
         connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    if matches!(migration.version, 23 | 24) {
+    if matches!(migration.version, 23..=25) {
         // Reset must not erase an external installer's unresolved reservation
         // or the adoption ledger used to authorize that session.
         // The same write lock serializes this check with new session claims.

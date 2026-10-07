@@ -169,8 +169,8 @@ final class PreflightTests: XCTestCase {
         let processor = NativeConsentProcessor(identity: identity, helper: { identity }, target: { _ in self.target() },
             userApplications: { nil }, inspect: { _, _, _, _ in throw HelperLedgerFailure.incomplete })
         XCTAssertEqual(try processor.assess(JSONEncoder().encode(request)), .ledgerUnavailable)
-        for code in UInt32(20)...25 { XCTAssertEqual(ExternalConsentStatus(code: code)?.code, code) }
-        for code in [UInt32(0), 1, 6, 8, 19, 26, UInt32.max] { XCTAssertNil(ExternalConsentStatus(code: code)) }
+        for code in UInt32(20)...26 { XCTAssertEqual(ExternalConsentStatus(code: code)?.code, code) }
+        for code in [UInt32(0), 1, 6, 8, 19, 27, UInt32.max] { XCTAssertNil(ExternalConsentStatus(code: code)) }
     }
 
     private func helperIdentity(build: String = "1") throws -> NativeHelperEvidence {

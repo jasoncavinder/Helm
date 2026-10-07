@@ -1,5 +1,7 @@
 use super::*;
-use crate::external_update::adoption::{AdoptionReceipt, AdoptionToken, identity_fingerprint};
+use crate::external_update::adoption::{
+    AdoptionReceipt, AdoptionRequest, AdoptionToken, identity_fingerprint,
+};
 use crate::external_update::{Authority, TargetObservation, normal_app_path};
 
 fn cursor(connection: &Connection, path: &Path) -> rusqlite::Result<AdoptionToken> {
@@ -19,7 +21,8 @@ fn cursor(connection: &Connection, path: &Path) -> rusqlite::Result<AdoptionToke
 fn latest(connection: &Connection, path: &Path) -> rusqlite::Result<Option<AdoptionReceipt>> {
     connection
         .query_row(
-            "SELECT e.epoch, a.sequence, a.consent_id, a.identity_fingerprint, a.review_fingerprint
+            "SELECT e.epoch, a.sequence, a.consent_id, a.identity_fingerprint, a.review_fingerprint,
+                    a.ownership_scope_version, a.confirms_no_unsupported_owner
          FROM external_update_adoptions a CROSS JOIN external_update_adoption_epoch e
          WHERE a.target_path = ?1 AND e.singleton = 1 ORDER BY a.sequence DESC LIMIT 1",
             [path.to_str()],
@@ -36,6 +39,8 @@ fn latest(connection: &Connection, path: &Path) -> rusqlite::Result<Option<Adopt
                     consent_id: row.get(2)?,
                     identity_fingerprint: row.get(3)?,
                     review_fingerprint: row.get(4)?,
+                    ownership_scope_version: row.get(5)?,
+                    confirms_no_unsupported_owner: row.get(6)?,
                 })
             },
         )
@@ -54,6 +59,7 @@ pub(super) fn authority_is_current(
             .is_some_and(|receipt| {
                 receipt.token == token
                     && !receipt.is_revoked()
+                    && receipt.has_current_scope()
                     && receipt.identity_fingerprint.as_deref()
                         == Some(&identity_fingerprint(target))
             })),
@@ -79,7 +85,7 @@ impl SqliteStore {
 
     pub(crate) fn commit_reviewed_external_adoption(
         database_path: &Path,
-        consent_id: &str,
+        request: &AdoptionRequest,
         target: &TargetObservation,
         review_fingerprint: &str,
         prior: AdoptionToken,
@@ -93,7 +99,7 @@ impl SqliteStore {
             // No CREATE, schema migration, journal-mode change or missing-epoch repair.
             validate_current_ledger(&transaction, &target.canonical_path)?;
             let Some(receipt) =
-                insert_adoption(&transaction, consent_id, target, review_fingerprint, prior)?
+                insert_adoption(&transaction, request, target, review_fingerprint, prior)?
             else {
                 return Ok(None);
             };
@@ -152,6 +158,7 @@ impl SqliteStore {
             let status = match latest(&transaction, &target.canonical_path)? {
                 None => ConsentStatus::NotRecorded,
                 Some(receipt) if receipt.is_revoked() => ConsentStatus::Revoked,
+                Some(receipt) if !receipt.has_current_scope() => ConsentStatus::ScopeChanged,
                 Some(receipt)
                     if receipt.identity_fingerprint.as_deref()
                         == Some(&identity_fingerprint(target)) =>
@@ -175,7 +182,7 @@ impl SqliteStore {
 
     pub(crate) fn commit_external_adoption(
         &self,
-        consent_id: &str,
+        request: &AdoptionRequest,
         target: &TargetObservation,
         review_fingerprint: &str,
         prior: AdoptionToken,
@@ -185,7 +192,7 @@ impl SqliteStore {
             let transaction =
                 connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             let Some(receipt) =
-                insert_adoption(&transaction, consent_id, target, review_fingerprint, prior)?
+                insert_adoption(&transaction, request, target, review_fingerprint, prior)?
             else {
                 return Ok(None);
             };
@@ -236,7 +243,7 @@ impl SqliteStore {
 /// the insert together so another connection cannot race revocation or claims.
 fn insert_adoption(
     connection: &Connection,
-    consent_id: &str,
+    request: &AdoptionRequest,
     target: &TargetObservation,
     review_fingerprint: &str,
     prior: AdoptionToken,
@@ -251,7 +258,7 @@ fn insert_adoption(
          OR EXISTS(SELECT 1 FROM external_update_sessions WHERE holds_target = 1
              AND (target_path = ?2 OR (target_device = ?3 AND target_inode = ?4)))",
         params![
-            consent_id,
+            request.consent_id,
             target.canonical_path.to_str(),
             target.device.to_string(),
             target.inode.to_string()
@@ -264,9 +271,11 @@ fn insert_adoption(
     let snapshot = serde_json::to_string(target)
         .map_err(|_| storage_error_sqlite("invalid adoption snapshot"))?;
     connection.execute(
-        "INSERT INTO external_update_adoptions (target_path, consent_id, identity_fingerprint, review_fingerprint, reviewed_target_json)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![target.canonical_path.to_str(), consent_id, identity_fingerprint(target), review_fingerprint, snapshot],
+        "INSERT INTO external_update_adoptions (target_path, consent_id, identity_fingerprint, review_fingerprint,
+          reviewed_target_json, ownership_scope_version, confirms_no_unsupported_owner)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![target.canonical_path.to_str(), request.consent_id, identity_fingerprint(target), review_fingerprint,
+            snapshot, request.ownership_scope_version, request.confirms_no_unsupported_owner],
     )?;
     latest(connection, &target.canonical_path)?
         .map(Some)

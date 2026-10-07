@@ -225,12 +225,321 @@ fn native() -> TargetObservation {
 
 fn request(id: usize) -> AdoptionRequest {
     AdoptionRequest {
-        schema_version: 1,
+        schema_version: 2,
+        ownership_scope_version: adoption::OWNERSHIP_SCOPE_VERSION,
+        confirms_no_unsupported_owner: true,
         consent_id: format!("550e8400-e29b-41d4-a716-{id:012x}"),
         target_path: native().canonical_path,
         expected_bundle_identifier: native().bundle_identifier,
         expected_installed_build: native().build,
     }
+}
+
+#[test]
+fn ownership_scope_and_acknowledgment_are_required_untrusted_intent() {
+    let valid = serde_json::to_value(request(0)).unwrap();
+    for key in ["ownershipScopeVersion", "confirmsNoUnsupportedOwner"] {
+        let mut missing = valid.clone();
+        missing.as_object_mut().unwrap().remove(key);
+        assert!(AdoptionRequest::decode(&serde_json::to_vec(&missing).unwrap()).is_err());
+    }
+    for (key, value) in [
+        ("ownershipScopeVersion", serde_json::json!(0)),
+        ("ownershipScopeVersion", serde_json::json!(2)),
+        ("ownershipScopeVersion", serde_json::json!("1")),
+        ("confirmsNoUnsupportedOwner", serde_json::json!(false)),
+        ("confirmsNoUnsupportedOwner", serde_json::json!(1)),
+        ("confirmsNoUnsupportedOwner", serde_json::Value::Null),
+        ("schemaVersion", serde_json::json!(1)),
+    ] {
+        let mut invalid = valid.clone();
+        invalid[key] = value;
+        assert!(AdoptionRequest::decode(&serde_json::to_vec(&invalid).unwrap()).is_err());
+    }
+    let (_directory, store) = store();
+    for change in 0..2 {
+        let mut intent = request(0);
+        if change == 0 {
+            intent.confirms_no_unsupported_owner = false;
+        } else {
+            intent.ownership_scope_version += 1;
+        }
+        assert!(
+            ReviewedAdoption::prepare(&store, intent, native(), fixture().3, &roots(), 100)
+                .is_err()
+        );
+    }
+    assert!(
+        store
+            .external_update_adoption(&native().canonical_path)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn migration25_preserves_legacy_history_without_inventing_acknowledgment() {
+    let (_directory, store) = store();
+    store.apply_migration(24).unwrap();
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    let snapshot = serde_json::to_string(&native()).unwrap();
+    connection
+        .execute(
+            include_str!("fixtures/adoption-v24.sql"),
+            rusqlite::params![adoption::identity_fingerprint(&native()), snapshot],
+        )
+        .unwrap();
+    let epoch: Vec<u8> = connection
+        .query_row(
+            "SELECT epoch FROM external_update_adoption_epoch",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    // Existing-only reads/reviews must not perform the required explicit migration.
+    assert!(
+        SqliteStore::inspect_external_update_consent(store.database_path(), &native(), &roots())
+            .is_err()
+    );
+    assert!(
+        adoption::ReviewedLedgerAdoption::prepare(
+            store.database_path(),
+            request(1),
+            native(),
+            fixture().3,
+            &roots(),
+            100
+        )
+        .is_err()
+    );
+    assert_eq!(store.current_version().unwrap(), 24);
+    store.migrate_to_latest().unwrap();
+    store.migrate_to_latest().unwrap();
+    let receipt = store
+        .external_update_adoption(&native().canonical_path)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        receipt.consent_id.as_deref(),
+        Some("550e8400-e29b-41d4-a716-446655440088")
+    );
+    assert_eq!(receipt.review_fingerprint.as_deref(), Some("legacy-review"));
+    assert_eq!(receipt.token.epoch.as_slice(), epoch);
+    assert_eq!(receipt.ownership_scope_version, None);
+    assert_eq!(receipt.confirms_no_unsupported_owner, None);
+    let preserved: String = connection
+        .query_row(
+            "SELECT reviewed_target_json FROM external_update_adoptions WHERE sequence = ?1",
+            [receipt.token.sequence],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(preserved, snapshot);
+    assert_eq!(
+        adoption::resolve(&store, native(), &roots())
+            .unwrap()
+            .authority,
+        Authority::Unknown
+    );
+    assert_eq!(
+        SqliteStore::inspect_external_update_consent(store.database_path(), &native(), &roots())
+            .unwrap(),
+        adoption::ConsentStatus::ScopeChanged
+    );
+    let fresh = adopt(&store, 1);
+    assert!(matches!(fresh.authority, Authority::UserAdopted(_)));
+    let current = store
+        .external_update_adoption(&native().canonical_path)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        current.ownership_scope_version,
+        Some(adoption::OWNERSHIP_SCOPE_VERSION)
+    );
+    assert_eq!(current.confirms_no_unsupported_owner, Some(true));
+    removal(&store).confirm(store.database_path(), 110).unwrap();
+    assert_eq!(
+        SqliteStore::inspect_external_update_consent(store.database_path(), &native(), &roots())
+            .unwrap(),
+        adoption::ConsentStatus::Revoked
+    );
+}
+
+#[test]
+fn absent_or_obsolete_scope_cannot_resolve_or_authorize_a_cached_token() {
+    for missing in [true, false] {
+        let (_directory, store) = store();
+        let target = adopt(&store, 0);
+        let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+        connection.execute_batch(if missing {
+            "UPDATE external_update_adoptions SET ownership_scope_version = NULL, confirms_no_unsupported_owner = NULL"
+        } else { "UPDATE external_update_adoptions SET ownership_scope_version = 2" }).unwrap();
+        assert_eq!(
+            adoption::resolve(&store, native(), &roots())
+                .unwrap()
+                .authority,
+            Authority::Unknown
+        );
+        assert_eq!(
+            SqliteStore::inspect_external_update_consent(
+                store.database_path(),
+                &native(),
+                &roots()
+            )
+            .unwrap(),
+            adoption::ConsentStatus::ScopeChanged
+        );
+        assert!(matches!(
+            DurableUpdateSession::claim(&store, update(target), 110),
+            Err(Error::Conflict)
+        ));
+        removal(&store).confirm(store.database_path(), 110).unwrap();
+        assert!(
+            store
+                .external_update_adoption(&native().canonical_path)
+                .unwrap()
+                .unwrap()
+                .is_revoked()
+        );
+    }
+}
+
+#[test]
+fn scope_recheck_fences_install_handoff_and_verification() {
+    for verification in [false, true] {
+        let (_directory, store) = store();
+        let target = adopt(&store, 0);
+        let mut active = DurableUpdateSession::claim(&store, update(target.clone()), 110).unwrap();
+        active.event(OPERATION, UpdateEvent::Downloaded).unwrap();
+        if verification {
+            active
+                .begin_install(target.clone(), fixture().2, fixture().3, &roots())
+                .unwrap();
+            active
+                .event(OPERATION, UpdateEvent::InstallerFinished)
+                .unwrap();
+        }
+        rusqlite::Connection::open(store.database_path())
+            .unwrap()
+            .execute_batch("UPDATE external_update_adoptions SET ownership_scope_version = 2")
+            .unwrap();
+        if verification {
+            let mut replaced = target;
+            replaced.build = "101".into();
+            replaced.inode += 1;
+            assert!(matches!(
+                active.verify(OPERATION, &replaced),
+                Err(Error::Conflict)
+            ));
+        } else {
+            assert!(matches!(
+                active.begin_install(target, fixture().2, fixture().3, &roots()),
+                Err(Error::Conflict)
+            ));
+        }
+        assert_eq!(store.pending_external_updates(None, 100).unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn scope_downgrade_revokes_grants_and_invalidates_pending_reviews() {
+    let (_directory, store) = store();
+    let old = adopt(&store, 0);
+    let pending = review(&store, 1);
+    store.apply_migration(24).unwrap();
+    // Even a schema-24 reader must see denial rather than a stripped-scope grant.
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    let consent: Option<String> = connection
+        .query_row(
+            "SELECT consent_id FROM external_update_adoptions ORDER BY sequence DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(consent, None);
+    store.migrate_to_latest().unwrap();
+    assert_eq!(
+        adoption::resolve(&store, native(), &roots())
+            .unwrap()
+            .authority,
+        Authority::Unknown
+    );
+    assert!(matches!(
+        pending.confirm(&store, native(), fixture().3, &roots(), 110),
+        Err(Error::Conflict)
+    ));
+    assert!(matches!(
+        DurableUpdateSession::claim(&store, update(old), 110),
+        Err(Error::Conflict)
+    ));
+    assert!(matches!(
+        adopt(&store, 2).authority,
+        Authority::UserAdopted(_)
+    ));
+}
+
+#[test]
+fn scope_downgrade_preserves_active_reservation_and_consent() {
+    let (_directory, store) = store();
+    let target = adopt(&store, 0);
+    let _active = DurableUpdateSession::claim(&store, update(target), 110).unwrap();
+    let before = store
+        .external_update_adoption(&native().canonical_path)
+        .unwrap();
+    assert!(store.apply_migration(24).is_err());
+    assert_eq!(store.current_version().unwrap(), 25);
+    assert_eq!(
+        store
+            .external_update_adoption(&native().canonical_path)
+            .unwrap(),
+        before
+    );
+    assert_eq!(store.pending_external_updates(None, 100).unwrap().len(), 1);
+}
+
+#[test]
+fn scope_storage_constraints_reject_partial_or_false_acknowledgment() {
+    let (_directory, store) = store();
+    adopt(&store, 0);
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    for sql in [
+        "UPDATE external_update_adoptions SET ownership_scope_version = NULL",
+        "UPDATE external_update_adoptions SET confirms_no_unsupported_owner = NULL",
+        "UPDATE external_update_adoptions SET confirms_no_unsupported_owner = 0",
+        "UPDATE external_update_adoptions SET ownership_scope_version = 0",
+        "UPDATE external_update_adoptions SET ownership_scope_version = 4294967296",
+        "UPDATE external_update_adoptions SET ownership_scope_version = 1.5",
+    ] {
+        assert!(connection.execute_batch(sql).is_err(), "{sql}");
+    }
+    let current = store
+        .external_update_adoption(&native().canonical_path)
+        .unwrap()
+        .unwrap();
+    assert!(current.has_current_scope());
+}
+
+#[test]
+fn scope_migration_failure_rolls_back_without_partially_granting_acknowledgment() {
+    let (_directory, store) = store();
+    store.apply_migration(24).unwrap();
+    let connection = rusqlite::Connection::open(store.database_path()).unwrap();
+    connection
+        .execute(
+            include_str!("fixtures/adoption-v24.sql"),
+            rusqlite::params![
+                adoption::identity_fingerprint(&native()),
+                serde_json::to_string(&native()).unwrap()
+            ],
+        )
+        .unwrap();
+    connection.execute_batch("ALTER TABLE external_update_adoptions ADD COLUMN confirms_no_unsupported_owner INTEGER").unwrap();
+    assert!(store.migrate_to_latest().is_err());
+    assert_eq!(store.current_version().unwrap(), 24);
+    let columns: i64 = connection.query_row("SELECT COUNT(*) FROM pragma_table_info('external_update_adoptions') WHERE name = 'ownership_scope_version'", [], |row| row.get(0)).unwrap();
+    assert_eq!(columns, 0);
+    let grants: i64 = connection.query_row("SELECT COUNT(*) FROM external_update_adoptions WHERE consent_id IS NOT NULL AND confirms_no_unsupported_owner IS NULL", [], |row| row.get(0)).unwrap();
+    assert_eq!(grants, 1);
 }
 
 fn review(store: &SqliteStore, id: usize) -> ReviewedAdoption {
@@ -410,7 +719,7 @@ fn adoption_request_cannot_supply_authority_or_installation_arguments() {
     for change in 0..6 {
         let mut invalid = valid.clone();
         match change {
-            0 => invalid.schema_version = 2,
+            0 => invalid.schema_version = 1,
             1 => invalid.consent_id = "not-consent".into(),
             2 => invalid.target_path = "/Applications/../Example.app".into(),
             3 => invalid.expected_bundle_identifier = "invalid".into(),
