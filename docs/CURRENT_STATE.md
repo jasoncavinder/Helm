@@ -93,6 +93,14 @@ coverage and the grant provider remain incomplete; no direct updating is enabled
 The [scope-binding validation](validation/v0.20-sparkle-supported-scope.md) records
 the passing VM Rust/Swift and migration suites plus guard-removal negative controls.
 
+PR #640 is reviewed and merged at `042ff79c`. The next
+[cask artifact-path slice](validation/v0.20-sparkle-cask-artifact-paths.md) recognizes
+suite/generic destinations and bounded literal uninstall/zap paths as competing
+claims, including ancestor directories. Unsupported siblings remain explicit gaps;
+no metadata is executed or destination probed. All 309 helper tests and 26 contracts
+pass in the VM with two negative controls and unchanged installed cask evidence.
+Remaining coverage gaps and the absent production adoption provider are unchanged.
+
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
 Research previews remain Debug-only and cannot acknowledge the real experience.

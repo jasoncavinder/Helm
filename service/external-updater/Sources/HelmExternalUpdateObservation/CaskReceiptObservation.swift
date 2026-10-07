@@ -86,34 +86,19 @@ enum NativeCaskReceiptObserver {
         var destinations = Set<String>()
         var gap: NativeCaskCoverageGap.Reason? = artifacts.isEmpty ? .emptyArtifactDeclarations : nil
         var savedDirectory: URL?
-        let targetKey = NativeManagerObserver.denialKey(target)
+        var inspectedPaths = 0
         for artifact in artifacts {
             guard artifact.count == 1 else { throw ObservationFailure.unreadableManagerEvidence }
-            guard let rawApp = artifact["app"] else {
-                gap = .uninspectedArtifacts
-                continue
+            guard let (kind, value) = artifact.first else { throw ObservationFailure.unreadableManagerEvidence }
+            let inspected = try NativeCaskArtifactPaths.inspect(kind: kind, value: value) {
+                if savedDirectory == nil { savedDirectory = try appDirectory(config) }
+                guard let directory = savedDirectory else { throw ObservationFailure.unreadableManagerEvidence }
+                return directory
             }
-            guard let arguments = rawApp as? [Any], (1...2).contains(arguments.count),
-                  let source = arguments.first as? String else { throw ObservationFailure.unreadableManagerEvidence }
-            try validateText(source)
-            guard !source.hasSuffix("/"), let name = source.split(separator: "/").last,
-                  name != ".", name != ".." else { throw ObservationFailure.unreadableManagerEvidence }
-            var destination = String(name)
-            if arguments.count == 2 {
-                guard let options = arguments[1] as? [String: Any], options.count == 1,
-                      let override = options["target"] as? String else { throw ObservationFailure.unreadableManagerEvidence }
-                if !override.isEmpty { destination = override }
-            }
-            try validateText(destination)
-            // Home-relative/relative appdir semantics would depend on another
-            // account or invocation environment. Do not guess or expand them.
-            guard !destination.hasPrefix("~") else { throw ObservationFailure.unreadableManagerEvidence }
-            if savedDirectory == nil { savedDirectory = try appDirectory(config) }
-            guard let base = savedDirectory else { throw ObservationFailure.unreadableManagerEvidence }
-            let path = NativeManagerObserver.lexicalReferenceURL(destination, relativeTo: base).path
-            try validateText(path)
-            let key = NativeManagerObserver.denialKey(path)
-            if key == targetKey || key.hasPrefix(targetKey + "/") { destinations.insert(path) }
+            inspectedPaths += inspected.paths.count
+            guard inspectedPaths <= 4096 else { throw ObservationFailure.limitExceeded }
+            if inspected.incomplete { gap = .uninspectedArtifacts }
+            destinations.formUnion(inspected.paths.filter { NativeCaskArtifactPaths.overlaps($0, target: target) })
         }
         return Artifacts(claims: destinations.sorted(), coverageGap: gap)
     }
