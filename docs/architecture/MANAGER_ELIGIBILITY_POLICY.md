@@ -160,6 +160,13 @@ grandfathering older grants. Scope-changed consent cannot resolve or authorize
 cached update sessions. This is not standalone provenance, an override for failed
 checks or permission to activate the still-absent production adoption provider.
 
+The [bounded cask artifact grammar](../validation/v0.20-sparkle-cask-artifact-paths.md)
+also treats suites, absolute generic destinations and literal uninstall/zap removal
+paths as claims when they overlap an app in either direction. Unknown siblings,
+scripts and expansion-dependent forms remain gaps; no Homebrew metadata is executed
+or destination followed. This narrows declarative receipt coverage, not the
+requirement for complete supported native evidence before adoption.
+
 ## Adding A New Rule
 
 1. Add rule and constants in `manager_policy.rs`.
