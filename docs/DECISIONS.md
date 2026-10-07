@@ -1114,6 +1114,37 @@ recheck the latest grant transactionally at claim/handoff/verification.
 
 ---
 
+## Decision 050 - Bounded Ownership Scope Requires Explicit Acknowledgment
+
+**Decision:**
+On 2026-10-06 the owner approved explicit per-app confirmation that no custom or
+unsupported tool manages an unknown-origin Sparkle app, after Helm completes its
+supported native checks. Describe the finite scan and its limits rather than
+claiming to prove absence of every possible installation mechanism.
+
+**Consequences:**
+
+- Known manager claims, unreadable required evidence and unresolved coverage gaps
+  remain hard blockers, including incomplete unrelated cask tokens. User intent
+  cannot turn a failed scan into clearance.
+- Version the reviewed scope and bind the acknowledgment into the single-use
+  adoption review and durable consent. Missing or different-scope grants require
+  re-review; cached update tokens must not bypass that check.
+- Preserve `UserAdopted` rather than claim `Standalone` provenance. Adoption,
+  candidate review, durable update admission and native authorization remain
+  separate steps shared by GUI and CLI.
+- Complete the required collectors and signed operational acceptance before
+  enabling the production provider. The contract alone grants no capability.
+
+**Rationale:**
+No bounded scanner can prove universal absence of custom management. Explicit
+acknowledgment exposes that limitation without weakening known-manager precedence
+or treating incomplete evidence as success. The
+[scope contract](architecture/EXTERNAL_SPARKLE_OWNERSHIP_SCOPE.md) records current
+coverage, remaining gaps, implemented persistence and activation requirements.
+
+---
+
 ## Summary
 
 Helm prioritizes:

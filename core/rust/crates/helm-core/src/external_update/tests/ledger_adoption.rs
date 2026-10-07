@@ -22,7 +22,9 @@ fn target() -> TargetObservation {
 
 fn request(id: usize) -> AdoptionRequest {
     AdoptionRequest {
-        schema_version: 1,
+        schema_version: 2,
+        ownership_scope_version: crate::external_update::adoption::OWNERSHIP_SCOPE_VERSION,
+        confirms_no_unsupported_owner: true,
         consent_id: format!("550e8400-e29b-41d4-a716-{id:012x}"),
         target_path: target().canonical_path,
         expected_bundle_identifier: target().bundle_identifier,

@@ -2,7 +2,7 @@ import Foundation
 
 /// Advisory history, never an eligibility flag or reusable permission token.
 public enum ExternalConsentStatus: String, Encodable {
-    case notRecorded, recorded, revoked, identityChanged, ledgerUnavailable, targetRejected
+    case notRecorded, recorded, revoked, identityChanged, ledgerUnavailable, targetRejected, scopeChanged
 
     init?(code: UInt32) {
         switch code {
@@ -12,6 +12,7 @@ public enum ExternalConsentStatus: String, Encodable {
         case 23: self = .identityChanged
         case 24: self = .ledgerUnavailable
         case 25: self = .targetRejected
+        case 26: self = .scopeChanged
         default: return nil
         }
     }
@@ -24,6 +25,7 @@ public enum ExternalConsentStatus: String, Encodable {
         case .identityChanged: return 23
         case .ledgerUnavailable: return 24
         case .targetRejected: return 25
+        case .scopeChanged: return 26
         }
     }
 }

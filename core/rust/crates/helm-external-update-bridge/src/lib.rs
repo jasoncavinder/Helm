@@ -61,6 +61,7 @@ const CONSENT_REVOKED: u32 = 22;
 const CONSENT_IDENTITY_CHANGED: u32 = 23;
 const CONSENT_LEDGER_UNAVAILABLE: u32 = 24;
 const CONSENT_TARGET_REJECTED: u32 = 25;
+const CONSENT_SCOPE_CHANGED: u32 = 26;
 
 fn assessment(result: Result<(), Rejection>) -> u32 {
     match result {
@@ -246,6 +247,7 @@ pub unsafe extern "C" fn helm_external_consent_status(
             Ok(ConsentStatus::Recorded) => CONSENT_RECORDED,
             Ok(ConsentStatus::Revoked) => CONSENT_REVOKED,
             Ok(ConsentStatus::IdentityChanged) => CONSENT_IDENTITY_CHANGED,
+            Ok(ConsentStatus::ScopeChanged) => CONSENT_SCOPE_CHANGED,
             Err(_) => CONSENT_LEDGER_UNAVAILABLE,
         }
     })

@@ -121,7 +121,7 @@ final class BootstrapTests: XCTestCase {
     }
 
     func testConsentClientRoundTripAndWrongOperationReplyRejection() throws {
-        for code in [UInt32(21), 1, 6, 26] {
+        for code in [UInt32(21), 26, 1, 6, 27] {
             let ready = expectation(description: "ready")
             let received = expectation(description: "consent reply")
             let delegate = SilentBootstrap()
@@ -138,6 +138,8 @@ final class BootstrapTests: XCTestCase {
             client.consentStatus(preflightRequest) { result in
                 if code == 21 {
                     XCTAssertEqual(try? result.get(), .recorded)
+                } else if code == 26 {
+                    XCTAssertEqual(try? result.get(), .scopeChanged)
                 } else if case .success = result { XCTFail("foreign result accepted as consent") }
                 received.fulfill()
             }

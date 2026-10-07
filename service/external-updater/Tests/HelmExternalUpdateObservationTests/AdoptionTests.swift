@@ -3,7 +3,8 @@ import XCTest
 @testable import HelmExternalUpdateObservation
 
 final class AdoptionTests: XCTestCase {
-    private let request = ExternalAdoptionRequest(targetPath: "/Applications/Example.app", bundleIdentifier: "org.example.App", installedBuild: "100")
+    private let request = ExternalAdoptionRequest(targetPath: "/Applications/Example.app", bundleIdentifier: "org.example.App",
+        installedBuild: "100", confirmsNoUnsupportedOwner: true)
     private let applications = "/Users/agent/Applications"
 
     private func snapshot(complete: Bool = true, build: String = "100",
@@ -55,10 +56,40 @@ final class AdoptionTests: XCTestCase {
             XCTAssertThrowsError(try ExternalAdoptionRequest.decode(JSONSerialization.data(withJSONObject: object), root: nil))
         }
         for path in ["/tmp/Example.app", "/Applications/../Example.app", "/Applications/Host.app/Example.app"] {
-            let intent = ExternalAdoptionRequest(targetPath: path, bundleIdentifier: "org.example.App", installedBuild: "100")
+            let intent = ExternalAdoptionRequest(targetPath: path, bundleIdentifier: "org.example.App",
+                installedBuild: "100", confirmsNoUnsupportedOwner: true)
             XCTAssertThrowsError(try ExternalAdoptionRequest.decode(JSONEncoder().encode(intent), root: nil))
         }
         XCTAssertThrowsError(try ExternalAdoptionRequest.decode(Data(repeating: 0, count: 8193), root: nil))
+    }
+
+    func testScopeAcknowledgmentIsExplicitAndRejectedBeforeNativeWorkWhenInvalid() throws {
+        let valid = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+        var observations = 0
+        let processor = NativeAdoptionProcessor(observe: { _ in observations += 1; return self.snapshot() },
+            userApplications: { self.applications })
+        for (key, value) in [("ownershipScopeVersion", 0 as Any), ("ownershipScopeVersion", 2 as Any),
+                             ("confirmsNoUnsupportedOwner", false as Any), ("schemaVersion", 1 as Any),
+                             ("ownershipScopeVersion", NSNull()), ("confirmsNoUnsupportedOwner", NSNull())] {
+            var object = valid
+            object[key] = value
+            XCTAssertThrowsError(try processor.prepare(JSONSerialization.data(withJSONObject: object)))
+        }
+        for key in ["ownershipScopeVersion", "confirmsNoUnsupportedOwner"] {
+            var object = valid
+            object.removeValue(forKey: key)
+            XCTAssertThrowsError(try processor.prepare(JSONSerialization.data(withJSONObject: object)))
+        }
+        let declined = ExternalAdoptionRequest(targetPath: request.targetPath, bundleIdentifier: "org.example.App",
+            installedBuild: "100", confirmsNoUnsupportedOwner: false)
+        XCTAssertThrowsError(try processor.prepare(JSONEncoder().encode(declined)))
+        XCTAssertEqual(observations, 0)
+    }
+
+    func testScopeChangedHistoryCodeRoundTripsWithoutAuthority() {
+        XCTAssertEqual(ExternalConsentStatus(code: 26), .scopeChanged)
+        XCTAssertEqual(ExternalConsentStatus.scopeChanged.code, 26)
+        XCTAssertNil(ExternalConsentStatus(code: 27))
     }
 
     func testCoordinatorHandlesAreConnectionLocalAndConsumedByAnyAttempt() throws {

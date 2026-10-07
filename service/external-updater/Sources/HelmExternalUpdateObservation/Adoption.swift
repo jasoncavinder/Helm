@@ -8,13 +8,20 @@ public struct ExternalAdoptionRequest: Codable {
     public let targetPath: String
     public let expectedBundleIdentifier: String
     public let expectedInstalledBuild: String
+    public let ownershipScopeVersion: UInt32
+    public let confirmsNoUnsupportedOwner: Bool
 
-    public init(targetPath: String, bundleIdentifier: String, installedBuild: String) {
-        schemaVersion = 1
+    /// Call only after presenting the supported scope and obtaining this explicit
+    /// per-app acknowledgment. It never substitutes for complete native checks.
+    public init(targetPath: String, bundleIdentifier: String, installedBuild: String,
+                confirmsNoUnsupportedOwner: Bool) {
+        schemaVersion = 2
         consentId = UUID().uuidString.lowercased()
         self.targetPath = targetPath
         expectedBundleIdentifier = bundleIdentifier
         expectedInstalledBuild = installedBuild
+        ownershipScopeVersion = 1
+        self.confirmsNoUnsupportedOwner = confirmsNoUnsupportedOwner
     }
 
     static func decode(_ data: Data, root: String?) throws -> Self {

@@ -133,7 +133,7 @@ The [signed private-peer matrix](../../docs/validation/v0.20-sparkle-private-pee
 records bounded VM acceptance/rejection with this route; adoption and direct
 update execution remain disabled.
 `--consent-status PATH BUNDLE_ID INSTALLED_BUILD` instead requests advisory
-history: `notRecorded`, `recorded`, `revoked`, `identityChanged`,
+history: `notRecorded`, `recorded`, `revoked`, `identityChanged`, `scopeChanged`,
 `ledgerUnavailable` or `targetRejected`, always with `canUpdate: false`.
 It exposes no reusable token and does not resolve update authority. Both methods
 share the same eight-request budget, sequence and single-flight/deadline gates;
@@ -171,6 +171,15 @@ failures report uncertainty, and cancellation/lost replies suppress success
 without retry. The client accepts only adoption-specific codes and 32-byte review
 handles. See the [coordinator evidence](../../docs/validation/v0.20-sparkle-adoption-coordinator.md)
 for tests and the native proof/signed integration required before enabling this.
+
+Adoption request schema 2 requires scope version 1 and explicit
+`confirmsNoUnsupportedOwner` intent, never a defaulted acknowledgment or native
+clearance assertion. Migration 25 preserves the reviewed fields; unversioned or
+different-scope consent returns `scopeChanged` and cannot authorize updates.
+Downgrade revokes live grants instead of stripping their limits, and refuses to
+drop scope while an external-update reservation is active. See the
+[owner-approved scope contract](../../docs/architecture/EXTERNAL_SPARKLE_OWNERSHIP_SCOPE.md).
+The native completeness provider and production adoption remain disabled.
 
 Testing real legacy Mach-service
 acceptance requires a separately signed/notarized sandboxed app wrapper with the

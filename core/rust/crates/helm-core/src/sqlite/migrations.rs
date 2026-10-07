@@ -1153,7 +1153,32 @@ DROP TABLE external_update_adoption_epoch;
 "#,
 };
 
-const MIGRATIONS: [SqliteMigration; 24] = [
+const MIGRATION_0025: SqliteMigration = SqliteMigration {
+    version: 25,
+    name: "bind_external_adoption_ownership_scope",
+    up_sql: r#"
+ALTER TABLE external_update_adoptions ADD COLUMN ownership_scope_version INTEGER;
+ALTER TABLE external_update_adoptions ADD COLUMN confirms_no_unsupported_owner INTEGER
+CHECK (
+    (ownership_scope_version IS NULL AND confirms_no_unsupported_owner IS NULL)
+    OR (consent_id IS NOT NULL AND ownership_scope_version IS NOT NULL
+        AND typeof(ownership_scope_version) = 'integer' AND ownership_scope_version > 0
+        AND ownership_scope_version <= 4294967295 AND confirms_no_unsupported_owner IS NOT NULL
+        AND confirms_no_unsupported_owner = 1)
+);
+"#,
+    down_sql: r#"
+INSERT INTO external_update_adoptions (target_path)
+SELECT a.target_path FROM external_update_adoptions a
+WHERE a.consent_id IS NOT NULL AND a.sequence =
+    (SELECT MAX(b.sequence) FROM external_update_adoptions b WHERE b.target_path = a.target_path);
+UPDATE external_update_adoption_epoch SET epoch = randomblob(32) WHERE singleton = 1;
+ALTER TABLE external_update_adoptions DROP COLUMN confirms_no_unsupported_owner;
+ALTER TABLE external_update_adoptions DROP COLUMN ownership_scope_version;
+"#,
+};
+
+const MIGRATIONS: [SqliteMigration; 25] = [
     MIGRATION_0001,
     MIGRATION_0002,
     MIGRATION_0003,
@@ -1178,6 +1203,7 @@ const MIGRATIONS: [SqliteMigration; 24] = [
     MIGRATION_0022,
     MIGRATION_0023,
     MIGRATION_0024,
+    MIGRATION_0025,
 ];
 
 pub fn migrations() -> &'static [SqliteMigration] {

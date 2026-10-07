@@ -196,7 +196,9 @@ fn consent_bridge_distinguishes_history_without_granting_authority() {
     ReviewedAdoption::prepare(
         &store,
         AdoptionRequest {
-            schema_version: 1,
+            schema_version: 2,
+            ownership_scope_version: adoption::OWNERSHIP_SCOPE_VERSION,
+            confirms_no_unsupported_owner: true,
             consent_id: "550e8400-e29b-41d4-a716-446655440099".into(),
             target_path: native.canonical_path.clone(),
             expected_bundle_identifier: native.bundle_identifier.clone(),
@@ -532,7 +534,9 @@ fn fresh_bridge_evidence_fences_saved_adoption() {
         Authority::Unknown
     );
     let request = AdoptionRequest {
-        schema_version: 1,
+        schema_version: 2,
+        ownership_scope_version: adoption::OWNERSHIP_SCOPE_VERSION,
+        confirms_no_unsupported_owner: true,
         consent_id: "550e8400-e29b-41d4-a716-446655440000".into(),
         target_path: native.canonical_path.clone(),
         expected_bundle_identifier: native.bundle_identifier.clone(),

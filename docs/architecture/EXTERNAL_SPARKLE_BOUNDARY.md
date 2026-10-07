@@ -237,6 +237,14 @@ open, and no automatic capability or new wire method is exposed.
 
 ### Explicit Per-App Adoption
 
+The [approved supported-scope contract](EXTERNAL_SPARKLE_OWNERSHIP_SCOPE.md)
+requires explicit acknowledgment about custom/unsupported managers without
+weakening native exclusions. Adoption request schema 2 binds scope version 1
+and that acknowledgment into the reviewed intent. Migration 25 preserves them
+durably; old/different-scope grants require re-review, and cached tokens are
+rechecked during claim, handoff and verification. This does not complete native
+coverage or enable the production provider. Other request schemas are unchanged.
+
 The owner-approved [adoption contract](../validation/v0.20-sparkle-adoption.md)
 adds a distinct `UserAdopted` authority, not a new native `Standalone` assertion.
 The coordinator must first successfully collect fresh native evidence, preserving

@@ -110,15 +110,24 @@ installed app destinations and saved app-directory precedence now supplement
 references, with bounded no-follow reads, raw snapshot comparisons and
 case-equivalent denial matching. Its 281 native tests, 26 contracts and real
 read-only cask controls pass, but it does not certify operational grants.
-Review the [coverage-gap follow-up](validation/v0.20-sparkle-ownership-coverage.md):
+The [coverage-gap follow-up](validation/v0.20-sparkle-ownership-coverage.md)
+is reviewed and merged through #639 at `b9ca25b9`, with all head checks passing
+and no independent-review findings:
 missing metadata/receipts/declarations, empty declarations and uninspected
 non-app artifacts now remain explicit native evidence. Both coordinator and
 Swift bridge reject known gaps, even with an asserted complete-ownership input.
 Its 293 native tests, 26 contracts, two guard-removal negative controls and
 read-only installed-cask checks pass in the VM. Preserve existing known-manager
 denials and the unresolved Rectangle outcome; no production grant is enabled.
-Resolve the remaining supported ownership scope explicitly, then connect the
-staged adoption coordinator to these live observations before enabling grants.
+Complete the remaining supported ownership scope using the
+[approved scope contract](architecture/EXTERNAL_SPARKLE_OWNERSHIP_SCOPE.md).
+The owner approved user confirmation about custom/unsupported owners; it cannot
+override a known claim or an incomplete required check. Preserve the schema-2
+request/migration-25 acknowledgment binding and scope-based denial of old grants.
+See the [scope-binding evidence](validation/v0.20-sparkle-supported-scope.md);
+synthetic test grants do not certify live adoption.
+Complete required native coverage and its review-evidence binding, then
+connect the staged adoption coordinator before enabling grants.
 In particular, missing legacy artifact declarations are still unresolved, not a
 complete successful ownership result; do not flip `ownershipComplete` merely
 because these additional exclusions or coverage-gap lists are empty. Non-app

@@ -3,7 +3,7 @@ use crate::tests::{b, fixture, prepare_ledger};
 use helm_core::sqlite::SqliteStore;
 use std::path::Path;
 
-const REQUEST: &[u8] = br#"{"schemaVersion":1,"consentId":"550e8400-e29b-41d4-a716-446655440000","targetPath":"/Applications/Example.app","expectedBundleIdentifier":"org.example.App","expectedInstalledBuild":"100"}"#;
+const REQUEST: &[u8] = br#"{"schemaVersion":2,"ownershipScopeVersion":1,"confirmsNoUnsupportedOwner":true,"consentId":"550e8400-e29b-41d4-a716-446655440000","targetPath":"/Applications/Example.app","expectedBundleIdentifier":"org.example.App","expectedInstalledBuild":"100"}"#;
 
 fn boundary() -> NativeBoundary {
     NativeBoundary {
@@ -59,12 +59,12 @@ fn adoption_wire_validation_is_strict_root_bound_and_filesystem_free() {
     for value in [
         request.replace("org.example.App", "com.jasoncavinder.Helm.QA"),
         request.replace(
-            "\"schemaVersion\":1",
-            "\"schemaVersion\":1,\"schemaVersion\":1",
+            "\"schemaVersion\":2",
+            "\"schemaVersion\":2,\"schemaVersion\":2",
         ),
         request.replace(
-            "\"schemaVersion\":1",
-            "\"authority\":\"Standalone\",\"schemaVersion\":1",
+            "\"schemaVersion\":2",
+            "\"authority\":\"Standalone\",\"schemaVersion\":2",
         ),
     ] {
         assert_ne!(
@@ -92,6 +92,48 @@ fn ledger() -> (tempfile::TempDir, PathBuf) {
     std::fs::File::create(&path).unwrap();
     assert_eq!(prepare_ledger(&path, 1), 1);
     (temp, path)
+}
+
+#[test]
+fn missing_declined_or_stale_scope_rejects_before_opening_a_ledger() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("missing/ledger.sqlite");
+    let original = std::str::from_utf8(REQUEST).unwrap();
+    for (before, after) in [
+        (
+            "\"confirmsNoUnsupportedOwner\":true",
+            "\"confirmsNoUnsupportedOwner\":false",
+        ),
+        ("\"ownershipScopeVersion\":1", "\"ownershipScopeVersion\":2"),
+        ("\"schemaVersion\":2", "\"schemaVersion\":1"),
+        ("\"confirmsNoUnsupportedOwner\":true,", ""),
+        ("\"ownershipScopeVersion\":1,", ""),
+        (
+            "\"confirmsNoUnsupportedOwner\":true",
+            "\"confirmsNoUnsupportedOwner\":true,\"confirmsNoUnsupportedOwner\":true",
+        ),
+        (
+            "\"ownershipScopeVersion\":1",
+            "\"ownershipScopeVersion\":1,\"ownershipScopeVersion\":1",
+        ),
+    ] {
+        let changed = original.replace(before, after);
+        let bytes = changed.as_bytes();
+        unsafe {
+            assert_eq!(helm_external_adoption_request(b(bytes), b(b"")), INVALID);
+            assert!(
+                helm_external_adoption_prepare(
+                    b(path.to_str().unwrap().as_bytes()),
+                    b(bytes),
+                    &fixture(),
+                    &boundary(),
+                    100
+                )
+                .is_null()
+            );
+        }
+    }
+    assert!(!path.parent().unwrap().exists());
 }
 
 fn prepare(path: &Path) -> *mut AdoptionReview {

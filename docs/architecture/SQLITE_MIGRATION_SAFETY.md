@@ -26,6 +26,18 @@ transaction.
 
 ## Runtime Ledger
 
+Migration 25 binds external adoption history to a reviewed ownership-scope version
+and explicit custom/unsupported-owner acknowledgment. Existing rows retain NULL
+fields, not inferred agreement; they remain readable/revocable but do not resolve
+authority. Current-scope checking also occurs in claim/handoff/verification
+transactions. Downgrade appends tombstones for live grants and rotates the epoch
+before dropping the new columns; active reservations block it. A failed migration
+rolls back its DDL and ledger entry together. Forward migrations from version 25
+use strict SQL execution; historical duplicate-column tolerance cannot silently
+skip a new authority column or constraint. Older migrations/reconciliation retain
+their existing behavior. See the
+[approved scope contract](EXTERNAL_SPARKLE_OWNERSHIP_SCOPE.md).
+
 Migration 24 adds per-app external Sparkle adoption/revocation history plus a
 random database epoch. Confirmation compares the prior epoch/path revision in
 one immediate transaction, consumes its consent ID and commits with FULL/fullfsync

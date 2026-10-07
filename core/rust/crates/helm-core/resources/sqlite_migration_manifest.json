@@ -121,6 +121,11 @@
       "version": 24,
       "name": "add_external_update_adoptions",
       "definition_sha256": "bc02f6f5f91e41e85b787ebc7ee8c73babc5d7a1019571ac779abf1e786a88cd"
+    },
+    {
+      "version": 25,
+      "name": "bind_external_adoption_ownership_scope",
+      "definition_sha256": "86c1249176f3dd70b522eeda1a1759840c13861e31135ee2b146e334d9bb5b38"
     }
   ]
 }

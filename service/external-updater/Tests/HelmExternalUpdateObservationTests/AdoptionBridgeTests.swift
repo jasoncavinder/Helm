@@ -7,7 +7,7 @@ import XCTest
 /// against installed apps. Each test uses a separate disposable ledger.
 final class AdoptionBridgeTests: XCTestCase {
     private let applications = "/Users/agent/Applications"
-    private let request = Data(#"{"schemaVersion":1,"consentId":"550e8400-e29b-41d4-a716-446655440000","targetPath":"/Applications/Example.app","expectedBundleIdentifier":"org.example.App","expectedInstalledBuild":"100"}"#.utf8)
+    private let request = Data(#"{"schemaVersion":2,"ownershipScopeVersion":1,"confirmsNoUnsupportedOwner":true,"consentId":"550e8400-e29b-41d4-a716-446655440000","targetPath":"/Applications/Example.app","expectedBundleIdentifier":"org.example.App","expectedInstalledBuild":"100"}"#.utf8)
 
     private func evidence(build: String = "100", major: Int = 2,
                           exclusions: [NativeManagerEvidence.Exclusion] = [],

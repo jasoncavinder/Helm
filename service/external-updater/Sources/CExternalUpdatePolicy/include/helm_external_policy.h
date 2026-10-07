@@ -54,7 +54,8 @@ uint32_t helm_external_requested_preflight(const HelmExternalNativeTarget *input
  * 0 on rejection; neither grants adoption, update consent or install authority. */
 uint32_t helm_external_ledger_prepare(HelmExternalBytes path, uint8_t fresh);
 
-/* Read-only history codes 20..25; not update/adoption authorization. */
+/* Read-only history codes 20..26; 26 requires a new ownership-scope review.
+ * Not update/adoption authorization. */
 uint32_t helm_external_consent_status(const HelmExternalNativeTarget *input,
                                       HelmExternalBytes request, HelmExternalBytes path);
 
@@ -86,7 +87,8 @@ typedef struct {
  * Both calls require the native private filesystem lease; confirm additionally
  * requires fresh observations and one-time live-session admission. The pointer
  * and observations never cross XPC. Production adoption remains disabled. Ownership scan
- * completeness is a caller obligation. */
+ * completeness is a caller obligation. Request schema 2 requires scope version
+ * 1 and explicit confirmsNoUnsupportedOwner intent; neither is native proof. */
 typedef struct AdoptionReview HelmExternalAdoptionReview;
 uint32_t helm_external_adoption_request(HelmExternalBytes request, HelmExternalBytes user_root);
 HelmExternalAdoptionReview *helm_external_adoption_prepare(HelmExternalBytes path, HelmExternalBytes request,
