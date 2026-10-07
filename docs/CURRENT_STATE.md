@@ -81,6 +81,18 @@ unchanged real cask/Rectangle evidence. An empty gap list is not complete manage
 coverage. The production adoption provider remains absent; supported ownership
 scope, live grant wiring and execution/recovery remain open.
 
+PR #639 is reviewed and merged at `b9ca25b9`, with no independent-review
+findings and all head checks passing. The
+[supported ownership scope contract](architecture/EXTERNAL_SPARKLE_OWNERSHIP_SCOPE.md)
+separates observed manager claims, incomplete checks and limits of historical
+provenance. The owner approved additional custom/unsupported-owner confirmation,
+never an override for known claims or incomplete checks. Schema-2 adoption intent
+and migration 25 bind its acknowledgment and scope version; old/different-scope
+grants require re-review and cannot authorize cached sessions. Production native
+coverage and the grant provider remain incomplete; no direct updating is enabled.
+The [scope-binding validation](validation/v0.20-sparkle-supported-scope.md) records
+the passing VM Rust/Swift and migration suites plus guard-removal negative controls.
+
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
 Research previews remain Debug-only and cannot acknowledge the real experience.

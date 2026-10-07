@@ -152,6 +152,14 @@ unrelated tokens. They block adoption review/confirmation without erasing valid
 competing-manager claims. An empty gap list is not positive provenance or proof
 that the remaining ownership scopes were inspected.
 
+The owner-approved [supported-scope contract](EXTERNAL_SPARKLE_OWNERSHIP_SCOPE.md)
+additionally requires explicit per-app confirmation that no custom/unsupported
+tool manages the app, after required native checks pass. Schema-2 adoption intent
+binds this acknowledgment to scope version 1; migration 25 records it without
+grandfathering older grants. Scope-changed consent cannot resolve or authorize
+cached update sessions. This is not standalone provenance, an override for failed
+checks or permission to activate the still-absent production adoption provider.
+
 ## Adding A New Rule
 
 1. Add rule and constants in `manager_policy.rs`.
