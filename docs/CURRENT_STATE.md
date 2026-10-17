@@ -1,5 +1,13 @@
 # Current State
 
+The [v0.20 licensing and positioning proposal](legal/proposals/V020_LICENSING_POSITIONING.md)
+is prepared for review: capability-based Free/Pro/Fleet boundaries, a nonbinding
+license draft, version-transition questions and staged messaging/support checks.
+The owner approved the strategy and proposal preparation, not legal activation.
+Root `LICENSE`, public copy, locale resources, acceptance identifiers and payment
+configuration remain unchanged. Merging the proposal does not permit new uses
+or authorize publication; counsel review and explicit owner activation remain open.
+
 The signed Cargo GUI parity lane exposed missing Plan version transitions.
 The [version-presentation correction](validation/v0.20-plan-version-presentation.md)
 captures installed/candidate evidence in the reviewed plan and displays it in
