@@ -30,7 +30,7 @@ exclusions from work required before proposing a supported-complete result.
 
 | Source | Current bounded observation | Remaining activation requirement |
 |---|---|---|
-| Homebrew casks | Standard `/opt/homebrew/Caskroom` and `/usr/local/Caskroom` references, installed app declarations and saved appdir settings; every token contributes claims and gaps. | Define and validate each admitted artifact form. Missing/legacy/empty declarations and uninspected artifacts remain blockers, including in unrelated tokens. No token-name shortcut. Custom prefixes are outside these scanners, not proved absent. |
+| Homebrew casks | Standard `/opt/homebrew/Caskroom` and `/usr/local/Caskroom` references, installed app/suite declarations, absolute generic targets, literal removal paths and saved appdir settings; every token contributes claims and gaps. | Complete remaining artifact forms and alias coverage. Missing/legacy/empty declarations and uninspected artifacts remain blockers, including in unrelated tokens. No token-name shortcut. Custom prefixes are outside these scanners, not proved absent. |
 | MacPorts | Standard application location and `/opt/local/var/macports/registry/registry.db`, schema 1.215, including inactive payload claims. | Preserve busy/unknown/unsafe-registry rejection. Custom prefixes, alternate layouts and aliases are not covered by standard-root absence. |
 | Installer receipts | Fixed `pkgutil` queries for the inspected bundle tree and overlapping non-root receipt exports. | Resolve root-install-location historical/deleted payload claims and alias limitations. Do not label the current successful query sequence complete while these known gaps remain. |
 | App Store | Receipt-container markers in the inspected bundle. | Preserve marker denial. Marker absence is not authenticated installation history; do not present it as such. |
@@ -64,6 +64,13 @@ unsupported sibling declaration. Unknown future keys and shapes remain blocked.
 Coverage decisions need positive, malformed, mixed and unrelated-token fixtures,
 plus read-only real receipt controls. Do not modify installed receipts to obtain
 a positive test result.
+
+The [implemented path grammar](../validation/v0.20-sparkle-cask-artifact-paths.md)
+now retains app/suite destinations, absolute generic-artifact targets and literal
+absolute `delete`/`trash`/`rmdir` claims from uninstall/zap dictionaries. Equality,
+descendant and ancestor overlap all deny. Mixed unknown directives and
+expansion-dependent paths remain gaps; a recognized sibling cannot erase them.
+No alias/history completeness or operational authority is inferred.
 
 ## Adoption Contract
 

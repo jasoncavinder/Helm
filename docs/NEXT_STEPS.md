@@ -126,12 +126,20 @@ override a known claim or an incomplete required check. Preserve the schema-2
 request/migration-25 acknowledgment binding and scope-based denial of old grants.
 See the [scope-binding evidence](validation/v0.20-sparkle-supported-scope.md);
 synthetic test grants do not certify live adoption.
+PR #640 is reviewed and merged at `042ff79c`. The
+[bounded cask artifact-path follow-up](validation/v0.20-sparkle-cask-artifact-paths.md)
+now recognizes suites, absolute generic destinations and literal removal paths,
+including parent-directory claims. Preserve its mixed-declaration gaps and
+filesystem-free interpretation; binary paths, scripts, wildcard/account-relative
+forms and other unsupported declarations remain blockers. The 309 helper tests,
+26 contracts, negative controls and read-only installed-state checks pass, not
+operational adoption certification.
 Complete required native coverage and its review-evidence binding, then
 connect the staged adoption coordinator before enabling grants.
 In particular, missing legacy artifact declarations are still unresolved, not a
 complete successful ownership result; do not flip `ownershipComplete` merely
 because these additional exclusions or coverage-gap lists are empty. Non-app
-artifacts in otherwise valid receipts also remain uninspected; a gap in any
+artifacts outside the implemented finite grammar remain uninspected; a gap in any
 scanned token blocks adoption, not just a token whose name resembles the app.
 Do not infer sandbox inheritance from absent entitlements or full manager
 coverage from an empty exclusion list. Then complete
