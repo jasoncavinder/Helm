@@ -2,6 +2,14 @@
 
 ## Immediate v0.20 Closeout
 
+Review the [licensing and positioning proposal](legal/proposals/V020_LICENSING_POSITIONING.md)
+alongside technical closeout. Keep its license and copy drafts nonbinding until
+owner/counsel questions and version coverage are resolved. A separate explicitly
+authorized activation must align governing terms, GUI/CLI/FFI acceptance, locales
+and public messaging; no automatic publication follows proposal merge. Billing
+and Fleet infrastructure are not v0.20 gates. Continue unrelated engineering while
+review is pending, without claiming professional-use permission is already live.
+
 The [delegated Homebrew refresh correction](validation/v0.20-homebrew-refresh-policy.md)
 is reviewed and merged through #617 at `223a22f6`; all head checks passed and
 #603 is closed. Preserve its process/concurrent cold-cache acceptance without

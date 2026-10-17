@@ -9,6 +9,17 @@ It is NOT legally binding.
 
 The only legally binding license governing Helm is defined in the root `LICENSE` file.
 
+## Pending v0.20 Proposal (Not Effective)
+
+The owner approved preparation of a capability-based Free/Pro/Fleet proposal,
+including ordinary professional use of official consumer binaries. The
+[review package](proposals/V020_LICENSING_POSITIONING.md) contains draft terms,
+edition boundaries, transition questions and staged copy. It does not activate
+new permissions or replace the root license. The historical planning sections
+below are retained pending a separate approved activation; the proposal records
+their conflicts, including the personal-modification summary below, which is
+not permission to disregard current `LICENSE` section 4(b).
+
 ---
 
 ## 1. Purpose
