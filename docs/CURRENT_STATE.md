@@ -117,6 +117,18 @@ longer disappears when its visible summary is unchanged. Missing fingerprints
 reject before storage; direct bridge confirmation also binds the reviewed target.
 This does not close coverage gaps, persist authority or enable production grants.
 
+PR #643 is reviewed and merged at `8e7eb1ac`, including the native binding and
+rustls security follow-up. The [root receipt payload follow-up](validation/v0.20-sparkle-root-receipts.md)
+now checks bounded `pkgutil --files` listings for root-installed packages, so
+historical or case-equivalent bundle payloads can deny adoption even without a
+current file-info claim. Exact listing bytes are hashed into the revalidated
+private ownership fingerprint; malformed, excessive or timed-out evidence rejects.
+All 337 helper tests and 26 contracts pass in the disposable VM, with two
+negative controls and read-only root/non-root/cask/Rectangle checks. The existing
+three-second receipt snapshot deadline is unchanged. This closes the bounded
+root-payload omission, not alias/script coverage or remaining cask artifact gaps.
+Production adoption and direct execution remain disabled.
+
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
 Research previews remain Debug-only and cannot acknowledge the real experience.

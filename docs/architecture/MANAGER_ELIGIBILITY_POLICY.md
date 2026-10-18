@@ -117,7 +117,8 @@ lifecycle authority. The owner-approved per-app policy permits an explicit
 "Let Helm manage updates" review when fresh native checks succeed but historical
 standalone provenance cannot be proved. It never overrides a known competing
 manager claim or unreadable evidence. Native installer receipt claims on the
-inspected bundle tree, overlapping non-root receipt exports and known Setapp
+inspected bundle tree, overlapping non-root receipt exports, bounded root-location
+payload listings (including historical paths), and known Setapp
 bundle markers are denial
 signals too; their absence is not complete exclusion coverage. The
 [bounded observer](../validation/v0.20-sparkle-receipt-exclusions.md) remains
@@ -126,6 +127,8 @@ core reports `UserAdopted`, not `Standalone`, and still requires a separate exac
 candidate review and durable install handoff. No shipping capability is enabled
 by this core foundation. See the [adoption contract](../validation/v0.20-sparkle-adoption.md)
 and [external boundary](EXTERNAL_SPARKLE_BOUNDARY.md).
+The [root receipt follow-up](../validation/v0.20-sparkle-root-receipts.md) binds
+exact listing bytes into native evidence but grants no alias/history completeness.
 
 The [MacPorts exclusion observer](../validation/v0.20-sparkle-macports-ownership.md)
 adds standard application-folder and registry payload claims as denial signals.

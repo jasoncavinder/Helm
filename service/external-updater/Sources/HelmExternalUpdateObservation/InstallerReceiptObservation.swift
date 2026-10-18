@@ -20,6 +20,13 @@ struct NativeInstallerReceiptObserver {
     struct Snapshot: Encodable, Equatable {
         let replies: [Data]
         let identifiers: [String]
+        let rootPayloads: [NativeRootReceiptPayload]
+
+        init(replies: [Data], identifiers: [String], rootPayloads: [NativeRootReceiptPayload] = []) {
+            self.replies = replies
+            self.identifiers = identifiers
+            self.rootPayloads = rootPayloads
+        }
     }
 
     func snapshot(target: URL, paths: [String]) throws -> Snapshot {
@@ -66,7 +73,8 @@ struct NativeInstallerReceiptObserver {
         let result = try collector.result()
         _ = try remaining()
         return Snapshot(replies: catalog.replies + result.replies,
-                        identifiers: Set(catalog.identifiers + result.identifiers).sorted())
+                        identifiers: Set(catalog.identifiers + result.identifiers).sorted(),
+                        rootPayloads: catalog.rootPayloads)
     }
 
     static func batchIdentifiers(_ data: Data, paths: [String]) throws -> [String] {

@@ -1,8 +1,8 @@
 import Foundation
 
-/// file-info queries on some macOS versions match root-relative BOM paths
-/// without applying a receipt's non-root install location. Inspect those exports
-/// through pkgutil too; never infer absence by reading private receipt storage.
+/// File-info covers the current tree, not deleted payloads; some versions also
+/// omit non-root install locations. Inspect root listings and overlapping
+/// non-root exports through pkgutil, never private receipt storage.
 struct NativeReceiptCatalog {
     static let maximumBytes = 4 * 1024 * 1024
     var query: ([String], UInt64, Int) throws -> Data = { arguments, remaining, limit in
@@ -31,6 +31,8 @@ struct NativeReceiptCatalog {
         }
         let ids = identifiers.sorted()
         var claims = Set<String>()
+        var rootPayloads: [NativeRootReceiptPayload] = []
+        var rootBytes = 0
         for offset in stride(from: 0, to: ids.count, by: 32) {
             let batch = Array(ids[offset..<min(offset + 32, ids.count)])
             let data = try read(batch.flatMap { ["--pkg-info-plist", $0] }, limit: 64 * 1024)
@@ -38,7 +40,18 @@ struct NativeReceiptCatalog {
             for (identifier, document) in zip(batch, documents) {
                 let info = try Self.record(document, identifier: identifier)
                 let location = try Self.location(info)
-                guard location != "/", Self.overlaps(Self.denialPath(location), targetPath) else { continue }
+                if location == "/" {
+                    let limit = min(NativeRootReceiptPayload.maximumBytes, NativeRootReceiptPayload.maximumTotalBytes - rootBytes)
+                    guard limit > 0 else { throw ObservationFailure.limitExceeded }
+                    let data = try query(["--files", identifier], remaining(), limit)
+                    guard data.count <= limit else { throw ObservationFailure.limitExceeded }
+                    rootBytes += data.count
+                    let payload = try NativeRootReceiptPayload(identifier: identifier, data: data, target: target, remaining: remaining)
+                    rootPayloads.append(payload)
+                    if payload.claimsTarget { claims.insert(identifier) }
+                    continue
+                }
+                guard Self.overlaps(Self.denialPath(location), targetPath) else { continue }
                 let exported = try read(["--export-plist", identifier], limit: 2 * 1024 * 1024)
                 let receipt = try Self.record(exported, identifier: identifier)
                 guard try Self.location(receipt) == location,
@@ -58,7 +71,7 @@ struct NativeReceiptCatalog {
             }
         }
         _ = try remaining()
-        return .init(replies: replies, identifiers: claims.sorted())
+        return .init(replies: replies, identifiers: claims.sorted(), rootPayloads: rootPayloads)
     }
 
     private static func validIdentifier(_ id: String) -> Bool {
@@ -94,7 +107,7 @@ struct NativeReceiptCatalog {
         first == second || first.hasPrefix(second + "/") || second.hasPrefix(first + "/")
     }
 
-    private static func denialPath(_ path: String) -> String {
+    static func denialPath(_ path: String) -> String {
         // Receipts preserve spelling even on case-insensitive volumes. These
         // lexical keys only broaden denials (also on case-sensitive volumes),
         // never establish filesystem identity or grant authority. Raw replies
