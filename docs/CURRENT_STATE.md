@@ -847,6 +847,11 @@ scope is Rust and website lockfiles; mixed source PRs require explicit file
 selection. Stable validation and review remain mandatory, and the daily tracking
 report distinguishes branch merge from unverified public delivery. The workflow
 does not merge, tag, publish, deploy, or activate unfinished v0.20 behavior.
+The development sync's independent review hardens tracking against fork-supplied
+markers and isolates malformed same-repository records with per-PR warnings;
+valid backports remain visible and delivery stays unverified. This correction
+requires a separate reviewed carry-back to `main` before its scheduled job gains
+the same protection; merging the development sync alone does not update it.
 
 PR #646's rustls stable backport and #647's pipeline are reviewed and merged.
 The owner-authorized [non-publishing activation](validation/security-backport-activation-20261018.md)

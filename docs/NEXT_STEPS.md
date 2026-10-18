@@ -6,6 +6,9 @@ The [security backport activation](validation/security-backport-activation-20261
 passed without publication. Keep its reviewed main-to-dev controls in sync,
 retain separate merge/delivery evidence, and obtain explicit approval before a
 stable app/CLI patch release. This does not advance the v0.20 release gates below.
+Carry the development sync's tracking provenance/error-isolation correction to
+`main` in a separate reviewed workflow-script-only PR; do not promote v0.20
+runtime changes or infer that a `dev` merge updates the default-branch schedule.
 
 Review the [licensing and positioning proposal](legal/proposals/V020_LICENSING_POSITIONING.md)
 alongside technical closeout. Keep its license and copy drafts nonbinding until

@@ -113,6 +113,11 @@ generated PR as open, closed without merge, or merged-to-main with delivery
 unverified. It is a reconciliation report, not a vulnerability scanner or a
 claim that a merged patch is still present after subsequent changes. It never
 marks a fix released based solely on merge ancestry or a GitHub release name.
+Only PRs with both head and base in this repository and a `main` base are tracked;
+forks and missing repository identities are ignored before reading their markers.
+Malformed, missing or branch-mismatched markers on otherwise eligible PRs produce
+per-PR warnings for manual inspection without suppressing valid tracking rows.
+API and pagination failures still fail the report rather than imply completeness.
 The same read-only report is available locally:
 
 ```bash
