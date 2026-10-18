@@ -39,6 +39,9 @@ jobs:
       - name: Validate guide content IDs
         run: npm run check:content-ids
 
+      - name: Validate CSS dependency compatibility
+        run: npm run test:css-dependencies
+
       - name: Build website
         env:
           ASTRO_TELEMETRY_DISABLED: "1"
