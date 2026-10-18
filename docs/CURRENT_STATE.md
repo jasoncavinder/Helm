@@ -839,6 +839,23 @@ and two live cancellation runs on each supported uv endpoint pass; failure and
 corrected artifact hashes remain in the campaign ledger. This is not a general
 crash-recovery or all-adapter cancellation certification claim.
 
+## Security Maintenance
+
+The maintainer-requested dependency [security backport lane](operations/SECURITY_BACKPORTS.md)
+prepares isolated `main` PRs from selected, already-merged `dev` commits. Its first
+scope is Rust and website lockfiles; mixed source PRs require explicit file
+selection. Stable validation and review remain mandatory, and the daily tracking
+report distinguishes branch merge from unverified public delivery. The workflow
+does not merge, tag, publish, deploy, or activate unfinished v0.20 behavior.
+
+PR #646's rustls stable backport and #647's pipeline are reviewed and merged.
+The owner-authorized [non-publishing activation](validation/security-backport-activation-20261018.md)
+passed on `main`: the manual workflow with `apply=false` returned existing,
+closed pilot #646 with delivery unverified. This verifies trusted workflow
+startup, maintainer authorization and duplicate-request lookup, not a new
+bot-created PR or public delivery. The development sync preserves the v0.20
+runtime while carrying these controls and #645's source-map-js security fix.
+
 ---
 
 ## Version

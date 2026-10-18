@@ -2,6 +2,11 @@
 
 ## Immediate v0.20 Closeout
 
+The [security backport activation](validation/security-backport-activation-20261018.md)
+passed without publication. Keep its reviewed main-to-dev controls in sync,
+retain separate merge/delivery evidence, and obtain explicit approval before a
+stable app/CLI patch release. This does not advance the v0.20 release gates below.
+
 Review the [licensing and positioning proposal](legal/proposals/V020_LICENSING_POSITIONING.md)
 alongside technical closeout. Keep its license and copy drafts nonbinding until
 owner/counsel questions and version coverage are resolved. A separate explicitly
@@ -496,6 +501,7 @@ Focus:
 - preserve PR #535 code source `410abbf9`: the separate noninteractive Course Indicator announces title before a zero-fraction-digit percentage formatted with Helm's selected locale, and the 339-test arm64 UI gate plus all-locale composed-label regression pass. Retain the `8964cef7`/`72b35019` owner artifact only as bounded pre-commit, plausibly source-equivalent historical evidence because its changed objects compiled before commit `4b465342`; the later tracked-clean `86f4ef23` matrix supplies the attributable closure evidence
 - preserve PR #534 source `2c8726a0` and its stable responsive Environment Brief header, native title heading, separate noninteractive percentage, title-before-count readiness announcements, and 338-test arm64 gate. Treat the 2026-08-25 owner artifact as bounded unattributed pre-commit historical evidence because no exact source revision, tracked-clean tree, or source-blob equivalence mapping was retained; the later tracked-clean `86f4ef23` matrix supplies the required rotor, focus-geometry, bidirectional Full Keyboard Access, and wide/vertical layout evidence
 - preserve the recorded Task 7 exact-source owner evidence on `e87d30d3`: direct preview dismissal from Brief, Plan, and Receipt; same-artifact/same-database non-persistence; fixed-size Light/Dark flow; scoped VoiceOver stage focus, order, and roles; copy-success announcement; live German/Hungarian/Japanese localization; representative +40% expansion; strict aggregate summary; selected missing-corpus unavailability; and detailed recommendation/progress/receipt/action-state semantics. Preserve the later `86f4ef23` closure of the combined Environment Brief accessibility item. These are owner-QA records rather than participant validation. Proceed toward the owner-moderated participant checkpoint while keeping whole-workflow cross-cutting accessibility, Ventura, targeted Sparkle-handoff, and the separate production first-run route gates explicit
+- use the [security backport lane](operations/SECURITY_BACKPORTS.md) to carry applicable reviewed dependency fixes from `dev` to stable without importing milestone work; preserve the merged #646 Rust pilot and passing non-publishing activation, then obtain separate approval for any app/CLI patch publication. A merged backport is not evidence that installed users have received it.
 - preserve the completed `v0.19.1` stable publication record: tag source `0319641b29b26c89d7c8a7e224e2091306e95fd2`, canary/auth runs `32136717070` and `32138158953`, signed/notarized GUI and direct CLI workflows `32138347077` and `32138347136`, publication PRs `#504` and `#505`, and green workflow-specific/release/appcast/CLI verification on converged `main` revision `ec9def28c3ef965574e6fb9afe93c0ec499901cc`
 - preserve stable/RC coexistence: stable GitHub/latest, default appcast, and `cli/latest.json` resolve to `v0.19.1`, while the published RC7 prerelease, beta appcast item, and `latest-rc.json` remain isolated on `v0.19.0-rc.7`
 - monitor the stable installation and update path for release-critical regressions; reserve `0.19.x` for necessary maintenance and route planned workflow redesign into `0.20.x`
