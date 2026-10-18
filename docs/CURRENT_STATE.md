@@ -109,6 +109,14 @@ no metadata is executed or destination probed. All 309 helper tests and 26 contr
 pass in the VM with two negative controls and unchanged installed cask evidence.
 Remaining coverage gaps and the absent production adoption provider are unchanged.
 
+PR #641 is reviewed and merged at `a82782d9`. The
+[native ownership review binding](validation/v0.20-sparkle-ownership-binding.md)
+now carries a private fingerprint of bounded, revalidated cask/installer/MacPorts
+snapshots and inspected bundle identities across review. Raw evidence drift no
+longer disappears when its visible summary is unchanged. Missing fingerprints
+reject before storage; direct bridge confirmation also binds the reviewed target.
+This does not close coverage gaps, persist authority or enable production grants.
+
 The [shipping first-run activation](validation/v0.20-shipping-first-run.md) now
 selects the real versioned entry by default in ordinary Debug and Release builds.
 Research previews remain Debug-only and cannot acknowledge the real experience.
