@@ -4,6 +4,15 @@ This document describes the current implementation status of Helm.
 
 It reflects reality, not intention.
 
+## Security Maintenance
+
+The maintainer-requested dependency [security backport lane](operations/SECURITY_BACKPORTS.md)
+prepares isolated `main` PRs from selected, already-merged `dev` commits. Its first
+scope is Rust and website lockfiles; mixed source PRs require explicit file
+selection. Stable validation and review remain mandatory, and the daily tracking
+report distinguishes branch merge from unverified public delivery. The workflow
+does not merge, tag, publish, deploy, or activate unfinished v0.20 behavior.
+
 ---
 
 ## Version

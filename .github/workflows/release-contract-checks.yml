@@ -40,6 +40,9 @@ jobs:
       - name: Validate unsigned build script safety contracts
         run: scripts/release/tests/build_unsigned_variant_contract.sh
 
+      - name: Validate security backport isolation contracts
+        run: python3 -m unittest discover -s scripts/security/tests -p 'test_*.py' -v
+
       - name: Validate release publish verify merge-order contracts
         run: scripts/release/tests/publish_verify_state_contract.sh
 
