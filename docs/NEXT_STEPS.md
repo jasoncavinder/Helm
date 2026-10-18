@@ -146,6 +146,12 @@ The [native ownership review binding](validation/v0.20-sparkle-ownership-binding
 now retains bounded raw-evidence drift across reviews, rejects missing bindings
 and protects direct bridge confirmation. Preserve its single-use rejection and
 post-commit uncertainty; a matching fingerprint is not ownership clearance.
+It is reviewed and merged through #643 at `8e7eb1ac`, including the rustls fix.
+The [root receipt payload follow-up](validation/v0.20-sparkle-root-receipts.md)
+adds bounded historical root-location claims and exact listing-digest binding.
+Preserve its unchanged snapshot deadline, strict parsing, shared byte limits,
+root/non-root controls and unresolved Rectangle result. Alias and installer-script
+effects remain unproved; this is not a supported-complete ownership result.
 Complete required native coverage, include any additional sources in that
 binding, then connect the staged adoption coordinator before enabling grants.
 In particular, missing legacy artifact declarations are still unresolved, not a

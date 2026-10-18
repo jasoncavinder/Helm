@@ -266,8 +266,8 @@ from Security's secured Info.plist, not CFBundle's cached presentation dictionar
 No Command Line Tools are required by the observer. Native installer exclusions
 use only the OS-provided `/usr/sbin/pkgutil`, with structured fixed arguments,
 sanitized environment, closed input and bounded output/time; no shell or target
-code is executed. Receipt claims on any inspected bundle entry or an overlapping
-non-root install-location export,
+code is executed. Receipt claims on any inspected bundle entry, an overlapping
+non-root install-location export, or a bounded root-location payload listing,
 and known Setapp bundle markers (including static-link resources), map to denial
 only. Failed queries never become empty successful scans. Absence remains
 unresolved, not complete ownership coverage or adoption eligibility. See the
@@ -281,6 +281,14 @@ unresolved. See the [coverage regression evidence](../../docs/validation/v0.20-s
 The [payload receipt follow-up](../../docs/validation/v0.20-sparkle-payload-receipts.md)
 requires all per-path replies and bounded catalog metadata, not a partial best-effort
 scan. It applies receipt install locations explicitly and compares both snapshots.
+The [root receipt follow-up](../../docs/validation/v0.20-sparkle-root-receipts.md)
+adds historical/deleted root payloads without probing their destinations. It binds
+the full listing's digest, identity and counts into each native snapshot, not just
+matching paths. Listings have separate 8 MiB per-query/32 MiB aggregate bounds and
+100,000 paths per receipt, sharing the existing three-second snapshot deadline.
+Strict UTF-8/line/path validation and all failures remain fail closed. This is
+denial evidence only; aliases, installation scripts and provenance remain separate
+coverage questions, and the production adoption provider stays absent.
 The shared filesystem reader opens permission and metadata descriptors with
 `O_NOFOLLOW_ANY`, not just final-component `O_NOFOLLOW`. The helper rejects unsafe
 tree permissions; target evidence still reports them without granting authority.

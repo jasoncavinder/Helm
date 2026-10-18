@@ -32,7 +32,7 @@ exclusions from work required before proposing a supported-complete result.
 |---|---|---|
 | Homebrew casks | Standard `/opt/homebrew/Caskroom` and `/usr/local/Caskroom` references, installed app/suite declarations, absolute generic targets, literal removal paths and saved appdir settings; every token contributes claims and gaps. | Complete remaining artifact forms and alias coverage. Missing/legacy/empty declarations and uninspected artifacts remain blockers, including in unrelated tokens. No token-name shortcut. Custom prefixes are outside these scanners, not proved absent. |
 | MacPorts | Standard application location and `/opt/local/var/macports/registry/registry.db`, schema 1.215, including inactive payload claims. | Preserve busy/unknown/unsafe-registry rejection. Custom prefixes, alternate layouts and aliases are not covered by standard-root absence. |
-| Installer receipts | Fixed `pkgutil` queries for the inspected bundle tree and overlapping non-root receipt exports. | Resolve root-install-location historical/deleted payload claims and alias limitations. Do not label the current successful query sequence complete while these known gaps remain. |
+| Installer receipts | Fixed `pkgutil` queries for the inspected bundle tree, overlapping non-root receipt exports and bounded root-location payload listings, including historical/deleted paths. | Resolve alias limitations and unobserved installer-script effects. Payload listings are not complete installation history. Do not label the current successful query sequence complete while these known gaps remain. |
 | App Store | Receipt-container markers in the inspected bundle. | Preserve marker denial. Marker absence is not authenticated installation history; do not present it as such. |
 | Setapp | Standard application locations and known SDK/resource markers. | Preserve marker denial. Marker-less or custom integrations are not proved absent. |
 | Custom tools and managed deployments | No universal registry or generic history collector is implemented. | Require the approved explicit user confirmation after supported checks pass, or retain Open App. An observed indication of another owner still blocks; it cannot be dismissed as outside scope. |
@@ -42,6 +42,16 @@ All existing bounds, exact evidence comparisons, no-follow reads, fixed process
 arguments and fail-closed error handling remain requirements. No destination
 probing, manager execution, Ruby evaluation or arbitrary script execution may be
 introduced to make receipt coverage look complete.
+
+Root payload listings are bounded separately from the existing metadata/file-info
+channels: 8 MiB per receipt, 32 MiB aggregate and 100,000 paths per receipt, within
+the same three-second snapshot deadline. Every valid listing's exact bytes and
+receipt identity contribute to a domain-separated digest in the private snapshot;
+nonmatching paths are not discarded from evidence binding. A target or descendant
+payload is a claim; shared parent directories are not. Case/Unicode-equivalent
+matching only broadens denials and does not resolve aliases. Empty successful
+listings prove neither standalone provenance nor absence of installer hooks.
+See the [root receipt validation](../validation/v0.20-sparkle-root-receipts.md).
 
 ### Cask Artifact Classification
 
@@ -107,7 +117,7 @@ its bounded, revalidated ownership snapshots in the cross-review target value.
 The domain-separated version-1 input binds scope version 1, target/application
 roots, scanned cask roots, registry path, inspected bundle identities, cask
 identities/references/raw receipt and configuration bytes/gaps, raw installer
-query replies and identifiers, and MacPorts filesystem/query evidence. Sorted-key
+query replies/identifiers and root-payload digests, and MacPorts filesystem/query evidence. Sorted-key
 JSON encoding retains data/message boundaries and does not parse away raw-byte
 differences. This is not an externally persisted serialization contract.
 
