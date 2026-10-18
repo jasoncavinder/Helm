@@ -61,7 +61,28 @@ final class NativeTargetObserverTests: XCTestCase {
         XCTAssertFalse(evidence.writableByOthers)
         XCTAssertTrue(evidence.requiresAuthorityResolution)
         XCTAssertGreaterThan(evidence.inspectedEntries, 1)
+        XCTAssertNotNil(evidence.managerEvidence.observationFingerprint)
+        XCTAssertEqual(try observer().observe(path: target.path), evidence)
         XCTAssertEqual(try observer().observe(path: target.path).inode, evidence.inode)
+    }
+
+    func testStableNativeSnapshotsRetainRawReceiptDriftAcrossObservations() throws {
+        var whitespace = ""
+        let receipts = NativeInstallerReceiptObserver(query: { path in
+            try ReceiptFixtures.reply(path: path) + Data(whitespace.utf8)
+        })
+        let observer = NativeTargetObserver(roots: [root], managers: managers, receipts: receipts,
+            macports: NativeMacPortsObserver(registry: root.appendingPathComponent("absent-registry.db", isDirectory: false))) { _ in self.signature() }
+        let first = try observer.observe(path: target.path)
+        XCTAssertEqual(try observer.observe(path: target.path), first)
+        whitespace = "\n"
+        let second = try observer.observe(path: target.path)
+        XCTAssertNotEqual(first, second)
+        XCTAssertNotEqual(first.managerEvidence.observationFingerprint, second.managerEvidence.observationFingerprint)
+        XCTAssertEqual(first.managerEvidence.installerPackageIdentifiers, second.managerEvidence.installerPackageIdentifiers)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        XCTAssertEqual(try encoder.encode(first), try encoder.encode(second))
     }
 
     func testInvalidPathsNeverReachCodeValidator() throws {

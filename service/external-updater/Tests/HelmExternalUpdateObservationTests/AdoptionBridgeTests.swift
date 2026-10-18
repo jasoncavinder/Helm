@@ -11,14 +11,15 @@ final class AdoptionBridgeTests: XCTestCase {
 
     private func evidence(build: String = "100", major: Int = 2,
                           exclusions: [NativeManagerEvidence.Exclusion] = [],
-                          gaps: [NativeCaskCoverageGap] = []) -> NativeTargetEvidence {
+                          gaps: [NativeCaskCoverageGap] = [],
+                          fingerprint: NativeOwnershipFingerprint? = OwnershipFixtures.fingerprint()) -> NativeTargetEvidence {
         NativeTargetEvidence(canonicalPath: "/Applications/Example.app", device: 42, inode: 123,
             bundleIdentifier: "org.example.App", build: build, teamIdentifier: "ABCDE12345",
             codeDirectoryHash: Array(repeating: 7, count: 20), ed25519PublicKey: Array(repeating: 8, count: 32),
             feedURL: "https://example.org/feed", frameworkMajor: major, hasStoreReceipt: false,
             writableByOthers: false, inspectedEntries: 10,
             managerEvidence: NativeManagerEvidence(exclusions: exclusions, homebrewReferences: [], inspectedCaskEntries: 2,
-                                                  homebrewCoverageGaps: gaps))
+                                                  homebrewCoverageGaps: gaps, observationFingerprint: fingerprint))
     }
 
     private func boundary(missing: Int? = nil, hash: UInt8 = 9) -> NativeAdoptionBoundary {
@@ -164,6 +165,24 @@ final class AdoptionBridgeTests: XCTestCase {
                 do { _ = try prepare(path) }
                 XCTAssertEqual(try status(path), .notRecorded)
                 XCTAssertEqual(try prepare(path).confirm(path: path, target: evidence(), boundary: boundary(), userApplications: applications, now: 110), .recorded)
+            }
+        }
+    }
+
+    func testBridgeRequiresFingerprintAndConsumesReviewOnRawEvidenceDrift() throws {
+        let changed = try XCTUnwrap(OwnershipFixtures.fingerprint(receipt: "changed"))
+        for target in [evidence(fingerprint: nil), evidence(fingerprint: changed)] {
+            try withLedger { scope in
+                try scope.withDatabase(createIfMissing: false) { path, _ in
+                    XCTAssertThrowsError(try NativeAdoptionReview(path: path, request: request, target: evidence(fingerprint: nil),
+                        boundary: boundary(), userApplications: applications, now: 100))
+                    let review = try prepare(path)
+                    XCTAssertEqual(review.confirm(path: path, target: target, boundary: boundary(),
+                        userApplications: applications, now: 110), .reviewChanged)
+                    XCTAssertEqual(review.confirm(path: path, target: evidence(), boundary: boundary(),
+                        userApplications: applications, now: 110), .reviewChanged)
+                    XCTAssertEqual(try status(path), .notRecorded)
+                }
             }
         }
     }

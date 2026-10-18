@@ -93,7 +93,8 @@ struct NativeAdoptionProcessor {
         let request = try ExternalAdoptionRequest.decode(data, root: root)
         guard let root else { throw BootstrapFailure.invalidated }
         let snapshot = try observe(request.targetPath)
-        guard snapshot.ownershipComplete, snapshot.target.managerEvidence.homebrewCoverageGaps.isEmpty else {
+        guard snapshot.ownershipComplete, snapshot.target.managerEvidence.homebrewCoverageGaps.isEmpty,
+              snapshot.target.managerEvidence.observationFingerprint != nil else {
             throw BootstrapFailure.invalidated
         }
         let scope = scope(root)
