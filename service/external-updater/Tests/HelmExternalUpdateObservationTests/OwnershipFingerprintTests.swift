@@ -42,6 +42,16 @@ final class OwnershipFingerprintTests: XCTestCase {
         }
     }
 
+    func testRootPayloadBindingParticipatesInFullOwnershipFingerprint() throws {
+        func payload(_ text: String) throws -> NativeRootReceiptPayload {
+            try NativeRootReceiptPayload(identifier: "org.example.pkg", data: Data(text.utf8),
+                target: URL(fileURLWithPath: "/Applications/Example.app"), remaining: { 1 })
+        }
+        let first = NativeInstallerReceiptObserver.Snapshot(replies: [], identifiers: [], rootPayloads: [try payload("Library/Old\n")])
+        let second = NativeInstallerReceiptObserver.Snapshot(replies: [], identifiers: [], rootPayloads: [try payload("Library/New\n")])
+        XCTAssertNotEqual(try fingerprint(installer: first), try fingerprint(installer: second))
+    }
+
     func testRawInstallerResponsesAndMessageBoundariesAreBound() throws {
         let first = NativeInstallerReceiptObserver.Snapshot(replies: [Data("ab".utf8), Data("c".utf8)], identifiers: [])
         for replies in [[Data("a".utf8), Data("bc".utf8)], [Data("ab ".utf8), Data("c".utf8)], first.replies.reversed().map { $0 }] {

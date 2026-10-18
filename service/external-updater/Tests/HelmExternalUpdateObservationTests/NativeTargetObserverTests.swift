@@ -85,6 +85,50 @@ final class NativeTargetObserverTests: XCTestCase {
         XCTAssertEqual(try encoder.encode(first), try encoder.encode(second))
     }
 
+    private func rootReceiptObserver(payload: @escaping () -> String) -> NativeTargetObserver {
+        let id = "org.example.root-payload"
+        let catalog = NativeReceiptCatalog { args, _, _ in
+            switch args[0] {
+            case "--pkgs-plist": return try PropertyListSerialization.data(fromPropertyList: [id], format: .xml, options: 0)
+            case "--pkg-info-plist": return try self.plist([
+                "pkgid": id, "volume": "/", "install-location": "/", "install-time": 123, "pkg-version": "1"
+            ])
+            case "--files": return Data(payload().utf8)
+            default: throw ObservationFailure.unreadableManagerEvidence
+            }
+        }
+        let receipts = NativeInstallerReceiptObserver(batchQuery: { paths, _ in
+            try paths.reduce(into: Data()) { $0.append(try ReceiptFixtures.reply(path: $1)) }
+        }, catalog: catalog)
+        return NativeTargetObserver(roots: [root], managers: managers, receipts: receipts,
+            macports: NativeMacPortsObserver(registry: root.appendingPathComponent("absent-registry.db", isDirectory: false))) { _ in self.signature() }
+    }
+
+    func testHistoricalRootReceiptClaimAndBindingReachNativeTarget() throws {
+        var text = String(target.path.dropFirst()) + "/Contents/Deleted.dat\n"
+        let observer = rootReceiptObserver { text }
+        let first = try observer.observe(path: target.path)
+        XCTAssertEqual(first.managerEvidence.installerPackageIdentifiers, ["org.example.root-payload"])
+        XCTAssertEqual(first.managerEvidence.disposition, .otherManager)
+        XCTAssertEqual(first, try observer.observe(path: target.path))
+        text = String(target.path.dropFirst()) + "/Contents/AnotherDeleted.dat\n"
+        let second = try observer.observe(path: target.path)
+        XCTAssertEqual(first.managerEvidence.installerPackageIdentifiers, second.managerEvidence.installerPackageIdentifiers)
+        XCTAssertNotEqual(first.managerEvidence.observationFingerprint, second.managerEvidence.observationFingerprint)
+    }
+
+    func testRootPayloadDriftWithinObservationRejectsInsteadOfReturningPartialEvidence() throws {
+        var calls = 0
+        let observer = rootReceiptObserver {
+            calls += 1
+            return "Library/Changed-\(calls)\n"
+        }
+        XCTAssertThrowsError(try observer.observe(path: target.path)) {
+            XCTAssertEqual($0 as? ObservationFailure, .changedDuringObservation)
+        }
+        XCTAssertEqual(calls, 2)
+    }
+
     func testInvalidPathsNeverReachCodeValidator() throws {
         var calls = 0
         let observer = NativeTargetObserver(roots: [root], managers: managers) { _ in calls += 1; return self.signature() }

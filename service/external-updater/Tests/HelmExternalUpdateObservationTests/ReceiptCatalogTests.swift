@@ -21,6 +21,7 @@ final class ReceiptCatalogTests: XCTestCase {
             switch args[0] {
             case "--pkgs-plist": return try self.plist([self.id])
             case "--pkg-info-plist": return try self.plist(self.info(location))
+            case "--files": return Data(paths.map { $0 + "\n" }.joined().utf8)
             case "--export-plist":
                 var value = self.info(location)
                 value["paths"] = Dictionary(uniqueKeysWithValues: paths.map { ($0, ["pkgid": self.id]) })
@@ -90,14 +91,100 @@ final class ReceiptCatalogTests: XCTestCase {
         XCTAssertEqual(try snapshot(catalog(location: target.path, paths: ["Contents/Deleted.dat"])).identifiers, [id])
     }
 
-    func testRootAndNonOverlappingLocationsDoNotExport() throws {
+    func testRootLocationsUseListingsAndNonOverlappingLocationsDoNotExport() throws {
         for location in ["", "/", "/Library", "/Applications/Other.app", target.path + ".other"] {
             var exports = 0
+            var listings = 0
             XCTAssertTrue(try snapshot(catalog(location: location, paths: [], calls: { args in
                 if args[0] == "--export-plist" { exports += 1 }
+                if args[0] == "--files" { listings += 1 }
             })).identifiers.isEmpty)
             XCTAssertEqual(exports, 0)
+            XCTAssertEqual(listings, ["", "/"].contains(location) ? 1 : 0)
         }
+    }
+
+    func testRootHistoricalPayloadClaimsSurviveEmptyFileInfo() throws {
+        for location in ["", "/", "."] {
+            let observer = NativeInstallerReceiptObserver(batchQuery: { paths, _ in
+                try paths.reduce(into: Data()) { $0.append(try ReceiptFixtures.reply(path: $1)) }
+            }, catalog: catalog(location: location, paths: ["Applications/Example.app/Contents/Deleted.dat"]))
+            let result = try observer.snapshot(target: target, paths: [target.path])
+            XCTAssertEqual(result.identifiers, [id])
+            XCTAssertEqual(result.rootPayloads.count, 1)
+            XCTAssertTrue(try XCTUnwrap(result.rootPayloads.first).claimsTarget)
+        }
+    }
+
+    func testRootPayloadChangesBindEvenWithoutClaims() throws {
+        let first = try snapshot(catalog(location: "/", paths: ["Library/Old.dat"]))
+        let second = try snapshot(catalog(location: "/", paths: ["Library/New.dat"]))
+        XCTAssertEqual(first.replies, second.replies)
+        XCTAssertEqual(first.identifiers, second.identifiers)
+        XCTAssertNotEqual(first, second)
+    }
+
+    func testRootListingFailureAndMalformedReplyDoNotBecomeEmptyEvidence() throws {
+        for reply in [Data("Applications/Example.app".utf8), Data([0xFF, 10]), Data(repeating: 65, count: NativeRootReceiptPayload.maximumBytes + 1)] {
+            let observer = NativeReceiptCatalog { args, _, _ in
+                switch args[0] {
+                case "--pkgs-plist": return try self.plist([self.id])
+                case "--pkg-info-plist": return try self.plist(self.info("/"))
+                case "--files": return reply
+                default: throw ObservationFailure.unreadableManagerEvidence
+                }
+            }
+            XCTAssertThrowsError(try snapshot(observer))
+        }
+        let observer = NativeReceiptCatalog { args, _, _ in
+            if args[0] == "--pkgs-plist" { return try self.plist([self.id]) }
+            if args[0] == "--pkg-info-plist" { return try self.plist(self.info("/")) }
+            throw ObservationFailure.unreadableManagerEvidence
+        }
+        XCTAssertThrowsError(try snapshot(observer))
+    }
+
+    func testRootListingsShareAggregateBudgetWithoutRelaxingExistingLimits() throws {
+        let identifiers = (0..<5).map { "org.example.pkg\($0)" }
+        let listing = Data(String(repeating: String(repeating: "a", count: 4095) + "\n", count: 2048).utf8)
+        XCTAssertEqual(listing.count, NativeRootReceiptPayload.maximumBytes)
+        var calls = 0
+        let observer = NativeReceiptCatalog { args, _, limit in
+            switch args[0] {
+            case "--pkgs-plist": return try self.plist(identifiers)
+            case "--pkg-info-plist":
+                return try identifiers.reduce(into: Data()) { result, id in
+                    var info = self.info("/")
+                    info["pkgid"] = id
+                    result.append(try self.plist(info))
+                }
+            case "--files":
+                calls += 1
+                XCTAssertEqual(limit, NativeRootReceiptPayload.maximumBytes)
+                return listing
+            default: throw ObservationFailure.unreadableManagerEvidence
+            }
+        }
+        XCTAssertThrowsError(try snapshot(observer)) { XCTAssertEqual($0 as? ObservationFailure, .limitExceeded) }
+        XCTAssertEqual(calls, 4)
+        XCTAssertEqual(NativeReceiptCatalog.maximumBytes, 4 * 1024 * 1024)
+        XCTAssertEqual(NativeInstallerReceiptObserver.byteLimit, 4 * 1024 * 1024)
+    }
+
+    func testRootQueryConsumesTheSharedSnapshotDeadline() throws {
+        var now: UInt64 = 0
+        var fileInfoCalls = 0
+        let catalog = catalog(location: "/", paths: ["Applications/Example.app"], calls: { args in
+            if args[0] == "--files" { now = NativeInstallerReceiptObserver.snapshotNanoseconds }
+        })
+        let observer = NativeInstallerReceiptObserver(batchQuery: { _, _ in
+            fileInfoCalls += 1
+            return Data()
+        }, clock: { now }, catalog: catalog)
+        XCTAssertThrowsError(try observer.snapshot(target: target, paths: [target.path])) {
+            XCTAssertEqual($0 as? ObservationFailure, .limitExceeded)
+        }
+        XCTAssertEqual(fileInfoCalls, 0)
     }
 
     func testMissingMalformedOrUnsafeCatalogDoesNotMeanNoReceipts() throws {
