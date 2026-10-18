@@ -58,11 +58,14 @@ enum NativeAdoptionOutcome: Equatable {
 final class NativeAdoptionReview {
     private var handle: OpaquePointer?
     private let userApplications: String?
+    private let reviewedTarget: NativeTargetEvidence
 
     init(path: String, request: Data, target: NativeTargetEvidence, boundary: NativeAdoptionBoundary,
          userApplications: String?, now: UInt64) throws {
         self.userApplications = userApplications
-        guard target.managerEvidence.homebrewCoverageGaps.isEmpty else { throw HelperLedgerFailure.storageRejected }
+        reviewedTarget = target
+        guard target.managerEvidence.homebrewCoverageGaps.isEmpty,
+              target.managerEvidence.observationFingerprint != nil else { throw HelperLedgerFailure.storageRejected }
         handle = NativePolicyAssessment.withTarget(target, userApplications: userApplications, invalid: nil) { target in
             boundary.withBoundary { boundary in
                 withBytes(Data(path.utf8)) { path in
@@ -82,6 +85,7 @@ final class NativeAdoptionReview {
         var consumed = false
         defer { if !consumed { helm_external_adoption_free(handle) } }
         guard self.userApplications == userApplications,
+              target == reviewedTarget,
               target.managerEvidence.homebrewCoverageGaps.isEmpty else { return .reviewChanged }
         let code = NativePolicyAssessment.withTarget(target, userApplications: userApplications, invalid: UInt32(52)) { target in
             boundary.withBoundary { boundary in

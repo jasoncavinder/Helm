@@ -102,10 +102,28 @@ below. Complete native collection, operational integration and UX remain pending
    verification. Both GUI and CLI use the same core decision and reason codes.
    No product capability is enabled until the signed operational gates pass.
 
-The current native evidence compares raw receipt snapshots within an observation;
-it does not retain every raw receipt byte in the cross-review target value.
-Implementation must explicitly define any additional scope/evidence fingerprint
-needed by the new contract instead of claiming that binding already exists.
+The native observer now retains a process-local SHA-256 equality fingerprint of
+its bounded, revalidated ownership snapshots in the cross-review target value.
+The domain-separated version-1 input binds scope version 1, target/application
+roots, scanned cask roots, registry path, inspected bundle identities, cask
+identities/references/raw receipt and configuration bytes/gaps, raw installer
+query replies and identifiers, and MacPorts filesystem/query evidence. Sorted-key
+JSON encoding retains data/message boundaries and does not parse away raw-byte
+differences. This is not an externally persisted serialization contract.
+
+The coordinator rejects missing fingerprints before opening storage. Its existing
+fresh-observation equality checks now reject raw evidence drift even if the
+claims/gaps summary is unchanged. The direct Swift bridge also requires the
+fingerprint and compares the full reviewed native target before consuming the
+Rust confirmation. Rejected confirmation remains single-use; drift detected
+after commit is uncertain and must not be retried automatically.
+
+The fingerprint has no public/Decodable initializer, diagnostic JSON field, wire
+input or durable permission semantics. It adds no sources, resolves no gaps and
+does not make `ownershipComplete` true. Future native collection changes must
+include their evidence in this binding. Future durable installation sessions need
+their own reviewed candidate/evidence binding; this in-memory review is not a
+substitute. See the [validation record](../validation/v0.20-sparkle-ownership-binding.md).
 
 ### Implemented Request And Ledger Binding
 

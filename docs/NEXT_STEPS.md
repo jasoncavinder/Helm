@@ -142,8 +142,12 @@ filesystem-free interpretation; binary paths, scripts, wildcard/account-relative
 forms and other unsupported declarations remain blockers. The 309 helper tests,
 26 contracts, negative controls and read-only installed-state checks pass, not
 operational adoption certification.
-Complete required native coverage and its review-evidence binding, then
-connect the staged adoption coordinator before enabling grants.
+The [native ownership review binding](validation/v0.20-sparkle-ownership-binding.md)
+now retains bounded raw-evidence drift across reviews, rejects missing bindings
+and protects direct bridge confirmation. Preserve its single-use rejection and
+post-commit uncertainty; a matching fingerprint is not ownership clearance.
+Complete required native coverage, include any additional sources in that
+binding, then connect the staged adoption coordinator before enabling grants.
 In particular, missing legacy artifact declarations are still unresolved, not a
 complete successful ownership result; do not flip `ownershipComplete` merely
 because these additional exclusions or coverage-gap lists are empty. Non-app

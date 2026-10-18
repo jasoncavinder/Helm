@@ -4,7 +4,7 @@ import Foundation
 /// Fixed local receipt/configuration reads, never Ruby evaluation, current
 /// environment configuration, or a search through historical cask definitions.
 enum NativeCaskReceiptObserver {
-    struct Snapshot: Equatable {
+    struct Snapshot: Encodable, Equatable {
         var identities: [String: FileIdentity] = [:]
         var bytes: [String: Data] = [:]
         var claims: [String] = []

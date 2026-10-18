@@ -17,7 +17,7 @@ struct NativeInstallerReceiptObserver {
     var catalog = NativeReceiptCatalog()
     var workers = 4
 
-    struct Snapshot: Equatable {
+    struct Snapshot: Encodable, Equatable {
         let replies: [Data]
         let identifiers: [String]
     }

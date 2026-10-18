@@ -8,13 +8,15 @@ final class AdoptionTests: XCTestCase {
     private let applications = "/Users/agent/Applications"
 
     private func snapshot(complete: Bool = true, build: String = "100",
-                          gaps: [NativeCaskCoverageGap] = []) -> NativeAdoptionObservation {
+                          gaps: [NativeCaskCoverageGap] = [],
+                          fingerprint: NativeOwnershipFingerprint? = OwnershipFixtures.fingerprint()) -> NativeAdoptionObservation {
         let target = NativeTargetEvidence(canonicalPath: request.targetPath, device: 42, inode: 123,
             bundleIdentifier: request.expectedBundleIdentifier, build: build, teamIdentifier: "ABCDE12345",
             codeDirectoryHash: Array(repeating: 7, count: 20), ed25519PublicKey: Array(repeating: 8, count: 32),
             feedURL: "https://example.org/feed", frameworkMajor: 2, hasStoreReceipt: false,
             writableByOthers: false, inspectedEntries: 10,
-            managerEvidence: NativeManagerEvidence(exclusions: [], homebrewReferences: [], inspectedCaskEntries: 2, homebrewCoverageGaps: gaps))
+            managerEvidence: NativeManagerEvidence(exclusions: [], homebrewReferences: [], inspectedCaskEntries: 2,
+                                                  homebrewCoverageGaps: gaps, observationFingerprint: fingerprint))
         let boundary = NativeAdoptionBoundary(helperIdentifier: "com.jasoncavinder.Helm.SparkleExternalUpdater",
             helperTeamIdentifier: "V73WPJR9M4", helperCodeDirectoryHash: Data(repeating: 9, count: 20),
             callerIdentifier: "com.jasoncavinder.Helm", callerTeamIdentifier: "V73WPJR9M4",
@@ -187,6 +189,49 @@ final class AdoptionTests: XCTestCase {
             current = snapshot()
             XCTAssertThrowsError(try review.confirm { XCTFail("review reused after gap removed") })
             XCTAssertEqual(try status(scope), .notRecorded)
+        }
+    }
+
+    func testMissingFingerprintRejectsCompleteAssertionBeforeOpeningStorage() throws {
+        let processor = NativeAdoptionProcessor(observe: { _ in self.snapshot(fingerprint: nil) },
+            userApplications: { self.applications }, scope: { _ in
+                XCTFail("unbound observation opened storage")
+                return PrivateLedgerDirectory(home: FileManager.default.temporaryDirectory)
+            })
+        XCTAssertThrowsError(try processor.prepare(JSONEncoder().encode(request)))
+    }
+
+    func testRawEvidenceChangeWithSameSummaryConsumesReviewBeforeAdmission() throws {
+        try withLedger { scope in
+            var current = snapshot()
+            let review = try processor(scope, observe: { current }).prepare(JSONEncoder().encode(request))
+            current = snapshot(fingerprint: try XCTUnwrap(OwnershipFixtures.fingerprint(receipt: "changed")))
+            XCTAssertThrowsError(try review.confirm { XCTFail("changed raw evidence admitted") })
+            current = snapshot()
+            XCTAssertThrowsError(try review.confirm { XCTFail("changed review reused") })
+            XCTAssertEqual(try status(scope), .notRecorded)
+        }
+    }
+
+    func testRawEvidenceChangeDuringPreparationOrAfterCommitIsNotSuccess() throws {
+        for changedCall in [2, 3, 5] {
+            try withLedger { scope in
+                var calls = 0
+                let changed = try XCTUnwrap(OwnershipFixtures.fingerprint(receipt: "changed"))
+                let processor = processor(scope, observe: {
+                    calls += 1
+                    return self.snapshot(fingerprint: calls == changedCall ? changed : OwnershipFixtures.fingerprint())
+                })
+                if changedCall < 4 {
+                    XCTAssertThrowsError(try processor.prepare(JSONEncoder().encode(request)))
+                    XCTAssertEqual(try status(scope), .notRecorded)
+                } else {
+                    let review = try processor.prepare(JSONEncoder().encode(request))
+                    XCTAssertEqual(try review.confirm {}, .outcomeUnknown)
+                    XCTAssertEqual(try status(scope), .recorded)
+                    XCTAssertThrowsError(try review.confirm { XCTFail("uncertain grant replayed") })
+                }
+            }
         }
     }
 

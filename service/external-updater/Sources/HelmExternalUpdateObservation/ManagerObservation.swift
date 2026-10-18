@@ -31,6 +31,9 @@ public struct NativeManagerEvidence: Encodable, Equatable {
     public let macportsClaims: [String]
     public let homebrewReceiptClaims: [String]
     public let homebrewCoverageGaps: [NativeCaskCoverageGap]
+    // Process-local review binding, deliberately omitted from diagnostic JSON.
+    // A digest binds observed evidence; it never establishes scan completeness.
+    let observationFingerprint: NativeOwnershipFingerprint?
     public var disposition: Disposition { exclusions.isEmpty ? .unresolved : .otherManager }
 
     enum CodingKeys: String, CodingKey {
@@ -40,7 +43,7 @@ public struct NativeManagerEvidence: Encodable, Equatable {
 
     init(exclusions: [Exclusion], homebrewReferences: [String], inspectedCaskEntries: Int,
          installerPackageIdentifiers: [String] = [], macportsClaims: [String] = [], homebrewReceiptClaims: [String] = [],
-         homebrewCoverageGaps: [NativeCaskCoverageGap] = []) {
+         homebrewCoverageGaps: [NativeCaskCoverageGap] = [], observationFingerprint: NativeOwnershipFingerprint? = nil) {
         self.exclusions = exclusions
         self.homebrewReferences = homebrewReferences
         self.inspectedCaskEntries = inspectedCaskEntries
@@ -48,6 +51,7 @@ public struct NativeManagerEvidence: Encodable, Equatable {
         self.macportsClaims = macportsClaims
         self.homebrewReceiptClaims = homebrewReceiptClaims
         self.homebrewCoverageGaps = homebrewCoverageGaps
+        self.observationFingerprint = observationFingerprint
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -77,7 +81,7 @@ struct NativeManagerObserver {
         self.entryLimit = entryLimit
     }
 
-    struct Snapshot: Equatable {
+    struct Snapshot: Encodable, Equatable {
         var identities: [String: FileIdentity] = [:]
         var absentRoots: [String] = []
         var links: [String: String] = [:]
@@ -88,7 +92,7 @@ struct NativeManagerObserver {
 
         func evidence(target: URL, applicationRoots: [URL], hasStoreReceipt: Bool,
                       entries: [String: FileIdentity] = [:], installerPackages: [String] = [],
-                      macportsClaims: [String] = []) -> NativeManagerEvidence {
+                      macportsClaims: [String] = [], observationFingerprint: NativeOwnershipFingerprint? = nil) -> NativeManagerEvidence {
             var exclusions: [NativeManagerEvidence.Exclusion] = []
             if hasStoreReceipt { exclusions.append(.appStoreReceipt) }
             if !references.isEmpty { exclusions.append(.homebrewCaskReference) }
@@ -118,7 +122,7 @@ struct NativeManagerObserver {
             return NativeManagerEvidence(exclusions: exclusions, homebrewReferences: references,
                                          inspectedCaskEntries: entryCount, installerPackageIdentifiers: installerPackages,
                                          macportsClaims: macportsClaims, homebrewReceiptClaims: receiptClaims,
-                                         homebrewCoverageGaps: gaps)
+                                         homebrewCoverageGaps: gaps, observationFingerprint: observationFingerprint)
         }
     }
 

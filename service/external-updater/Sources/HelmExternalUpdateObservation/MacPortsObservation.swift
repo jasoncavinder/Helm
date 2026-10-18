@@ -22,7 +22,7 @@ struct NativeMacPortsObserver {
 
     init(registry: URL = Self.registry) { self.registry = registry }
 
-    struct Snapshot: Equatable {
+    struct Snapshot: Encodable, Equatable {
         let filesystem: [String: FileIdentity]
         let reply: Data
         let claims: [String]

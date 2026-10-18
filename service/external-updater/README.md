@@ -172,6 +172,15 @@ without retry. The client accepts only adoption-specific codes and 32-byte revie
 handles. See the [coordinator evidence](../../docs/validation/v0.20-sparkle-adoption-coordinator.md)
 for tests and the native proof/signed integration required before enabling this.
 
+Native target evidence now retains a private, domain-separated SHA-256 binding
+of the bounded ownership snapshots, including raw receipts/configuration/query
+replies and inspected filesystem identities. A changed raw snapshot invalidates
+review even when the diagnostic summary is unchanged. Missing bindings reject
+before storage; the direct Swift bridge also binds its full reviewed target.
+The digest is neither serialized in diagnostic JSON nor accepted from clients,
+and never establishes complete ownership. See the
+[ownership-binding evidence](../../docs/validation/v0.20-sparkle-ownership-binding.md).
+
 Adoption request schema 2 requires scope version 1 and explicit
 `confirmsNoUnsupportedOwner` intent, never a defaulted acknowledgment or native
 clearance assertion. Migration 25 preserves the reviewed fields; unversioned or

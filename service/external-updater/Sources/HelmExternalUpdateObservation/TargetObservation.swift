@@ -146,6 +146,9 @@ public struct NativeTargetObserver {
         // Even an empty or aliased receipt container is an exclusion marker,
         // not proof that this app is standalone or that its receipt is valid.
         let hasStoreReceipt = permissions.entries[target.appendingPathComponent("Contents/_MASReceipt").path] != nil
+        let ownershipFingerprint = try NativeOwnershipFingerprint(target: target, applicationRoots: roots,
+            caskrooms: managers.caskrooms, macportsRegistry: macports.registry, bundleEntries: permissions.entries,
+            homebrew: managerSnapshot, installer: receiptSnapshot, macports: macportsSnapshot)
         return NativeTargetEvidence(
             canonicalPath: target.path, device: before.device, inode: before.inode,
             bundleIdentifier: identifier, build: build, teamIdentifier: signing.team,
@@ -155,7 +158,8 @@ public struct NativeTargetObserver {
             writableByOthers: permissions.unsafePermissions, inspectedEntries: permissions.entries.count,
             managerEvidence: managerSnapshot.evidence(target: target, applicationRoots: roots, hasStoreReceipt: hasStoreReceipt,
                                                      entries: permissions.entries, installerPackages: receiptSnapshot.identifiers,
-                                                     macportsClaims: macportsSnapshot.claims)
+                                                     macportsClaims: macportsSnapshot.claims,
+                                                     observationFingerprint: ownershipFingerprint)
         )
     }
 

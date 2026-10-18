@@ -121,7 +121,7 @@ struct BundleFilesystem {
     }
 }
 
-struct FileIdentity: Equatable {
+struct FileIdentity: Encodable, Equatable {
     let device: UInt64
     let inode: UInt64
     let owner: uid_t
