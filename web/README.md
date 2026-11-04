@@ -15,18 +15,21 @@ This is the source code for the [Helm product website](https://helmapp.dev/).
 
 ## Dependency Security
 
-The `postcss-nested@6.2.0` dependency used by Expressive Code has a scoped
-`postcss-selector-parser@7.1.6` override for
+The `postcss-nested@6.2.0` dependency used by Expressive Code resolves
+`postcss-selector-parser@6.1.5` for
 [GHSA-rj75-hqrm-r3gf](https://github.com/advisories/GHSA-rj75-hqrm-r3gf).
-The parent still requires parser 6.x, so a lockfile-only update cannot select the
-patched parser. Keep this override until the parent dependency uses a patched
-parser itself; review it when upgrading Expressive Code or `postcss-nested`.
+The patched 6.x release satisfies the parent's existing range without a
+cross-major override. Review the regression test's supported version line when
+upgrading Expressive Code or `postcss-nested`.
 
 Run `npm run test:css-dependencies` and `npm run build` when changing this chain.
 The tests cover nested selector expansion, escaping, functional selectors, media
 rules, and the parser version actually resolved by the consumer. Use `npm audit`
-to check the complete dependency tree; a green dependency-review check alone
-does not mean existing alerts have been resolved. Changes merged to `main` must
+to check the complete dependency tree. Dependency Security also audits the full
+lockfile on pull requests and its weekly schedule, failing on low severity or
+higher without installing packages or running dependency scripts. A green
+dependency-review check alone does not mean existing alerts have been resolved.
+Changes merged to `main` must
 also be synchronized to `dev` and successfully deployed before delivery is
 considered complete.
 

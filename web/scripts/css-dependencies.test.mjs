@@ -6,7 +6,7 @@ const require = createRequire(import.meta.url);
 const postcss = require('postcss');
 const nested = require('postcss-nested');
 
-// Exercise the consumer of the scoped security override, not just the parser API.
+// Exercise the actual dependency consumer, not just the parser API.
 async function rulesFor(css) {
   const result = await postcss([nested()]).process(css, { from: undefined });
   const rules = [];
@@ -52,7 +52,11 @@ test('functional selectors and nested media rules preserve parent substitution',
 
 test('the nested plugin resolves the patched parser for flat selectors', () => {
   const nestedRequire = createRequire(require.resolve('postcss-nested'));
-  assert.equal(nestedRequire('postcss-selector-parser/package.json').version, '7.1.6');
+  const version = nestedRequire('postcss-selector-parser/package.json').version;
+  // The patched 6.x line satisfies postcss-nested without a major-version override.
+  assert.match(version, /^6\.\d+\.\d+$/);
+  const [, minor, patch] = version.split('.').map(Number);
+  assert.ok(minor > 1 || (minor === 1 && patch >= 5), `Unpatched parser: ${version}`);
   const selector = '.a#b'.repeat(10_000);
   assert.equal(nestedRequire('postcss-selector-parser')().processSync(selector), selector);
 });
