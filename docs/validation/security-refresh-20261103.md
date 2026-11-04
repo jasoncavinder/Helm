@@ -74,11 +74,18 @@ Final lockfile SHA-256 values:
 | Stable Rust | `8d673a94b174acf5d749f3532c83a2ca01d13ce503ec07ad816e7eb5f737ccda` |
 | Website, both branches | `d62147440be9f458b472d15aba190decb90705907664a3b97fd41a9c5c0ef6e5` |
 
+## Merge and delivery closeout
+
+The owner reviewed and merged #653 (`b593036d`), #652 (`6480b892`) and #650
+(`9a78afe5`). #649 is closed as superseded. The tracker correction was then
+carried to `main` separately and reviewed/merged through #654 (`4d309026`). Its
+28 tracker and 20 policy tests passed in the VM with negative controls; this
+did not promote v0.20 runtime changes. Default-branch Dependabot reports zero
+open alerts at the November 3 closeout. Website deployment of `6480b892`
+passed separately; #651 remains open. No stable app/CLI patch was published.
+
 ## Remaining gates
 
-Fresh remote head CI and owner review/merge are required; historical green checks
-and this VM record are not merge approval for changed code. After #650 merges,
-carry its tracker correction to `main` separately as already planned. Website
-deployment and any stable app/CLI patch publication remain distinct delivery
-steps; nothing was published or released by this validation. v0.20's operational
-Sparkle and final-candidate gates are unchanged.
+Future changes need fresh CI/review; historical green checks are not approval
+for changed code. A stable app/CLI patch release remains a separately authorized
+delivery step. v0.20's operational Sparkle and final-candidate gates are unchanged.

@@ -2,19 +2,18 @@
 
 ## Immediate v0.20 Closeout
 
-Complete the [fresh security refresh](validation/security-refresh-20261103.md):
-review/merge #653, #652 and #650 in that order after current head CI passes.
-#652 supersedes #649's dependency changes; close the older bot PR after its
-replacement lands. Preserve #651's disputed cache-policy limitation and verify
-default-branch alert rescanning and separately authorized delivery afterward.
+The [fresh security refresh](validation/security-refresh-20261103.md) is merged
+through #653, #652 and #650; #649 is closed as superseded. Default-branch alert
+rescanning reports zero open Dependabot alerts and website deployment passed.
+Preserve #651's disputed cache-policy limitation and require separate explicit
+authorization for stable app/CLI delivery.
 
 The [security backport activation](validation/security-backport-activation-20261018.md)
 passed without publication. Keep its reviewed main-to-dev controls in sync,
 retain separate merge/delivery evidence, and obtain explicit approval before a
 stable app/CLI patch release. This does not advance the v0.20 release gates below.
-Carry the development sync's tracking provenance/error-isolation correction to
-`main` in a separate reviewed workflow-script-only PR; do not promote v0.20
-runtime changes or infer that a `dev` merge updates the default-branch schedule.
+The tracking provenance/error-isolation correction is now reviewed and merged to
+`main` through #654 (`4d309026`); no v0.20 runtime changes were promoted.
 
 Review the [licensing and positioning proposal](legal/proposals/V020_LICENSING_POSITIONING.md)
 alongside technical closeout. Keep its license and copy drafts nonbinding until
@@ -152,10 +151,16 @@ PR #640 is reviewed and merged at `042ff79c`. The
 [bounded cask artifact-path follow-up](validation/v0.20-sparkle-cask-artifact-paths.md)
 now recognizes suites, absolute generic destinations and literal removal paths,
 including parent-directory claims. Preserve its mixed-declaration gaps and
-filesystem-free interpretation; binary paths, scripts, wildcard/account-relative
+filesystem-free interpretation; unsupported binary paths, scripts, wildcard/account-relative
 forms and other unsupported declarations remain blockers. The 309 helper tests,
 26 contracts, negative controls and read-only installed-state checks pass, not
 operational adoption certification.
+The [binary-link follow-up](validation/v0.20-sparkle-cask-binary-paths.md) adds
+denial claims from both literal absolute binary sources and supported link
+destinations. Preserve partial-endpoint gaps, standard-root-only defaults and
+raw receipt drift binding. Relative sources, shell completions, hooks, aliases
+and installer-script effects still require resolution; this is not the missing
+production ownership provider and must not activate grants.
 The [native ownership review binding](validation/v0.20-sparkle-ownership-binding.md)
 now retains bounded raw-evidence drift across reviews, rejects missing bindings
 and protects direct bridge confirmation. Preserve its single-use rejection and

@@ -30,7 +30,7 @@ exclusions from work required before proposing a supported-complete result.
 
 | Source | Current bounded observation | Remaining activation requirement |
 |---|---|---|
-| Homebrew casks | Standard `/opt/homebrew/Caskroom` and `/usr/local/Caskroom` references, installed app/suite declarations, absolute generic targets, literal removal paths and saved appdir settings; every token contributes claims and gaps. | Complete remaining artifact forms and alias coverage. Missing/legacy/empty declarations and uninspected artifacts remain blockers, including in unrelated tokens. No token-name shortcut. Custom prefixes are outside these scanners, not proved absent. |
+| Homebrew casks | Standard `/opt/homebrew/Caskroom` and `/usr/local/Caskroom` references, installed app/suite declarations, absolute generic targets, literal removal paths, bounded binary-link endpoints and saved appdir settings; every token contributes claims and gaps. | Complete remaining artifact forms and alias coverage. Missing/legacy/empty declarations and uninspected artifacts remain blockers, including in unrelated tokens. No token-name shortcut. Custom prefixes are outside these scanners, not proved absent. |
 | MacPorts | Standard application location and `/opt/local/var/macports/registry/registry.db`, schema 1.215, including inactive payload claims. | Preserve busy/unknown/unsafe-registry rejection. Custom prefixes, alternate layouts and aliases are not covered by standard-root absence. |
 | Installer receipts | Fixed `pkgutil` queries for the inspected bundle tree, overlapping non-root receipt exports and bounded root-location payload listings, including historical/deleted paths. | Resolve alias limitations and unobserved installer-script effects. Payload listings are not complete installation history. Do not label the current successful query sequence complete while these known gaps remain. |
 | App Store | Receipt-container markers in the inspected bundle. | Preserve marker denial. Marker absence is not authenticated installation history; do not present it as such. |
@@ -60,6 +60,13 @@ contain app declarations alongside uninstall/zap directives; some also contain
 binary links and install hooks. Consequently #639 reports global
 `uninspectedArtifacts` gaps even when reviewing unrelated Rectangle. This is
 not a claim that Homebrew owns Rectangle.
+
+The [binary-link follow-up](../validation/v0.20-sparkle-cask-binary-paths.md)
+adds literal absolute binary sources and explicit or standard-prefix destinations
+to denial evidence. Relative sources still depend on unobserved staging/`only_path`
+context; they retain a gap even when their destination is known. No current
+architecture, receipt hint or environment variable supplies a prefix. The VM's
+mixed receipts still have unsupported siblings, so their global gaps remain.
 
 Homebrew's artifact vocabulary includes moved applications, arbitrary artifact
 destinations and executable installation steps. Non-app declarations therefore

@@ -170,6 +170,12 @@ scripts and expansion-dependent forms remain gaps; no Homebrew metadata is execu
 or destination followed. This narrows declarative receipt coverage, not the
 requirement for complete supported native evidence before adoption.
 
+The [binary-link follow-up](../validation/v0.20-sparkle-cask-binary-paths.md)
+adds both recognized binary endpoints to cask denial claims, including a source
+inside an app when the installed link is elsewhere. Defaults use only the native
+standard caskroot, not receipt architecture or process environment. Unsupported
+endpoints and siblings retain gaps, and no link is followed or executed.
+
 ## Adding A New Rule
 
 1. Add rule and constants in `manager_policy.rs`.

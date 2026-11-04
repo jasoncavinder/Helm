@@ -137,6 +137,15 @@ the native bridge maps it to the existing Homebrew exclusion bit. It does not
 trust a matching basename alone or execute non-app artifacts, scripts or Ruby.
 No destination is probed, including appdirs outside allowed target roots.
 
+The [binary-link follow-up](../validation/v0.20-sparkle-cask-binary-paths.md)
+also retains a literal absolute binary source as a claim, not just its symlink
+destination: Homebrew can link from an app and adjust that executable's mode.
+Explicit absolute destinations and relative/default names under the scanned
+standard prefix's `bin` directory are recognized without probing either endpoint.
+Unknown roots, relative sources and expansion-dependent/alias-sensitive paths
+remain gaps; supported endpoints survive alongside them. No new authority or
+complete-ownership disposition follows from parsing a link.
+
 Metadata files must be regular and opened without following any symlink.
 Reads are bounded to 256 KiB per receipt, 64 KiB per config and 4 MiB total per
 scan, with at most 512 artifacts per receipt. Exact bytes, metadata-directory
