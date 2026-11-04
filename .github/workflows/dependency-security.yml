@@ -27,6 +27,24 @@ jobs:
         with:
           fail-on-severity: high
 
+  npm-audit:
+    name: Website Dependency Audit
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '24'
+
+      - name: Audit complete website lockfile
+        run: npm audit --package-lock-only --audit-level=low
+
   cargo-audit:
     name: Cargo Audit
     runs-on: ubuntu-24.04
