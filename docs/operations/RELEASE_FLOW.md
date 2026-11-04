@@ -12,6 +12,12 @@ This is the mandatory release sequence for maintainers and agents. It supplement
 
 ## Required Gates
 
+Security maintenance uses the [security backport lane](SECURITY_BACKPORTS.md) to
+prepare narrowly scoped stable PRs. Backport approval/merge does not authorize a
+release or satisfy the gates below. App/CLI fixes need an explicitly approved
+patch publication before installed stable users receive them; website-only fixes
+need verified production deployment, not an app version bump.
+
 Run these from a clean, current `main` checkout before creating a tag. An isolated
 release worktree is also permitted when its clean `HEAD` exactly equals freshly
 fetched `origin/main`; this exception does not permit tagging a candidate branch:

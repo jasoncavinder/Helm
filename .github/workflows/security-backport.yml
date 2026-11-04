@@ -1,0 +1,94 @@
+name: Security Backport
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      source_pr:
+        description: Merged dev PR number
+        required: true
+        type: string
+      commit:
+        description: Exact non-merge commit SHA from the source PR
+        required: true
+        type: string
+      paths:
+        description: Selected lockfile (core/rust/Cargo.lock or web/package-lock.json)
+        required: true
+        type: string
+      advisories:
+        description: Comma-separated RUSTSEC, GHSA or CVE IDs
+        required: true
+        type: string
+      delivery:
+        description: Required delivery after merge
+        required: true
+        type: choice
+        options: [app, website]
+      apply:
+        description: Create backport branch and PR (never merge or publish)
+        default: false
+        type: boolean
+  schedule:
+    - cron: '43 17 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-backport-${{ github.event.issue.number || inputs.source_pr || 'tracking' }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/security-backport '))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out trusted workflow revision only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare maintainer-requested backport
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BACKPORT_SOURCE_PR: ${{ inputs.source_pr }}
+          BACKPORT_COMMIT: ${{ inputs.commit }}
+          BACKPORT_PATHS: ${{ inputs.paths }}
+          BACKPORT_ADVISORIES: ${{ inputs.advisories }}
+          BACKPORT_DELIVERY: ${{ inputs.delivery }}
+          BACKPORT_APPLY: ${{ inputs.apply }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = issue_comment ]; then
+            python3 scripts/security/backport.py event --apply
+          elif [ "$BACKPORT_APPLY" = true ]; then
+            python3 scripts/security/backport.py prepare --apply
+          else
+            python3 scripts/security/backport.py prepare
+          fi
+  tracking:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Report branch completion separately from delivery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/security/backport.py status

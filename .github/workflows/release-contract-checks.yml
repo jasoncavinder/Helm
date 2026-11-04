@@ -35,16 +35,20 @@ jobs:
       - name: Validate PR-only concurrency regression coverage
         run: python3 -m unittest discover -s scripts/tests -p test_pr_check_concurrency.py
 
-      - name: Validate Linux runner and Cargo cache policy
+      - name: Validate runner, Cargo cache, and dependency audit policies
         run: |
           python3 -m venv "$RUNNER_TEMP/ci-policy-venv"
           POLICY_PYTHON="$RUNNER_TEMP/ci-policy-venv/bin/python"
           "$POLICY_PYTHON" -m pip install --disable-pip-version-check -r scripts/ci/requirements.txt
           "$POLICY_PYTHON" scripts/ci/check_linux_runner_policy.py
           "$POLICY_PYTHON" -m unittest discover -s scripts/ci/tests -p 'test_linux_runner_policy.py' -v
+          "$POLICY_PYTHON" -m unittest discover -s scripts/ci/tests -p 'test_dependency_security_policy.py' -v
 
       - name: Validate unsigned build script safety contracts
         run: scripts/release/tests/build_unsigned_variant_contract.sh
+
+      - name: Validate security backport isolation contracts
+        run: python3 -m unittest discover -s scripts/security/tests -p 'test_*.py' -v
 
       - name: Validate release publish verify merge-order contracts
         run: scripts/release/tests/publish_verify_state_contract.sh
