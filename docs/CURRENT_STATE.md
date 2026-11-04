@@ -13,6 +13,12 @@ selection. Stable validation and review remain mandatory, and the daily tracking
 report distinguishes branch merge from unverified public delivery. The workflow
 does not merge, tag, publish, deploy, or activate unfinished v0.20 behavior.
 
+The [November security closeout](validation/security-closeout-20261103.md)
+records merged Rust/website patches (#653/#652), development synchronization
+(#650), and zero open Dependabot alerts at verification. The scheduled tracker's
+reviewed same-repository provenance and malformed-record isolation now match
+`dev`; a merged dependency patch is still not an app/CLI release.
+
 ---
 
 ## Version

@@ -294,7 +294,8 @@ class WorkflowTests(unittest.TestCase):
 
     def test_tracking_never_equates_merge_to_publication(self):
         value = request()
-        pr = {"number": 1, "head": {"ref": value.branch}, "body": value.marker,
+        pr = {"number": 1, "head": {"ref": value.branch, "repo": {"full_name": REPO}},
+              "base": {"ref": "main", "repo": {"full_name": REPO}}, "body": value.marker,
               "merged": True, "state": "closed", "html_url": "https://github.com/test/pull/1"}
 
         class API(FakeGitHub):
@@ -304,6 +305,84 @@ class WorkflowTests(unittest.TestCase):
         result = backport.status(API(pr))
         self.assertEqual(result["backports"][0]["stage"], "merged_to_main_delivery_unverified")
         self.assertIn("not delivery evidence", result["note"])
+        self.assertEqual(result["warnings"], [])
+
+
+class TrackingTests(unittest.TestCase):
+    def pr(self, number=1, **kwargs):
+        value = request()
+        result = {"number": number, "head": {"ref": value.branch, "repo": {"full_name": REPO}},
+                  "base": {"ref": "main", "repo": {"full_name": REPO}}, "body": value.marker,
+                  "merged": True, "state": "closed", "html_url": f"https://github.com/{REPO}/pull/{number}"}
+        result.update(kwargs)
+        return result
+
+    def tracking(self, records):
+        class API(FakeGitHub):
+            def pages(self, path):
+                self.calls.append((path, None, None))
+                return records
+
+            def api(self, path, payload=None, method=None):
+                self.calls.append((path, payload, method))
+                return next(pr for pr in records if path == f"pulls/{pr['number']}")
+
+        api = API()
+        return api, backport.status(api)
+
+    def test_foreign_or_missing_repository_is_ignored_before_marker_parsing(self):
+        for endpoint in ("head", "base"):
+            for repo in ({"full_name": "outsider/Helm"}, None, {}):
+                for body in (request().marker, '<!-- helm-security-backport-v1 {"source_pr":1} -->'):
+                    with self.subTest(endpoint=endpoint, repo=repo, body=body):
+                        spoof = self.pr(2, body=body)
+                        spoof[endpoint]["repo"] = repo
+                        api, result = self.tracking([spoof, self.pr()])
+                        self.assertEqual(len(result["backports"]), 1)
+                        self.assertEqual(result["backports"][0]["backport"], self.pr()["html_url"])
+                        self.assertEqual(result["warnings"], [])
+                        self.assertEqual([call[0] for call in api.calls[1:]], ["pulls/1"])
+
+    def test_wrong_base_is_ignored_and_repository_case_is_insensitive(self):
+        wrong_base = self.pr(2)
+        wrong_base["base"]["ref"] = "dev"
+        valid = self.pr()
+        for endpoint in ("head", "base"):
+            valid[endpoint]["repo"]["full_name"] = REPO.upper()
+        api, result = self.tracking([wrong_base, valid])
+        self.assertEqual(len(result["backports"]), 1)
+        self.assertEqual([call[0] for call in api.calls[1:]], ["pulls/1"])
+
+    def test_malformed_same_repository_records_warn_without_hiding_valid_rows(self):
+        malformed = [None, "no marker", '<!-- helm-security-backport-v1 {bad} -->',
+                     '<!-- helm-security-backport-v1 {"source_pr":1} -->',
+                     '<!-- helm-security-backport-v1 {"x":' + '[' * 2000 + '0' + ']' * 2000 + '} -->']
+        values = json.loads(request().encoded)
+        for key, bad_value in (("commit", None), ("paths", [[]]), ("advisories", [None]),
+                               ("delivery", "invalid"), ("unexpected", True)):
+            malformed.append(f"<!-- {backport.MARKER} {json.dumps(dict(values, **{key: bad_value}))} -->")
+        records = [self.pr(number, body=body) for number, body in enumerate(malformed, 2)]
+        mismatch = self.pr(len(records) + 2)
+        mismatch["head"]["ref"] = "hotfix/security-pr-mismatch"
+        records.append(mismatch)
+        api, result = self.tracking(records + [self.pr()])
+        self.assertEqual(len(result["backports"]), 1)
+        self.assertEqual([item["pr"] for item in result["warnings"]], [pr["number"] for pr in records])
+        self.assertEqual([call[0] for call in api.calls[1:]], ["pulls/1"])
+        self.assertTrue(all("inspect this PR manually" in item["reason"] for item in result["warnings"]))
+
+    def test_api_failure_is_not_misreported_as_invalid_marker(self):
+        with patch.object(FakeGitHub, "pages", return_value=[self.pr()]), \
+             patch.object(FakeGitHub, "api", side_effect=backport.BackportError("API unavailable")):
+            with self.assertRaisesRegex(backport.BackportError, "API unavailable"):
+                backport.status(FakeGitHub())
+
+    def test_valid_open_and_closed_records_retain_distinct_stages(self):
+        _, result = self.tracking([self.pr(1, merged=False, state="open"),
+                                   self.pr(2, merged=False), self.pr(3)])
+        self.assertEqual([row["stage"] for row in result["backports"]],
+                         ["backport_open", "closed_without_merge", "merged_to_main_delivery_unverified"])
+        self.assertEqual(result["warnings"], [])
 
 
 if __name__ == "__main__":

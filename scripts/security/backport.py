@@ -228,21 +228,35 @@ def prepare(github, request, apply=False):
 
 def status(github):
     rows = []
+    warnings = []
     for pr in github.pages("pulls?state=all&base=main&sort=updated&direction=desc"):
         if not pr.get("head", {}).get("ref", "").startswith("hotfix/security-pr-"):
             continue
-        body = pr.get("body") or ""
-        match = re.search(r"<!-- " + MARKER + r" (\{[^\n]+\}) -->", body)
-        if not match:
+        # Branch names and PR bodies are contributor-controlled, including on forks.
+        # Generated backports always have both endpoints in this repository.
+        if pr.get("base", {}).get("ref") != "main" or any(
+            (pr.get(endpoint, {}).get("repo") or {}).get("full_name", "").lower() != github.repo.lower()
+            for endpoint in ("head", "base")
+        ):
             continue
-        values = json.loads(match.group(1))
-        request = Request(**values)
-        require(pr["head"]["ref"] == request.branch, "backport tracking marker/branch mismatch")
+        body = pr.get("body") or ""
+        try:
+            match = re.search(r"<!-- " + MARKER + r" (\{[^\n]+\}) -->", body)
+            require(match is not None, "backport tracking marker missing")
+            values = json.loads(match.group(1))
+            request = Request(**values)
+            require(pr["head"]["ref"] == request.branch, "backport tracking marker/branch mismatch")
+        except (BackportError, ValueError, TypeError, RecursionError):
+            # Keep malformed historical records visible without losing valid rows.
+            # Do not echo attacker-controlled marker data in the workflow summary.
+            warnings.append({"pr": pr["number"], "reason": "Invalid or mismatched tracking marker; inspect this PR manually."})
+            continue
         full = github.api(f"pulls/{pr['number']}")
         stage = "merged_to_main_delivery_unverified" if full.get("merged") else ("backport_open" if full["state"] == "open" else "closed_without_merge")
         rows.append({"source_pr": request.source_pr, "backport": full["html_url"], "stage": stage,
                      "delivery": request.delivery, "advisories": request.advisories})
-    return {"status": "tracking", "backports": rows, "note": "Merge state is not delivery evidence. Record verified release/deployment separately."}
+    return {"status": "tracking", "backports": rows, "warnings": warnings,
+            "note": "Merge state is not delivery evidence. Record verified release/deployment separately."}
 
 
 def authorize_event(github, event, actor):
