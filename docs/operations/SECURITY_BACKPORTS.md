@@ -142,9 +142,15 @@ linked evidence record is authoritative. Future automated delivery reconciliatio
 must verify actual artifact/metadata/deployment provenance before changing that.
 
 Scheduled vulnerability scanning and routine version-update batching are separate
-from this backport lane. The existing dependency-security workflow remains in
-place; this change does not claim full npm audit coverage or clear unrelated
-advisories.
+from this backport lane. Dependency Security runs Cargo Audit and a full website
+lockfile audit on pull requests and its weekly schedule. The website audit uses
+`npm audit --package-lock-only --audit-level=low`, includes development
+dependencies, and does not install packages or execute their scripts. Preserve
+the distinction between a clean current advisory scan, a reviewed fix, and
+delivery; none proves that an upstream-disputed behavior is resolved. See the
+[website security notes](../../web/README.md#dependency-security) for the retained
+cache-policy caveat. Scheduled checks use `main`, so keep reviewed fixes and
+workflow changes synchronized with `dev` without promoting milestone features.
 
 ## References
 
