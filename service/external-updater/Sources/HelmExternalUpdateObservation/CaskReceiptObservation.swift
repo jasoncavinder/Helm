@@ -30,7 +30,8 @@ enum NativeCaskReceiptObserver {
             }
         }
         if let receipt = result.bytes["INSTALL_RECEIPT.json"] {
-            let artifacts = try inspect(receipt: receipt, config: result.bytes["config.json"], target: target.path)
+            let artifacts = try inspect(receipt: receipt, config: result.bytes["config.json"], target: target.path,
+                                        caskroomPath: token.deletingLastPathComponent().path)
             result.claims = artifacts.claims
             result.coverageGap = artifacts.coverageGap
         }
@@ -73,7 +74,7 @@ enum NativeCaskReceiptObserver {
         let coverageGap: NativeCaskCoverageGap.Reason?
     }
 
-    static func inspect(receipt: Data, config: Data?, target: String) throws -> Artifacts {
+    static func inspect(receipt: Data, config: Data?, target: String, caskroomPath: String? = nil) throws -> Artifacts {
         guard receipt.count <= 256 * 1024, (config?.count ?? 0) <= 64 * 1024 else { throw ObservationFailure.limitExceeded }
         let object = try dictionary(receipt)
         // Legacy receipts without artifact declarations remain unresolved. This
@@ -90,7 +91,7 @@ enum NativeCaskReceiptObserver {
         for artifact in artifacts {
             guard artifact.count == 1 else { throw ObservationFailure.unreadableManagerEvidence }
             guard let (kind, value) = artifact.first else { throw ObservationFailure.unreadableManagerEvidence }
-            let inspected = try NativeCaskArtifactPaths.inspect(kind: kind, value: value) {
+            let inspected = try NativeCaskArtifactPaths.inspect(kind: kind, value: value, caskroomPath: caskroomPath) {
                 if savedDirectory == nil { savedDirectory = try appDirectory(config) }
                 guard let directory = savedDirectory else { throw ObservationFailure.unreadableManagerEvidence }
                 return directory

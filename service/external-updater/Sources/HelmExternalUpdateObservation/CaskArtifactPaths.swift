@@ -8,8 +8,11 @@ enum NativeCaskArtifactPaths {
         var incomplete = false
     }
 
-    static func inspect(kind: String, value: Any, appDirectory: () throws -> URL) throws -> Inspection {
+    static func inspect(kind: String, value: Any, caskroomPath: String? = nil,
+                        appDirectory: () throws -> URL) throws -> Inspection {
         switch kind {
+        case "binary":
+            return try NativeCaskBinaryPaths.inspect(value, caskroomPath: caskroomPath)
         case "app", "suite", "artifact":
             return try moved(kind: kind, value: value, appDirectory: appDirectory)
         case "uninstall", "zap":

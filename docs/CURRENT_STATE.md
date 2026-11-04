@@ -1,10 +1,18 @@
 # Current State
 
 The [November 3 security refresh](validation/security-refresh-20261103.md)
-revalidates #650 against current advisories and synchronizes targeted Rust and
-website patches with separate stable-line PRs #653/#652. Fresh isolated-VM
-audits and regressions pass; new head CI, review/merge and delivery remain
-separate gates. No release, deployment or v0.20 feature promotion is implied.
+is merged through #653/#652 on `main` and #650 on `dev`. The tracker correction
+is also reviewed and merged to `main` through #654 (`4d309026`), without promoting
+v0.20 runtime features. The default branch reports zero open Dependabot alerts
+at this closeout; #651's disputed cache-policy limitation remains open. Website
+deployment passed separately. No new stable app/CLI release was published.
+
+The [cask binary-link follow-up](validation/v0.20-sparkle-cask-binary-paths.md)
+recognizes literal absolute sources and explicit or standard-prefix destinations
+as conservative ownership claims. Partial declarations retain known claims and
+coverage gaps together; no links are followed or commands executed. Other cask
+forms, aliases and installer-script effects remain unresolved, and production
+adoption/direct installation is still disabled.
 
 The [v0.20 licensing and positioning proposal](legal/proposals/V020_LICENSING_POSITIONING.md)
 is prepared for review: capability-based Free/Pro/Fleet boundaries, a nonbinding
