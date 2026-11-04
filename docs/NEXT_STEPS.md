@@ -2,6 +2,12 @@
 
 ## Immediate v0.20 Closeout
 
+Complete the [fresh security refresh](validation/security-refresh-20261103.md):
+review/merge #653, #652 and #650 in that order after current head CI passes.
+#652 supersedes #649's dependency changes; close the older bot PR after its
+replacement lands. Preserve #651's disputed cache-policy limitation and verify
+default-branch alert rescanning and separately authorized delivery afterward.
+
 The [security backport activation](validation/security-backport-activation-20261018.md)
 passed without publication. Keep its reviewed main-to-dev controls in sync,
 retain separate merge/delivery evidence, and obtain explicit approval before a

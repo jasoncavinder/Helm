@@ -1,5 +1,11 @@
 # Current State
 
+The [November 3 security refresh](validation/security-refresh-20261103.md)
+revalidates #650 against current advisories and synchronizes targeted Rust and
+website patches with separate stable-line PRs #653/#652. Fresh isolated-VM
+audits and regressions pass; new head CI, review/merge and delivery remain
+separate gates. No release, deployment or v0.20 feature promotion is implied.
+
 The [v0.20 licensing and positioning proposal](legal/proposals/V020_LICENSING_POSITIONING.md)
 is prepared for review: capability-based Free/Pro/Fleet boundaries, a nonbinding
 license draft, version-transition questions and staged messaging/support checks.
